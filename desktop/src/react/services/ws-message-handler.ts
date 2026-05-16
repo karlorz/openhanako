@@ -75,6 +75,40 @@ function ensureCurrentSessionVisible(): void {
   });
 }
 
+function upsertCreatedSession(msg: any): void {
+  const incoming = msg.session && typeof msg.session === 'object' ? msg.session : {};
+  const sessionPath = typeof incoming.path === 'string' && incoming.path.trim()
+    ? incoming.path
+    : typeof msg.sessionPath === 'string' && msg.sessionPath.trim()
+      ? msg.sessionPath
+      : null;
+  if (!sessionPath) return;
+
+  const state = useStore.getState();
+  const existing: any = state.sessions.find((s: any) => s.path === sessionPath) || {};
+  const now = new Date().toISOString();
+  const next = {
+    ...existing,
+    path: sessionPath,
+    title: typeof incoming.title === 'string' ? incoming.title : existing.title ?? null,
+    firstMessage: typeof incoming.firstMessage === 'string' ? incoming.firstMessage : existing.firstMessage ?? '',
+    modified: typeof incoming.modified === 'string' ? incoming.modified : existing.modified ?? now,
+    messageCount: Number.isFinite(incoming.messageCount) ? incoming.messageCount : existing.messageCount ?? 0,
+    agentId: typeof incoming.agentId === 'string' ? incoming.agentId : existing.agentId ?? state.currentAgentId ?? null,
+    agentName: typeof incoming.agentName === 'string' ? incoming.agentName : existing.agentName ?? state.agentName ?? null,
+    cwd: typeof incoming.cwd === 'string' ? incoming.cwd : existing.cwd ?? null,
+    pinnedAt: incoming.pinnedAt ?? existing.pinnedAt ?? null,
+    hasSummary: incoming.hasSummary ?? existing.hasSummary,
+    rcAttachment: incoming.rcAttachment ?? existing.rcAttachment ?? null,
+    _optimistic: false,
+  };
+
+  useStore.setState({
+    sessions: [next, ...state.sessions.filter((s: any) => s.path !== sessionPath)]
+      .sort((a: any, b: any) => new Date(b.modified || 0).getTime() - new Date(a.modified || 0).getTime()),
+  });
+}
+
 function hasOptimisticCurrentSession(): boolean {
   const state = useStore.getState();
   const sessionPath = state.currentSessionPath;
@@ -288,7 +322,10 @@ export function handleServerMessage(msg: any): void {
       break;
 
     case 'session_created':
-      Promise.resolve(loadSessionsAction()).catch(err => console.warn('[ws] loadSessions failed:', err));
+      upsertCreatedSession(msg);
+      Promise.resolve(loadSessionsAction())
+        .then(() => upsertCreatedSession(msg))
+        .catch(err => console.warn('[ws] loadSessions failed:', err));
       break;
 
     case 'desk_changed':

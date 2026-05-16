@@ -82,23 +82,19 @@ export function AccessTab() {
   const mobileUrl = useMemo(() => {
     if (!summary) return '';
     if (mode !== 'lan') return '';
-    const listenPort = Number(port);
-    if (!Number.isInteger(listenPort) || listenPort < 1024 || listenPort > 65535) return '';
-    if (summary.network.lanAddresses[0]) {
-      return `http://${summary.network.lanAddresses[0]}:${listenPort}/mobile/`;
-    }
-    return summary.network.candidateLanMobileUrl || summary.network.lanMobileUrl || '';
-  }, [mode, port, summary]);
+    return summary.network.lanMobileUrl || '';
+  }, [mode, summary]);
 
   const qrUrl = useMemo(() => {
-    if (mode !== 'lan' || !mobileUrl) return '';
-    const listenPort = Number(port);
-    const query = Number.isInteger(listenPort) ? `?port=${encodeURIComponent(String(listenPort))}` : '';
+    if (mode !== 'lan' || !mobileUrl || summary?.network.restartRequired) return '';
+    const query = summary?.network.actualPort
+      ? `?port=${encodeURIComponent(String(summary.network.actualPort))}`
+      : '';
     return hanaUrl(`/api/access/mobile-qr.svg${query}`);
-  }, [mode, mobileUrl, port]);
+  }, [mode, mobileUrl, summary?.network.actualPort, summary?.network.restartRequired]);
 
   const canCopyMobileUrl = mobileUrl.length > 0;
-  const canShowQr = mode === 'lan' && mobileUrl.length > 0;
+  const canShowQr = mode === 'lan' && mobileUrl.length > 0 && !summary?.network.restartRequired;
   const runtimeEndpoint = summary ? `${summary.network.runtimeHost}:${summary.network.actualPort}` : '';
   const effectiveMobileUrl = summary?.network.lanMobileUrl || summary?.network.localMobileUrl || '';
   const lanAddressText = summary?.network.lanAddresses.length

@@ -237,6 +237,43 @@ describe('MobileApp', () => {
 
     expect(await screen.findAllByText('手机端发来的消息')).not.toHaveLength(0);
   });
+
+  it('shows server-created sessions from another LAN client without waiting for a refetch payload', async () => {
+    fetchMock.mockImplementation((input: RequestInfo | URL, options?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('/api/web-auth/session')) {
+        return Promise.resolve(jsonResponse({ authenticated: true, principal: principal(['chat', 'resources.read', 'files.read', 'files.write']) }));
+      }
+      return Promise.resolve(jsonResponse(jsonResponseForMobile(url, options)));
+    });
+
+    render(<MobileApp />);
+
+    await screen.findByText('日常记录');
+    act(() => {
+      MockWebSocket.instances[0]?.onmessage?.({
+        data: JSON.stringify({
+          type: 'session_created',
+          sessionPath: '/hana/sessions/from-desktop.jsonl',
+          session: {
+            path: '/hana/sessions/from-desktop.jsonl',
+            title: '电脑新会话',
+            firstMessage: 'desktop created',
+            modified: '2026-05-16T12:00:00.000Z',
+            messageCount: 1,
+            agentId: 'hana',
+            agentName: 'Hana',
+            cwd: '/workspace',
+          },
+        }),
+      } as MessageEvent);
+    });
+
+    await waitFor(() => {
+      expect(useStore.getState().sessions.some(session => session.path === '/hana/sessions/from-desktop.jsonl')).toBe(true);
+      expect(screen.getByText('电脑新会话')).toBeInTheDocument();
+    });
+  });
 });
 
 function principal(scopes: string[], credentialKind = 'device_credential') {

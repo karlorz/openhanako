@@ -138,9 +138,25 @@ describe('ws-message-handler session-scoped desktop events', () => {
     handleServerMessage({
       type: 'session_created',
       sessionPath: '/session/new.jsonl',
-      session: { path: '/session/new.jsonl' },
+      session: {
+        path: '/session/new.jsonl',
+        title: '手机新会话',
+        firstMessage: 'from mobile',
+        modified: '2026-05-16T12:00:00.000Z',
+        messageCount: 1,
+        agentId: 'a1',
+        agentName: 'Hana',
+        cwd: '/workspace',
+      },
     });
 
+    expect(useStore.getState().sessions[0]).toMatchObject({
+      path: '/session/new.jsonl',
+      title: '手机新会话',
+      firstMessage: 'from mobile',
+      messageCount: 1,
+      cwd: '/workspace',
+    });
     expect(loadSessions).toHaveBeenCalledTimes(1);
   });
 

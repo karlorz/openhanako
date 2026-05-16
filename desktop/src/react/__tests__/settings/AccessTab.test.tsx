@@ -171,6 +171,38 @@ describe('AccessTab', () => {
     expect(screen.queryByText('settings.access.restartRequired')).not.toBeInTheDocument();
   });
 
+  it('keeps the phone URL on the runtime port and hides QR when a saved port change needs restart', async () => {
+    mockHanaFetch.mockImplementation((url: string) => {
+      if (url === '/api/access/summary') {
+        return Promise.resolve(jsonResponse({
+          ...baseSummary,
+          network: {
+            ...baseSummary.network,
+            mode: 'lan',
+            listenHost: '0.0.0.0',
+            configuredPort: 14550,
+            actualPort: 14500,
+            runtimeMode: 'lan',
+            runtimeHost: '0.0.0.0',
+            restartRequired: true,
+            lanMobileUrl: 'http://192.168.31.75:14500/mobile/',
+            candidateLanMobileUrl: 'http://192.168.31.75:14550/mobile/',
+          },
+        }));
+      }
+      throw new Error(`unexpected request: ${url}`);
+    });
+    const { AccessTab } = await import('../../settings/tabs/AccessTab');
+
+    render(<AccessTab />);
+
+    expect(await screen.findByDisplayValue('http://192.168.31.75:14500/mobile/')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('14550')).toBeInTheDocument();
+    expect(screen.queryByDisplayValue('http://192.168.31.75:14550/mobile/')).not.toBeInTheDocument();
+    expect(screen.queryByRole('img', { name: 'settings.access.qrCode' })).not.toBeInTheDocument();
+    expect(screen.getAllByText('settings.access.restartRequired').length).toBeGreaterThan(0);
+  });
+
   it('generates a mobile access key and keeps the returned secret visible once', async () => {
     const { AccessTab } = await import('../../settings/tabs/AccessTab');
 
