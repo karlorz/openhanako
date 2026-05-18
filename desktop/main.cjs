@@ -1710,6 +1710,23 @@ function _notifyViewerUrl(url) {
   }
 }
 
+function encodeCapturedPageToJpegBase64(image, quality, label = "screenshot") {
+  if (!image || (typeof image.isEmpty === "function" && image.isEmpty())) {
+    const emptyImageMessage = label === "screenshot"
+      ? "Browser screenshot capture returned an empty image. The browser display surface may be unavailable."
+      : `Browser ${label} capture returned an empty image. The browser display surface may be unavailable.`;
+    throw new Error(emptyImageMessage);
+  }
+  const jpeg = image.toJPEG(quality);
+  if (!Buffer.isBuffer(jpeg) || jpeg.length === 0) {
+    const noDataMessage = label === "screenshot"
+      ? "Browser screenshot capture returned no image data. The browser display surface may be unavailable."
+      : `Browser ${label} capture returned no image data. The browser display surface may be unavailable.`;
+    throw new Error(noDataMessage);
+  }
+  return jpeg.toString("base64");
+}
+
 async function handleBrowserCommand(cmd, params) {
   switch (cmd) {
 
@@ -1952,8 +1969,7 @@ async function handleBrowserCommand(cmd, params) {
     case "screenshot": {
       return await _withLiveWebContents(params.sessionPath, async (wc) => {
         const img = await wc.capturePage();
-        const jpeg = img.toJPEG(75);
-        return { base64: jpeg.toString("base64") };
+        return { base64: encodeCapturedPageToJpegBase64(img, 75, "screenshot") };
       });
     }
 
@@ -1962,8 +1978,7 @@ async function handleBrowserCommand(cmd, params) {
       return await _withLiveWebContents(params.sessionPath, async (wc) => {
         const img = await wc.capturePage();
         const resized = img.resize({ width: 400 });
-        const jpeg = resized.toJPEG(60);
-        return { base64: jpeg.toString("base64") };
+        return { base64: encodeCapturedPageToJpegBase64(resized, 60, "thumbnail") };
       });
     }
 
