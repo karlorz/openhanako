@@ -2336,12 +2336,19 @@ export class SessionCoordinator {
    *   onSessionReady (sessionPath => void) 回调，session 创建后、prompt 执行前触发
    */
   async executeIsolated(prompt, opts = {}) {
-    const targetAgent = opts.agentId ? this._d.getAgentById(opts.agentId) : this._d.getAgent();
+    let targetAgent = opts.agentId ? this._d.getAgentById(opts.agentId) : this._d.getAgent();
     if (!targetAgent) throw new Error(t("error.agentNotInitialized", { id: opts.agentId }));
 
     // abort signal：提前中止检查
     if (opts.signal?.aborted) {
       return { sessionPath: null, replyText: "", error: "aborted" };
+    }
+    if (typeof this._d.ensureAgentRuntime === "function") {
+      const ensured = await this._d.ensureAgentRuntime(targetAgent.id, {
+        priority: opts.agentId ? "background" : "foreground",
+        reason: "executeIsolated",
+      });
+      if (ensured) targetAgent = ensured;
     }
 
     const bm = BrowserManager.instance();

@@ -1543,6 +1543,77 @@ describe("SessionCoordinator", () => {
     expect(createAgentSessionMock.mock.calls[0][0].customTools.map((tool) => tool.name)).toContain("search_memory");
   });
 
+  it("executeIsolated activates a cold target agent before reading its runtime tools", async () => {
+    const sessionFile = path.join(tempDir, "isolated-cold-agent.jsonl");
+    const calls = [];
+    const getToolsSnapshot = vi.fn(() => {
+      calls.push("tools");
+      return [{ name: "write" }];
+    });
+    const agent = {
+      id: "cold-agent",
+      agentDir: path.join(tempDir, "agents", "cold-agent"),
+      sessionDir: path.join(tempDir, "agents", "cold-agent", "sessions"),
+      agentName: "cold-agent",
+      memoryMasterEnabled: true,
+      config: { models: { chat: { id: "default-model", provider: "test" } } },
+      systemPrompt: "BACKGROUND PROMPT",
+      getToolsSnapshot,
+    };
+    const ensureAgentRuntime = vi.fn(async (agentId) => {
+      calls.push("ensure");
+      expect(agentId).toBe("cold-agent");
+      return agent;
+    });
+
+    sessionManagerCreateMock.mockReturnValue({
+      getCwd: () => tempDir,
+      getSessionFile: () => sessionFile,
+    });
+    createAgentSessionMock.mockResolvedValue({
+      session: {
+        sessionManager: { getSessionFile: () => sessionFile },
+        subscribe: vi.fn(() => vi.fn()),
+        prompt: vi.fn(async () => {}),
+        abort: vi.fn(),
+      },
+    });
+
+    const coordinator = new SessionCoordinator({
+      agentsDir: path.join(tempDir, "agents"),
+      getAgent: () => ({ id: "focus" }),
+      getActiveAgentId: () => "focus",
+      getModels: () => ({
+        authStorage: {},
+        modelRegistry: {},
+        defaultModel: { id: "default-model", provider: "test" },
+        availableModels: [{ id: "default-model", provider: "test" }],
+        resolveExecutionModel: (model) => model,
+        resolveThinkingLevel: () => "medium",
+      }),
+      getResourceLoader: () => ({ getSystemPrompt: () => "prompt", getAppendSystemPrompt: () => [] }),
+      getSkills: () => ({ getSkillsForAgent: () => [] }),
+      buildTools: (_cwd, customTools) => ({ tools: [], customTools }),
+      emitEvent: () => {},
+      getHomeCwd: () => tempDir,
+      agentIdFromSessionPath: () => null,
+      switchAgentOnly: async () => {},
+      getConfig: () => ({}),
+      getPrefs: () => ({ getThinkingLevel: () => "medium" }),
+      getAgents: () => new Map([["cold-agent", agent]]),
+      getActivityStore: () => null,
+      getAgentById: (agentId) => (agentId === "cold-agent" ? agent : null),
+      ensureAgentRuntime,
+      listAgents: () => [],
+    });
+
+    await coordinator.executeIsolated("background check", { agentId: "cold-agent" });
+
+    expect(ensureAgentRuntime).toHaveBeenCalledOnce();
+    expect(getToolsSnapshot).toHaveBeenCalledOnce();
+    expect(calls).toEqual(["ensure", "tools"]);
+  });
+
   it("executeIsolated runs background tools in operate mode instead of ask mode", async () => {
     const sessionFile = path.join(tempDir, "isolated-operate-permission.jsonl");
     let getPermissionMode;

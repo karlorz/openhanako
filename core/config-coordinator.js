@@ -446,7 +446,7 @@ export class ConfigCoordinator {
           if (partial.desk.heartbeat_enabled === false) {
             this._d.emitDevLog("[heartbeat] 巡检已关闭");
             await hb.stop();
-          } else if (this.getHeartbeatMaster() !== false) {
+          } else if (partial.desk.heartbeat_enabled === true && this.getHeartbeatMaster() !== false) {
             this._d.emitDevLog("[heartbeat] 巡检已开启");
             hb.start();
           }
@@ -530,7 +530,7 @@ export class ConfigCoordinator {
       if (!hb) continue;
       if (!enabled) {
         hb.stop();
-      } else if (agent.config?.desk?.heartbeat_enabled !== false) {
+      } else if (agent.config?.desk?.heartbeat_enabled === true) {
         hb.start();
       }
     }
