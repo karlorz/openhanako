@@ -223,9 +223,23 @@ export function createChatRoute(engine, hub, { upgradeWebSocket }) {
     return client;
   }
 
+  // 给所有携带 sessionPath 的事件强制注入 studioId（来自 server runtime context），
+  // 让下游 wsClientCanReceiveEvent 的 sameStudio 校验有真实归属可比，不再用
+  // receiver principal 的 studioId 做 fallback —— 避免 multi-studio 部署时
+  // A studio 设备订阅 B studio session 后收到事件。
+  function hardenStudio(msg) {
+    if (!msg || typeof msg !== "object") return msg;
+    if (msg.studioId) return msg;
+    if (!msg.sessionPath) return msg;
+    const studioId = engine.getRuntimeContext?.()?.studioId;
+    if (!studioId) return msg;
+    return { ...msg, studioId };
+  }
+
   function broadcast(msg) {
+    const hardenedMsg = hardenStudio(msg);
     for (const [clientWs, client] of clients) {
-      if (wsClientCanReceiveEvent(client, msg)) wsSend(clientWs, msg);
+      if (wsClientCanReceiveEvent(client, hardenedMsg)) wsSend(clientWs, hardenedMsg);
     }
   }
 

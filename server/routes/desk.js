@@ -18,6 +18,8 @@ import { WORKSPACE_SKILL_DIRS } from "../../shared/workspace-skill-paths.js";
 import { t } from "../i18n.js";
 import { resolveAgent } from "../utils/resolve-agent.js";
 import { realPath, isSensitivePath } from "../utils/path-security.js";
+import { readAuthPrincipal } from "../http/capability-guard.js";
+import { isLocalOwnerPrincipal } from "../http/route-security.js";
 
 /** 安全路径校验：target 必须在 baseDir 内部（解析 symlink 后比较） */
 function isInsidePath(target, baseDir) {
@@ -669,6 +671,14 @@ export function createDeskRoute(engine, hub) {
 
     switch (action) {
       case "upload": {
+        // upload 接受调用方提供的绝对源路径列表，把本机文件复制进 desk。
+        // 该语义只为桌面 owner 端的本机拖拽设计；远端 paired 设备不应能借此
+        // 把 desk dir 之外的任意可读路径（~/Documents、Library、shell init 等）
+        // 拷进工作区再读回。远端要上传文件应走 /api/mobile/workbench/upload 的
+        // multipart 通道。
+        if (!isLocalOwnerPrincipal(readAuthPrincipal(c))) {
+          return c.json({ error: "upload by absolute path requires local owner" }, 403);
+        }
         if (!Array.isArray(paths) || paths.length === 0) {
           return c.json({ error: "paths required" });
         }

@@ -752,7 +752,10 @@ try {
   console.log(`[server] Hanako Server 运行在 http://${host}:${actualPort}`);
   dlog.log("server", `listening on :${actualPort}`);
 
-  // 写 server-info 文件，供 Electron 检测复用或外部工具查询
+  // 写 server-info 文件，供 Electron 检测复用或外部工具查询。
+  // 文件含 128-bit loopback SERVER_TOKEN (本机最高权限凭据)，
+  // 必须 owner-only 可读 (0o600)，否则共享主机上的另一 UID / 沙箱外的
+  // 非授权进程能读到 token 后冒充 owner 调任意 LOCAL_ONLY 路由。
   const serverInfoPath = path.join(hanakoHome, "server-info.json");
   try {
     fs.writeFileSync(serverInfoPath, JSON.stringify({
@@ -763,7 +766,9 @@ try {
       networkMode: serverRuntimeState.mode,
       token: SERVER_TOKEN,
       version: appVersion,
-    }));
+    }), { mode: 0o600 });
+    // mode-on-create 在某些 fs 上不可靠（已有文件不会重置 mode），显式 chmod 兜底
+    try { fs.chmodSync(serverInfoPath, 0o600); } catch {}
   } catch (e) {
     console.error("[server] 写入 server-info.json 失败:", e.message);
   }
