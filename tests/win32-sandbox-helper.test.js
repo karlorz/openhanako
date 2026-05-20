@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildWin32LegacyAclDiagnosticArgs,
+  buildWin32LegacyProfileCleanupArgs,
   buildWin32SandboxHelperArgs,
 } from "../lib/sandbox/win32-sandbox-helper.js";
 
@@ -53,6 +54,20 @@ describe("buildWin32SandboxHelperArgs", () => {
       "--cleanup-legacy-acl",
       "--diagnose-legacy-acl",
       "C:\\work",
+    ]);
+  });
+
+  it("builds explicit legacy AppContainer profile cleanup commands", () => {
+    expect(buildWin32LegacyProfileCleanupArgs({
+      profileNames: [
+        "com.hanako.sandbox.1288.475900",
+        "com.hanako.sandbox.5104.475988",
+      ],
+    })).toEqual([
+      "--cleanup-legacy-profile",
+      "com.hanako.sandbox.1288.475900",
+      "--cleanup-legacy-profile",
+      "com.hanako.sandbox.5104.475988",
     ]);
   });
 });

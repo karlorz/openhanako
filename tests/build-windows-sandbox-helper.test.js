@@ -37,7 +37,7 @@ describe("Windows sandbox helper build script", () => {
     expect(command).toContain("advapi32.lib");
   });
 
-  it("uses restricted-token APIs instead of AppContainer profile APIs", () => {
+  it("uses restricted-token APIs instead of AppContainer launch APIs", () => {
     const source = fs.readFileSync(
       path.resolve(__dirname, "../desktop/native/HanaWindowsSandboxHelper/main.cpp"),
       "utf8"
@@ -47,18 +47,23 @@ describe("Windows sandbox helper build script", () => {
     expect(source).toContain("WRITE_RESTRICTED");
     expect(source).toContain("CreateProcessAsUserW");
     expect(source).not.toContain("CreateAppContainerProfile");
-    expect(source).not.toContain("DeleteAppContainerProfile");
+    expect(source).not.toContain("PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES");
+    expect(source).not.toContain("SECURITY_CAPABILITIES capabilities");
   });
 
-  it("keeps a legacy AppContainer ACL diagnostic and cleanup path", () => {
+  it("keeps a scoped legacy AppContainer diagnostic and cleanup path", () => {
     const source = fs.readFileSync(
       path.resolve(__dirname, "../desktop/native/HanaWindowsSandboxHelper/main.cpp"),
       "utf8"
     );
 
+    expect(source).toContain("--legacy-appcontainer-profile");
+    expect(source).toContain("--cleanup-legacy-profile");
     expect(source).toContain("--diagnose-legacy-acl");
     expect(source).toContain("legacy-appcontainer-acl");
     expect(source).toContain("S-1-15-2-");
+    expect(source).toContain("DeriveAppContainerSidFromAppContainerName");
+    expect(source).toContain("DeleteAppContainerProfile");
     expect(source).toContain("REVOKE_ACCESS");
   });
 
