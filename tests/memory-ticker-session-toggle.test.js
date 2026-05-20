@@ -154,6 +154,26 @@ describe("memory ticker respects session-level memory toggle", () => {
     expect(assemble).toHaveBeenCalled();
   });
 
+  it("flushSessionAndCompile summarizes an unfinished turn bucket and resets the turn count", async () => {
+    const { ticker, summaryManager } = makeTicker(tmpDir, () => true);
+
+    for (let i = 0; i < 9; i++) ticker.notifyTurn(sessionPath);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    vi.clearAllMocks();
+
+    await ticker.flushSessionAndCompile(sessionPath);
+
+    expect(summaryManager.rollingSummary).toHaveBeenCalledOnce();
+    expect(compileToday).toHaveBeenCalledOnce();
+    expect(assemble).toHaveBeenCalledOnce();
+
+    ticker.notifyTurn(sessionPath);
+
+    expect(summaryManager.rollingSummary).toHaveBeenCalledOnce();
+    expect(compileToday).toHaveBeenCalledOnce();
+    expect(assemble).toHaveBeenCalledOnce();
+  });
+
   it("notifySessionEnd 是 fire-and-forget：即使 rollingSummary 永不 resolve，caller 也能立即继续", async () => {
     const summaryManager = {
       rollingSummary: vi.fn(() => new Promise(() => {})), // 永不 resolve
