@@ -256,24 +256,19 @@ const MediaGenerationBlock = memo(function MediaGenerationBlock({ block }: { blo
   const kindLabel = block.kind === 'video' ? '视频' : '图片';
   const title = failed
     ? `${kindLabel}生成失败`
-    : `${kindLabel}生成中`;
+    : `${kindLabel}生成中...`;
   const reason = typeof block.reason === 'string' ? block.reason : '';
   const prompt = typeof block.prompt === 'string' ? block.prompt : '';
 
   return (
     <div className={`${styles.mediaGenerationCard}${failed ? ` ${styles.mediaGenerationCardFailed}` : ''}`}>
-      <div className={styles.mediaGenerationSurface} aria-hidden="true">
-        <div className={styles.mediaGenerationFrame}>
-          <span />
-          <span />
-          <span />
+      <div className={styles.mediaGenerationSurface}>
+        <div className={styles.mediaGenerationText}>
+          <div className={styles.mediaGenerationTitle}>{title}</div>
+          {(failed ? reason : prompt) && (
+            <div className={styles.mediaGenerationPrompt}>{failed ? reason : prompt}</div>
+          )}
         </div>
-      </div>
-      <div className={styles.mediaGenerationText}>
-        <div className={styles.mediaGenerationTitle}>{title}</div>
-        {(failed ? reason : prompt) && (
-          <div className={styles.mediaGenerationPrompt}>{failed ? reason : prompt}</div>
-        )}
       </div>
     </div>
   );

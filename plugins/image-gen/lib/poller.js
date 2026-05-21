@@ -110,6 +110,18 @@ export class Poller {
   start() {
     const pending = this._store.listPending();
     for (const task of pending) {
+      if (task.submitState === "submitting" && !task.adapterTaskId && !(task.files?.length)) {
+        const reason = "generation interrupted before provider submission completed";
+        this._store.update(task.taskId, {
+          status: "failed",
+          failReason: reason,
+          submitState: "failed",
+          completedAt: new Date().toISOString(),
+        });
+        this._bus.request("deferred:fail", { taskId: task.taskId, error: { message: reason } }).catch(() => {});
+        this._bus.request("task:remove", { taskId: task.taskId }).catch(() => {});
+        continue;
+      }
       this._active.add(task.taskId);
       // Re-register in DeferredResultStore so resolve/fail notifications work after restart
       this._bus.request("deferred:register", {
@@ -139,6 +151,23 @@ export class Poller {
     if (this._timer !== null) {
       clearInterval(this._timer);
       this._timer = null;
+    }
+  }
+
+  /**
+   * Immediately check a task outside the interval, useful when a background
+   * submit just produced local files and the UI can be updated without waiting
+   * for the next 5s tick.
+   * @param {string} taskId
+   */
+  async checkNow(taskId) {
+    if (!this._active.has(taskId)) return;
+    const task = this._store.get(taskId);
+    if (!task || task.status !== "pending") return;
+    try {
+      await this._checkTask(taskId, task);
+    } catch (err) {
+      this._log.error(`[image-gen] checkNow unexpected error for ${taskId}:`, err);
     }
   }
 
@@ -230,6 +259,10 @@ export class Poller {
       return;
     }
 
+    if (task.submitState === "submitting" && !task.adapterTaskId) {
+      return;
+    }
+
     // Real async: delegate to the adapter.
     const adapter = this._registry.get(task.adapterId);
     if (!adapter) {
@@ -253,7 +286,7 @@ export class Poller {
 
     let result;
     try {
-      result = await adapter.query(taskId, ctx);
+      result = await adapter.query(task.adapterTaskId || taskId, ctx);
       // Re-check cancellation fence after await — cancel() may have fired while query was in-flight
       if (this._cancelled.has(taskId)) return;
     } catch (err) {

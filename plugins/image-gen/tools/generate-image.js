@@ -1,7 +1,9 @@
 /**
  * plugins/image-gen/tools/generate-image.js
  *
- * Non-blocking image generation. Submits via adapter, returns card immediately.
+ * Non-blocking image generation. Registers a local task immediately, then
+ * submits to the provider in the background. Completion is delivered through
+ * Poller + DeferredResultStore.
  */
 import path from "node:path";
 
@@ -33,6 +35,14 @@ async function adapterIsAvailable(adapter, submitCtx) {
   }
 }
 
+function createTaskId() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+}
+
+function errorMessage(err) {
+  return err?.message || String(err || "未知错误");
+}
+
 export async function resolveImageAdapter(input, registry, submitCtx) {
   if (input.provider) return registry.get(input.provider);
 
@@ -48,6 +58,44 @@ export async function resolveImageAdapter(input, registry, submitCtx) {
     if (await adapterIsAvailable(adapter, submitCtx)) return adapter;
   }
   return adapters.at(-1) || null;
+}
+
+function markSubmitFailed({ taskId, err, store, ctx }) {
+  const message = errorMessage(err);
+  store.update(taskId, {
+    status: "failed",
+    failReason: message,
+    submitState: "failed",
+    completedAt: new Date().toISOString(),
+  });
+  ctx.bus.request("deferred:fail", { taskId, error: err }).catch(() => {});
+  ctx.bus.request("task:remove", { taskId }).catch(() => {});
+  ctx.log?.error?.(`[image-gen] submit failed for ${taskId}:`, message);
+}
+
+async function runSubmitInBackground({ taskId, adapter, params, submitCtx, store, poller, ctx }) {
+  try {
+    const result = await adapter.submit(params, submitCtx);
+    const hasProviderTaskId = typeof result?.taskId === "string" && result.taskId.trim();
+    const adapterTaskId = hasProviderTaskId ? result.taskId : taskId;
+    const files = Array.isArray(result?.files) ? result.files.filter(Boolean) : [];
+
+    if (!hasProviderTaskId && files.length === 0) {
+      throw new Error("图片生成 provider 没有返回 taskId 或文件");
+    }
+
+    store.update(taskId, {
+      submitState: "submitted",
+      adapterTaskId,
+      ...(files.length ? { files } : {}),
+    });
+
+    if (files.length && typeof poller.checkNow === "function") {
+      void poller.checkNow(taskId);
+    }
+  } catch (err) {
+    markSubmitFailed({ taskId, err, store, ctx });
+  }
 }
 
 export async function execute(input, ctx) {
@@ -67,7 +115,7 @@ export async function execute(input, ctx) {
   }
 
   const count = Math.min(Math.max(input.count || 1, 1), 9);
-  const batchId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const batchId = createTaskId();
 
   const params = {
     type: "image",
@@ -78,49 +126,37 @@ export async function execute(input, ctx) {
     ...(input.image && { image: input.image }),
   };
 
-  // Concurrent submit
-  const promises = Array.from({ length: count }, () =>
-    adapter.submit(params, submitCtx).catch((err) => ({ _error: err })),
-  );
-  const results = await Promise.all(promises);
+  const submitted = [];
 
-  const succeeded = [];
-  let failCount = 0;
-
-  for (const r of results) {
-    if (r._error || !r.taskId) { failCount++; continue; }
-    succeeded.push(r);
-
+  for (let i = 0; i < count; i++) {
+    const taskId = createTaskId();
     store.add({
-      taskId: r.taskId,
+      taskId,
       adapterId: adapter.id,
       batchId,
       type: "image",
       prompt: input.prompt,
       params,
       sessionPath: ctx.sessionPath,
+      submitState: "submitting",
+      adapterTaskId: null,
     });
-
-    // If submit returned files, update the task with them
-    if (r.files?.length) {
-      store.update(r.taskId, { files: r.files });
-    }
 
     // Register deferred notification
     try {
       await ctx.bus.request("deferred:register", {
-        taskId: r.taskId,
+        taskId,
         sessionPath: ctx.sessionPath,
         meta: { type: "image-generation", mediaKind: "image", prompt: input.prompt },
       });
     } catch (err) {
-      ctx.log.warn(`deferred:register failed for ${r.taskId}:`, err);
+      ctx.log.warn(`deferred:register failed for ${taskId}:`, err);
     }
 
     // Register in TaskRegistry for visibility and cancellation
     try {
       await ctx.bus.request("task:register", {
-        taskId: r.taskId,
+        taskId,
         type: "media-generation",
         parentSessionPath: ctx.sessionPath,
         meta: { type: "image-generation", prompt: input.prompt },
@@ -128,18 +164,21 @@ export async function execute(input, ctx) {
     } catch {}
 
     // Add to poller (handles fake-async detection internally)
-    poller.add(r.taskId);
+    poller.add(taskId);
+    submitted.push({ taskId });
+
+    void runSubmitInBackground({
+      taskId,
+      adapter,
+      params,
+      submitCtx,
+      store,
+      poller,
+      ctx,
+    });
   }
 
-  if (succeeded.length === 0) {
-    const firstErr = results.find((r) => r._error)?._error;
-    return {
-      content: [{ type: "text", text: `图片提交失败：${firstErr?.message || "未知错误"}` }],
-    };
-  }
-
-  let text = `已提交 ${succeeded.length} 张图片生成，完成后会自动显示在下方卡片中。`;
-  if (failCount > 0) text += `\n（${failCount} 张提交失败，请检查网络或余额）`;
+  const text = `已提交 ${submitted.length} 张图片生成，完成后会自动显示在下方卡片中。`;
 
   return {
     content: [{ type: "text", text }],
@@ -148,7 +187,7 @@ export async function execute(input, ctx) {
         kind: "image",
         batchId,
         prompt: input.prompt,
-        tasks: succeeded.map((task) => ({ taskId: task.taskId })),
+        tasks: submitted,
       },
     },
   };

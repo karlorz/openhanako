@@ -205,6 +205,66 @@ describe("Poller", () => {
     poller.stop();
   });
 
+  it("does not query while submit is still running and no provider taskId exists", async () => {
+    const mockAdapter = makeAdapter({
+      query: vi.fn(async () => ({ status: "pending" })),
+    });
+    const { poller, mockStore } = makePoller({ adapter: mockAdapter });
+
+    mockStore.get.mockReturnValue({
+      taskId: "local-task",
+      adapterId: "test-adapter",
+      adapterTaskId: null,
+      submitState: "submitting",
+      status: "pending",
+      files: [],
+      createdAt: new Date().toISOString(),
+    });
+
+    poller.start();
+    poller.add("local-task");
+
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    expect(mockAdapter.query).not.toHaveBeenCalled();
+    expect(poller.hasPending("local-task")).toBe(true);
+
+    poller.stop();
+  });
+
+  it("queries provider taskId while preserving the local taskId for deferred delivery", async () => {
+    const mockAdapter = makeAdapter({
+      query: vi.fn(async () => ({ status: "success", files: ["abc.png"] })),
+    });
+    const { poller, mockStore, mockBus } = makePoller({ adapter: mockAdapter });
+
+    mockStore.get.mockReturnValue({
+      taskId: "local-task",
+      adapterId: "test-adapter",
+      adapterTaskId: "remote-task",
+      submitState: "submitted",
+      status: "pending",
+      files: [],
+      createdAt: new Date().toISOString(),
+    });
+
+    poller.start();
+    poller.add("local-task");
+
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    expect(mockAdapter.query).toHaveBeenCalledWith(
+      "remote-task",
+      expect.objectContaining({ generatedDir: "/tmp/image-gen-generated" }),
+    );
+    expect(mockBus.request).toHaveBeenCalledWith(
+      "deferred:resolve",
+      expect.objectContaining({ taskId: "local-task", files: ["abc.png"] }),
+    );
+
+    poller.stop();
+  });
+
   it("updates store, emits deferred:resolve, and removes from active on adapter success", async () => {
     const mockAdapter = makeAdapter({
       query: vi.fn(async () => ({

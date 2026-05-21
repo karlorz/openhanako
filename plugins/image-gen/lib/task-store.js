@@ -34,9 +34,9 @@ export class TaskStore {
   /**
    * Add a new task. Throws if taskId already exists.
    *
-   * @param {{ taskId: string, adapterId: string, batchId: string, type: string, prompt: string, params: object, sessionPath?: string }} opts
+   * @param {{ taskId: string, adapterId: string, batchId: string, type: string, prompt: string, params: object, sessionPath?: string, adapterTaskId?: string|null, submitState?: string }} opts
    */
-  add({ taskId, adapterId, batchId, type, prompt, params, sessionPath }) {
+  add({ taskId, adapterId, batchId, type, prompt, params, sessionPath, adapterTaskId = null, submitState = "submitted" }) {
     if (this._tasks.has(taskId)) {
       throw new Error(`TaskStore: duplicate taskId "${taskId}"`);
     }
@@ -48,6 +48,8 @@ export class TaskStore {
       prompt,
       params,
       sessionPath: sessionPath || null,
+      adapterTaskId: adapterTaskId || null,
+      submitState,
       status: "pending",
       failReason: null,
       files: [],

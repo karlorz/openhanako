@@ -165,6 +165,12 @@
     75%      { content: '...'; }
 }
 
+/* ── Media Shine（媒体生成占位高光）── */
+@keyframes hana-media-shine {
+    from { transform: translateX(0); }
+    to   { transform: translateX(325%); }
+}
+
 
 /* ── Folder History（带 translateX 偏移的渐入）──
    旧名：folderHistoryIn（独特：有 translateX(-50%)）*/
