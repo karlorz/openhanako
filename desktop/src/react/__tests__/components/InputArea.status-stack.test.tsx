@@ -185,6 +185,7 @@ function seedLayeredInputState() {
     quotedSelection: {
       text: 'quoted',
       sourceTitle: 'note.md',
+      sourceKind: 'preview',
       charCount: 6,
     },
     todosBySession: {

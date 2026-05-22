@@ -8,6 +8,7 @@
 import { memo, useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import { useStore } from '../../stores';
 import { loadMoreMessages } from '../../stores/session-actions';
+import { captureChatSelection } from '../../stores/selection-actions';
 import { useContinuousBottomScroll } from '../../hooks/use-continuous-bottom-scroll';
 
 const EMPTY_ITEMS: ChatListItem[] = [];
@@ -94,6 +95,10 @@ const Panel = memo(function Panel({ path, active }: { path: string; active: bool
       messageElementsRef.current.delete(messageId);
     }
   }, []);
+  const handleCaptureSelection = useCallback(() => {
+    if (!active) return;
+    captureChatSelection(path);
+  }, [active, path]);
 
   // scroll 事件维护 sticky 标志 + 上滑加载更多 + 滚动中显现 scrollbar
   useEffect(() => {
@@ -190,7 +195,12 @@ const Panel = memo(function Panel({ path, active }: { path: string; active: bool
         pointerEvents: active ? 'auto' : 'none',
       }}
     >
-      <div ref={ref} className={styles.sessionPanel}>
+      <div
+        ref={ref}
+        className={styles.sessionPanel}
+        onMouseUp={handleCaptureSelection}
+        onKeyUp={handleCaptureSelection}
+      >
         <div ref={contentRef} className={styles.sessionMessages}>
           {hasMore && (
             <div className={styles.loadMoreHint}>

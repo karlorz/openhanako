@@ -26,22 +26,23 @@ describe('input-slice quotedSelection', () => {
     const sel = {
       text: '玻色子',
       sourceTitle: '百科全书',
+      sourceKind: 'preview',
       sourceFilePath: '/path/to/file.md',
       lineStart: 12,
       lineEnd: 15,
       charCount: 128,
-    };
+    } as const;
     slice.setQuotedSelection(sel);
     expect(slice.quotedSelection).toEqual(sel);
   });
   it('clearQuotedSelection 清除引用', () => {
-    slice.setQuotedSelection({ text: 'test', sourceTitle: 'title', charCount: 4 });
+    slice.setQuotedSelection({ text: 'test', sourceTitle: 'title', sourceKind: 'preview', charCount: 4 });
     slice.clearQuotedSelection();
     expect(slice.quotedSelection).toBeNull();
   });
   it('setQuotedSelection 覆盖旧值', () => {
-    slice.setQuotedSelection({ text: 'old', sourceTitle: 'A', charCount: 3 });
-    slice.setQuotedSelection({ text: 'new', sourceTitle: 'B', charCount: 3 });
+    slice.setQuotedSelection({ text: 'old', sourceTitle: 'A', sourceKind: 'preview', charCount: 3 });
+    slice.setQuotedSelection({ text: 'new', sourceTitle: 'B', sourceKind: 'preview', charCount: 3 });
     expect(slice.quotedSelection!.text).toBe('new');
     expect(slice.quotedSelection!.sourceTitle).toBe('B');
   });

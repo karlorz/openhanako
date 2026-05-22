@@ -25,7 +25,11 @@ export interface FloatingAnchorRect {
 export interface QuotedSelection {
   text: string;
   sourceTitle: string;
+  sourceKind: 'preview' | 'chat';
   sourceFilePath?: string;
+  sourceSessionPath?: string;
+  sourceMessageId?: string;
+  sourceRole?: 'user' | 'assistant';
   lineStart?: number;
   lineEnd?: number;
   charCount: number;
