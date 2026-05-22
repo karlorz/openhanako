@@ -206,6 +206,34 @@ function nextModeAfterGpuFailure(mode) {
   return GPU_MODE_GPU_SANDBOX_COMPAT;
 }
 
+function sanitizeStartupPolicy(policy) {
+  if (!policy || typeof policy !== "object") return null;
+  return {
+    mode: currentPolicyMode(policy, {}),
+    reason: policy.reason || "unknown",
+    hardwareAccelerationEnabled: policy.hardwareAccelerationEnabled !== false,
+    shouldDisableHardwareAcceleration: policy.shouldDisableHardwareAcceleration === true,
+    shouldApplyGpuSandboxCompatSwitches: policy.shouldApplyGpuSandboxCompatSwitches === true,
+    shouldApplyDeepCompatSwitches: policy.shouldApplyDeepCompatSwitches === true,
+    shouldApplyUnsafeNoSandboxSwitch: policy.shouldApplyUnsafeNoSandboxSwitch === true,
+  };
+}
+
+function startupPolicyMode(startup, autoMode, fallbackMode = GPU_MODE_HARDWARE) {
+  const mode = startup?.policy?.mode;
+  if (
+    mode === GPU_MODE_HARDWARE ||
+    mode === GPU_MODE_GPU_SANDBOX_COMPAT ||
+    mode === GPU_MODE_SOFTWARE_SAFE ||
+    mode === GPU_MODE_DEEP_COMPAT ||
+    mode === GPU_MODE_DIAGNOSTIC_FAILED
+  ) {
+    return mode;
+  }
+  if (autoMode?.mode) return autoMode.mode;
+  return fallbackMode;
+}
+
 function isIncompleteStartup(state) {
   const startup = state?.startup;
   if (!startup || startup.status !== "pending") return false;
@@ -245,6 +273,19 @@ function resolveGpuStartupPolicy({
   if (migratedLegacyPolicy) return migratedLegacyPolicy;
 
   const autoMode = platform === "win32" ? resolveStoredAutoGpuMode(state) : null;
+  if (platform === "win32" && isIncompleteStartup(state)) {
+    const fallbackMode = preferenceEnabled ? GPU_MODE_HARDWARE : GPU_MODE_SOFTWARE_SAFE;
+    const previousMode = startupPolicyMode(state.startup, autoMode, fallbackMode);
+    const nextMode = nextModeAfterGpuFailure(previousMode);
+    writeAutoGpuMode(hanakoHome, nextMode, {
+      reason: "previous-startup-incomplete",
+      previousMode,
+      previousStartup: state.startup,
+      now,
+    });
+    return policyForMode(nextMode, "previous-startup-incomplete");
+  }
+
   if (autoMode?.mode === GPU_MODE_DEEP_COMPAT || autoMode?.mode === GPU_MODE_DIAGNOSTIC_FAILED) {
     return policyForMode(autoMode.mode, autoMode.reason || "gpu-child-process-gone", {
       autoGpuMode: autoMode,
@@ -253,16 +294,6 @@ function resolveGpuStartupPolicy({
 
   if (!preferenceEnabled) {
     return policyForMode(GPU_MODE_SOFTWARE_SAFE, "preference");
-  }
-
-  if (platform === "win32" && isIncompleteStartup(state)) {
-    writeAutoGpuMode(hanakoHome, GPU_MODE_GPU_SANDBOX_COMPAT, {
-      reason: "previous-startup-incomplete",
-      previousMode: GPU_MODE_HARDWARE,
-      previousStartup: state.startup,
-      now,
-    });
-    return policyForMode(GPU_MODE_GPU_SANDBOX_COMPAT, "previous-startup-incomplete");
   }
 
   if (autoMode?.mode === GPU_MODE_GPU_SANDBOX_COMPAT || autoMode?.mode === GPU_MODE_SOFTWARE_SAFE) {
@@ -349,11 +380,13 @@ function markGpuStartupPending({
   platform = process.platform,
   phase = "electron-starting",
   startupId = `${Date.now()}-${process.pid}`,
+  policy = null,
   now,
 } = {}) {
   if (!hanakoHome) throw new Error("markGpuStartupPending requires hanakoHome");
   const timestamp = nowIso(now);
   const state = readState(hanakoHome);
+  const startupPolicy = sanitizeStartupPolicy(policy);
   const next = {
     ...state,
     startup: {
@@ -363,6 +396,7 @@ function markGpuStartupPending({
       platform,
       startedAt: timestamp,
       updatedAt: timestamp,
+      ...(startupPolicy ? { policy: startupPolicy } : {}),
     },
   };
   writeState(hanakoHome, next);

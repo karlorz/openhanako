@@ -238,6 +238,7 @@ if (process.platform === "win32") {
     platform: process.platform,
     phase: "electron-starting",
     startupId: desktopStartupId,
+    policy: gpuStartupPolicy,
   });
 }
 

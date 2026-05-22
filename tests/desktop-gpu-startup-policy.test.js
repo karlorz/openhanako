@@ -184,6 +184,94 @@ describe("desktop GPU startup policy", () => {
     });
   });
 
+  it("escalates a stale pending Windows startup from the recorded launch policy", () => {
+    const hanakoHome = makeHome();
+    const compatPolicy = resolveGpuStartupPolicy({
+      hanakoHome,
+      platform: "win32",
+      argv: ["Hanako.exe", "--hana-gpu-sandbox-compat"],
+      env: {},
+    });
+
+    markGpuStartupPending({
+      hanakoHome,
+      platform: "win32",
+      phase: "electron-starting",
+      startupId: "compat-launch",
+      policy: compatPolicy,
+      now: "2026-05-19T01:00:00.000Z",
+    });
+
+    const policy = resolveGpuStartupPolicy({
+      hanakoHome,
+      platform: "win32",
+      argv: ["Hanako.exe"],
+      env: {},
+      now: "2026-05-19T01:01:00.000Z",
+    });
+
+    expect(policy.mode).toBe("software-safe");
+    expect(policy.hardwareAccelerationEnabled).toBe(false);
+    expect(policy.reason).toBe("previous-startup-incomplete");
+    expect(readJson(path.join(hanakoHome, "user", "gpu-startup.json")).autoGpuMode).toMatchObject({
+      mode: "software-safe",
+      reason: "previous-startup-incomplete",
+      previousMode: "gpu-sandbox-compat",
+      previousStartup: expect.objectContaining({
+        policy: expect.objectContaining({
+          mode: "gpu-sandbox-compat",
+        }),
+      }),
+    });
+  });
+
+  it("escalates a stale deep compatibility startup into diagnostic failed mode", () => {
+    const hanakoHome = makeHome();
+    writeGpuState(hanakoHome, {
+      version: 2,
+      autoGpuMode: {
+        mode: "deep-compat",
+        reason: "gpu-child-process-gone",
+        previousMode: "software-safe",
+        updatedAt: "2026-05-19T01:00:00.000Z",
+      },
+      startup: {
+        status: "pending",
+        startupId: "deep-launch",
+        phase: "electron-starting",
+        platform: "win32",
+        startedAt: "2026-05-19T01:00:00.000Z",
+        updatedAt: "2026-05-19T01:00:00.000Z",
+        policy: {
+          mode: "deep-compat",
+          reason: "gpu-child-process-gone",
+          hardwareAccelerationEnabled: false,
+          shouldDisableHardwareAcceleration: true,
+          shouldApplyGpuSandboxCompatSwitches: false,
+          shouldApplyDeepCompatSwitches: true,
+          shouldApplyUnsafeNoSandboxSwitch: false,
+        },
+      },
+    });
+
+    const policy = resolveGpuStartupPolicy({
+      hanakoHome,
+      platform: "win32",
+      argv: ["Hanako.exe"],
+      env: {},
+      now: "2026-05-19T01:01:00.000Z",
+    });
+
+    expect(policy.mode).toBe("diagnostic-failed");
+    expect(policy.hardwareAccelerationEnabled).toBe(false);
+    expect(policy.shouldApplyDeepCompatSwitches).toBe(true);
+    expect(readJson(path.join(hanakoHome, "user", "gpu-startup.json")).autoGpuMode).toMatchObject({
+      mode: "diagnostic-failed",
+      reason: "previous-startup-incomplete",
+      previousMode: "deep-compat",
+    });
+  });
+
   it("does not auto-disable hardware acceleration for non-Windows stale startup markers", () => {
     const hanakoHome = makeHome();
     markGpuStartupPending({

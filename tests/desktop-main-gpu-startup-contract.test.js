@@ -19,6 +19,15 @@ describe("desktop main GPU startup contract", () => {
     expect(pendingIndex).toBeLessThan(readyIndex);
   });
 
+  it("records the active GPU policy in the pending startup marker", () => {
+    const source = fs.readFileSync(MAIN_PATH, "utf-8");
+    const pendingIndex = source.indexOf("markGpuStartupPending({");
+    const pendingCall = source.slice(pendingIndex, source.indexOf("});", pendingIndex) + 3);
+
+    expect(pendingIndex).toBeGreaterThan(-1);
+    expect(pendingCall).toContain("policy: gpuStartupPolicy");
+  });
+
   it("listens for GPU child process exits instead of deprecated GPU crash hooks", () => {
     const source = fs.readFileSync(MAIN_PATH, "utf-8");
 
