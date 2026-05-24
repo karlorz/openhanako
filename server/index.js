@@ -621,7 +621,7 @@ app.route("/api", createDeskRoute(engine, hub));
 app.route("/api", createMobileWorkbenchRoute(engine));
 app.route("/api", createSkillsRoute(engine));
 app.route("/api", createChannelsRoute(engine, hub));
-app.route("/api", createDmRoute(engine));
+app.route("/api", createDmRoute(engine, hub));
 app.route("/api", createFsRoute(engine));
 app.route("/api", createPreferencesRoute(engine));
 app.route("/api", createBridgeRoute(engine, bridgeManagerRef));
