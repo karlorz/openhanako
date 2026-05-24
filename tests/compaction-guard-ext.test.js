@@ -162,6 +162,7 @@ describe("CompactionGuardExtension", () => {
       sessionManager: {
         getBranch: () => [],
         buildSessionContext: () => ({
+          thinkingLevel: "off",
           messages: [{ role: "user", content: [{ type: "text", text: "hello" }], timestamp: 1 }],
         }),
       },
@@ -212,6 +213,25 @@ describe("CompactionGuardExtension", () => {
       expect(cacheCompactor.mock.calls[0][0].messages[1]).toMatchObject({ role: "assistant" });
     });
 
+    it("does not read stale session-bound pi helpers during compaction", async () => {
+      estimatePreparationTokens.mockReturnValue(50_000);
+      pi.getThinkingLevel.mockImplementation(() => {
+        throw new Error("This extension ctx is stale after session replacement or reload.");
+      });
+
+      const res = await pi.trigger(
+        "session_before_compact",
+        { preparation, signal: { aborted: false } },
+        ctx,
+      );
+
+      expect(res).toMatchObject({ compaction: expect.any(Object) });
+      expect(pi.getThinkingLevel).not.toHaveBeenCalled();
+      expect(cacheCompactor).toHaveBeenCalledWith(expect.objectContaining({
+        thinkingLevel: "off",
+      }));
+    });
+
     it("returns hard truncation when the full cache-preserving request would exceed the budget", async () => {
       estimatePreparationTokens.mockReturnValue(100); // old Pi summarizer estimate fits
       computeHardTruncation.mockReturnValue({
@@ -233,6 +253,7 @@ describe("CompactionGuardExtension", () => {
             ...ctx.sessionManager,
             getBranch: () => branch,
             buildSessionContext: () => ({
+              thinkingLevel: "off",
               messages: [{ role: "user", content: [{ type: "text", text: "x".repeat(6000) }], timestamp: 1 }],
             }),
           },

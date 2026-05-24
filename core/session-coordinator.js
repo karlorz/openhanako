@@ -1816,6 +1816,51 @@ export class SessionCoordinator {
     }
   }
 
+  async reloadSessionRuntime(sessionPath) {
+    this._assertActiveDesktopSessionPath(sessionPath, "reloadSessionRuntime");
+    const targetAgentId = this._d.agentIdFromSessionPath(sessionPath);
+    if (!targetAgentId) {
+      throw new Error(`reloadSessionRuntime: cannot resolve agentId for ${sessionPath}`);
+    }
+    const agent = this._d.getAgentById(targetAgentId);
+    if (!agent) {
+      throw new Error(`reloadSessionRuntime: agent "${targetAgentId}" not found`);
+    }
+
+    const oldEntry = this._sessions.get(sessionPath);
+    if (oldEntry) {
+      if (oldEntry.session?.isStreaming || oldEntry.session?.isCompacting || oldEntry._switching) {
+        throw new Error("reloadSessionRuntime: session is busy");
+      }
+      await this._teardownSessionEntry(oldEntry, sessionPath, "reload");
+      this._sessions.delete(sessionPath);
+    }
+    this._hibernatedSessionMeta.delete(sessionPath);
+
+    let memoryEnabled = oldEntry?.memoryEnabled ?? true;
+    try {
+      const metaPath = path.join(agent.sessionDir, "session-meta.json");
+      const meta = await this._readMetaCached(metaPath);
+      const sessKey = path.basename(sessionPath);
+      if (meta[sessKey]?.memoryEnabled === false) memoryEnabled = false;
+    } catch (err) {
+      if (err.code !== "ENOENT") {
+        log.warn(`reloadSessionRuntime: session-meta.json read failed: ${err.message}`);
+      }
+    }
+
+    this._emitSessionHealthWarning(sessionPath);
+    const sessionMgr = SessionManager.open(sessionPath, agent.sessionDir);
+    const cwd = sessionMgr.getCwd?.() || undefined;
+    const result = await this.createSession(sessionMgr, cwd, memoryEnabled, null, {
+      restore: true,
+      agent,
+      agentId: targetAgentId,
+      preserveAgentMemoryState: true,
+    });
+    return result.session;
+  }
+
   /**
    * 确保 sessionPath 已加载进 _sessions cache，但**不改 this._session（UI 焦点）**。
    *

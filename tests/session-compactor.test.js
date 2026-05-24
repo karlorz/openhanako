@@ -372,6 +372,24 @@ describe("session-compactor", () => {
     expect(session.compact).not.toHaveBeenCalled();
   });
 
+  it("reports stale extension runners before invoking manual compaction", async () => {
+    const session = {
+      compact: vi.fn(),
+      extensionRunner: {
+        assertActive: vi.fn(() => {
+          throw new Error("This extension ctx is stale after session replacement or reload.");
+        }),
+        hasHandlers: vi.fn(() => true),
+      },
+    };
+
+    await expect(compactSessionWithCachePreservation(session)).rejects.toThrow(
+      "This extension ctx is stale after session replacement or reload",
+    );
+    expect(session.extensionRunner.hasHandlers).not.toHaveBeenCalled();
+    expect(session.compact).not.toHaveBeenCalled();
+  });
+
   it("keeps Pi lifecycle events by delegating manual compaction through session.compact", async () => {
     const session = {
       compact: vi.fn(async () => "ok"),

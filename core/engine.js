@@ -32,7 +32,7 @@ import { PluginManager } from "./plugin-manager.js";
 import { PluginDevService } from "./plugin-dev-service.js";
 import { createPluginDevTools } from "./plugin-dev-tools.js";
 import { DefaultResourceLoader, SettingsManager } from "../lib/pi-sdk/index.js";
-import { compactSessionWithCachePreservation } from "./session-compactor.js";
+import { compactSessionWithCachePreservation, isStaleExtensionContextError } from "./session-compactor.js";
 import { DeferredResultCoordinator } from "../lib/deferred-result-coordinator.js";
 import { getToolSessionPath, normalizeToolRuntimeContext } from "../lib/tools/tool-session.js";
 import { loadLocale } from "../server/i18n.js";
@@ -586,6 +586,7 @@ export class HanaEngine {
   getSessionContextUsage(p) { return this._sessionCoord.getSessionContextUsage(p); }
   /** 确保桌面 session 已加载进 cache 但不改 UI 焦点（Phase 2-C：/rc 接管态用） */
   async ensureSessionLoaded(p) { return this._sessionCoord.ensureSessionLoaded(p); }
+  async reloadSessionRuntime(p) { return this._sessionCoord.reloadSessionRuntime(p); }
   isSessionStreaming(p) { return this._sessionCoord.isSessionStreaming(p); }
   isSessionSwitching(p) { return this._sessionCoord.isSessionSwitching(p); }
   async abortSessionByPath(p) { return this._sessionCoord.abortSessionByPath(p); }
@@ -872,11 +873,20 @@ export class HanaEngine {
    * 供 /compact 在 /rc 接管态下给出 token delta 反馈（Phase 2-E）
    */
   async compactDesktopSession(sessionPath) {
-    const session = this.getSessionByPath(sessionPath);
+    let session = this.getSessionByPath(sessionPath);
     if (!session) throw new Error("compactDesktopSession: session not found");
     if (session.isCompacting) throw new Error("compactDesktopSession: already compacting");
-    const before = session.getContextUsage?.() ?? null;
-    await compactSessionWithCachePreservation(session);
+    let before = session.getContextUsage?.() ?? null;
+    try {
+      await compactSessionWithCachePreservation(session);
+    } catch (error) {
+      if (!isStaleExtensionContextError(error)) throw error;
+      session = await this.reloadSessionRuntime(sessionPath);
+      if (!session) throw error;
+      if (session.isCompacting) throw new Error("compactDesktopSession: already compacting");
+      before = session.getContextUsage?.() ?? before;
+      await compactSessionWithCachePreservation(session);
+    }
     const after = session.getContextUsage?.() ?? null;
     return {
       tokensBefore: before?.tokens ?? null,

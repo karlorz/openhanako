@@ -112,6 +112,11 @@ function isErrorResponse(response) {
   return response?.stopReason === "error" || response?.stopReason === "aborted";
 }
 
+export function isStaleExtensionContextError(error) {
+  const message = error instanceof Error ? error.message : String(error || "");
+  return message.includes("This extension ctx is stale after session replacement or reload");
+}
+
 export function estimateCachePreservingCompactionRequest({
   preparation,
   systemPrompt = "",
@@ -385,6 +390,7 @@ export async function runCachePreservingCompactionForSession(session, {
 }
 
 export async function compactSessionWithCachePreservation(session, customInstructions) {
+  session?.extensionRunner?.assertActive?.();
   if (!session?.extensionRunner?.hasHandlers?.("session_before_compact")) {
     throw new Error("Cache-preserving compaction extension is not installed for this session");
   }

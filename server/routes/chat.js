@@ -12,7 +12,7 @@ import { wsSend, wsParse, wsSendSerialized } from "../ws-protocol.js";
 import { debugLog, createModuleLogger } from "../../lib/debug-log.js";
 import { t } from "../i18n.js";
 import { getLastAssistantUsage } from "../../lib/pi-sdk/index.js";
-import { compactSessionWithCachePreservation } from "../../core/session-compactor.js";
+import { compactSessionWithCachePreservation, isStaleExtensionContextError } from "../../core/session-compactor.js";
 import { logLlmUsage } from "../../lib/llm/usage-observer.js";
 import { BrowserManager } from "../../lib/browser/browser-manager.js";
 import {
@@ -941,7 +941,7 @@ export function createChatRoute(engine, hub, { upgradeWebSocket }) {
 
             if (msg.type === "compact") {
               const compactPath = requireSessionPath(msg, ws); if (!compactPath) return;
-              const session = engine.getSessionByPath(compactPath)
+              let session = engine.getSessionByPath(compactPath)
                 || await engine.ensureSessionLoaded?.(compactPath);
               if (!session) {
                 wsSend(ws, { type: "error", message: t("error.noActiveSession"), sessionPath: compactPath });
@@ -956,7 +956,14 @@ export function createChatRoute(engine, hub, { upgradeWebSocket }) {
                 return;
               }
               try {
-                await compactSessionWithCachePreservation(session);
+                try {
+                  await compactSessionWithCachePreservation(session);
+                } catch (err) {
+                  if (!isStaleExtensionContextError(err)) throw err;
+                  session = await engine.reloadSessionRuntime?.(compactPath);
+                  if (!session) throw err;
+                  await compactSessionWithCachePreservation(session);
+                }
               } catch (err) {
                 const errMsg = err.message || "";
                 if (!errMsg.includes("Already compacted") && !errMsg.includes("Nothing to compact")) {
