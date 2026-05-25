@@ -94,6 +94,39 @@ function warnVisionContextInjection(entry) {
   log.warn(`vision context injection diagnostic: ${JSON.stringify(entry)}`);
 }
 
+function normalizeFreshCompactNoopReason(reason) {
+  const value = String(reason || "").trim();
+  if (value === "already_compacted" || value === "nothing_to_compact") return value;
+  return null;
+}
+
+function getFreshCompactNoopReason(error) {
+  const message = error?.message || String(error || "");
+  if (message.includes("Already compacted")) return "already_compacted";
+  if (message.includes("Nothing to compact")) return "nothing_to_compact";
+  return null;
+}
+
+function readLastJsonlEntry(filePath) {
+  let raw = "";
+  try {
+    raw = fs.readFileSync(filePath, "utf-8");
+  } catch {
+    return null;
+  }
+  const lines = raw.trimEnd().split(/\r?\n/);
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i]?.trim();
+    if (!line) continue;
+    try {
+      return JSON.parse(line);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
 /**
  * Bridge index entry（持久化到 bridge-sessions.json）。
  * 这个 typedef 只声明结构以便 IDE 和未来读者，运行时仍是 plain JSON object。
@@ -355,6 +388,86 @@ export class BridgeSessionManager {
     index[sessionKey] = this._serializeIndexEntry(raw, entry);
     this.writeIndex(index, agent);
     return true;
+  }
+
+  _resolveBridgeSessionEntry(agent, sessionKey, operation) {
+    const bridgeDir = path.join(agent.sessionDir, "bridge");
+    const index = this.readIndex(agent);
+    const raw = index[sessionKey];
+    const entry = this._normalizeIndexEntry(raw);
+    const existingFile = entry.file || null;
+    if (!existingFile) {
+      throw new Error(`bridge ${operation}: session "${sessionKey}" not found or has no history`);
+    }
+    const sessionFilePath = path.join(bridgeDir, existingFile);
+    if (!fs.existsSync(sessionFilePath)) {
+      throw new Error(`bridge ${operation}: session file missing on disk: ${sessionFilePath}`);
+    }
+    return { bridgeDir, index, raw, entry, sessionFilePath };
+  }
+
+  _buildFreshCompactSatisfactionPatch(agent, {
+    now = new Date(),
+    reason = "daily",
+    usage = {},
+    bridgeContext = null,
+  } = {}) {
+    const homeCwd = this._deps.getHomeCwd(agent.id) || process.cwd();
+    const freshContext = this._buildOwnerFreshCompactContext(agent, homeCwd, { bridgeContext });
+    const patch = buildFreshCompactMetaPatch({
+      snapshot: freshContext.snapshot,
+      reason,
+      now,
+      usage,
+    });
+    return {
+      patch,
+      promptSnapshot: freshContext.promptSnapshot,
+    };
+  }
+
+  isFreshCompactAlreadySatisfied(sessionKey, opts = {}) {
+    const agent = this._resolveAgent(opts, "fresh compact inspect");
+    const sessionPath = opts.sessionPath || this._resolveBridgeSessionEntry(agent, sessionKey, "fresh compact inspect").sessionFilePath;
+    const lastEntry = readLastJsonlEntry(sessionPath);
+    if (lastEntry?.type === "compaction") {
+      return { satisfied: true, reason: "already_compacted" };
+    }
+    return { satisfied: false, reason: null };
+  }
+
+  async markFreshCompactSatisfied(sessionKey, opts = {}) {
+    const agent = this._resolveAgent(opts, "fresh compact mark");
+    const { entry, sessionFilePath } = this._resolveBridgeSessionEntry(agent, sessionKey, "fresh compact mark");
+    const bridgeContext = this.getBridgeContextForSessionPath(sessionFilePath, { agentId: agent.id })
+      || this._buildBridgeContext(sessionKey, entry, { guest: false }, agent);
+    const noopReason = normalizeFreshCompactNoopReason(opts.noopReason);
+    const before = typeof opts.tokensBefore === "number" ? opts.tokensBefore : null;
+    const after = typeof opts.tokensAfter === "number"
+      ? opts.tokensAfter
+      : (before ?? null);
+    const contextWindow = typeof opts.contextWindow === "number" ? opts.contextWindow : null;
+    const usage = {
+      tokensBefore: before,
+      tokensAfter: after,
+      contextWindow,
+    };
+    const { patch, promptSnapshot } = this._buildFreshCompactSatisfactionPatch(agent, {
+      now: opts.now || new Date(),
+      reason: opts.reason || "daily",
+      usage,
+      bridgeContext,
+    });
+    this._writeIndexEntryPatch(agent, sessionKey, { freshCompact: patch, promptSnapshot });
+    return {
+      tokensBefore: before,
+      tokensAfter: after,
+      contextWindow,
+      fresh: true,
+      reason: opts.reason || "daily",
+      noop: !!noopReason,
+      noopReason,
+    };
   }
 
   _rememberBridgeContext(sessionPath, context) {
@@ -1008,8 +1121,24 @@ export class BridgeSessionManager {
       if (session.isCompacting) {
         throw new Error("bridge compact: already compacting");
       }
-      await compactSessionWithCachePreservation(session);
-      const after = session.getContextUsage?.() ?? null;
+      let after = null;
+      try {
+        await compactSessionWithCachePreservation(session);
+        after = session.getContextUsage?.() ?? null;
+      } catch (err) {
+        const noopReason = freshContext ? getFreshCompactNoopReason(err) : null;
+        if (!noopReason) throw err;
+        const tokensBefore = before?.tokens ?? null;
+        return await this.markFreshCompactSatisfied(sessionKey, {
+          agentId: agent.id,
+          reason: opts.reason || "manual",
+          now: opts.now || new Date(),
+          noopReason,
+          tokensBefore,
+          tokensAfter: tokensBefore,
+          contextWindow: before?.contextWindow ?? null,
+        });
+      }
 
       const result = {
         tokensBefore: before?.tokens ?? null,

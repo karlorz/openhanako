@@ -446,6 +446,45 @@ describe("channel-ticker membership source", () => {
     expect(executeCheck).not.toHaveBeenCalled();
   });
 
+  it("does not deliver immediate or proactive phone checks while the ticker is globally disabled", async () => {
+    tmpDir = mktemp();
+    const channelsDir = path.join(tmpDir, "channels");
+    const agentsDir = path.join(tmpDir, "agents");
+    for (const agentId of ["hana", "yui"]) {
+      const agentDir = path.join(agentsDir, agentId);
+      fs.mkdirSync(agentDir, { recursive: true });
+      fs.writeFileSync(path.join(agentDir, "channels.md"), "# 频道\n\n- ch_crew (last: never)\n", "utf-8");
+    }
+
+    const { id: channelId } = await createChannel(channelsDir, {
+      id: "ch_crew",
+      name: "Crew",
+      members: ["hana", "yui"],
+    });
+    const channelFile = path.join(channelsDir, `${channelId}.md`);
+    await appendMessage(channelFile, "user", "ping");
+
+    const executeCheck = vi.fn(async () => ({ replied: false, passed: true }));
+    const ticker = createChannelTicker({
+      channelsDir,
+      agentsDir,
+      getAgentOrder: () => ["hana", "yui"],
+      executeCheck,
+      onMemorySummarize: vi.fn(),
+      isEnabled: () => false,
+    });
+
+    ticker.start();
+    try {
+      await ticker.triggerImmediate(channelId);
+      await ticker.triggerReminder(channelId);
+    } finally {
+      await ticker.stop();
+    }
+
+    expect(executeCheck).not.toHaveBeenCalled();
+  });
+
   it("expands proactive reminder into normal delivery when the starter posts", async () => {
     tmpDir = mktemp();
     const channelsDir = path.join(tmpDir, "channels");

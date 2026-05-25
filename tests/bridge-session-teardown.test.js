@@ -337,6 +337,109 @@ describe("BridgeSessionManager teardown", () => {
     expect(index["tg_dm_fresh@agent-a"].name).toBe("Owner");
   });
 
+  it("freshCompactSession records daily freshness when the bridge session is already compacted", async () => {
+    const agent = makeAgent(rootDir);
+    agent.buildSystemPrompt = vi.fn(() => "system prompt v3");
+    const sessionFile = path.join(agent.sessionDir, "bridge", "owner", "already.jsonl");
+    fs.mkdirSync(path.dirname(sessionFile), { recursive: true });
+    fs.writeFileSync(sessionFile, [
+      JSON.stringify({ type: "message", role: "user", content: "hello" }),
+      JSON.stringify({ type: "compaction", summary: "earlier bridge turns" }),
+      "",
+    ].join("\n"), "utf-8");
+    const manager = new BridgeSessionManager(makeDeps(agent));
+    manager.writeIndex({
+      "tg_dm_already@agent-a": {
+        file: "owner/already.jsonl",
+        name: "Owner",
+        freshCompact: { lastFreshCompactDate: "2026-05-14" },
+      },
+    }, agent);
+    sessionManagerOpenMock.mockReturnValue({ getSessionFile: () => sessionFile });
+
+    const usage = vi.fn(() => ({ tokens: 4200, contextWindow: 128000 }));
+    const session = {
+      compact: vi.fn(async () => { throw new Error("Already compacted"); }),
+      dispose: vi.fn(),
+      sessionManager: { getSessionFile: () => sessionFile },
+      getContextUsage: usage,
+      extensionRunner: { hasHandlers: vi.fn(() => true), emit: vi.fn(async () => {}) },
+    };
+    createAgentSessionMock.mockImplementation(async (options) => {
+      expect(options.resourceLoader.getSystemPrompt()).toContain("system prompt v3");
+      return { session };
+    });
+
+    const result = await manager.freshCompactSession("tg_dm_already@agent-a", {
+      agentId: "agent-a",
+      reason: "daily",
+      now: new Date("2026-05-15T09:00:00.000Z"),
+    });
+
+    expect(session.compact).toHaveBeenCalledOnce();
+    expect(result).toMatchObject({
+      fresh: true,
+      reason: "daily",
+      noop: true,
+      noopReason: "already_compacted",
+      tokensBefore: 4200,
+      tokensAfter: 4200,
+      contextWindow: 128000,
+    });
+    const index = manager.readIndex(agent);
+    expect(index["tg_dm_already@agent-a"].freshCompact).toMatchObject({
+      lastFreshCompactDate: "2026-05-15",
+      freshCompactReason: "daily",
+      freshCompactTokensBefore: 4200,
+      freshCompactTokensAfter: 4200,
+    });
+    expect(index["tg_dm_already@agent-a"].promptSnapshot.systemPrompt).toContain("system prompt v3");
+  });
+
+  it("freshCompactSession records daily freshness when the bridge session is too small to compact", async () => {
+    const agent = makeAgent(rootDir);
+    agent.buildSystemPrompt = vi.fn(() => "system prompt small");
+    const sessionFile = path.join(agent.sessionDir, "bridge", "owner", "small.jsonl");
+    fs.mkdirSync(path.dirname(sessionFile), { recursive: true });
+    fs.writeFileSync(sessionFile, JSON.stringify({ type: "message", role: "user", content: "hi" }) + "\n", "utf-8");
+    const manager = new BridgeSessionManager(makeDeps(agent));
+    manager.writeIndex({
+      "tg_dm_small@agent-a": {
+        file: "owner/small.jsonl",
+        freshCompact: { lastFreshCompactDate: "2026-05-14" },
+      },
+    }, agent);
+    sessionManagerOpenMock.mockReturnValue({ getSessionFile: () => sessionFile });
+
+    const session = {
+      compact: vi.fn(async () => { throw new Error("Nothing to compact (session too small)"); }),
+      dispose: vi.fn(),
+      sessionManager: { getSessionFile: () => sessionFile },
+      getContextUsage: vi.fn(() => ({ tokens: 300, contextWindow: 128000 })),
+      extensionRunner: { hasHandlers: vi.fn(() => true), emit: vi.fn(async () => {}) },
+    };
+    createAgentSessionMock.mockResolvedValue({ session });
+
+    const result = await manager.freshCompactSession("tg_dm_small@agent-a", {
+      agentId: "agent-a",
+      reason: "daily",
+      now: new Date("2026-05-15T09:00:00.000Z"),
+    });
+
+    expect(result).toMatchObject({
+      fresh: true,
+      noop: true,
+      noopReason: "nothing_to_compact",
+      tokensBefore: 300,
+      tokensAfter: 300,
+    });
+    expect(manager.readIndex(agent)["tg_dm_small@agent-a"].freshCompact).toMatchObject({
+      lastFreshCompactDate: "2026-05-15",
+      freshCompactTokensBefore: 300,
+      freshCompactTokensAfter: 300,
+    });
+  });
+
   it("executeExternalMessage does not fresh-compact inline for an existing owner bridge session", async () => {
     const agent = makeAgent(rootDir);
     agent.buildSystemPrompt = vi.fn(() => "system prompt current");
