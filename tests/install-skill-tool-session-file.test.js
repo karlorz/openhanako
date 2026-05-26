@@ -3,6 +3,7 @@ import os from "os";
 import path from "path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createInstallSkillTool } from "../lib/tools/install-skill.js";
+import { writeZipFromDirectory } from "../lib/zip-writer.js";
 
 describe("install_skill global skill-pool installation", () => {
   let tmpDir = null;
@@ -92,7 +93,7 @@ describe("install_skill global skill-pool installation", () => {
     expect(onInstalled).toHaveBeenCalledWith("demo-skill");
   });
 
-  it("does not overwrite an existing global skill with different content", async () => {
+  it("replaces an existing global skill with the same semantics as manual install", async () => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-install-skill-tool-"));
     const agentDir = path.join(tmpDir, "agents", "agent-b");
     const userSkillsDir = path.join(tmpDir, "user-skills");
@@ -124,10 +125,69 @@ describe("install_skill global skill-pool installation", () => {
     }, null, null, {});
 
     const originalPath = path.join(userSkillsDir, "demo-skill", "SKILL.md");
-    const migratedPath = path.join(userSkillsDir, "demo-skill-agent-b", "SKILL.md");
-    expect(fs.readFileSync(originalPath, "utf-8")).toBe(existingContent);
-    expect(fs.readFileSync(migratedPath, "utf-8")).toContain("name: demo-skill-agent-b");
-    expect(result.details.skillName).toBe("demo-skill-agent-b");
-    expect(onInstalled).toHaveBeenCalledWith("demo-skill-agent-b");
+    expect(fs.readFileSync(originalPath, "utf-8")).toContain("# Different");
+    expect(result.details.skillName).toBe("demo-skill");
+    expect(onInstalled).toHaveBeenCalledWith("demo-skill");
+    expect(fs.existsSync(path.join(userSkillsDir, "demo-skill-agent-b"))).toBe(false);
+  });
+
+  it("installs the full GitHub skill package instead of only SKILL.md", async () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-install-skill-tool-"));
+    const agentDir = path.join(tmpDir, "agents", "agent-c");
+    const userSkillsDir = path.join(tmpDir, "user-skills");
+    const repoDir = path.join(tmpDir, "repo", "kami-main");
+    fs.mkdirSync(path.join(repoDir, "references"), { recursive: true });
+    fs.mkdirSync(path.join(repoDir, "assets", "templates"), { recursive: true });
+    fs.writeFileSync(path.join(repoDir, "SKILL.md"), "---\nname: kami\n---\n# Kami\n", "utf-8");
+    fs.writeFileSync(path.join(repoDir, "references", "design.md"), "# Design\n", "utf-8");
+    fs.writeFileSync(path.join(repoDir, "assets", "templates", "page.html"), "<main></main>\n", "utf-8");
+
+    const zipPath = path.join(tmpDir, "kami.zip");
+    await writeZipFromDirectory(path.join(tmpDir, "repo"), zipPath);
+    const zipBytes = fs.readFileSync(zipPath);
+    const fetchMock = vi.fn(async (url) => {
+      const href = String(url);
+      if (href.includes("api.github.com/repos/tw93/kami")) {
+        return new Response(JSON.stringify({ stargazers_count: 5608 }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (href.includes("codeload.github.com/tw93/kami/zip/HEAD")) {
+        return new Response(zipBytes, { status: 200 });
+      }
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const onInstalled = vi.fn();
+    const tool = createInstallSkillTool({
+      agentDir,
+      getUserSkillsDir: () => userSkillsDir,
+      getConfig: () => ({
+        capabilities: {
+          learn_skills: {
+            enabled: true,
+            allow_github_fetch: true,
+            safety_review: false,
+          },
+        },
+      }),
+      resolveUtilityConfig: () => null,
+      onInstalled,
+      registerSessionFile: vi.fn(),
+    });
+
+    const result = await tool.execute("call-1", {
+      github_url: "https://github.com/tw93/kami",
+      reason: "test",
+    }, null, null, {});
+
+    expect(result.details.skillName).toBe("kami");
+    expect(fs.existsSync(path.join(userSkillsDir, "kami", "SKILL.md"))).toBe(true);
+    expect(fs.existsSync(path.join(userSkillsDir, "kami", "references", "design.md"))).toBe(true);
+    expect(fs.existsSync(path.join(userSkillsDir, "kami", "assets", "templates", "page.html"))).toBe(true);
+    expect(fetchMock).not.toHaveBeenCalledWith(expect.stringContaining("raw.githubusercontent.com"), expect.anything());
+    expect(onInstalled).toHaveBeenCalledWith("kami");
   });
 });

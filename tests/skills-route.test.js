@@ -581,7 +581,9 @@ describe("skills route", () => {
     const srcDir = path.join(tempRoot, "incoming-skill");
     const userSkillsDir = path.join(tempRoot, "user-skills");
     fs.mkdirSync(srcDir, { recursive: true });
+    fs.mkdirSync(path.join(srcDir, "references"), { recursive: true });
     fs.writeFileSync(path.join(srcDir, "SKILL.md"), "---\nname: sample-skill\n---\n# Sample\n", "utf-8");
+    fs.writeFileSync(path.join(srcDir, "references", "guide.md"), "# Guide\n", "utf-8");
     const sessionPath = "/sessions/install-source.jsonl";
     const registerSessionFile = vi.fn(({ sessionPath, filePath, label, origin, storageKind }) => ({
       id: "sf_skill_source",
@@ -626,6 +628,7 @@ describe("skills route", () => {
       origin: "skill_install_source",
       storageKind: "install_source",
     });
+    expect(fs.existsSync(path.join(userSkillsDir, "sample-skill", "references", "guide.md"))).toBe(true);
     expect(data).toMatchObject({
       ok: true,
       skill: { name: "sample-skill" },

@@ -8,12 +8,11 @@
 
 import fs from "fs";
 import path from "path";
-import { execSync, execFileSync } from "child_process";
+import { execFileSync } from "child_process";
 import { Hono } from "hono";
 import { safeJson } from "../hono-helpers.js";
-import { extractZip } from "../../lib/extract-zip.js";
 import { parseSkillMetadata } from "../../lib/skills/skill-metadata.js";
-import { createSkillSourceIdentity } from "../../lib/skills/skill-file-identity.js";
+import { installSkillPackageFromPath } from "../../lib/skills/skill-package-installer.js";
 import { WORKSPACE_SKILL_DIRS } from "../../shared/workspace-skill-paths.js";
 import { DEFAULT_DISABLED_TOOL_NAMES } from "../../shared/tool-categories.js";
 import { t } from "../i18n.js";
@@ -71,23 +70,6 @@ function isPlainEntryName(value) {
     && value !== ".."
     && !value.includes("/")
     && !value.includes("\\");
-}
-
-function workspaceSkillSource(skillDir, fallbackName) {
-  const skillFile = path.join(skillDir, "SKILL.md");
-  let skillName = fallbackName;
-  try {
-    if (fs.existsSync(skillFile)) {
-      const content = fs.readFileSync(skillFile, "utf-8");
-      skillName = parseSkillMetadata(content, fallbackName).name || fallbackName;
-    }
-  } catch {}
-  return createSkillSourceIdentity({
-    owner: "workspace",
-    skillName,
-    filePath: skillFile,
-    baseDir: skillDir,
-  });
 }
 
 function getStudioCronStore(engine) {
@@ -655,9 +637,9 @@ export function createDeskRoute(engine, hub) {
               filePath: skillFile,
               baseDir: path.join(skillsDir, entry.name),
             });
-          } catch {}
+          } catch { /* ignore malformed workspace skill entries */ }
         }
-      } catch {}
+      } catch { /* ignore unreadable workspace skill roots */ }
     }
     return c.json({ skills: results });
   });
@@ -674,9 +656,11 @@ export function createDeskRoute(engine, hub) {
     if (!filePath || !cwd) {
       return c.json({ error: "filePath and active workspace required" }, 400);
     }
+    if (dir && !isApprovedDir(cwd, engine)) {
+      return c.json({ error: "workspace is not approved" }, 403);
+    }
 
     try {
-      const stat = fs.statSync(filePath);
       const skillsDir = path.join(cwd, ".agents", "skills");
 
       // 确保 .agents/skills/ 存在
@@ -685,62 +669,24 @@ export function createDeskRoute(engine, hub) {
       // macOS: 隐藏 .agents 目录（chflags hidden）
       if (process.platform === "darwin") {
         const agentsDir = path.join(cwd, ".agents");
-        try { execFileSync("chflags", ["hidden", agentsDir]); } catch {}
+        try { execFileSync("chflags", ["hidden", agentsDir]); } catch { /* best effort macOS Finder hint */ }
       }
 
-      if (stat.isDirectory()) {
-        // 直接复制文件夹
-        const destName = path.basename(filePath);
-        const dest = path.join(skillsDir, destName);
-        fs.cpSync(filePath, dest, { recursive: true });
-        if (realPath(cwd) === realPath(engine.deskCwd)) {
-          await engine.syncWorkspaceSkillPaths(cwd, { reload: true, emitEvent: true, force: true });
-        }
-        return c.json({
-          ok: true,
-          name: destName,
-          installedSkillSource: workspaceSkillSource(dest, destName),
-        });
+      const installed = await installSkillPackageFromPath({
+        sourcePath: filePath,
+        installDir: skillsDir,
+        owner: "workspace",
+      });
+      if (realPath(cwd) === realPath(engine.deskCwd)) {
+        await engine.syncWorkspaceSkillPaths(cwd, { reload: true, emitEvent: true, force: true });
       }
-
-      const ext = path.extname(filePath).toLowerCase();
-      if (ext === ".zip" || ext === ".skill") {
-        // 解压到 skills 目录
-        // 先解压到临时目录确认内容
-        const tmpDir = path.join(skillsDir, `_tmp_${Date.now()}`);
-        fs.mkdirSync(tmpDir, { recursive: true });
-        await extractZip(filePath, tmpDir);
-
-        // 检查解压结果：如果只有一个子目录，用那个；否则用文件名
-        const entries = fs.readdirSync(tmpDir).filter(e => !e.startsWith("."));
-        let skillName;
-        if (entries.length === 1 && fs.statSync(path.join(tmpDir, entries[0])).isDirectory()) {
-          // 单目录包：移动到 skills
-          skillName = entries[0];
-          const dest = path.join(skillsDir, skillName);
-          if (fs.existsSync(dest)) fs.rmSync(dest, { recursive: true });
-          fs.renameSync(path.join(tmpDir, skillName), dest);
-          fs.rmSync(tmpDir, { recursive: true });
-        } else {
-          // 散文件包：整个 tmp 目录就是技能
-          skillName = path.basename(filePath, ext);
-          const dest = path.join(skillsDir, skillName);
-          if (fs.existsSync(dest)) fs.rmSync(dest, { recursive: true });
-          fs.renameSync(tmpDir, dest);
-        }
-        if (realPath(cwd) === realPath(engine.deskCwd)) {
-          await engine.syncWorkspaceSkillPaths(cwd, { reload: true, emitEvent: true, force: true });
-        }
-        return c.json({
-          ok: true,
-          name: skillName,
-          installedSkillSource: workspaceSkillSource(path.join(skillsDir, skillName), skillName),
-        });
-      }
-
-      return c.json({ error: "Unsupported file type. Use folder, .zip or .skill" }, 400);
+      return c.json({
+        ok: true,
+        name: installed.name,
+        installedSkillSource: installed.installedSkillSource,
+      });
     } catch (err) {
-      return c.json({ error: err.message }, 500);
+      return c.json({ error: err.message }, err.status || 500);
     }
   });
 
