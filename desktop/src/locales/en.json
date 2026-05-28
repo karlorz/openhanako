@@ -2136,7 +2136,7 @@
       "label": "Web Search",
       "description": "Search the internet for real-time information. Use when you need the latest news, technical docs, current events, or any external knowledge not in memory.",
       "queryDesc": "Search keywords",
-      "maxResultsDesc": "Number of results to return, default 5"
+      "maxResultsDesc": "Number of results to return, default 10"
     },
     "webFetch": {
       "label": "Fetch Web Page",

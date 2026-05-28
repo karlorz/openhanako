@@ -2136,7 +2136,7 @@
       "label": "웹 검색",
       "description": "인터넷을 검색해서 실시간 정보를 가져와요. 최신 뉴스, 기술 문서, 시사, 또는 기억에 없는 외부 지식이 필요할 때 사용해요.",
       "queryDesc": "검색 키워드",
-      "maxResultsDesc": "반환할 결과 수, 기본값 5"
+      "maxResultsDesc": "반환할 결과 수, 기본값 10"
     },
     "webFetch": {
       "label": "웹페이지 가져오기",

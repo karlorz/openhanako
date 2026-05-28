@@ -2136,7 +2136,7 @@
       "label": "搜索网页",
       "description": "搜索互联网获取实时信息。当你需要查找最新资讯、技术文档、新闻事件、或任何记忆中没有的外部知识时使用。",
       "queryDesc": "搜索关键词",
-      "maxResultsDesc": "返回结果数量，默认 5"
+      "maxResultsDesc": "返回结果数量，默认 10"
     },
     "webFetch": {
       "label": "抓取网页",

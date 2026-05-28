@@ -2136,7 +2136,7 @@
       "label": "搜尋網頁",
       "description": "搜尋網路取得即時資訊。當你需要查找最新消息、技術文件、時事新聞、或任何記憶中沒有的外部知識時使用。",
       "queryDesc": "搜尋關鍵字",
-      "maxResultsDesc": "回傳結果數量，預設 5"
+      "maxResultsDesc": "回傳結果數量，預設 10"
     },
     "webFetch": {
       "label": "擷取網頁",
