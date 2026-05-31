@@ -1,4 +1,18 @@
 {
+  "cover": {
+    "make": "cover を作成",
+    "agentGenerate": {
+      "beautifyDisabled": "先にメインエージェントのツール設定で「小花美术」を有効にしてください。",
+      "defaultModelMissing": "先に設定でデフォルト画像モデルを設定してください。",
+      "defaultModelInvalid": "デフォルト画像モデルが利用できません。設定で再設定してください。",
+      "imageGenUnavailable": "画像生成ツールが無効です。先に設定で有効にしてください。",
+      "agentUnavailable": "メインエージェントが一時的に利用できないため、Agent 生成を開始できません。",
+      "disabled": "現在 Agent 生成は利用できません。"
+    }
+  },
+  "selection": {
+    "quoteToChat": "会話に引用"
+  },
   "channel": {
     "tab": "チャンネル",
     "chatTab": "チャット",

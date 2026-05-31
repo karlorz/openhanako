@@ -1,4 +1,18 @@
 {
+  "cover": {
+    "make": "製作 cover",
+    "agentGenerate": {
+      "beautifyDisabled": "需要先在主 Agent 的工具設定裡開啟小花美术。",
+      "defaultModelMissing": "需要先在設定裡設定預設圖片模型。",
+      "defaultModelInvalid": "預設圖片模型不可用，需要在設定裡重新設定。",
+      "imageGenUnavailable": "圖片生成工具未啟用，需要先在設定裡開啟。",
+      "agentUnavailable": "主 Agent 暫不可用，無法發起 Agent 生成。",
+      "disabled": "目前無法使用 Agent 生成。"
+    }
+  },
+  "selection": {
+    "quoteToChat": "引用到對話"
+  },
   "channel": {
     "tab": "頻道",
     "chatTab": "聊天",

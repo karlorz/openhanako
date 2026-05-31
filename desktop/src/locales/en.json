@@ -1,4 +1,18 @@
 {
+  "cover": {
+    "make": "Make cover",
+    "agentGenerate": {
+      "beautifyDisabled": "Enable 小花美术 in the main agent's tool settings first.",
+      "defaultModelMissing": "Configure a default image model in settings first.",
+      "defaultModelInvalid": "The default image model is unavailable. Reconfigure it in settings.",
+      "imageGenUnavailable": "The image generation tool is disabled. Enable it in settings first.",
+      "agentUnavailable": "The main agent is temporarily unavailable, so Agent generation can't start.",
+      "disabled": "Agent generation is currently unavailable."
+    }
+  },
+  "selection": {
+    "quoteToChat": "Quote to chat"
+  },
   "channel": {
     "tab": "Channels",
     "chatTab": "Chat",
