@@ -98,6 +98,18 @@ describe("subagent-tool (executeIsolated 原子模式)", () => {
     );
   });
 
+  it("默认甲（Codex）：派单不剥离工具（无 toolFilter/builtinFilter）+ permissionMode operate + subagentContext", async () => {
+    const capture = makeExecuteIsolated();
+    const tool = createSubagentTool(makeDeps({ executeIsolated: capture, getDeferredStore: () => mockStore }));
+    await tool.execute("call_1", { task: "干活" }, null, null, mockCtx());
+    await vi.waitFor(() => expect(capture).toHaveBeenCalledTimes(1));
+    const opts = capture.mock.calls[0][1];
+    expect(opts.toolFilter).toBeUndefined();      // 甲：不剥离自定义工具，给全集
+    expect(opts.builtinFilter).toBeUndefined();   // 甲：不剥离内置工具，给全集
+    expect(opts.permissionMode).toBe("operate");  // 执行档（探索者只读档待后缀角色规则）
+    expect(opts.subagentContext).toBe(true);      // → classify 防自递归
+  });
+
   it("self-dispatch emits actual agent identity with session-ready patch", async () => {
     const emitEvent = vi.fn();
     const persistSubagentSessionMeta = vi.fn(async () => {});

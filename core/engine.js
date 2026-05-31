@@ -1673,17 +1673,21 @@ export class HanaEngine {
     const getPermissionMode = typeof opts.getPermissionMode === "function"
       ? opts.getPermissionMode
       : (sessionPath) => this.getSessionPermissionMode(sessionPath);
+    // 拦截上下文（如 { isSubagent }）：classify 据此做与 mode 无关的固定边界（防自递归等）。
+    const permissionContext = opts.permissionContext || null;
     result = {
       ...result,
       tools: wrapWithSessionPermission(result.tools, {
         getSessionPath,
         getPermissionMode,
+        permissionContext,
         getConfirmStore: () => this._confirmStore,
         emitEvent: (event, sessionPath) => this._emitEvent(event, sessionPath),
       }),
       customTools: wrapWithSessionPermission(result.customTools, {
         getSessionPath,
         getPermissionMode,
+        permissionContext,
         getConfirmStore: () => this._confirmStore,
         emitEvent: (event, sessionPath) => this._emitEvent(event, sessionPath),
       }),

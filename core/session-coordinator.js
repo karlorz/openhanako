@@ -2682,7 +2682,8 @@ export class SessionCoordinator {
           workspaceFolders: execWorkspaceScope.workspaceFolders,
           getSessionPath: () => tempSessionMgr?.getSessionFile?.() || null,
           fileReadSessionPaths,
-          getPermissionMode: () => SESSION_PERMISSION_MODES.OPERATE,
+          getPermissionMode: () => opts.permissionMode || SESSION_PERMISSION_MODES.OPERATE,
+          permissionContext: { isSubagent: !!opts.subagentContext },
         },
       );
 
