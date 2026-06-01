@@ -399,6 +399,30 @@ export class SessionCoordinator {
     return this._session?.sessionManager?.getSessionFile?.() ?? this._currentSessionPath ?? null;
   }
 
+  async reloadExtensionRunners(reason = "extension_factories_changed") {
+    const summary = { reloaded: 0, skipped: 0, failed: 0 };
+    for (const [sessionPath, entry] of this._sessions) {
+      const session = entry?.session;
+      if (!session || typeof session.reload !== "function") {
+        summary.skipped += 1;
+        continue;
+      }
+      if (session.isStreaming || session.isCompacting || entry._switching) {
+        summary.skipped += 1;
+        continue;
+      }
+      try {
+        await session.reload();
+        entry.lastTouchedAt = Date.now();
+        summary.reloaded += 1;
+      } catch (err) {
+        summary.failed += 1;
+        log.warn(`reload extensions failed for ${path.basename(sessionPath)} (${reason}): ${err?.message || err}`);
+      }
+    }
+    return summary;
+  }
+
   // ── Session 创建 / 切换 ──
 
   async _shouldIncludeLegacyArtifactToolForRestore(agent, sessionPath) {

@@ -628,6 +628,13 @@ export function createSessionsRoute(engine, hub = null) {
             }
           }
         } else if (m.role === "custom") {
+          const afterIndex = displayIdx - 1;
+          if (m.display !== false && afterIndex >= pageBounds.startIdx && afterIndex < pageBounds.endIdx) {
+            const extracted = extractBlocks(m.customType, m.details, m);
+            for (const b of extracted) {
+              blocks.push({ ...b, afterIndex });
+            }
+          }
           recordMediaGenerationResult(parseHistoryDeferredResult(m), displayIdx - 1);
         }
       }

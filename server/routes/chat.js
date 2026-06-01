@@ -319,7 +319,16 @@ export function createChatRoute(engine, hub, { upgradeWebSocket }) {
         const wasRunning = browser.isRunning(sp);
         const thumbnail = await browser.thumbnail(sp);
         if (thumbnail) {
-          broadcast({ type: "browser_status", running: true, url: browser.currentUrl(sp), thumbnail, sessionPath: sp });
+          const url = browser.currentUrl(sp);
+          broadcast({
+            type: "browser_status",
+            running: true,
+            url,
+            thumbnail,
+            thumbnailCapturedAt: Date.now(),
+            thumbnailUrl: url,
+            sessionPath: sp,
+          });
         } else if (wasRunning && !browser.isRunning(sp)) {
           broadcast({
             type: "browser_status",
@@ -527,7 +536,11 @@ export function createChatRoute(engine, hub, { upgradeWebSocket }) {
           running: d.running ?? false,
           url: d.url || null,
         };
-        if (d.thumbnail) statusMsg.thumbnail = d.thumbnail;
+        if (d.thumbnail) {
+          statusMsg.thumbnail = d.thumbnail;
+          statusMsg.thumbnailCapturedAt = d.thumbnailCapturedAt || Date.now();
+          statusMsg.thumbnailUrl = d.thumbnailUrl || statusMsg.url;
+        }
         emitStreamEvent(sessionPath, ss, statusMsg);
         if (statusMsg.running) startBrowserThumbPoll();
         else if (!BrowserManager.instance().hasAnyRunning) stopBrowserThumbPoll();
@@ -547,7 +560,11 @@ export function createChatRoute(engine, hub, { upgradeWebSocket }) {
         url: event.url || null,
         sessionPath,
       };
-      if (event.thumbnail) statusMsg.thumbnail = event.thumbnail;
+      if (event.thumbnail) {
+        statusMsg.thumbnail = event.thumbnail;
+        statusMsg.thumbnailCapturedAt = event.thumbnailCapturedAt || Date.now();
+        statusMsg.thumbnailUrl = event.thumbnailUrl || statusMsg.url;
+      }
       if (event.error) statusMsg.error = event.error;
       broadcast(statusMsg);
       if (statusMsg.running) startBrowserThumbPoll();
@@ -689,6 +706,16 @@ export function createChatRoute(engine, hub, { upgradeWebSocket }) {
     } else if (event.type === "message_end") {
       // Provider 级别错误（超时、连接断开等）通过 message_end 传递，不经过 message_update
       if (!ss) return;
+      if (event.message?.role === "custom" && event.message.display !== false) {
+        const blocks = enrichSessionFileBlocks(
+          extractBlocks(event.message.customType, event.message.details, event.message),
+          engine,
+          sessionPath,
+        );
+        for (const block of blocks) {
+          emitStreamEvent(sessionPath, ss, { type: "content_block", block });
+        }
+      }
       if (event.message?.stopReason === "error") {
         ss.hasError = true;
         broadcast({ type: "error", message: event.message.errorMessage || "Unknown error", sessionPath });

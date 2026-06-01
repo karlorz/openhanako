@@ -62,6 +62,28 @@ describe("SessionCoordinator", () => {
     fs.rmSync(tempDir, { recursive: true, force: true });
   });
 
+  it("reloads extension runners for idle live sessions and skips active streams", async () => {
+    const idleReload = vi.fn(async () => {});
+    const streamingReload = vi.fn(async () => {});
+    const coordinator = Object.create(SessionCoordinator.prototype);
+    coordinator._sessions = new Map([
+      [path.join(tempDir, "idle.jsonl"), {
+        session: { reload: idleReload, isStreaming: false, isCompacting: false },
+        lastTouchedAt: 1,
+      }],
+      [path.join(tempDir, "streaming.jsonl"), {
+        session: { reload: streamingReload, isStreaming: true, isCompacting: false },
+      }],
+    ]);
+
+    const summary = await coordinator.reloadExtensionRunners("test");
+
+    expect(idleReload).toHaveBeenCalledTimes(1);
+    expect(streamingReload).not.toHaveBeenCalled();
+    expect(summary).toEqual({ reloaded: 1, skipped: 1, failed: 0 });
+    expect(coordinator._sessions.get(path.join(tempDir, "idle.jsonl")).lastTouchedAt).toBeGreaterThan(1);
+  });
+
   it("applies session memory before creating the agent session", async () => {
     let sessionMemoryEnabled = true;
     const agent = {

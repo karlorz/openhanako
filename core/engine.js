@@ -1566,6 +1566,7 @@ export class HanaEngine {
   async syncPluginExtensions() {
     this._syncExtensionFactories();
     await this._reloadResourceLoaderForExtensionFactories();
+    await this._sessionCoord?.reloadExtensionRunners?.("plugin_extension_sync");
   }
 
   // ════════════════════════════

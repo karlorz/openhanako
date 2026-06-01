@@ -1312,6 +1312,55 @@ describe("sessions route", () => {
     }]);
   });
 
+  it("restores plugin_card blocks from extension custom messages", async () => {
+    const { createSessionsRoute } = await import("../server/routes/sessions.js");
+    const msgUtils = await import("../core/message-utils.js");
+    const app = new Hono();
+    const sessionPath = "/tmp/agents/hana/sessions/plugin-card.jsonl";
+
+    vi.mocked(msgUtils.extractTextContent)
+      .mockReturnValueOnce({ text: "card produced", images: [], thinking: "", toolUses: [] });
+    vi.mocked(msgUtils.loadSessionHistoryMessages).mockResolvedValueOnce([
+      { role: "assistant", content: "card produced" },
+      {
+        role: "custom",
+        customType: "finance-market",
+        content: "",
+        display: true,
+        details: {
+          card: {
+            pluginId: "finance-market",
+            route: "/card?id=quote",
+            title: "Quote",
+          },
+        },
+      },
+    ]);
+
+    const engine = {
+      agentsDir: "/tmp/agents",
+      currentSessionPath: sessionPath,
+      deferredResults: null,
+    };
+
+    app.route("/api", createSessionsRoute(engine));
+
+    const res = await app.request(`/api/sessions/messages?path=${encodeURIComponent(sessionPath)}`);
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data.blocks).toEqual([{
+      type: "plugin_card",
+      afterIndex: 0,
+      card: {
+        pluginId: "finance-market",
+        route: "/card?id=quote",
+        title: "Quote",
+        type: "iframe",
+      },
+    }]);
+  });
+
   it("restores completed image generation from a non-context deferred result record", async () => {
     const { createSessionsRoute } = await import("../server/routes/sessions.js");
     const msgUtils = await import("../core/message-utils.js");
