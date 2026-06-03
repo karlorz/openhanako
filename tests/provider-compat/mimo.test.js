@@ -55,6 +55,43 @@ describe("provider-compat/mimo", () => {
     });
   });
 
+  it("converts canonical Hana audio blocks to input_audio parts", () => {
+    const audioModel = {
+      id: "mimo-v2.5",
+      provider: "mimo",
+      baseUrl: "https://api.xiaomimimo.com/v1",
+      api: "openai-completions",
+      input: ["text", "image"],
+      compat: { hanaAudioInput: true },
+    };
+    const payload = {
+      model: "mimo-v2.5",
+      messages: [{
+        role: "user",
+        content: [
+          { type: "text", text: "[attached_audio: /tmp/voice.wav]\nlisten" },
+          { type: "audio", data: "UklGRg==", mimeType: "audio/wav" },
+        ],
+      }],
+    };
+
+    const result = normalizeProviderPayload(payload, audioModel, {
+      mode: "chat",
+      reasoningLevel: "off",
+    });
+
+    expect(result.messages[0].content).toEqual([
+      { type: "text", text: "listen" },
+      {
+        type: "input_audio",
+        input_audio: {
+          data: "UklGRg==",
+          format: "wav",
+        },
+      },
+    ]);
+  });
+
   it("treats Xiaomi Token Plan OpenAI-compatible endpoints as MiMo", () => {
     const tokenPlanModel = {
       id: "mimo-v2.5-pro",

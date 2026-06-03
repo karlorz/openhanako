@@ -18,7 +18,7 @@ export function normalizeOpenAIInputAudioPayload(payload) {
       const audio = getDataAudio(part);
       if (!audio) return part;
 
-      const { image_url, imageUrl, ...rest } = part;
+      const { image_url, imageUrl, data, mimeType, mime, ...rest } = part;
       contentChanged = true;
       return {
         ...rest,
@@ -39,10 +39,21 @@ export function normalizeOpenAIInputAudioPayload(payload) {
 
 function getDataAudio(part) {
   if (!part || typeof part !== "object") return null;
+  if (part.type === "audio") return parseCanonicalAudioBlock(part);
   if (part.type !== "image_url") return null;
   const url = part.image_url?.url ?? part.imageUrl?.url;
   if (typeof url !== "string") return null;
   return parseAudioDataUrl(url);
+}
+
+function parseCanonicalAudioBlock(part) {
+  const mimeType = part.mimeType || part.mime || "audio/wav";
+  const format = audioFormatFromMimeType(mimeType);
+  if (!format || typeof part.data !== "string") return null;
+  return {
+    data: part.data,
+    format,
+  };
 }
 
 function parseAudioDataUrl(url) {

@@ -27,6 +27,11 @@ import * as openaiVideoUrl from "./provider-compat/openai-video-url.js";
 import * as anthropic from "./provider-compat/anthropic.js";
 import { normalizeImplicitOutputBudget } from "./provider-compat/output-budget.js";
 import { stripOrphanToolResults } from "./provider-compat/tool-pairing.js";
+import { normalizeOpenAIInputAudioPayload } from "./provider-compat/input-audio.js";
+import {
+  MODEL_AUDIO_TRANSPORTS,
+  resolveModelAudioInputTransport,
+} from "../shared/model-capabilities.js";
 import {
   getReasoningProfile as getDeclaredReasoningProfile,
   getThinkingFormat as getDeclaredThinkingFormat,
@@ -166,7 +171,7 @@ function nativeMediaKindsInContent(content) {
 
 function nativeMediaKind(part) {
   if (!part || typeof part !== "object") return null;
-  if (part.type === "input_audio") return "audio";
+  if (part.type === "input_audio" || part.type === "audio") return "audio";
   if (part.type === "input_image" || part.type === "image") return "image";
   if (part.type === "video" || part.type === "video_url") return "video";
 
@@ -186,6 +191,15 @@ function stripMediaMarkersFromText(text, mediaKinds) {
     next = next.replace(ATTACHED_MEDIA_MARKER_RE[kind], "");
   }
   return next.replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function normalizeAudioTransportPayload(payload, model) {
+  const transport = resolveModelAudioInputTransport(model);
+  if (transport === MODEL_AUDIO_TRANSPORTS.MIMO_INPUT_AUDIO
+    || transport === MODEL_AUDIO_TRANSPORTS.OPENAI_INPUT_AUDIO) {
+    return normalizeOpenAIInputAudioPayload(payload);
+  }
+  return payload;
 }
 
 /**
@@ -214,6 +228,7 @@ export function normalizeProviderPayload(payload, model, options = {}) {
   result = stripOrphanToolMessages(result);
   result = normalizeImplicitOutputBudget(result, model, options);
   result = stripNativeMediaAttachmentMarkers(result);
+  result = normalizeAudioTransportPayload(result, model);
 
   // 2. Provider-specific 补丁（按 matches 分发，first-match-wins）
   for (const mod of PROVIDER_MODULES) {

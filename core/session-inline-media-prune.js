@@ -10,13 +10,14 @@
 import { stripAllInlineMediaForHistory } from "./message-sanitizer.js";
 
 function emptyResult() {
-  return { stripped: 0, strippedImages: 0, strippedVideos: 0 };
+  return { stripped: 0, strippedImages: 0, strippedVideos: 0, strippedAudios: 0 };
 }
 
 function addCounts(target, source) {
   target.stripped += source.stripped || 0;
   target.strippedImages += source.strippedImages || 0;
   target.strippedVideos += source.strippedVideos || 0;
+  target.strippedAudios += source.strippedAudios || 0;
 }
 
 function pruneSessionManagerEntries(sessionManager) {
