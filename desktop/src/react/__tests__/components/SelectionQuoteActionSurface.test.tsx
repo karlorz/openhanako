@@ -71,6 +71,7 @@ describe('SelectionQuoteActionSurface', () => {
     const surface = button.closest('[data-selection-ignore="true"]') as HTMLElement;
     const icon = button.querySelector('svg');
 
+    expect(surface.getAttribute('data-selection-quote-action')).toBe('true');
     expect(icon).not.toBeNull();
     expect(icon?.getAttribute('fill')).toBe('currentColor');
     expect(icon?.hasAttribute('stroke')).toBe(false);

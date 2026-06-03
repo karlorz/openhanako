@@ -108,6 +108,7 @@ export function SelectionQuoteActionSurface() {
       ref={surfaceRef}
       className={styles.surface}
       data-origin={position.origin}
+      data-selection-quote-action="true"
       data-selection-ignore="true"
       style={{ left: `${position.left}px`, top: `${position.top}px` }}
     >

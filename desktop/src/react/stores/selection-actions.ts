@@ -5,6 +5,7 @@ import type { FloatingAnchorRect, QuotedSelection } from './input-slice';
 import type { ChatMessage } from './chat-types';
 
 const MAX_QUOTED_SELECTION_CHARS = 2000;
+const SELECTION_QUOTE_ACTION_SELECTOR = '[data-selection-quote-action="true"]';
 type QuoteClearScope = {
   sourceKind?: QuotedSelection['sourceKind'];
   sourceFilePath?: string | null;
@@ -25,13 +26,31 @@ export function initQuotedSelectionLifecycle(target: Document = document): () =>
   const handleSelectionChange = () => {
     clearSelectionIfNativeSelectionIsEmpty(target);
   };
+  let suppressNextSelectionCommit = false;
+  const handleSelectionBoundaryInteraction = (event: Event) => {
+    const targetElement = eventTargetElement(event.target);
+    if (!clearSelectionIfInteractionLeavesQuoteAction(targetElement)) return;
+    if (!targetElement || !closestChatSelectionRoot(targetElement)) {
+      suppressNextSelectionCommit = true;
+    }
+  };
+  const handleWindowBlur = () => {
+    suppressNextSelectionCommit = true;
+    clearSelection();
+  };
   const handledSelectionCommitEvents = new WeakSet<Event>();
   const handleSelectionCommit = (event: Event) => {
     if (handledSelectionCommitEvents.has(event)) return;
     handledSelectionCommitEvents.add(event);
+    if (suppressNextSelectionCommit) {
+      suppressNextSelectionCommit = false;
+      return;
+    }
     captureDocumentChatSelection(target, eventAnchorRect(event));
   };
   target.addEventListener('selectionchange', handleSelectionChange);
+  target.addEventListener('pointerdown', handleSelectionBoundaryInteraction, true);
+  target.addEventListener('focusin', handleSelectionBoundaryInteraction, true);
   target.addEventListener('mouseup', handleSelectionCommit);
   target.addEventListener('touchend', handleSelectionCommit);
   target.addEventListener('keyup', handleSelectionCommit);
@@ -40,15 +59,19 @@ export function initQuotedSelectionLifecycle(target: Document = document): () =>
   targetWindow?.addEventListener('mouseup', handleSelectionCommit);
   targetWindow?.addEventListener('touchend', handleSelectionCommit);
   targetWindow?.addEventListener('keyup', handleSelectionCommit);
+  targetWindow?.addEventListener('blur', handleWindowBlur);
 
   const cleanup = () => {
     target.removeEventListener('selectionchange', handleSelectionChange);
+    target.removeEventListener('pointerdown', handleSelectionBoundaryInteraction, true);
+    target.removeEventListener('focusin', handleSelectionBoundaryInteraction, true);
     target.removeEventListener('mouseup', handleSelectionCommit);
     target.removeEventListener('touchend', handleSelectionCommit);
     target.removeEventListener('keyup', handleSelectionCommit);
     targetWindow?.removeEventListener('mouseup', handleSelectionCommit);
     targetWindow?.removeEventListener('touchend', handleSelectionCommit);
     targetWindow?.removeEventListener('keyup', handleSelectionCommit);
+    targetWindow?.removeEventListener('blur', handleWindowBlur);
     if (quotedSelectionLifecycle?.target === target) {
       quotedSelectionLifecycle = null;
     }
@@ -189,6 +212,10 @@ function nodeElement(node: Node | null): Element | null {
   return node.parentElement;
 }
 
+function eventTargetElement(target: EventTarget | null): Element | null {
+  return target instanceof Node ? nodeElement(target) : null;
+}
+
 function closestChatSelectionRoot(element: Element): HTMLElement | null {
   return element.closest<HTMLElement>('[data-chat-selection-root][data-session-path]');
 }
@@ -199,6 +226,14 @@ function closestMessageElement(element: Element): HTMLElement | null {
 
 function isInteractiveSelectionElement(element: Element): boolean {
   return !!element.closest('input, textarea, select, button, [contenteditable="true"], [data-selection-ignore="true"], [data-mobile-gesture-ignore="true"]');
+}
+
+function clearSelectionIfInteractionLeavesQuoteAction(targetElement: Element | null): boolean {
+  const current = useStore.getState().quoteCandidate;
+  if (!current) return false;
+  if (targetElement?.closest(SELECTION_QUOTE_ACTION_SELECTOR)) return false;
+  clearSelection();
+  return true;
 }
 
 function findMessage(sessionPath: string, messageId: string): ChatMessage | null {

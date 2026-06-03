@@ -238,6 +238,88 @@ describe('captureSelection', () => {
     }
   });
 
+  it('clears a transient chat candidate when pointer focus leaves the chat selection surface', () => {
+    const dispose = initQuotedSelectionLifecycle(document);
+    try {
+      seedChatFixture();
+      document.body.innerHTML = `
+        <section data-chat-selection-root="" data-session-path="/session/a.jsonl">
+          <article data-message-id="assistant-1">
+            <span id="selected-text">document mouseup quote</span>
+          </article>
+        </section>
+        <button id="settings-button" type="button">Settings</button>
+      `;
+      selectElementText(document.getElementById('selected-text')!);
+      useStore.getState().setQuoteCandidate({
+        text: 'document mouseup quote',
+        sourceTitle: 'Assistant message',
+        sourceKind: 'chat',
+        sourceSessionPath: '/session/a.jsonl',
+        sourceMessageId: 'assistant-1',
+        sourceRole: 'assistant',
+        charCount: 22,
+      });
+
+      document.getElementById('settings-button')?.dispatchEvent(
+        new MouseEvent('pointerdown', { bubbles: true, cancelable: true }),
+      );
+      window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+
+      expect(useStore.getState().quoteCandidate).toBeNull();
+    } finally {
+      dispose();
+    }
+  });
+
+  it('clears a transient chat candidate when keyboard focus leaves the chat selection surface', () => {
+    const dispose = initQuotedSelectionLifecycle(document);
+    try {
+      useStore.getState().setQuoteCandidate({
+        text: 'old quote',
+        sourceTitle: 'Assistant message',
+        sourceKind: 'chat',
+        sourceSessionPath: '/session/a.jsonl',
+        sourceMessageId: 'assistant-1',
+        sourceRole: 'assistant',
+        charCount: 9,
+      });
+      document.body.innerHTML = `
+        <section data-chat-selection-root="" data-session-path="/session/a.jsonl"></section>
+        <input id="settings-input" />
+      `;
+
+      document.getElementById('settings-input')?.dispatchEvent(
+        new FocusEvent('focusin', { bubbles: true }),
+      );
+
+      expect(useStore.getState().quoteCandidate).toBeNull();
+    } finally {
+      dispose();
+    }
+  });
+
+  it('clears a transient chat candidate when the app window loses focus', () => {
+    const dispose = initQuotedSelectionLifecycle(document);
+    try {
+      useStore.getState().setQuoteCandidate({
+        text: 'old quote',
+        sourceTitle: 'Assistant message',
+        sourceKind: 'chat',
+        sourceSessionPath: '/session/a.jsonl',
+        sourceMessageId: 'assistant-1',
+        sourceRole: 'assistant',
+        charCount: 9,
+      });
+
+      window.dispatchEvent(new Event('blur'));
+
+      expect(useStore.getState().quoteCandidate).toBeNull();
+    } finally {
+      dispose();
+    }
+  });
+
   it('keeps added preview quotes when chat capture sees an empty selection', () => {
     useStore.getState().addQuotedSelection({
       text: 'preview quote',
