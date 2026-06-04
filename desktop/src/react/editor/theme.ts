@@ -22,7 +22,7 @@ export const markdownTheme = EditorView.theme({
     overflow: 'auto',
     fontFamily: 'var(--editor-markdown-font-family, var(--font-serif))',
     lineHeight: 'var(--editor-markdown-line-height)',
-    padding: 'var(--space-md) 0',
+    padding: 'calc(var(--space-xl) + var(--space-lg)) 0 var(--space-md)',
   },
   '&.cm-markdown-has-top-cover .cm-scroller': {
     paddingTop: '0',
@@ -56,7 +56,7 @@ export const markdownTheme = EditorView.theme({
     position: 'relative',
     minHeight: '160px',
     maxHeight: '720px',
-    margin: '0 auto var(--space-md)',
+    margin: '0 auto var(--space-lg)',
     overflow: 'hidden',
     backgroundColor: 'transparent',
     userSelect: 'none',

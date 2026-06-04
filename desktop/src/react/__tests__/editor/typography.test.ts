@@ -14,6 +14,20 @@ function readPreviewStyles(): string {
   );
 }
 
+function readEditorTheme(): string {
+  return fs.readFileSync(
+    path.join(process.cwd(), 'desktop/src/react/editor/theme.ts'),
+    'utf8',
+  );
+}
+
+function readEditorHighlight(): string {
+  return fs.readFileSync(
+    path.join(process.cwd(), 'desktop/src/react/editor/highlight.ts'),
+    'utf8',
+  );
+}
+
 describe('editor typography settings', () => {
   it('uses markdown defaults and preserves future heading controls', () => {
     expect(DEFAULT_EDITOR_TYPOGRAPHY.markdown.fontPreset).toBe('follow');
@@ -93,6 +107,7 @@ describe('editor typography settings', () => {
   it('uses the editor typography variables for markdown preview font size and weight', () => {
     const css = readPreviewStyles();
 
+    expect(css).toMatch(/:global\(\.preview-markdown\)\s*\{[\s\S]*padding:\s*var\(--space-lg\)\s+var\(--space-lg\)\s+var\(--space-md\)/);
     expect(css).toMatch(/:global\(\.preview-markdown\)\s*\{[\s\S]*font-size:\s*var\(--editor-markdown-font-size\)/);
     expect(css).toMatch(/:global\(\.preview-markdown\)\s*\{[\s\S]*font-family:\s*var\(--editor-markdown-font-family,\s*var\(--font-serif\)\)/);
     expect(css).toMatch(/:global\(\.preview-markdown\)\s*\{[\s\S]*font-weight:\s*400/);
@@ -105,6 +120,37 @@ describe('editor typography settings', () => {
     }
 
     expect(css).toMatch(/:global\(\.preview-markdown\) strong\s*\{[\s\S]*font-weight:\s*700/);
+  });
+
+  it('adds page-header space to markdown previews without a cover', () => {
+    const css = readPreviewStyles();
+
+    expect(css).toMatch(
+      /:global\(\.markdown-cover-drop-host \.preview-markdown\)\s*\{[\s\S]*padding-top:\s*calc\(var\(--space-xl\)\s*\+\s*var\(--space-lg\)\)/,
+    );
+  });
+
+  it('uses the same page-header spacing in the markdown editor', () => {
+    const theme = readEditorTheme();
+
+    expect(theme).toMatch(/padding:\s*'calc\(var\(--space-xl\) \+ var\(--space-lg\)\) 0 var\(--space-md\)'/);
+    expect(theme).toMatch(/'&\.cm-markdown-has-top-cover \.cm-scroller':\s*\{[\s\S]*paddingTop:\s*'0'/);
+    expect(theme).toMatch(/'\.cm-markdown-cover':\s*\{[\s\S]*margin:\s*'0 auto var\(--space-lg\)'/);
+  });
+
+  it('uses the same typography variables in markdown editor and preview rendering', () => {
+    const theme = readEditorTheme();
+    const highlight = readEditorHighlight();
+    const previewCss = readPreviewStyles();
+
+    expect(theme).toMatch(/'&':\s*\{\s*fontSize:\s*'var\(--editor-markdown-font-size\)'/);
+    expect(theme).toMatch(/lineHeight:\s*'var\(--editor-markdown-line-height\)'/);
+    expect(theme).toMatch(/padding:\s*'0 var\(--editor-markdown-content-padding-x\)'/);
+    expect(highlight).toMatch(/tags\.heading1,\s*fontSize:\s*'var\(--editor-markdown-h1-font-size\)'/);
+    expect(highlight).toMatch(/tags\.heading6,\s*fontSize:\s*'var\(--editor-markdown-h6-font-size\)'/);
+    expect(previewCss).toMatch(/font-size:\s*var\(--editor-markdown-font-size\)/);
+    expect(previewCss).toMatch(/font-size:\s*var\(--editor-markdown-h1-font-size\)/);
+    expect(previewCss).toMatch(/font-size:\s*var\(--editor-markdown-h6-font-size\)/);
   });
 
   it('leaves CodeMirror editor layout to the editor themes', () => {
