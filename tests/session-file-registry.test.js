@@ -283,6 +283,37 @@ describe("SessionFileRegistry", () => {
     });
   });
 
+  it("persists audio waveform metadata in the session sidecar", () => {
+    const filePath = makeTempFile("voice.wav", "RIFF");
+    const sessionPath = makeSessionPath("voice-waveform.jsonl");
+    const registry = new SessionFileRegistry({ now: () => 1234 });
+
+    const file = registry.registerFile({
+      sessionPath,
+      filePath,
+      label: "voice.wav",
+      origin: "user_upload",
+      storageKind: "managed_cache",
+      waveform: {
+        version: 1,
+        peaks: [0, 0.25, 0.9, 1.4, -0.2],
+        durationMs: 3210,
+        source: "computed",
+      },
+    });
+
+    expect(file.waveform).toEqual({
+      version: 1,
+      peaks: [0, 0.25, 0.9, 1, 0],
+      durationMs: 3210,
+      source: "computed",
+    });
+    expect(readSidecar(sessionPath).files[file.id].waveform).toEqual(file.waveform);
+
+    const reloaded = new SessionFileRegistry({ now: () => 9999 });
+    expect(reloaded.get(file.id, { sessionPath })?.waveform).toEqual(file.waveform);
+  });
+
   it("keeps one session file per path and records file relationship operations", () => {
     const filePath = makeTempFile("draft.md", "first\n");
     const sessionPath = makeSessionPath("relationships.jsonl");

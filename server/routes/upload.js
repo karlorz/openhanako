@@ -97,6 +97,14 @@ function listedForPresentation(presentation) {
   return presentation !== "voice-input";
 }
 
+function waveformForUploadPath(body, srcPath) {
+  const metadataByPath = body?.metadataByPath;
+  if (!metadataByPath || typeof metadataByPath !== "object" || Array.isArray(metadataByPath)) return undefined;
+  const direct = metadataByPath[srcPath];
+  if (!direct || typeof direct !== "object" || Array.isArray(direct)) return undefined;
+  return direct.waveform;
+}
+
 function isControlCodePoint(codePoint) {
   return (codePoint >= 0x00 && codePoint <= 0x1f) || (codePoint >= 0x80 && codePoint <= 0x9f);
 }
@@ -324,6 +332,7 @@ export function createUploadRoute(engine) {
           label: name,
           origin: "user_upload",
           storageKind: uploadTarget.storageKind,
+          waveform: waveformForUploadPath(body, srcPath),
         });
 
         results.push({
@@ -423,6 +432,7 @@ export function createUploadRoute(engine) {
           storageKind: uploadTarget.storageKind,
           presentation,
           listed: listedForPresentation(presentation),
+          waveform: blobs[i]?.waveform ?? body?.waveform,
         });
 
         results.push({

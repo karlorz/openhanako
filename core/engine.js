@@ -137,6 +137,7 @@ import { SessionFileRegistry } from "../lib/session-files/session-file-registry.
 import { serializeSessionFile } from "../lib/session-files/session-file-response.js";
 import { NotificationService } from "../lib/notifications/notification-service.js";
 import { SpeechRecognitionService } from "./speech-recognition-service.js";
+import { createCurrentTurnNativeMediaStore } from "./current-turn-native-media.js";
 import {
   getSkillNameTranslationCachePath,
   translateSkillNamesWithCache,
@@ -193,6 +194,7 @@ export class HanaEngine {
     this._sessionFiles = new SessionFileRegistry({
       managedCacheRoot: path.join(hanakoHome, "session-files"),
     });
+    this._currentTurnNativeMedia = createCurrentTurnNativeMediaStore();
     this._pluginInstallRecords = new PluginInstallRecords({ hanakoHome });
     this._approvalGateway = createApprovalGateway({
       smallToolModelReviewer: createModelApprovalReviewer({
@@ -328,6 +330,8 @@ export class HanaEngine {
       registerSessionFile: (entry) => this.registerSessionFile(entry),
       getSessionFile: (fileId, options) => this.getSessionFile(fileId, options),
       getSessionFileByPath: (filePath, options) => this.getSessionFileByPath(filePath, options),
+      beginCurrentTurnNativeMedia: (sessionPath, opts) => this.beginCurrentTurnNativeMedia(sessionPath, opts),
+      endCurrentTurnNativeMedia: (token) => this.endCurrentTurnNativeMedia(token),
       emitEvent: (event, sessionPath) => this._emitEvent(event, sessionPath),
       ensureAgentRuntime: (id, opts) => this.ensureAgentRuntime(id, opts),
       getUsageLedger: () => this._usageLedger,
@@ -555,6 +559,8 @@ export class HanaEngine {
   getSessionFileByPath(filePath, options) { return this._sessionFiles.getByFilePath(filePath, options); }
   listSessionFiles(sessionPath) { return this._sessionFiles.list(sessionPath); }
   updateSessionFileTranscription(fileId, transcription, options) { return this._sessionFiles.updateTranscription(fileId, transcription, options); }
+  beginCurrentTurnNativeMedia(sessionPath, opts) { return this._currentTurnNativeMedia.begin(sessionPath, opts); }
+  endCurrentTurnNativeMedia(token) { return this._currentTurnNativeMedia.end(token); }
   get speechRecognition() { return this._speechRecognition; }
   get resources() { return this._resources; }
   getResourceService() {
@@ -1375,10 +1381,11 @@ export class HanaEngine {
         pi.on("context", (event, ctx) => {
           const model = ctx?.model;
           if (!model) return;
-          const replaySafe = stripHistoricalInlineMediaForReplay(event.messages);
-          const { messages, stripped, strippedImages, strippedVideos } = sanitizeMessagesForModel(replaySafe.messages, model);
-          if (replaySafe.stripped === 0 && stripped === 0) return;
           const sessionPath = ctx?.sessionManager?.getSessionFile?.();
+          const replaySafe = stripHistoricalInlineMediaForReplay(event.messages);
+          const currentTurnMedia = this._currentTurnNativeMedia.inject(sessionPath, replaySafe.messages);
+          const { messages, stripped, strippedImages, strippedVideos } = sanitizeMessagesForModel(currentTurnMedia.messages, model);
+          if (replaySafe.stripped === 0 && stripped === 0 && !currentTurnMedia.changed) return;
           if (sessionPath && strippedImages > 0 && !this._imageStripNotified.has(sessionPath)) {
             this._imageStripNotified.add(sessionPath);
             this._emitEvent({

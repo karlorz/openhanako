@@ -929,7 +929,12 @@ export class BridgeSessionManager {
         assertVideoInputSupported(session.model, opts?.videos);
         assertAudioInputSupported(session.model, opts?.audios);
         const promptOpts = buildPromptMediaOptions(opts);
-        await session.prompt(promptText, promptOpts);
+        const nativeMediaTurn = this._deps.beginCurrentTurnNativeMedia?.(activeSessionPath, opts);
+        try {
+          await session.prompt(promptText, promptOpts);
+        } finally {
+          this._deps.endCurrentTurnNativeMedia?.(nativeMediaTurn);
+        }
       } finally {
         this._prePromptAbortControllers.delete(sessionKey);
         try {

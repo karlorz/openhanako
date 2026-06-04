@@ -2719,8 +2719,32 @@ function buildScreenshotHTML(payload) {
     return `<span class="chat-attachment-status">${escapeAttr(label)}</span>`;
   }
 
-  function renderScreenshotAudioWave() {
-    return '<span></span>'.repeat(12);
+  function normalizeScreenshotWaveformPeaks(waveform) {
+    const fallback = [0.28, 0.62, 0.44, 0.82, 0.36, 0.72, 0.32, 0.54, 0.78, 0.44, 0.66, 0.28];
+    if (!waveform || typeof waveform !== "object" || !Array.isArray(waveform.peaks) || !waveform.peaks.length) return fallback;
+    const peaks = waveform.peaks
+      .slice(0, 80)
+      .map((peak) => Number(peak))
+      .filter((peak) => Number.isFinite(peak))
+      .map((peak) => Math.max(0, Math.min(1, peak)));
+    return peaks.length ? peaks : fallback;
+  }
+
+  function renderScreenshotAudioWave(waveform) {
+    return normalizeScreenshotWaveformPeaks(waveform)
+      .map((peak) => `<span style="height:${Math.max(4, Math.round(4 + peak * 18))}px"></span>`)
+      .join("");
+  }
+
+  function renderScreenshotAudioCard(b, { name, statusHTML, expiredClass, showName }) {
+    return `
+      <span class="chat-audio-card${expiredClass}" title="${escapeAttr(name)}">
+        <span class="chat-audio-play">${renderScreenshotAttachmentIcon("audio")}</span>
+        <span class="chat-audio-wave" aria-hidden="true">${renderScreenshotAudioWave(b.waveform)}</span>
+        ${showName ? `<span class="chat-attachment-name">${escapeAttr(name)}</span>` : ""}
+        ${statusHTML}
+      </span>
+    `;
   }
 
   function renderScreenshotAttachment(b) {
@@ -2731,14 +2755,25 @@ function buildScreenshotHTML(payload) {
     const expiredClass = status === "expired" ? " chat-attachment-expired" : "";
     const statusHTML = renderScreenshotAttachmentStatus(status);
 
-    if (kind === "audio" && presentation === "voice-input") {
-      return `
-        <span class="chat-audio-card${expiredClass}" title="${escapeAttr(name)}">
-          <span class="chat-audio-play">${renderScreenshotAttachmentIcon("audio")}</span>
-          <span class="chat-audio-wave" aria-hidden="true">${renderScreenshotAudioWave()}</span>
-          ${statusHTML}
-        </span>
-      `;
+    if (kind === "audio") {
+      const transcript = b.transcription?.status === "ready" && typeof b.transcription.text === "string"
+        ? b.transcription.text.trim()
+        : "";
+      const audioCard = renderScreenshotAudioCard(b, {
+        name,
+        statusHTML,
+        expiredClass,
+        showName: presentation !== "voice-input",
+      });
+      if (transcript) {
+        return `
+          <span class="chat-voice-card${expiredClass}" title="${escapeAttr(name)}">
+            <span class="chat-voice-transcript">${escapeAttr(transcript)}</span>
+            ${audioCard}
+          </span>
+        `;
+      }
+      return audioCard;
     }
 
     return `
@@ -2852,6 +2887,7 @@ function buildScreenshotHTML(payload) {
     .chat-audio-card {
       gap: 0.32em;
       padding-right: 0.6em;
+      border: none;
     }
     .chat-audio-play {
       background: color-mix(in srgb, currentColor 10%, transparent);
@@ -2874,18 +2910,34 @@ function buildScreenshotHTML(payload) {
       background: currentColor;
       opacity: 0.58;
     }
-    .chat-audio-wave span:nth-child(1) { height: 5px; }
-    .chat-audio-wave span:nth-child(2) { height: 11px; }
-    .chat-audio-wave span:nth-child(3) { height: 8px; }
-    .chat-audio-wave span:nth-child(4) { height: 15px; }
-    .chat-audio-wave span:nth-child(5) { height: 7px; }
-    .chat-audio-wave span:nth-child(6) { height: 13px; }
-    .chat-audio-wave span:nth-child(7) { height: 6px; }
-    .chat-audio-wave span:nth-child(8) { height: 10px; }
-    .chat-audio-wave span:nth-child(9) { height: 14px; }
-    .chat-audio-wave span:nth-child(10) { height: 8px; }
-    .chat-audio-wave span:nth-child(11) { height: 12px; }
-    .chat-audio-wave span:nth-child(12) { height: 5px; }
+    .chat-voice-card {
+      display: inline-flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.42em;
+      max-width: min(18em, 100%);
+      margin: 0.25em 0.38em 0.45em 0;
+      padding: 0.72em 0.72em 0.52em;
+      color: currentColor;
+      background: color-mix(in srgb, currentColor 7%, transparent);
+      border-radius: 8px;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+      vertical-align: middle;
+    }
+    .chat-voice-card .chat-audio-card {
+      margin: 0;
+      padding: 0;
+      background: transparent;
+      box-shadow: none;
+    }
+    .chat-voice-transcript {
+      padding: 0 0.08em;
+      color: currentColor;
+      font-size: 1em;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
     .screenshot-cover {
       display: block;
       overflow: visible;

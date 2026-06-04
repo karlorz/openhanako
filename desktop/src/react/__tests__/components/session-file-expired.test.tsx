@@ -188,6 +188,81 @@ describe('expired session file presentation', () => {
     expect(audioInstances[0].play).toHaveBeenCalledTimes(1);
   });
 
+  it('renders generic audio attachments with persisted waveform peaks and supports seeking on the wave', () => {
+    const audioInstances: Array<{
+      currentTime: number;
+      duration: number;
+      play: ReturnType<typeof vi.fn>;
+      pause: ReturnType<typeof vi.fn>;
+      addEventListener: ReturnType<typeof vi.fn>;
+      removeEventListener: ReturnType<typeof vi.fn>;
+    }> = [];
+    const AudioMock = vi.fn().mockImplementation(function MockAudio(this: {
+      currentTime: number;
+      duration: number;
+      play: ReturnType<typeof vi.fn>;
+      pause: ReturnType<typeof vi.fn>;
+      addEventListener: ReturnType<typeof vi.fn>;
+      removeEventListener: ReturnType<typeof vi.fn>;
+    }) {
+      this.currentTime = 0;
+      this.duration = 4;
+      this.play = vi.fn(() => Promise.resolve());
+      this.pause = vi.fn();
+      this.addEventListener = vi.fn();
+      this.removeEventListener = vi.fn();
+      audioInstances.push(this);
+    });
+    vi.stubGlobal('Audio', AudioMock);
+
+    render(
+      <UserMessage
+        showAvatar={false}
+        sessionPath="/sessions/main.jsonl"
+        readOnly
+        message={{
+          id: 'u-audio-waveform',
+          role: 'user',
+          text: '',
+          attachments: [
+            {
+              fileId: 'sf_audio',
+              path: '/cache/song.wav',
+              name: 'song.wav',
+              isDir: false,
+              mimeType: 'audio/wav',
+              waveform: {
+                version: 1,
+                peaks: [0.1, 0.5, 0.9],
+                durationMs: 4000,
+                source: 'computed',
+              },
+            } as any,
+          ],
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText('Play song.wav'));
+    const wave = screen.getByTestId('audio-attachment-wave');
+    expect(wave.querySelectorAll('[data-audio-wave-bar]')).toHaveLength(24);
+
+    wave.getBoundingClientRect = vi.fn(() => ({
+      x: 10,
+      y: 0,
+      left: 10,
+      top: 0,
+      right: 110,
+      bottom: 20,
+      width: 100,
+      height: 20,
+      toJSON: () => ({}),
+    }));
+    fireEvent.click(wave, { clientX: 60 });
+
+    expect(audioInstances[0].currentTime).toBeCloseTo(2);
+  });
+
   it('renders voice-input audio messages as waveform-only chips without visible filenames', () => {
     render(
       <UserMessage

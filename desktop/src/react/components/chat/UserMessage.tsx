@@ -280,9 +280,11 @@ const UserAttachmentsView = memo(function UserAttachmentsView({ attachments, des
                     name: att.name,
                     base64Data: att.base64Data,
                     mimeType: att.mimeType,
+                    waveform: att.waveform,
                   }}
                   showName={false}
                   className={styles.voiceInputAudioStrip}
+                  waveform={att.waveform}
                 />
               </div>
             );
@@ -295,8 +297,10 @@ const UserAttachmentsView = memo(function UserAttachmentsView({ attachments, des
                 name: att.name,
                 base64Data: att.base64Data,
                 mimeType: att.mimeType,
+                waveform: att.waveform,
               }}
               showName={att.presentation !== 'voice-input'}
+              waveform={att.waveform}
             />
           );
         }

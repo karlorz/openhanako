@@ -58,6 +58,61 @@
     min-width: 0;
 }
 
+.model-split-control {
+    display: inline-flex;
+    align-items: center;
+    height: 24px;
+    min-width: 0;
+    flex-shrink: 1;
+    background: var(--bg-card);
+    border: 1px solid rgba(var(--accent-rgb), 0.12);
+    border-radius: var(--radius-sm);
+    overflow: visible;
+    -webkit-app-region: no-drag;
+}
+
+.model-split-control .thinking-selector {
+    flex: 0 0 auto;
+}
+
+.model-split-control .model-selector {
+    flex: 1 1 auto;
+}
+
+.model-split-control .thinking-pill,
+.model-split-control .model-pill {
+    border-color: transparent;
+    background: transparent;
+    box-shadow: none;
+}
+
+.model-split-control .thinking-pill {
+    border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+}
+
+.model-split-control .model-pill {
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+    border-left-color: rgba(var(--accent-rgb), 0.12);
+}
+
+.model-split-control .thinking-pill:hover,
+.model-split-control .model-pill:hover,
+.model-split-control .thinking-selector.open .thinking-pill,
+.model-split-control .model-selector.open .model-pill {
+    border-color: transparent;
+}
+
+.model-split-control .model-pill:hover,
+.model-split-control .model-selector.open .model-pill {
+    border-left-color: rgba(var(--accent-rgb), 0.18);
+}
+
+.input-surface-mobile .model-split-control {
+    height: 30px;
+    flex: 0 1 auto;
+    max-width: min(52vw, 216px);
+}
+
 /* 附件添加按钮 */
 .attach-btn {
     display: inline-flex;

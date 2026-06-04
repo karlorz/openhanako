@@ -51,6 +51,7 @@ import { openProviderModelSettings } from '../utils/model-settings-navigation';
 import { shouldShowThinkingControl } from '../utils/model-thinking';
 import { shouldAllowInputFocus } from '../utils/input-focus-policy';
 import { calculateInputCardBottomInset, parseCssPixels } from '../utils/input-card-layout';
+import { buildWaveformFromBlob, buildWaveformFromPcmChunks } from '../utils/audio-waveform';
 import {
   XING_PROMPT, executeDiary, executeCompact, buildSlashCommands, getSlashMatches,
   resolveSlashSubmitSelection,
@@ -61,6 +62,7 @@ import { hanaFetch } from '../hooks/use-hana-fetch';
 import styles from './input/InputArea.module.css';
 import type { TodoItem } from '../types';
 import type { ChatListItem, SessionConfirmationBlock } from '../stores/chat-types';
+import type { AudioWaveform } from '../stores/chat-types';
 
 const EMPTY_TODOS: TodoItem[] = [];
 const EMPTY_FILE_REFS: readonly import('../types/file-ref').FileRef[] = Object.freeze([]);
@@ -705,6 +707,12 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
         const mimeType = file.type || (isAudioFileName(file.name) ? chatAudioMimeTypeForName(file.name) : chatImageMimeTypeForName(file.name));
         try {
           const base64Data = await readFileAsBase64(file);
+          const waveform = mimeType.startsWith('audio/')
+            ? await buildWaveformFromBlob(file).catch((err) => {
+              console.warn('[upload] failed to compute audio waveform', err);
+              return undefined;
+            })
+            : undefined;
           const res = await hanaFetch('/api/upload-blob', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -712,6 +720,7 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
               name: file.name,
               base64Data,
               mimeType,
+              ...(waveform ? { waveform } : {}),
               ...(useStore.getState().currentSessionPath ? { sessionPath: useStore.getState().currentSessionPath } : {}),
             }),
           });
@@ -725,6 +734,7 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
               isDirectory: false,
               base64Data,
               mimeType,
+              waveform: upload.waveform || waveform,
             });
           } else {
             useStore.getState().addToast(t('error.uploadFailed'), 'error');
@@ -777,6 +787,7 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
     name: string;
     mimeType: string;
     base64Data: string;
+    waveform?: AudioWaveform;
   }): Promise<boolean> => {
     if (inputLocked || !connected || isStreaming || sending || modelSwitching || useStore.getState().pendingSessionSwitchPath) {
       return false;
@@ -818,6 +829,7 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
             mimeType,
             presentation: 'voice-input',
             listed: false,
+            ...(file.waveform ? { waveform: file.waveform } : {}),
           }],
         },
         audios: [{
@@ -872,6 +884,7 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
         throw new Error('empty audio recording');
       }
       const base64Data = await readBlobAsBase64(blob);
+      const waveform = buildWaveformFromPcmChunks(chunks, sampleRate);
       const index = audioRecordingSeqRef.current + 1;
       audioRecordingSeqRef.current = index;
       const name = t('input.recordedAudioName', { index });
@@ -885,6 +898,7 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
           mimeType: 'audio/wav',
           sessionPath,
           presentation: 'voice-input',
+          ...(waveform ? { waveform } : {}),
         }),
       });
       const data = await res.json();
@@ -898,6 +912,7 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
         name: upload.name || name,
         mimeType: 'audio/wav',
         base64Data,
+        waveform: upload.waveform || waveform,
       });
       if (!sent) {
         throw new Error('audio send failed');
@@ -1490,6 +1505,7 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
               isDir: !!f.isDirectory,
               mimeType: f.mimeType || cached?.mimeType || cachedVideo?.mimeType || cachedAudio?.mimeType || undefined,
               visionAuxiliary: imageFile && !supportsVision,
+              ...(f.waveform ? { waveform: f.waveform } : {}),
             };
           }) : undefined,
         },

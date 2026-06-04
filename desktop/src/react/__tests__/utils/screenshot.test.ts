@@ -263,6 +263,16 @@ describe('screenshot utils', () => {
                     mimeType: 'audio/wav',
                     presentation: 'voice-input',
                     listed: false,
+                    waveform: {
+                      version: 1,
+                      peaks: [0.2, 0.7, 0.4],
+                      durationMs: 1200,
+                      source: 'computed',
+                    },
+                    transcription: {
+                      status: 'ready',
+                      text: '今晚我们先把语音输入跑通。',
+                    },
                   },
                   { path: '/tmp/readme.md', name: 'readme.md', isDir: false, mimeType: 'text/markdown' },
                 ],
@@ -283,7 +293,22 @@ describe('screenshot utils', () => {
     const payload = (window as any).hana.screenshotRender.mock.calls[0][0];
     expect(payload.messages[0].blocks).toEqual([
       { type: 'markdown', content: '附件在这里' },
-      { type: 'attachment', kind: 'audio', name: 'voice.wav', presentation: 'voice-input' },
+      {
+        type: 'attachment',
+        kind: 'audio',
+        name: 'voice.wav',
+        presentation: 'voice-input',
+        waveform: {
+          version: 1,
+          peaks: [0.2, 0.7, 0.4],
+          durationMs: 1200,
+          source: 'computed',
+        },
+        transcription: {
+          status: 'ready',
+          text: '今晚我们先把语音输入跑通。',
+        },
+      },
       { type: 'attachment', kind: 'markdown', name: 'readme.md' },
     ]);
   });

@@ -75,10 +75,14 @@ export const InputControlBar = memo(function InputControlBar(props: Props) {
         <ContextRing />
       </div>
       <div className={styles['input-controls']}>
-        {showThinking && (
-          <ThinkingLevelButton level={thinkingLevel} onChange={onThinkingChange} modelXhigh={modelXhigh} />
+        {showThinking ? (
+          <div className={styles['model-split-control']}>
+            <ThinkingLevelButton level={thinkingLevel} onChange={onThinkingChange} modelXhigh={modelXhigh} />
+            <ModelSelector models={models} sessionModel={sessionModel} isStreaming={isStreaming} />
+          </div>
+        ) : (
+          <ModelSelector models={models} sessionModel={sessionModel} isStreaming={isStreaming} />
         )}
-        <ModelSelector models={models} sessionModel={sessionModel} isStreaming={isStreaming} />
         {showAudioInput && (
           <button
             type="button"

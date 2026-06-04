@@ -1,6 +1,6 @@
 // desktop/src/react/utils/screenshot-extract.ts
 
-import type { ChatMessage, ContentBlock, UserAttachment } from '../stores/chat-types';
+import type { AudioWaveform, ChatMessage, ContentBlock, UserAttachment, VoiceTranscription } from '../stores/chat-types';
 import type { FileKind } from '../types/file-ref';
 import { extOfName, isImageOrSvgExt, kindOfFileName } from './file-kind';
 
@@ -18,6 +18,8 @@ export type ScreenshotBlock =
     name: string;
     presentation?: 'attachment' | 'voice-input' | string;
     status?: 'available' | 'expired' | string;
+    transcription?: VoiceTranscription;
+    waveform?: AudioWaveform;
   };
 
 export interface ScreenshotMessage {
@@ -87,6 +89,8 @@ function extractAttachmentBlock(attachment: UserAttachment): ScreenshotBlock {
       ? { presentation: attachment.presentation }
       : {}),
     ...(attachment.status ? { status: attachment.status } : {}),
+    ...(attachment.transcription ? { transcription: attachment.transcription } : {}),
+    ...(attachment.waveform ? { waveform: attachment.waveform } : {}),
   };
 }
 

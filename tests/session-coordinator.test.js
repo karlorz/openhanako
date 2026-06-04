@@ -1975,6 +1975,8 @@ describe("SessionCoordinator", () => {
   it("forwards direct audio prompts through the existing Pi SDK media option", async () => {
     const sessionFile = path.join(tempDir, "mimo-audio.jsonl");
     const sessionPrompt = vi.fn();
+    const beginCurrentTurnNativeMedia = vi.fn(() => ({ id: 1, sessionPath: sessionFile }));
+    const endCurrentTurnNativeMedia = vi.fn();
     const mimoAudioModel = {
       id: "mimo-v2.5",
       provider: "mimo",
@@ -2030,6 +2032,10 @@ describe("SessionCoordinator", () => {
       getActivityStore: () => null,
       getAgentById: () => agent,
       listAgents: () => [],
+      getEngine: () => ({
+        beginCurrentTurnNativeMedia,
+        endCurrentTurnNativeMedia,
+      }),
     });
 
     await coordinator.createSession(null, tempDir, true);
@@ -2043,6 +2049,11 @@ describe("SessionCoordinator", () => {
       images: [{ type: "audio", data: "abc", mimeType: "audio/wav" }],
       audioAttachmentPaths: ["/tmp/voice.wav"],
     });
+    expect(beginCurrentTurnNativeMedia).toHaveBeenCalledWith(sessionFile, {
+      audios: [{ type: "audio", data: "abc", mimeType: "audio/wav" }],
+      audioAttachmentPaths: ["/tmp/voice.wav"],
+    });
+    expect(endCurrentTurnNativeMedia).toHaveBeenCalledWith({ id: 1, sessionPath: sessionFile });
   });
 
   it("fresh session freezes the effective memory state into meta for cache safety", async () => {

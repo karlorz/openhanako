@@ -481,6 +481,13 @@ describe('InputArea media send', () => {
       }));
       expect(mocks.wsSend).toHaveBeenCalledTimes(1);
     });
+    const uploadBody = JSON.parse(String(mocks.hanaFetch.mock.calls[0][1]?.body));
+    expect(uploadBody.waveform).toMatchObject({
+      version: 1,
+      durationMs: expect.any(Number),
+      source: 'computed',
+    });
+    expect(uploadBody.waveform.peaks.length).toBeGreaterThan(0);
     const payload = JSON.parse(String(mocks.wsSend.mock.calls[0][0]));
     expect(payload.text).toBe('');
     expect(payload.audios).toEqual([{
@@ -498,6 +505,11 @@ describe('InputArea media send', () => {
         mimeType: 'audio/wav',
         presentation: 'voice-input',
         listed: false,
+        waveform: expect.objectContaining({
+          version: 1,
+          peaks: expect.any(Array),
+          source: 'computed',
+        }),
       }],
     });
     expect(useStore.getState().attachedFiles).toEqual([]);

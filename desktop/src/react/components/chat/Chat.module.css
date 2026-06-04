@@ -233,7 +233,7 @@
     flex-direction: column;
     align-items: flex-start;
     gap: 0.42rem;
-    max-width: min(24rem, 100%);
+    max-width: min(18rem, 100%);
     padding: 0.72rem 0.72rem 0.52rem;
     color: var(--text);
     background: color-mix(in srgb, var(--bg-card) 88%, rgba(var(--accent-rgb), 0.08));
@@ -253,6 +253,7 @@
 
 .voiceInputCard .voiceInputAudioStrip {
     height: 2rem;
+    width: 100%;
     max-width: 100%;
     padding: 0;
     background: transparent;

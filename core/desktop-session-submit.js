@@ -217,6 +217,7 @@ function registerDisplayAttachments({ hanakoHome, sessionPath, attachments, regi
         storageKind: displayAttachmentStorageKind(hanakoHome, next.path),
         presentation: displayAttachmentPresentation(next),
         listed: listedForDisplayAttachment(next),
+        waveform: next.waveform,
       }));
       if (sessionFile) {
         next = {
@@ -229,6 +230,7 @@ function registerDisplayAttachments({ hanakoHome, sessionPath, attachments, regi
           listed: sessionFile.listed !== undefined ? sessionFile.listed !== false : listedForDisplayAttachment(next),
           status: sessionFile.status,
           missingAt: sessionFile.missingAt,
+          waveform: sessionFile.waveform || next.waveform,
         };
       }
     }

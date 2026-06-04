@@ -34,6 +34,14 @@ export interface UserAttachment {
   missingAt?: number | null;
   visionAuxiliary?: boolean;
   transcription?: VoiceTranscription;
+  waveform?: AudioWaveform;
+}
+
+export interface AudioWaveform {
+  version: 1;
+  peaks: number[];
+  durationMs?: number;
+  source?: 'computed' | 'fallback';
 }
 
 export interface VoiceTranscription {
@@ -80,6 +88,7 @@ export interface SessionRegistryFile {
   isDirectory?: boolean;
   resource?: ResourceEnvelope;
   transcription?: VoiceTranscription;
+  waveform?: AudioWaveform;
 }
 
 export interface ResourceEnvelope {
@@ -170,7 +179,7 @@ export type TextDecorator =
 
 // 物种 B：富内容块（通过 content_block 事件 push，不 upsert）
 export type RichBlock =
-  | { type: 'file'; fileId?: string; filePath: string; label: string; ext: string; mime?: string; kind?: string; storageKind?: string; presentation?: 'attachment' | 'voice-input' | string; listed?: boolean; status?: 'available' | 'expired' | string; missingAt?: number | null; resource?: ResourceEnvelope; mtimeMs?: number; size?: number | null; version?: FileVersion | null; replacesTaskId?: string }
+  | { type: 'file'; fileId?: string; filePath: string; label: string; ext: string; mime?: string; kind?: string; storageKind?: string; presentation?: 'attachment' | 'voice-input' | string; listed?: boolean; status?: 'available' | 'expired' | string; missingAt?: number | null; resource?: ResourceEnvelope; mtimeMs?: number; size?: number | null; version?: FileVersion | null; waveform?: AudioWaveform; replacesTaskId?: string }
   | { type: 'media_generation'; taskId: string; kind: 'image' | 'video' | string; status: 'pending' | 'failed' | 'aborted' | string; prompt?: string; batchId?: string; reason?: string }
   // COMPAT(create_artifact, remove no earlier than v0.133 after legacy sessions are migrated)
   | { type: 'artifact'; artifactId: string; artifactType: string; title: string; content: string; language?: string | null; fileId?: string; filePath?: string; label?: string; ext?: string; mime?: string; kind?: string; storageKind?: string; presentation?: 'attachment' | 'voice-input' | string; listed?: boolean; status?: 'available' | 'expired' | string; missingAt?: number | null; resource?: ResourceEnvelope; mtimeMs?: number; size?: number | null; version?: FileVersion | null }

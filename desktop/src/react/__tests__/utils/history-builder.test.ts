@@ -252,6 +252,12 @@ describe('buildItemsFromHistory user image restoration', () => {
         kind: 'audio',
         presentation: 'voice-input',
         listed: false,
+        waveform: {
+          version: 1,
+          peaks: [0.1, 0.4, 0.8],
+          durationMs: 1800,
+          source: 'computed',
+        },
         transcription: {
           status: 'ready',
           text: '今晚我们先把语音输入跑通。',
@@ -269,6 +275,12 @@ describe('buildItemsFromHistory user image restoration', () => {
     expect(first.data.attachments?.[0]).toMatchObject({
       fileId: 'sf_voice_1',
       presentation: 'voice-input',
+      waveform: {
+        version: 1,
+        peaks: [0.1, 0.4, 0.8],
+        durationMs: 1800,
+        source: 'computed',
+      },
       transcription: {
         status: 'ready',
         text: '今晚我们先把语音输入跑通。',

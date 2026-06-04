@@ -98,6 +98,7 @@ function sessionFileToContentBlock(file, extra = undefined) {
     ...(file.mtimeMs !== undefined ? { mtimeMs: file.mtimeMs } : {}),
     ...(file.size !== undefined ? { size: file.size } : {}),
     ...(file.version ? { version: file.version } : {}),
+    ...(file.waveform ? { waveform: file.waveform } : {}),
     ...(file.resource ? { resource: file.resource } : {}),
   };
 }

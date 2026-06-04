@@ -1550,9 +1550,11 @@ export class SessionCoordinator {
     assertVideoInputSupported(this._session.model, opts?.videos);
     assertAudioInputSupported(this._session.model, opts?.audios);
     const promptOpts = buildPromptMediaOptions(opts);
+    const nativeMediaTurn = engine?.beginCurrentTurnNativeMedia?.(sp, opts);
     try {
       await this._session.prompt(text, promptOpts);
     } finally {
+      engine?.endCurrentTurnNativeMedia?.(nativeMediaTurn);
       pruneSessionInlineMediaHistory(this._session);
       if (sp) this._scheduleRuntimePressureCheck(sp, "prompt");
     }
@@ -1635,9 +1637,11 @@ export class SessionCoordinator {
     assertVideoInputSupported(entry.session.model, opts?.videos);
     assertAudioInputSupported(entry.session.model, opts?.audios);
     const promptOpts = buildPromptMediaOptions(opts);
+    const nativeMediaTurn = engine?.beginCurrentTurnNativeMedia?.(sessionPath, opts);
     try {
       await entry.session.prompt(text, promptOpts);
     } finally {
+      engine?.endCurrentTurnNativeMedia?.(nativeMediaTurn);
       pruneSessionInlineMediaHistory(entry.session);
       this._scheduleRuntimePressureCheck(sessionPath, "prompt_session");
     }
