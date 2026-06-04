@@ -668,7 +668,7 @@
       "done": "🔔 Notification sent",
       "failed": "🔔 Notification didn't go through"
     },
-    "artifact": {
+    "create_artifact": {
       "running": "🖼️ {name} is doodling away",
       "done": "🖼️ Masterpiece ready",
       "failed": "🖼️ Canvas fell apart"
@@ -695,6 +695,91 @@
       "done": "⚙️ Settings updated",
       "failed": "⚙️ Couldn't update"
     },
+    "automation": {
+      "running": "🤖 {name} is dispatching a shortcut",
+      "done": "🤖 Shortcut completed",
+      "failed": "🤖 Shortcut execution failed"
+    },
+    "computer": {
+      "running": "🖥️ {name} is controlling your screen",
+      "done": "🖥️ Screen control done",
+      "failed": "🖥️ Screen control failed"
+    },
+    "terminal": {
+      "running": "💻 {name} is running a command",
+      "done": "💻 Command done",
+      "failed": "💻 Command execution failed"
+    },
+    "current_status": {
+      "running": "🕐 {name} is checking what's going on",
+      "done": "🕐 Got it",
+      "failed": "🕐 Couldn't get the info"
+    },
+    "pin_memory": {
+      "running": "📌 {name} is pinning this down",
+      "done": "📌 Pinned",
+      "failed": "📌 Pinning failed"
+    },
+    "unpin_memory": {
+      "running": "📌 {name} is unpinning this",
+      "done": "📌 Unpinned",
+      "failed": "📌 Unpinning failed"
+    },
+    "recall_experience": {
+      "running": "🧠 {name} is flipping through the experience notes",
+      "done": "🧠 Found something",
+      "failed": "🧠 Nothing relevant in the notes"
+    },
+    "record_experience": {
+      "running": "🧠 {name} is jotting this down",
+      "done": "🧠 Noted",
+      "failed": "🧠 Couldn't save the note"
+    },
+    "session_folders": {
+      "running": "📁 {name} is adjusting folder permissions",
+      "done": "📁 Adjusted",
+      "failed": "📁 Adjustment failed"
+    },
+    "stop_task": {
+      "running": "🛑 {name} is stopping a background task",
+      "done": "🛑 Stopped",
+      "failed": "🛑 Couldn't stop"
+    },
+    "todo_write": {
+      "running": "📝 {name} is writing a checklist",
+      "done": "📝 Checklist ready",
+      "failed": "📝 Checklist write failed"
+    },
+    "generate-image": {
+      "running": "🎨 {name} is creating an image",
+      "done": "🎨 Image ready",
+      "failed": "🎨 Image generation failed"
+    },
+    "generate-video": {
+      "running": "🎬 {name} is generating a video",
+      "done": "🎬 Video ready",
+      "failed": "🎬 Video generation failed"
+    },
+    "create-cover": {
+      "running": "🎨 {name} is designing a cover",
+      "done": "🎨 Cover ready",
+      "failed": "🎨 Cover generation failed"
+    },
+    "apply-cover-candidate": {
+      "running": "🖼️ {name} is applying the cover",
+      "done": "🖼️ Cover applied",
+      "failed": "🖼️ Couldn't apply the cover"
+    },
+    "get-cover-style-guide": {
+      "running": "📖 {name} is looking up the style guide",
+      "done": "📖 Found it",
+      "failed": "📖 Couldn't find the style guide"
+    },
+    "list-capabilities": {
+      "running": "📋 {name} is listing capabilities",
+      "done": "📋 All listed",
+      "failed": "📋 Listing failed"
+    },
     "_fallback": {
       "running": "🔧 {name} is busy working…",
       "done": "🔧 {name} all done",
@@ -707,6 +792,9 @@
       "noTasksQualifier": " (status: {status})"
     },
     "workflow": {
+      "running": "🔄 {name} is orchestrating a workflow",
+      "done": "🔄 Workflow complete",
+      "failed": "🔄 Workflow execution failed",
       "scriptInvalid": "Workflow script invalid: {message}",
       "dispatched": "Workflow \"{summary}\" has been dispatched for background execution (task {taskId}). Results will automatically return to the conversation when complete.",
       "syncComplete": "Workflow \"{name}\" complete, dispatched {count} agents.\n\nResult:\n{result}",

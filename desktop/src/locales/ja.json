@@ -632,7 +632,7 @@
       "done": "🔔 通知おくった",
       "failed": "🔔 通知が送れなかった"
     },
-    "artifact": {
+    "create_artifact": {
       "running": "🖼️ {name} はお絵描き中",
       "done": "🖼️ できた",
       "failed": "🖼️ 崩れちゃった"
@@ -656,6 +656,96 @@
       "running": "⚙️ {name} は設定を変更中",
       "done": "⚙️ 変更した",
       "failed": "⚙️ 変更できなかった"
+    },
+    "automation": {
+      "running": "🤖 {name} はショートカットを実行中",
+      "done": "🤖 ショートカット完了",
+      "failed": "🤖 ショートカットの実行に失敗"
+    },
+    "computer": {
+      "running": "🖥️ {name} は画面を操作中",
+      "done": "🖥️ 操作完了",
+      "failed": "🖥️ 画面操作に失敗"
+    },
+    "terminal": {
+      "running": "💻 {name} はコマンドを実行中",
+      "done": "💻 コマンド完了",
+      "failed": "💻 コマンドの実行に失敗"
+    },
+    "current_status": {
+      "running": "🕐 {name} は今の状況を確認中",
+      "done": "🕐 把握した",
+      "failed": "🕐 情報を取得できなかった"
+    },
+    "pin_memory": {
+      "running": "📌 {name} はこれをピン留め中",
+      "done": "📌 ピン留めした",
+      "failed": "📌 ピン留めに失敗"
+    },
+    "unpin_memory": {
+      "running": "📌 {name} はピンを外し中",
+      "done": "📌 外した",
+      "failed": "📌 ピンを外せなかった"
+    },
+    "recall_experience": {
+      "running": "🧠 {name} は経験ノートをめくっている",
+      "done": "🧠 見つけた",
+      "failed": "🧠 関連する経験がなかった"
+    },
+    "record_experience": {
+      "running": "🧠 {name} は経験を書き留めている",
+      "done": "🧠 メモした",
+      "failed": "🧠 記録できなかった"
+    },
+    "session_folders": {
+      "running": "📁 {name} はフォルダ権限を調整中",
+      "done": "📁 調整した",
+      "failed": "📁 調整に失敗"
+    },
+    "stop_task": {
+      "running": "🛑 {name} はバックグラウンドタスクを停止中",
+      "done": "🛑 止めた",
+      "failed": "🛑 停止できなかった"
+    },
+    "todo_write": {
+      "running": "📝 {name} はチェックリストを書いている",
+      "done": "📝 書けた",
+      "failed": "📝 チェックリストの書き込みに失敗"
+    },
+    "workflow": {
+      "running": "🔄 {name} はワークフローを編成中",
+      "done": "🔄 編成完了",
+      "failed": "🔄 ワークフローの実行に失敗"
+    },
+    "generate-image": {
+      "running": "🎨 {name} は画像を作成中",
+      "done": "🎨 できた",
+      "failed": "🎨 画像生成に失敗"
+    },
+    "generate-video": {
+      "running": "🎬 {name} は動画を生成中",
+      "done": "🎬 動画できた",
+      "failed": "🎬 動画生成に失敗"
+    },
+    "create-cover": {
+      "running": "🎨 {name} はカバーをデザイン中",
+      "done": "🎨 カバーできた",
+      "failed": "🎨 カバー生成に失敗"
+    },
+    "apply-cover-candidate": {
+      "running": "🖼️ {name} はカバーを適用中",
+      "done": "🖼️ 適用した",
+      "failed": "🖼️ カバーの適用に失敗"
+    },
+    "get-cover-style-guide": {
+      "running": "📖 {name} はスタイルガイドを確認中",
+      "done": "📖 見つけた",
+      "failed": "📖 スタイルガイドが見つからなかった"
+    },
+    "list-capabilities": {
+      "running": "📋 {name} は機能を確認中",
+      "done": "📋 確認した",
+      "failed": "📋 機能の確認に失敗"
     },
     "_fallback": {
       "running": "🔧 {name} は作業中…",

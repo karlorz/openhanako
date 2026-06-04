@@ -668,7 +668,7 @@
       "done": "🔔 通知发了",
       "failed": "🔔 通知没发出去"
     },
-    "artifact": {
+    "create_artifact": {
       "running": "🖼️ {name} 正在写写画画",
       "done": "🖼️ 画好了",
       "failed": "🖼️ 画崩了"
@@ -695,6 +695,91 @@
       "done": "⚙️ 改好了",
       "failed": "⚙️ 没改成"
     },
+    "automation": {
+      "running": "🤖 {name} 正在调度快捷指令",
+      "done": "🤖 指令跑完了",
+      "failed": "🤖 指令执行失败"
+    },
+    "computer": {
+      "running": "🖥️ {name} 正在操控你的屏幕",
+      "done": "🖥️ 操控完了",
+      "failed": "🖥️ 操控失败"
+    },
+    "terminal": {
+      "running": "💻 {name} 正在敲命令",
+      "done": "💻 敲完了",
+      "failed": "💻 命令执行失败"
+    },
+    "current_status": {
+      "running": "🕐 {name} 正在看看现在什么情况",
+      "done": "🕐 掌握信息了",
+      "failed": "🕐 获取信息失败"
+    },
+    "pin_memory": {
+      "running": "📌 {name} 正在把这件事钉起来",
+      "done": "📌 钉好了",
+      "failed": "📌 置顶失败"
+    },
+    "unpin_memory": {
+      "running": "📌 {name} 正在把钉子拔下来",
+      "done": "📌 拔掉了",
+      "failed": "📌 取消置顶失败"
+    },
+    "recall_experience": {
+      "running": "🧠 {name} 正在翻经验本",
+      "done": "🧠 翻到了",
+      "failed": "🧠 没找到相关经验"
+    },
+    "record_experience": {
+      "running": "🧠 {name} 正在把经验记下来",
+      "done": "🧠 记好了",
+      "failed": "🧠 记录失败"
+    },
+    "session_folders": {
+      "running": "📁 {name} 正在调整文件夹权限",
+      "done": "📁 调好了",
+      "failed": "📁 调整失败"
+    },
+    "stop_task": {
+      "running": "🛑 {name} 正在叫停后台任务",
+      "done": "🛑 停下来了",
+      "failed": "🛑 停止失败"
+    },
+    "todo_write": {
+      "running": "📝 {name} 正在写清单",
+      "done": "📝 写好了",
+      "failed": "📝 清单写入失败"
+    },
+    "generate-image": {
+      "running": "🎨 {name} 正在作图",
+      "done": "🎨 画好了",
+      "failed": "🎨 作图失败"
+    },
+    "generate-video": {
+      "running": "🎬 {name} 正在生成视频",
+      "done": "🎬 视频好了",
+      "failed": "🎬 视频生成失败"
+    },
+    "create-cover": {
+      "running": "🎨 {name} 正在设计封面",
+      "done": "🎨 封面好了",
+      "failed": "🎨 封面生成失败"
+    },
+    "apply-cover-candidate": {
+      "running": "🖼️ {name} 正在换封面",
+      "done": "🖼️ 换好了",
+      "failed": "🖼️ 封面应用失败"
+    },
+    "get-cover-style-guide": {
+      "running": "📖 {name} 正在翻风格手册",
+      "done": "📖 翻到了",
+      "failed": "📖 获取风格指南失败"
+    },
+    "list-capabilities": {
+      "running": "📋 {name} 正在清点能力",
+      "done": "📋 点完了",
+      "failed": "📋 能力清点失败"
+    },
     "_fallback": {
       "running": "🔧 {name} 正在忙碌中…",
       "done": "🔧 {name} 忙完了",
@@ -707,6 +792,9 @@
       "noTasksQualifier": "（状态: {status}）"
     },
     "workflow": {
+      "running": "🔄 {name} 正在编排工作流",
+      "done": "🔄 编排完了",
+      "failed": "🔄 工作流执行失败",
       "scriptInvalid": "workflow 脚本非法: {message}",
       "dispatched": "workflow \"{summary}\" 已派出后台执行（任务 {taskId}），完成后结果会自动回到对话。",
       "syncComplete": "workflow \"{name}\" 完成，派出 {count} 个 agent。\n\n结果:\n{result}",

@@ -632,7 +632,7 @@
       "done": "🔔 通知發了",
       "failed": "🔔 通知沒發出去"
     },
-    "artifact": {
+    "create_artifact": {
       "running": "🖼️ {name} 正在寫寫畫畫",
       "done": "🖼️ 畫好了",
       "failed": "🖼️ 畫崩了"
@@ -656,6 +656,96 @@
       "running": "⚙️ {name} 正在改設定",
       "done": "⚙️ 改好了",
       "failed": "⚙️ 沒改成"
+    },
+    "automation": {
+      "running": "🤖 {name} 正在調度快捷指令",
+      "done": "🤖 指令跑完了",
+      "failed": "🤖 指令執行失敗"
+    },
+    "computer": {
+      "running": "🖥️ {name} 正在操控你的螢幕",
+      "done": "🖥️ 操控完了",
+      "failed": "🖥️ 操控失敗"
+    },
+    "terminal": {
+      "running": "💻 {name} 正在敲命令",
+      "done": "💻 敲完了",
+      "failed": "💻 命令執行失敗"
+    },
+    "current_status": {
+      "running": "🕐 {name} 正在看看現在什麼情況",
+      "done": "🕐 掌握資訊了",
+      "failed": "🕐 取得資訊失敗"
+    },
+    "pin_memory": {
+      "running": "📌 {name} 正在把這件事釘起來",
+      "done": "📌 釘好了",
+      "failed": "📌 置頂失敗"
+    },
+    "unpin_memory": {
+      "running": "📌 {name} 正在把釘子拔下來",
+      "done": "📌 拔掉了",
+      "failed": "📌 取消置頂失敗"
+    },
+    "recall_experience": {
+      "running": "🧠 {name} 正在翻經驗本",
+      "done": "🧠 翻到了",
+      "failed": "🧠 沒找到相關經驗"
+    },
+    "record_experience": {
+      "running": "🧠 {name} 正在把經驗記下來",
+      "done": "🧠 記好了",
+      "failed": "🧠 記錄失敗"
+    },
+    "session_folders": {
+      "running": "📁 {name} 正在調整資料夾權限",
+      "done": "📁 調好了",
+      "failed": "📁 調整失敗"
+    },
+    "stop_task": {
+      "running": "🛑 {name} 正在叫停背景任務",
+      "done": "🛑 停下來了",
+      "failed": "🛑 停止失敗"
+    },
+    "todo_write": {
+      "running": "📝 {name} 正在寫清單",
+      "done": "📝 寫好了",
+      "failed": "📝 清單寫入失敗"
+    },
+    "workflow": {
+      "running": "🔄 {name} 正在編排工作流",
+      "done": "🔄 編排完了",
+      "failed": "🔄 工作流執行失敗"
+    },
+    "generate-image": {
+      "running": "🎨 {name} 正在作圖",
+      "done": "🎨 畫好了",
+      "failed": "🎨 作圖失敗"
+    },
+    "generate-video": {
+      "running": "🎬 {name} 正在生成影片",
+      "done": "🎬 影片好了",
+      "failed": "🎬 影片生成失敗"
+    },
+    "create-cover": {
+      "running": "🎨 {name} 正在設計封面",
+      "done": "🎨 封面好了",
+      "failed": "🎨 封面生成失敗"
+    },
+    "apply-cover-candidate": {
+      "running": "🖼️ {name} 正在換封面",
+      "done": "🖼️ 換好了",
+      "failed": "🖼️ 封面套用失敗"
+    },
+    "get-cover-style-guide": {
+      "running": "📖 {name} 正在翻風格手冊",
+      "done": "📖 翻到了",
+      "failed": "📖 取得風格指南失敗"
+    },
+    "list-capabilities": {
+      "running": "📋 {name} 正在清點能力",
+      "done": "📋 點完了",
+      "failed": "📋 能力清點失敗"
     },
     "_fallback": {
       "running": "🔧 {name} 正在忙碌中…",

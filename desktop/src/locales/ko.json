@@ -632,7 +632,7 @@
       "done": "🔔 알림 보냈어요",
       "failed": "🔔 알림을 보내지 못했어요"
     },
-    "artifact": {
+    "create_artifact": {
       "running": "🖼️ {name}이(가) 낙서 중이에요",
       "done": "🖼️ 완성!",
       "failed": "🖼️ 그리다가 실패했어요"
@@ -656,6 +656,96 @@
       "running": "⚙️ {name}이(가) 설정을 바꾸고 있어요",
       "done": "⚙️ 변경 완료",
       "failed": "⚙️ 변경 못 했어요"
+    },
+    "automation": {
+      "running": "🤖 {name}이(가) 단축어를 실행 중이에요",
+      "done": "🤖 단축어 완료",
+      "failed": "🤖 단축어 실행 실패"
+    },
+    "computer": {
+      "running": "🖥️ {name}이(가) 화면을 조작하고 있어요",
+      "done": "🖥️ 조작 끝",
+      "failed": "🖥️ 화면 조작 실패"
+    },
+    "terminal": {
+      "running": "💻 {name}이(가) 명령어를 실행 중이에요",
+      "done": "💻 명령어 끝",
+      "failed": "💻 명령어 실행 실패"
+    },
+    "current_status": {
+      "running": "🕐 {name}이(가) 지금 상황을 확인 중이에요",
+      "done": "🕐 파악했어요",
+      "failed": "🕐 정보를 가져올 수 없었어요"
+    },
+    "pin_memory": {
+      "running": "📌 {name}이(가) 이 내용을 고정하고 있어요",
+      "done": "📌 고정했어요",
+      "failed": "📌 고정 실패"
+    },
+    "unpin_memory": {
+      "running": "📌 {name}이(가) 고정을 해제하고 있어요",
+      "done": "📌 해제했어요",
+      "failed": "📌 고정 해제 실패"
+    },
+    "recall_experience": {
+      "running": "🧠 {name}이(가) 경험 노트를 넘겨보고 있어요",
+      "done": "🧠 찾았어요",
+      "failed": "🧠 관련 경험이 없어요"
+    },
+    "record_experience": {
+      "running": "🧠 {name}이(가) 경험을 기록하고 있어요",
+      "done": "🧠 기록했어요",
+      "failed": "🧠 기록 실패"
+    },
+    "session_folders": {
+      "running": "📁 {name}이(가) 폴더 권한을 조정 중이에요",
+      "done": "📁 조정 완료",
+      "failed": "📁 조정 실패"
+    },
+    "stop_task": {
+      "running": "🛑 {name}이(가) 백그라운드 작업을 멈추고 있어요",
+      "done": "🛑 멈췄어요",
+      "failed": "🛑 멈출 수 없었어요"
+    },
+    "todo_write": {
+      "running": "📝 {name}이(가) 체크리스트를 쓰고 있어요",
+      "done": "📝 다 적었어요",
+      "failed": "📝 체크리스트 작성 실패"
+    },
+    "workflow": {
+      "running": "🔄 {name}이(가) 워크플로를 편성 중이에요",
+      "done": "🔄 편성 완료",
+      "failed": "🔄 워크플로 실행 실패"
+    },
+    "generate-image": {
+      "running": "🎨 {name}이(가) 이미지를 만들고 있어요",
+      "done": "🎨 완성",
+      "failed": "🎨 이미지 생성 실패"
+    },
+    "generate-video": {
+      "running": "🎬 {name}이(가) 영상을 생성 중이에요",
+      "done": "🎬 영상 완성",
+      "failed": "🎬 영상 생성 실패"
+    },
+    "create-cover": {
+      "running": "🎨 {name}이(가) 커버를 디자인 중이에요",
+      "done": "🎨 커버 완성",
+      "failed": "🎨 커버 생성 실패"
+    },
+    "apply-cover-candidate": {
+      "running": "🖼️ {name}이(가) 커버를 적용 중이에요",
+      "done": "🖼️ 적용했어요",
+      "failed": "🖼️ 커버 적용 실패"
+    },
+    "get-cover-style-guide": {
+      "running": "📖 {name}이(가) 스타일 가이드를 확인 중이에요",
+      "done": "📖 찾았어요",
+      "failed": "📖 스타일 가이드를 찾을 수 없어요"
+    },
+    "list-capabilities": {
+      "running": "📋 {name}이(가) 기능을 확인 중이에요",
+      "done": "📋 확인 완료",
+      "failed": "📋 기능 확인 실패"
     },
     "_fallback": {
       "running": "🔧 {name}이(가) 열심히 작업 중이에요…",
