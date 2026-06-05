@@ -5,7 +5,7 @@ import { ParallelStepIcon, PipelineStepIcon, LogStepIcon } from './WorkflowStepI
 import type { Agent } from '../../types';
 import styles from './WorkflowProgressDots.module.css';
 
-const SIZE = { sm: 16, md: 20 } as const;
+const SIZE = { sm: 12, md: 20 } as const;
 
 interface WorkflowProgressDotsProps {
   nodes: AgentActivityEntry[];

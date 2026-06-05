@@ -13,7 +13,6 @@ import { selectAgentActivities, type AgentActivityEntry } from '../../stores/age
 import { AgentAvatar, resolveAgentDisplayInfo } from '../../utils/agent-display';
 import { SubagentSessionPreview } from '../chat/SubagentSessionPreview';
 import { formatElapsed } from '../../utils/format-duration';
-import { WorkflowProgressDots } from '../shared/WorkflowProgressDots';
 import { ParallelStepIcon, PipelineStepIcon, LogStepIcon } from '../shared/WorkflowStepIcons';
 import type { Agent } from '../../types';
 import styles from './WorkflowCard.module.css';
@@ -52,12 +51,12 @@ function Chevron({ open }: { open: boolean }) {
   );
 }
 
-function StepShape({ stepKind }: { stepKind: string | null | undefined }) {
+function StepShape({ stepKind, size = 16 }: { stepKind: string | null | undefined; size?: number }) {
   switch (stepKind) {
-    case 'parallel': return <ParallelStepIcon size={16} />;
-    case 'pipeline': return <PipelineStepIcon size={16} />;
-    case 'log': return <LogStepIcon size={16} />;
-    default: return <PipelineStepIcon size={16} />;
+    case 'parallel': return <ParallelStepIcon size={size} />;
+    case 'pipeline': return <PipelineStepIcon size={size} />;
+    case 'log': return <LogStepIcon size={size} />;
+    default: return <PipelineStepIcon size={size} />;
   }
 }
 
@@ -139,7 +138,7 @@ function WorkflowNodeRow({ node, agents, open, onToggle }: {
   );
 }
 
-/** Phase 分组区：Phase 标题（名 + 进度条 + 计数）+ 点阵 + 可折叠节点列表。 */
+/** Phase 分组区：标题（名 + 迷你图标×5 + 计数）+ 可折叠节点列表。running 自动展开。 */
 function PhaseSection({ phaseLabel, nodes, agents, expandedNodes, onToggleNode }: {
   phaseLabel: string | null;
   nodes: AgentActivityEntry[];
@@ -152,7 +151,12 @@ function PhaseSection({ phaseLabel, nodes, agents, expandedNodes, onToggleNode }
   const [open, setOpen] = useState(hasRunning);
   const doneCount = nodes.filter((n) => n.status === 'done').length;
   const total = nodes.length;
-  const pct = total > 0 ? Math.round((doneCount / total) * 100) : 0;
+  const sorted = [...nodes].sort((a, b) => (a.startedAt ?? 0) - (b.startedAt ?? 0));
+  const preview = sorted.slice(0, 5);
+
+  useEffect(() => {
+    if (hasRunning) setOpen(true);
+  }, [hasRunning]);
 
   return (
     <div className={styles.phaseSection}>
@@ -160,15 +164,31 @@ function PhaseSection({ phaseLabel, nodes, agents, expandedNodes, onToggleNode }
         <button type="button" className={styles.phaseHeader} onClick={() => setOpen((o) => !o)}>
           <Chevron open={open} />
           <span className={styles.phaseName} title={phaseLabel}>{phaseLabel}</span>
-          <span className={styles.progressTrack}>
-            <span className={styles.progressFill} style={{ width: `${pct}%` }} />
+          <span className={styles.headerDots}>
+            {preview.map((node) => {
+              if (node.kind === 'workflow_step') {
+                return (
+                  <span key={node.id} className={styles.miniDot} data-step-kind={node.stepKind}>
+                    <StepShape stepKind={node.stepKind} size={12} />
+                  </span>
+                );
+              }
+              const info = resolveAgentDisplayInfo({
+                id: node.agentId,
+                agents,
+                fallbackAgentName: node.label || node.agentName || node.agentId || 'agent',
+              });
+              return (
+                <span key={node.id} className={styles.miniAvatar}>
+                  <AgentAvatar info={info} alt={info.displayName} />
+                </span>
+              );
+            })}
+            {sorted.length > 5 && <span className={styles.miniEllipsis}>…</span>}
           </span>
           <span className={styles.phaseCount}>{doneCount}/{total}</span>
         </button>
       )}
-      <div className={styles.phaseDots}>
-        <WorkflowProgressDots nodes={nodes} agents={agents} size="md" />
-      </div>
       {(open || !phaseLabel) && (
         <div className={styles.phaseNodes}>
           {nodes.map((n) => (
