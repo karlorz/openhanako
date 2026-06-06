@@ -107,6 +107,20 @@ describe("splitByScope", () => {
     expect(agent.bridge.receiptEnabled).toBeUndefined();
   });
 
+  it("extracts automation permission mode as a global work setting", () => {
+    const partial = {
+      automation: { permissionMode: "auto", localDraft: true },
+      desk: { heartbeat_interval: 20 },
+    };
+    const { global: g, agent }: any = splitByScope(partial);
+
+    expect(g).toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: "automation.permissionMode", value: "auto" }),
+    ]));
+    expect(agent.automation).toEqual({ localDraft: true });
+    expect(agent.desk.heartbeat_interval).toBe(20);
+  });
+
   it("returns empty global array when no global fields present", () => {
     const partial = { models: ["qwen-plus"], name: "Alice" };
     const { global: g, agent }: any = splitByScope(partial);
@@ -194,6 +208,7 @@ describe("injectGlobalFields", () => {
       getBridgePermissionMode: () => "auto",
       getBridgeReadOnly: () => true,
       getBridgeReceiptEnabled: () => false,
+      getAutomationPermissionMode: () => "auto",
       getNetworkProxy: () => ({ mode: "direct" }),
       getKeepAwake: () => true,
     };
@@ -212,6 +227,7 @@ describe("injectGlobalFields", () => {
     expect(config.bridge?.permissionMode).toBe("auto");
     expect(config.bridge?.readOnly).toBe(true);
     expect(config.bridge?.receiptEnabled).toBe(false);
+    expect(config.automation?.permissionMode).toBe("auto");
     expect(config.network_proxy).toEqual({ mode: "direct" });
     expect(config.keep_awake).toBe(true);
   });

@@ -11,6 +11,7 @@ const BRIDGE_PERMISSION_MODE_VALUES = new Set([
   SESSION_PERMISSION_MODES.OPERATE,
   SESSION_PERMISSION_MODES.READ_ONLY,
 ]);
+const AUTOMATION_PERMISSION_MODE_VALUES = BRIDGE_PERMISSION_MODE_VALUES;
 
 const INFORMATION_TOOLS = new Set([
   "read",
@@ -101,6 +102,12 @@ export function normalizeBridgePermissionMode(raw) {
   const source = typeof raw === "string" ? raw : raw?.permissionMode;
   if (BRIDGE_PERMISSION_MODE_VALUES.has(source)) return source;
   if (raw?.readOnly === true) return SESSION_PERMISSION_MODES.READ_ONLY;
+  return SESSION_PERMISSION_MODES.AUTO;
+}
+
+export function normalizeAutomationPermissionMode(raw) {
+  const source = typeof raw === "string" ? raw : raw?.permissionMode;
+  if (AUTOMATION_PERMISSION_MODE_VALUES.has(source)) return source;
   return SESSION_PERMISSION_MODES.AUTO;
 }
 

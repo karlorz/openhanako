@@ -450,7 +450,7 @@ export function SkillsTab() {
     }
   };
 
-  const skillInstallCfg = settingsConfig?.capabilities?.learn_skills || {};
+  const skillInstallCfg = settingsConfig ? settingsConfig.capabilities?.learn_skills || {} : undefined;
   const discoveredPaths = externalPathsData.discovered;
   const configuredOnlyPaths = externalPathsData.configured.filter(
     p => !discoveredPaths.some(d => d.dirPath === p),

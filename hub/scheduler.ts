@@ -356,6 +356,8 @@ export class Scheduler {
     if (ctx.cwd) opts.cwd = ctx.cwd;
     opts.workspaceFolders = ctx.workspaceFolders;
     if (ctx.sourceSessionPath) opts.parentSessionPath = ctx.sourceSessionPath;
+    opts.permissionMode = executor.permissionMode || job.permissionMode || this._engine.getAutomationPermissionMode?.() || "auto";
+    opts.allowHumanApproval = false;
     return opts;
   }
 

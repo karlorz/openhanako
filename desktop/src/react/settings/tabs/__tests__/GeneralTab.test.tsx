@@ -36,7 +36,7 @@ vi.mock('../../widgets/Toggle', () => ({
     ariaLabel,
     disabled,
   }: {
-    on: boolean;
+    on: boolean | undefined;
     onChange: (next: boolean) => void;
     label?: string;
     ariaLabel?: string;
@@ -45,9 +45,13 @@ vi.mock('../../widgets/Toggle', () => ({
     <button
       type="button"
       aria-label={ariaLabel || label}
-      data-testid={`${ariaLabel || label}-${on ? 'on' : 'off'}`}
-      disabled={disabled}
-      onClick={() => onChange(!on)}
+      aria-busy={on === undefined ? 'true' : undefined}
+      aria-checked={on === undefined ? 'mixed' : on ? 'true' : 'false'}
+      data-testid={`${ariaLabel || label}-${on === undefined ? 'loading' : on ? 'on' : 'off'}`}
+      disabled={disabled || on === undefined}
+      onClick={() => {
+        if (on !== undefined) onChange(!on);
+      }}
     >
       toggle
     </button>
@@ -151,6 +155,20 @@ describe('GeneralTab', () => {
     expect(quickChatSection.compareDocumentPosition(notificationSection) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getByTestId('settings.general.launchAtLogin-off')).toBeTruthy();
     expect(screen.getByTestId('settings.general.keepAwake-off')).toBeTruthy();
+  });
+
+  it('keeps the keep-awake switch in loading state until settings config is ready', async () => {
+    installHana();
+    useSettingsStore.setState({ settingsConfig: null });
+
+    render(<GeneralTab />);
+
+    const keepAwakeSwitch = await screen.findByTestId('settings.general.keepAwake-loading');
+    expect(keepAwakeSwitch.getAttribute('aria-checked')).toBe('mixed');
+    expect((keepAwakeSwitch as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(keepAwakeSwitch);
+    expect(autoSaveConfig).not.toHaveBeenCalled();
+    expect(setKeepAwakeEnabled).not.toHaveBeenCalled();
   });
 
   it('updates the launch-at-login row from the main-process result', async () => {

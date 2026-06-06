@@ -14,6 +14,7 @@ import { CharacterCardPreviewOverlay, type CharacterCardPlan } from '../overlays
 import { SettingsSection } from '../components/SettingsSection';
 import { SettingsRow } from '../components/SettingsRow';
 import { Toggle } from '../widgets/Toggle';
+import { readConfigBoolean } from '../resource-state';
 import styles from '../Settings.module.css';
 import {
   type ExpCategory, parseExperience,
@@ -96,8 +97,8 @@ export function AgentTab() {
   }, [availableModels, currentModel]);
   const currentModelUnavailable = !!currentModel && !availableModels.some(m => `${m.provider}/${m.id}` === currentModel);
 
-  const memoryEnabled = settingsConfig?.memory?.enabled !== false;
-  const experienceEnabled = settingsConfig?.experience?.enabled === true;
+  const memoryEnabled = readConfigBoolean(settingsConfig, cfg => cfg.memory?.enabled, true);
+  const experienceEnabled = readConfigBoolean(settingsConfig, cfg => cfg.experience?.enabled, false);
   const hasAvailableToolsField = !!settingsConfig && Object.prototype.hasOwnProperty.call(settingsConfig, 'availableTools');
   const availableTools = hasAvailableToolsField ? settingsConfig?.availableTools : undefined;
 
@@ -368,7 +369,7 @@ export function AgentTab() {
           />}
         />
         <div style={{ padding: 'var(--space-sm) var(--space-md)' }}>
-          {!experienceEnabled ? (
+          {experienceEnabled === undefined ? null : experienceEnabled === false ? (
             <div className={styles['exp-empty']}>{t('settings.experience.paused')}</div>
           ) : expCategories.length === 0 ? (
             <div className={styles['exp-empty']}>{t('settings.experience.empty')}</div>
@@ -398,7 +399,7 @@ export function AgentTab() {
       {/* 默认关闭 dm / beautify / workflow，与后端 DEFAULT_DISABLED_TOOL_NAMES 保持同步 */}
       <AgentToolsSection
         availableTools={availableTools}
-        disabled={settingsConfig?.tools?.disabled ?? ["dm", "beautify", "workflow"]}
+        disabled={settingsConfig ? settingsConfig.tools?.disabled ?? ["dm", "beautify", "workflow"] : undefined}
       />
 
       {exportPlanningAgentId && createPortal((

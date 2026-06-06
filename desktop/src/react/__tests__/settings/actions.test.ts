@@ -38,7 +38,11 @@ function resetState() {
   Object.assign(mockState, {
     currentAgentId: 'agent-a',
     settingsAgentId: null,
+    activeServerConnectionId: null,
     settingsConfig: null,
+    settingsConfigKey: null,
+    settingsConfigStatus: 'idle',
+    settingsConfigError: null,
     globalModelsConfig: null,
     homeFolder: null,
     currentPins: [],
@@ -108,10 +112,14 @@ describe('settings actions', () => {
 
     mockState.settingsAgentId = 'agent-a';
     const first = loadSettingsConfig();
+    expect(mockState.settingsConfigKey).toBe('local:config:agent-a');
+    expect(mockState.settingsConfigStatus).toBe('loading');
 
     mockState.settingsAgentId = 'agent-b';
     await loadSettingsConfig();
 
+    expect(mockState.settingsConfigKey).toBe('local:config:agent-b');
+    expect(mockState.settingsConfigStatus).toBe('ready');
     expect(mockState.settingsConfig.agent.name).toBe('agent-b-name');
     expect(mockState.currentPins).toEqual(['agent-b-pin']);
     expect(mockState.homeFolder).toBe('/agent-b/home');
@@ -124,6 +132,50 @@ describe('settings actions', () => {
     expect(mockState.settingsConfig.agent.name).toBe('agent-b-name');
     expect(mockState.currentPins).toEqual(['agent-b-pin']);
     expect(mockState.homeFolder).toBe('/agent-b/home');
+  });
+
+  it('切换 settings owner 时会先清掉旧配置，避免新页面显示旧开关状态', async () => {
+    mockFetch.mockImplementation((path: string) => {
+      const { agentId, endpoint } = parseEndpoint(path);
+      return Promise.resolve(jsonResponse(buildPayload(agentId, endpoint)));
+    });
+
+    const { loadSettingsConfig } = await import('../../settings/actions');
+
+    mockState.settingsAgentId = 'agent-a';
+    await loadSettingsConfig();
+    expect(mockState.settingsConfig.agent.name).toBe('agent-a-name');
+    expect(mockState.settingsConfigStatus).toBe('ready');
+
+    const deferred = new Map<string, (value: Response) => void>();
+    mockFetch.mockImplementation((path: string) => {
+      const { agentId, endpoint } = parseEndpoint(path);
+      if (agentId === 'agent-b') {
+        return new Promise<Response>((resolve) => {
+          deferred.set(endpoint, resolve);
+        });
+      }
+      if (agentId === 'user') return Promise.resolve(jsonResponse(buildPayload('user', endpoint)));
+      if (agentId === 'global') return Promise.resolve(jsonResponse(buildPayload('agent-b', endpoint)));
+      throw new Error(`unexpected agent: ${agentId}`);
+    });
+
+    mockState.settingsAgentId = 'agent-b';
+    const second = loadSettingsConfig();
+
+    expect(mockState.settingsConfigKey).toBe('local:config:agent-b');
+    expect(mockState.settingsConfigStatus).toBe('loading');
+    expect(mockState.settingsConfig).toBeNull();
+    expect(mockState.globalModelsConfig).toBeNull();
+    expect(mockState.currentPins).toEqual([]);
+
+    for (const [endpoint, resolve] of deferred.entries()) {
+      resolve(jsonResponse(buildPayload('agent-b', endpoint)));
+    }
+    await second;
+
+    expect(mockState.settingsConfigStatus).toBe('ready');
+    expect(mockState.settingsConfig.agent.name).toBe('agent-b-name');
   });
 
   it('新请求会 abort 旧的 loadSettingsConfig，且 abort 不记成加载错误', async () => {

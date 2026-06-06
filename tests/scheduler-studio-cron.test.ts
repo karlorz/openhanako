@@ -199,6 +199,59 @@ describe("Scheduler studio cron", () => {
     }
   });
 
+  it("uses the global automation permission mode for background Agent cron runs", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "hana-scheduler-cron-"));
+    try {
+      const agentsDir = path.join(root, "agents");
+      fs.mkdirSync(path.join(agentsDir, "agent-a"), { recursive: true });
+      const activityStore = { add: vi.fn() };
+      const executeIsolated = vi.fn(async () => ({ sessionPath: "", error: null }));
+      const engine = {
+        agentsDir,
+        agents: new Map(),
+        getStudioCronStore: () => ({ listJobs: vi.fn(() => []) }),
+        getHeartbeatMaster: () => false,
+        getAutomationPermissionMode: vi.fn(() => "auto"),
+        ensureAgentRuntime: vi.fn(async (agentId) => ({ id: agentId, agentName: agentId })),
+        getAgent: vi.fn((agentId) => ({ id: agentId, agentName: agentId })),
+        executeIsolated,
+        summarizeActivity: vi.fn(),
+        getActivityStore: vi.fn(() => activityStore),
+        emitDevLog: vi.fn(),
+      };
+      const eventBus = { emit: vi.fn() };
+      const scheduler = new Scheduler({ hub: { engine, eventBus } });
+      scheduler.start();
+      const executeJob = createCronSchedulerMock.mock.calls[0][0].executeJob;
+
+      await executeJob({
+        id: "studio_job_auto",
+        label: "Auto permission job",
+        prompt: "run with default permission",
+        actorAgentId: "agent-a",
+        executionContext: {
+          kind: "session_workspace",
+          cwd: "/workspace/a",
+          workspaceFolders: [],
+          sourceSessionPath: "/sessions/a.jsonl",
+          createdByAgentId: "agent-a",
+        },
+      });
+
+      expect(engine.getAutomationPermissionMode).toHaveBeenCalledOnce();
+      expect(executeIsolated).toHaveBeenCalledWith(
+        expect.stringContaining("run with default permission"),
+        expect.objectContaining({
+          permissionMode: "auto",
+          allowHumanApproval: false,
+          activityType: "cron",
+        }),
+      );
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("executes notify direct-action cron jobs without creating an agent session", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "hana-scheduler-cron-"));
     try {

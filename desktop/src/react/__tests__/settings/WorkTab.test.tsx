@@ -10,6 +10,7 @@ type MockState = Record<string, any>;
 
 const mockState: MockState = {};
 const mockHanaFetch = vi.fn();
+const autoSaveConfigMock = vi.fn(async (_partial?: unknown, _options?: unknown) => {});
 
 vi.mock('../../settings/store', () => {
   const hook: any = (selector?: (s: MockState) => unknown) =>
@@ -25,7 +26,9 @@ vi.mock('../../settings/api', () => ({
 
 vi.mock('../../settings/helpers', () => ({
   t: (key: string) => key,
-  autoSaveConfig: vi.fn(async () => {}),
+  autoSaveConfig: (partial: unknown, options?: unknown) => (
+    options === undefined ? autoSaveConfigMock(partial) : autoSaveConfigMock(partial, options)
+  ),
 }));
 
 vi.mock('../../settings/tabs/bridge/AgentSelect', () => ({
@@ -47,6 +50,7 @@ describe('WorkTab workspace persistence', () => {
       showToast: vi.fn(),
     });
     mockHanaFetch.mockReset();
+    autoSaveConfigMock.mockClear();
     mockHanaFetch.mockImplementation((url: string, options?: RequestInit) => {
       if (url === '/api/agents/agent-a/config' && !options?.method) {
         return Promise.resolve(jsonResponse({
@@ -128,6 +132,40 @@ describe('WorkTab workspace persistence', () => {
     render(<WorkTab />);
 
     expect(await screen.findByDisplayValue('31')).toBeTruthy();
+  });
+
+  it('keeps global work switches loading until settings config is ready', async () => {
+    mockState.settingsConfig = null;
+    const { WorkTab } = await import('../../settings/tabs/WorkTab');
+
+    render(<WorkTab />);
+
+    const switches = screen.getAllByRole('switch') as HTMLButtonElement[];
+    expect(switches).toHaveLength(1);
+    expect(switches[0].getAttribute('aria-checked')).toBe('mixed');
+    expect(switches[0].disabled).toBe(true);
+    expect((screen.getByRole('button', { name: /common\.loading/ }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('uses automation.permissionMode and does not render the removed cron auto-approve row', async () => {
+    mockState.settingsConfig = {
+      desk: { heartbeat_master: true, cron_auto_approve: true },
+      automation: { permissionMode: 'read_only' },
+    };
+    const { WorkTab } = await import('../../settings/tabs/WorkTab');
+
+    render(<WorkTab />);
+
+    expect(screen.queryByText('settings.work.cronAutoApprove')).toBeNull();
+    expect(screen.getByText('settings.work.automationPermissionMode')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /settings\.bridge\.permissionModeReadOnly/ }));
+    fireEvent.click(screen.getByRole('option', { name: /settings\.bridge\.permissionModeOperate/ }));
+
+    expect(autoSaveConfigMock).toHaveBeenCalledWith({ automation: { permissionMode: 'operate' } });
+    expect(autoSaveConfigMock).not.toHaveBeenCalledWith(expect.objectContaining({
+      desk: expect.objectContaining({ cron_auto_approve: expect.anything() }),
+    }));
   });
 
   it('saves the selected agent AGENTS.md injection toggle', async () => {

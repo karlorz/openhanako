@@ -923,6 +923,8 @@ export class HanaEngine {
   isChannelsEnabled() { return this._configCoord.getChannelsEnabled(); }
   getBridgePermissionMode() { return this._prefs.getBridgePermissionMode(); }
   setBridgePermissionMode(v) { return this._prefs.setBridgePermissionMode(v); }
+  getAutomationPermissionMode() { return this._prefs.getAutomationPermissionMode(); }
+  setAutomationPermissionMode(v) { return this._prefs.setAutomationPermissionMode(v); }
   getBridgeReadOnly() { return this._prefs.getBridgeReadOnly(); }
   setBridgeReadOnly(v) { this._prefs.setBridgeReadOnly(v); }
   getBridgeReceiptEnabled() { return this._prefs.getBridgeReceiptEnabled(); }

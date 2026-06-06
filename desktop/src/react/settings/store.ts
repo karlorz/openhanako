@@ -4,6 +4,7 @@
  */
 import { create } from 'zustand';
 import type { ServerConnection, ServerConnectionRegistry } from '../services/server-connection';
+import type { RemoteResourceStatus } from './resource-state';
 
 export interface Agent {
   id: string;
@@ -76,6 +77,9 @@ export interface SettingsState {
 
   // config
   settingsConfig: Record<string, any> | null;
+  settingsConfigKey: string | null;
+  settingsConfigStatus: RemoteResourceStatus;
+  settingsConfigError: string | null;
   globalModelsConfig: Record<string, any> | null;
   homeFolder: string | null;
 
@@ -92,8 +96,10 @@ export interface SettingsState {
   selectedProviderId: string | null;
 
   // plugins
-  pluginAllowFullAccess: boolean;
-  pluginDevToolsEnabled: boolean;
+  pluginSettingsStatus: RemoteResourceStatus;
+  pluginSettingsError: string | null;
+  pluginAllowFullAccess: boolean | undefined;
+  pluginDevToolsEnabled: boolean | undefined;
   pluginUserDir: string;
   pluginSettingsTabs: PluginSettingsTab[];
 
@@ -133,6 +139,9 @@ export const useSettingsStore = create<SettingsStore>()((set, get) => ({
 
   // config
   settingsConfig: null,
+  settingsConfigKey: null,
+  settingsConfigStatus: 'idle',
+  settingsConfigError: null,
   globalModelsConfig: null,
   homeFolder: null,
 
@@ -149,8 +158,10 @@ export const useSettingsStore = create<SettingsStore>()((set, get) => ({
   selectedProviderId: null,
 
   // plugins
-  pluginAllowFullAccess: false,
-  pluginDevToolsEnabled: false,
+  pluginSettingsStatus: 'idle',
+  pluginSettingsError: null,
+  pluginAllowFullAccess: undefined,
+  pluginDevToolsEnabled: undefined,
   pluginUserDir: '',
   pluginSettingsTabs: [],
 

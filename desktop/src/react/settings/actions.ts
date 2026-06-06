@@ -4,6 +4,7 @@
 import { useSettingsStore } from './store';
 import { hanaFetch, hanaUrl } from './api';
 import { t } from './helpers';
+import { makeSettingsResourceKey } from './resource-state';
 
 let _settingsConfigLoadVersion = 0;
 let _settingsConfigAbortController: AbortController | null = null;
@@ -64,8 +65,32 @@ export async function loadSettingsConfig() {
   }
   const controller = new AbortController();
   _settingsConfigAbortController = controller;
+  const agentId = store.getSettingsAgentId();
+  const resourceKey = makeSettingsResourceKey('config', agentId, store.activeServerConnectionId);
+  const keepSameOwnerData = store.settingsConfigKey === resourceKey;
+  store.set({
+    settingsConfigKey: resourceKey,
+    settingsConfigStatus: 'loading',
+    settingsConfigError: null,
+    ...(keepSameOwnerData ? {} : {
+      settingsConfig: null,
+      globalModelsConfig: null,
+      homeFolder: null,
+      currentPins: [],
+    }),
+  });
+  if (!agentId || !resourceKey) {
+    store.set({
+      settingsConfigStatus: 'error',
+      settingsConfigError: 'No settings agent selected',
+      settingsConfig: null,
+      globalModelsConfig: null,
+      homeFolder: null,
+      currentPins: [],
+    });
+    return;
+  }
   try {
-    const agentId = store.getSettingsAgentId();
     const agentBase = `/api/agents/${agentId}`;
     const [configRes, identityRes, ishikiRes, publicIshikiRes, userProfileRes, pinnedRes, globalModelsRes] =
       await Promise.all([
@@ -97,8 +122,13 @@ export async function loadSettingsConfig() {
     }
     if (myVersion !== _settingsConfigLoadVersion) return;
     if (_settingsConfigAbortController !== controller) return;
+    const latest = useSettingsStore.getState();
+    if (latest.settingsConfigKey !== resourceKey) return;
 
     store.set({
+      settingsConfigKey: resourceKey,
+      settingsConfigStatus: 'ready',
+      settingsConfigError: null,
       settingsConfig: config,
       globalModelsConfig: globalModels,
       homeFolder: config.desk?.home_folder || null,
@@ -107,6 +137,13 @@ export async function loadSettingsConfig() {
   } catch (err) {
     if (isAbortError(err)) return;
     console.error('[settings] load failed:', err);
+    const latest = useSettingsStore.getState();
+    if (latest.settingsConfigKey === resourceKey && myVersion === _settingsConfigLoadVersion) {
+      store.set({
+        settingsConfigStatus: 'error',
+        settingsConfigError: err instanceof Error ? err.message : String(err),
+      });
+    }
   } finally {
     if (_settingsConfigAbortController === controller) {
       _settingsConfigAbortController = null;
@@ -116,6 +153,12 @@ export async function loadSettingsConfig() {
 
 export async function loadPluginSettings() {
   const store = useSettingsStore.getState();
+  store.set({
+    pluginSettingsStatus: 'loading',
+    pluginSettingsError: null,
+    pluginAllowFullAccess: store.pluginSettingsStatus === 'idle' ? undefined : store.pluginAllowFullAccess,
+    pluginDevToolsEnabled: store.pluginSettingsStatus === 'idle' ? undefined : store.pluginDevToolsEnabled,
+  });
   try {
     const [settingsRes, tabsRes] = await Promise.all([
       hanaFetch('/api/plugins/settings'),
@@ -123,14 +166,21 @@ export async function loadPluginSettings() {
     ]);
     const data = await settingsRes.json();
     const tabs = await tabsRes.json();
+    if (data.error) throw new Error(data.error);
     store.set({
-      pluginAllowFullAccess: data.allow_full_access ?? false,
-      pluginDevToolsEnabled: data.plugin_dev_tools_enabled ?? false,
+      pluginSettingsStatus: 'ready',
+      pluginSettingsError: null,
+      pluginAllowFullAccess: data.allow_full_access === true,
+      pluginDevToolsEnabled: data.plugin_dev_tools_enabled === true,
       pluginUserDir: data.plugins_dir || '',
       pluginSettingsTabs: Array.isArray(tabs) ? tabs : [],
     });
   } catch (err) {
     console.error('[plugins] load settings failed:', err);
+    store.set({
+      pluginSettingsStatus: 'error',
+      pluginSettingsError: err instanceof Error ? err.message : String(err),
+    });
   }
 }
 

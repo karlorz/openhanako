@@ -155,7 +155,7 @@ export function OtherModelsSection({ providers }: { providers: Record<string, { 
   const utilityVal = toModelRef(globalModelsConfig?.models?.utility);
   const utilityLargeVal = toModelRef(globalModelsConfig?.models?.utility_large);
   const visionVal = toModelRef(globalModelsConfig?.models?.vision);
-  const visionAuxiliaryEnabled = globalModelsConfig?.models?.vision_enabled === true;
+  const visionAuxiliaryEnabled = globalModelsConfig ? globalModelsConfig.models?.vision_enabled === true : undefined;
   const imageCapableOnly = (model: { input?: string[] }) => (
     Array.isArray(model.input) && model.input.includes('image')
   );

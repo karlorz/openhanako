@@ -13,6 +13,7 @@ import {
   revokeComputerUseApp,
 } from "./computer-use/settings.ts";
 import {
+  normalizeAutomationPermissionMode,
   normalizeBridgePermissionMode,
   normalizeSessionPermissionMode,
   SESSION_PERMISSION_MODES,
@@ -279,6 +280,22 @@ export class PreferencesManager {
     if (Object.keys(bridge).length === 0) delete prefs.bridge;
     else prefs.bridge = bridge;
     this.savePreferences(prefs);
+  }
+
+  /** 读取自动化运行权限模式（全局，默认自动审核）。 */
+  getAutomationPermissionMode() {
+    return normalizeAutomationPermissionMode(this._cache.automation || {});
+  }
+
+  /** 保存自动化运行权限模式。 */
+  setAutomationPermissionMode(mode) {
+    const normalized = normalizeAutomationPermissionMode({ permissionMode: mode });
+    const prefs = this._mutableCopy();
+    const automation = { ...(prefs.automation || {}) };
+    automation.permissionMode = normalized;
+    prefs.automation = automation;
+    this.savePreferences(prefs);
+    return normalized;
   }
 
   /** 读取全局出站代理设置。 */

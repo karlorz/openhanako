@@ -7,6 +7,7 @@ import { SettingsSection } from '../components/SettingsSection';
 import { SettingsRow } from '../components/SettingsRow';
 import { Toggle } from '../widgets/Toggle';
 import { SelectWidget } from '../widgets/SelectWidget';
+import { readConfigBoolean } from '../resource-state';
 import type { AutoLaunchStatus } from '../../types';
 import {
   normalizeNotificationPreferences as normalizeSharedNotificationPreferences,
@@ -185,7 +186,7 @@ export function GeneralTab() {
   const [quickChatRecording, setQuickChatRecording] = useState(false);
   const [notificationSaving, setNotificationSaving] = useState(false);
   const [notificationPrefs, setNotificationPrefs] = useState<NotificationPreferences>(DEFAULT_NOTIFICATION_PREFERENCES);
-  const keepAwake = settingsConfig?.keep_awake === true;
+  const keepAwake = readConfigBoolean(settingsConfig, cfg => cfg.keep_awake, false);
 
   useEffect(() => {
     let alive = true;
@@ -320,7 +321,7 @@ export function GeneralTab() {
 
   const handleKeepAwakeToggle = useCallback(async (on: boolean) => {
     if (!hana?.setKeepAwakeEnabled) return;
-    const previous = settingsConfig?.keep_awake === true;
+    const previous = keepAwake === true;
     setKeepAwakeSaving(true);
     try {
       const saved = await autoSaveConfig({ keep_awake: on }, { silent: true });
@@ -335,7 +336,7 @@ export function GeneralTab() {
     } finally {
       setKeepAwakeSaving(false);
     }
-  }, [hana, settingsConfig?.keep_awake, showToast]);
+  }, [hana, keepAwake, showToast]);
 
   const handleTurnCompletionChange = useCallback(async (value: string) => {
     const turnCompletion = normalizeTurnCompletionMode(value);

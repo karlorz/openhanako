@@ -414,7 +414,7 @@ export class Agent {
       path.join(this.deskDir, "cron-runs"),
     );
     this._cronTool = createCronTool(this._cronStore, {
-      getAutoApprove: () => this._config?.desk?.cron_auto_approve !== false,
+      getAutoApprove: () => false,
       confirmStore: this._cb?.getConfirmStore?.(),
       emitEvent: (event, sp) => { if (sp) this._cb?.emitEvent?.(event, sp); },
       getSessionPath: () => this._cb?.getCurrentSessionPath?.(),
@@ -424,7 +424,7 @@ export class Agent {
       getHomeCwd: (agentId) => this._cb?.getHomeCwd?.(agentId),
     });
     this._automationTool = createAutomationTool(this._cronStore, {
-      getAutoApprove: () => this._config?.desk?.cron_auto_approve !== false,
+      getAutoApprove: () => false,
       confirmStore: this._cb?.getConfirmStore?.(),
       emitEvent: (event, sp) => { if (sp) this._cb?.emitEvent?.(event, sp); },
       getSessionPath: () => this._cb?.getCurrentSessionPath?.(),

@@ -4,6 +4,7 @@
 import React, { useState } from 'react';
 import { t } from '../../helpers';
 import { SelectWidget } from '@/ui';
+import { PermissionModeIcon } from '../../../components/input/PlanModeButton';
 import styles from '../../Settings.module.css';
 import bridgeStyles from '../BridgeTab.module.css';
 
@@ -32,44 +33,21 @@ function bridgePermissionModeOption(mode: BridgePermissionMode) {
   return { value: mode, label: t(bridgePermissionModeLabelKey(mode)) };
 }
 
-function BridgePermissionIcon({ mode }: { mode: BridgePermissionMode }) {
-  if (mode === 'auto') {
-    return (
-      <svg data-bridge-permission-mode={mode} width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="M12 3.5 19 6v5.4c0 4.1-2.7 7.5-7 9.1-4.3-1.6-7-5-7-9.1V6l7-2.5Z" />
-      </svg>
-    );
-  }
-  if (mode === 'operate') {
-    return (
-      <svg data-bridge-permission-mode={mode} width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <polyline points="4 17 10 11 4 5" />
-        <line x1="12" y1="19" x2="20" y2="19" />
-      </svg>
-    );
-  }
-  return (
-    <svg data-bridge-permission-mode={mode} width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-      <path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15Z" />
-    </svg>
-  );
-}
-
 export function BridgePermissionModeSelect({
   value,
   disabled,
   onChange,
 }: {
-  value: BridgePermissionMode;
+  value: BridgePermissionMode | undefined;
   disabled?: boolean;
   onChange: (mode: BridgePermissionMode) => void;
 }) {
-  const mode = BRIDGE_PERMISSION_MODES.includes(value) ? value : 'auto';
+  const loading = value === undefined;
+  const mode = !loading && BRIDGE_PERMISSION_MODES.includes(value) ? value : 'auto';
   return (
     <SelectWidget
       value={mode}
-      disabled={disabled}
+      disabled={disabled || loading}
       onChange={(next) => {
         if (BRIDGE_PERMISSION_MODES.includes(next as BridgePermissionMode)) {
           onChange(next as BridgePermissionMode);
@@ -80,10 +58,22 @@ export function BridgePermissionModeSelect({
       options={BRIDGE_PERMISSION_MODES.map(bridgePermissionModeOption)}
       renderTrigger={(option) => {
         const current = (option?.value || mode) as BridgePermissionMode;
+        if (loading) {
+          return (
+            <>
+              <span className={bridgeStyles['bridge-permission-value']}>
+                <span>{t('common.loading')}</span>
+              </span>
+              <svg className={bridgeStyles['bridge-permission-arrow']} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M4 6l4 4 4-4" />
+              </svg>
+            </>
+          );
+        }
         return (
           <>
             <span className={bridgeStyles['bridge-permission-value']}>
-              <BridgePermissionIcon mode={current} />
+              <PermissionModeIcon mode={current} />
               <span>{option?.label || t(bridgePermissionModeLabelKey(current))}</span>
             </span>
             <svg className={bridgeStyles['bridge-permission-arrow']} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -96,7 +86,7 @@ export function BridgePermissionModeSelect({
         const optionMode = option.value as BridgePermissionMode;
         return (
           <span className={`${bridgeStyles['bridge-permission-option']} ${bridgeStyles[`bridge-permission-option-${optionMode}`]}`}>
-            <BridgePermissionIcon mode={optionMode} />
+            <PermissionModeIcon mode={optionMode} />
             <span>{option.label}</span>
           </span>
         );

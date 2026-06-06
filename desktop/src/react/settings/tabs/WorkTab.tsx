@@ -5,9 +5,11 @@ import { t, autoSaveConfig } from '../helpers';
 import { hanaFetch } from '../api';
 import { Toggle } from '../widgets/Toggle';
 import { AgentSelect } from './bridge/AgentSelect';
+import { BridgePermissionModeSelect, type BridgePermissionMode } from './bridge/BridgeWidgets';
 import { SettingsSection } from '../components/SettingsSection';
 import { SettingsRow } from '../components/SettingsRow';
 import { NumberInput } from '../components/NumberInput';
+import { readConfigBoolean } from '../resource-state';
 import styles from '../Settings.module.css';
 import { DEFAULT_HEARTBEAT_INTERVAL_MINUTES } from '../../../../../shared/default-workspace-constants.ts';
 
@@ -21,6 +23,10 @@ type AgentDeskConfig = {
   };
 };
 
+function normalizeAutomationPermissionMode(value: unknown): BridgePermissionMode {
+  return value === 'operate' || value === 'read_only' ? value : 'auto';
+}
+
 export function WorkTab() {
   const { settingsConfig, currentAgentId } = useSettingsStore(
     useShallow(s => ({ settingsConfig: s.settingsConfig, currentAgentId: s.currentAgentId }))
@@ -28,8 +34,10 @@ export function WorkTab() {
   const showToast = useSettingsStore(s => s.showToast);
 
   // ── Global toggles：直接从 store 派生，单一数据源，避免挂载时 flicker ──
-  const heartbeatMaster = settingsConfig?.desk?.heartbeat_master !== false;
-  const cronAutoApprove = settingsConfig?.desk?.cron_auto_approve !== false;
+  const heartbeatMaster = readConfigBoolean(settingsConfig, cfg => cfg.desk?.heartbeat_master, true);
+  const automationPermissionMode = settingsConfig
+    ? normalizeAutomationPermissionMode(settingsConfig.automation?.permissionMode)
+    : undefined;
 
   // ── Agent selector (作为 section context，表达"当前配置哪个 agent") ──
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(currentAgentId);
@@ -77,8 +85,8 @@ export function WorkTab() {
     await autoSaveConfig({ desk: { heartbeat_master: on } });
   };
 
-  const toggleCronAutoApprove = async (on: boolean) => {
-    await autoSaveConfig({ desk: { cron_auto_approve: on } });
+  const saveAutomationPermissionMode = async (mode: BridgePermissionMode) => {
+    await autoSaveConfig({ automation: { permissionMode: mode } });
   };
 
   const saveAgentConfig = async (agentId: string, patch: Record<string, any>): Promise<boolean> => {
@@ -188,9 +196,14 @@ export function WorkTab() {
           control={<Toggle on={heartbeatMaster} onChange={toggleHeartbeatMaster} />}
         />
         <SettingsRow
-          label={t('settings.work.cronAutoApprove')}
-          hint={t('settings.work.cronAutoApproveDesc')}
-          control={<Toggle on={cronAutoApprove} onChange={toggleCronAutoApprove} />}
+          label={t('settings.work.automationPermissionMode')}
+          hint={t('settings.work.automationPermissionModeDesc')}
+          control={
+            <BridgePermissionModeSelect
+              value={automationPermissionMode}
+              onChange={saveAutomationPermissionMode}
+            />
+          }
         />
       </SettingsSection>
 
