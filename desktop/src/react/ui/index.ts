@@ -2,6 +2,8 @@ export { Overlay } from './Overlay';
 export { Button } from './Button';
 export { SelectWidget } from './SelectWidget';
 export type { SelectOption } from './SelectWidget';
+export { AnchoredPortal } from './AnchoredPortal';
+export type { AnchoredPortalAlign } from './AnchoredPortal';
 export { ContextMenu } from './ContextMenu';
 export type { ContextMenuItem, ContextMenuProps } from './ContextMenu';
 export { Tooltip } from './Tooltip';
