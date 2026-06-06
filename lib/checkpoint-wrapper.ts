@@ -14,7 +14,7 @@ export function wrapWithCheckpoint(tools, { store, maxFileSizeKb, cwd, getSessio
 
 function resolvePath(rawPath, cwd) {
   if (!rawPath) return null;
-  return path.isAbsolute(rawPath) ? rawPath : path.resolve(cwd, rawPath);
+  return path.isAbsolute(rawPath) ? path.resolve(rawPath) : path.resolve(cwd, rawPath);
 }
 
 function wrapPathTool(tool, store, maxFileSizeKb, cwd, getSessionPath) {
