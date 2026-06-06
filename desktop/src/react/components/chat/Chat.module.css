@@ -176,7 +176,7 @@
     height: 20px;
     padding: 0;
     border: none;
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     background: transparent;
     color: var(--text-muted);
     cursor: default;
@@ -379,7 +379,7 @@
     min-width: 0;
     background: var(--bg-card, #fff);
     border: 1px solid var(--overlay-light, rgba(0, 0, 0, 0.08));
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     padding: 2px 3px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
     opacity: 0;
@@ -402,19 +402,19 @@
     align-items: center;
     gap: 2px;
     position: relative;
-    background: none;
+    background: transparent;
     border: none;
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     padding: 3px;
     cursor: default;
-    color: var(--hana-text-muted);
+    color: var(--text-muted);
     line-height: 1;
     transition: color var(--duration-instant), background var(--duration-instant);
 }
 
 .msgActionBtn:hover {
-    color: var(--hana-text);
-    background: var(--hana-border);
+    color: var(--text);
+    background: var(--overlay-light);
 }
 
 .msgActionBtn:disabled {
@@ -588,12 +588,14 @@
     z-index: 2147482500;
     box-sizing: border-box;
     overflow: auto;
+    max-width: 360px;
+    max-height: 420px;
     padding: 12px 14px;
     color: var(--text);
     background: var(--bg-card, #fff);
     border: 1px solid var(--overlay-light, rgba(0, 0, 0, 0.08));
-    border-radius: 8px;
-    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.16), 0 4px 14px rgba(0, 0, 0, 0.08);
+    border-radius: var(--radius-chat-surface);
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.08), 0 4px 14px rgba(0, 0, 0, 0.04);
     animation: hana-fade-up var(--duration-fast) var(--ease-out);
 }
 
