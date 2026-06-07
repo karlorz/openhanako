@@ -3,7 +3,7 @@
 import React from 'react';
 import fs from 'node:fs';
 import path from 'node:path';
-import { cleanup, render } from '@testing-library/react';
+import { act, cleanup, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   StreamingMarkdownContent,
@@ -19,50 +19,76 @@ describe('StreamingMarkdownContent', () => {
 
   afterEach(() => {
     cleanup();
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
-  it('renders each streaming prose flush immediately and marks the new tail chunk for fade', () => {
+  it('renders active prose through a stable plain text node instead of rebuilding markdown html', () => {
     const { container, rerender } = render(
       <StreamingMarkdownContent source="旧正文" html="<p>旧正文</p>" active />,
     );
 
     expect(container.textContent?.trim()).toBe('旧正文');
+    const root = container.querySelector('.md-content');
+    expect(root).not.toBeNull();
+    expect(root?.getAttribute('data-stream-plain-text')).toBe('true');
+    expect(root?.querySelector('p')).toBeNull();
+    expect(root?.querySelector('[data-stream-tail-chunk="true"]')).toBeNull();
 
     rerender(
       <StreamingMarkdownContent source="旧正文新正文继续出现" html="<p>旧正文新正文继续出现</p>" active />,
     );
 
-    const text = container.textContent?.trim() || '';
-    expect(text).toBe('旧正文新正文继续出现');
-    expect(container.querySelector('[data-stream-tail-chunk="true"]')?.textContent).toBe('新正文继续出现');
+    expect(container.querySelector('.md-content')).toBe(root);
+    expect(container.querySelector('p')).toBeNull();
+    expect(container.querySelector('[data-stream-tail-chunk="true"]')).toBeNull();
     expect(window.requestAnimationFrame).not.toHaveBeenCalled();
   });
 
-  it('does not replay the tail fade when the streaming prose target has not changed', () => {
-    const source = '这是一段足够长的普通正文';
+  it('advances small prose backlogs on the 30Hz stream clock', () => {
+    vi.useFakeTimers();
+    const { container, rerender } = render(
+      <StreamingMarkdownContent source="你好" html="<p>你好</p>" active />,
+    );
+
+    rerender(
+      <StreamingMarkdownContent source="你好世界" html="<p>你好世界</p>" active />,
+    );
+
+    expect(container.textContent?.trim()).toBe('你好');
+
+    act(() => {
+      vi.advanceTimersByTime(32);
+    });
+    expect(container.textContent?.trim()).toBe('你好');
+
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(container.textContent?.trim()).toBe('你好世界');
+  });
+
+  it('hard-catches up 80-character prose backlogs without waiting for animation debt', () => {
+    const source = '开头';
+    const largeTarget = `${source}${'一'.repeat(80)}`;
     const { container, rerender } = render(
       <StreamingMarkdownContent source={source} html={`<p>${source}</p>`} active />,
     );
 
-    const firstTail = container.querySelector('[data-stream-tail-chunk="true"]');
-    expect(firstTail?.textContent).toBe(source);
-
     rerender(
-      <StreamingMarkdownContent source={source} html={`<p>${source}</p>`} active />,
+      <StreamingMarkdownContent source={largeTarget} html={`<p>${largeTarget}</p>`} active />,
     );
 
-    expect(container.textContent?.trim()).toBe(source);
-    expect(container.querySelector('[data-stream-tail-chunk="true"]')).toBe(firstTail);
+    expect(container.textContent?.trim()).toBe(largeTarget);
   });
 
-  it('marks the full newly rendered prose chunk for fade when prose is long enough', () => {
-    const source = '这是一段足够长的普通正文';
+  it('renders final prose with markdown html when streaming is complete', () => {
     const { container } = render(
-      <StreamingMarkdownContent source={source} html={`<p>${source}</p>`} active />,
+      <StreamingMarkdownContent source="完成正文" html="<p>完成正文</p>" active={false} />,
     );
 
-    expect(container.querySelector('[data-stream-tail-chunk="true"]')?.textContent).toBe(source);
+    expect(container.querySelector('.md-content')?.getAttribute('data-stream-plain-text')).toBeNull();
+    expect(container.querySelector('p')?.textContent).toBe('完成正文');
   });
 
   it('does not typewriter complex markdown blocks', () => {
@@ -76,6 +102,26 @@ describe('StreamingMarkdownContent', () => {
     expect(container.textContent).toContain('const x = 1;');
     expect(container.querySelector('[data-stream-tail-chunk="true"]')).toBeNull();
     expect(container.querySelector('[class*="streamMarkdownBlockEnter"]')).not.toBeNull();
+  });
+
+  it('keeps complex markdown mounted while streaming updates arrive', () => {
+    const source = '```ts\nconst x = 1;\n```';
+    const html = '<pre><code>const x = 1;</code></pre>';
+    const { container, rerender } = render(
+      <StreamingMarkdownContent source={source} html={html} active />,
+    );
+    const root = container.querySelector('.md-content');
+
+    rerender(
+      <StreamingMarkdownContent
+        source={`${source}\n\n后续说明`}
+        html="<pre><code>const x = 1;</code></pre><p>后续说明</p>"
+        active
+      />,
+    );
+
+    expect(container.querySelector('.md-content')).toBe(root);
+    expect(container.textContent).toContain('后续说明');
   });
 
   it('does not typewriter backtick-sensitive inline markdown while streaming', () => {
