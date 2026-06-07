@@ -48,6 +48,7 @@ import {
   collectWorkspaceInstructionFiles,
   formatWorkspaceInstructionFiles,
 } from "./workspace-instruction-files.ts";
+import { callText } from "./llm-client.ts";
 import { createModuleLogger } from "../lib/debug-log.ts";
 import {
   CACHE_SNAPSHOT_EXPERIMENT_ID,
@@ -55,8 +56,37 @@ import {
   getResolvedExperimentValue,
 } from "../lib/experiments/registry.ts";
 import { userProfilePath } from "../lib/user-profile-store.ts";
+import {
+  type AgentAppearanceModel,
+  formatAgentAppearancePrompt,
+  hasAgentAppearanceSummaryCapability,
+  readCachedAgentAppearanceSummary,
+  type ResolvedAgentAppearanceModelConfig,
+  refreshAgentAppearanceSummary,
+} from "../lib/agent-appearance-summary.ts";
 
 const moduleLog = createModuleLogger("agent");
+
+type AgentAppearanceEngine = {
+  resolveVisionConfig?: () => ResolvedAgentAppearanceModelConfig | null;
+  currentModel?: AgentAppearanceModel | null;
+  resolveModelWithCredentials?: (modelRef: unknown) => ResolvedAgentAppearanceModelConfig | null;
+  usageLedger?: unknown;
+};
+
+type RefreshAppearanceSummaryOptions = {
+  targetModel?: AgentAppearanceModel | null;
+  signal?: AbortSignal;
+  rebuildSystemPrompt?: boolean;
+};
+
+type BuildSystemPromptOptions = {
+  forSubagent?: boolean;
+  forceMemoryEnabled?: boolean;
+  forceExperienceEnabled?: boolean;
+  cwdOverride?: string;
+  targetModel?: AgentAppearanceModel | null;
+};
 
 export class Agent {
   declare _artifactTool: any;
@@ -636,6 +666,7 @@ export class Agent {
     log(`  [agent] 9. buildSystemPrompt...`);
     this._systemPrompt = this.buildSystemPrompt({ forceMemoryEnabled: this._memoryMasterEnabled });
     this._runtimeInitialized = true;
+    this._refreshAppearanceSummaryInBackground();
     if (this._memoryTicker) {
       this._cb?.scheduleMemoryMaintenance?.(this.id, "runtime-init");
     }
@@ -719,6 +750,51 @@ export class Agent {
   get runtimeInitialized() { return this._runtimeInitialized; }
   get needsRepair() { return !!this._repairState; }
   get repairState() { return this._repairState ? { ...this._repairState } : null; }
+  _getAppearanceEngine(): AgentAppearanceEngine | null {
+    return this._cb?.getEngine?.() || null;
+  }
+
+  _resolveAppearanceVisionConfig(engine: AgentAppearanceEngine | null = this._getAppearanceEngine()) {
+    try {
+      return engine?.resolveVisionConfig?.() || null;
+    } catch {
+      return null;
+    }
+  }
+
+  _canInjectAppearancePrompt(targetModel: AgentAppearanceModel | null = null) {
+    const engine = this._getAppearanceEngine();
+    return hasAgentAppearanceSummaryCapability({
+      visionConfig: this._resolveAppearanceVisionConfig(engine),
+      targetModel: targetModel || engine?.currentModel || null,
+    });
+  }
+
+  async refreshAppearanceSummary(options: RefreshAppearanceSummaryOptions = {}) {
+    const engine = this._getAppearanceEngine();
+    const summary = await refreshAgentAppearanceSummary({
+      agentDir: this.agentDir,
+      agentName: this.agentName,
+      visionConfig: this._resolveAppearanceVisionConfig(engine),
+      targetModel: options.targetModel || null,
+      resolveModelWithCredentials: (modelRef) => engine?.resolveModelWithCredentials?.(modelRef) || null,
+      callText: (callOptions) => callText(callOptions as unknown as Parameters<typeof callText>[0]),
+      usageLedger: engine?.usageLedger,
+      signal: options.signal,
+    });
+    if (summary && options.rebuildSystemPrompt !== false) {
+      this._systemPrompt = this.buildSystemPrompt({ forceMemoryEnabled: this._memoryMasterEnabled });
+    }
+    return summary;
+  }
+
+  _refreshAppearanceSummaryInBackground() {
+    if (!this._cb?.getEngine?.()) return;
+    void this.refreshAppearanceSummary({ rebuildSystemPrompt: true }).catch((err) => {
+      moduleLog.warn(`Agent appearance summary refresh failed: ${err?.message || err}`);
+    });
+  }
+
   /**
    * 当前记忆模型凭证（现场 resolve，不缓存）
    * 用户改完 provider key/url/api 后这里立即反映最新值
@@ -1065,14 +1141,18 @@ export class Agent {
    *   Subagent 是隔离子会话，不注入长期记忆和多 agent 协作上下文。
    * @param {string} [options.cwdOverride] - 覆盖 prompt 中“工作台”章节展示的 cwd。
    *   用于新建隔离 session 时，让 prompt 快照和实际执行目录保持一致。
+   * @param {object} [options.targetModel] - 新会话即将使用的模型，用于判断是否能读取头像。
    */
-  buildSystemPrompt( options: any = {}) {
+  buildSystemPrompt( options: BuildSystemPromptOptions = {}) {
     const forSubagent = !!options.forSubagent;
     const forceMemoryEnabled = Object.prototype.hasOwnProperty.call(options, "forceMemoryEnabled")
       ? options.forceMemoryEnabled
       : null;
     const cwdOverride = Object.prototype.hasOwnProperty.call(options, "cwdOverride")
       ? (typeof options.cwdOverride === "string" ? options.cwdOverride : "")
+      : null;
+    const targetModel = Object.prototype.hasOwnProperty.call(options, "targetModel")
+      ? options.targetModel
       : null;
     const memoryEnabled = typeof forceMemoryEnabled === "boolean"
       ? forceMemoryEnabled
@@ -1330,6 +1410,14 @@ export class Agent {
     // ishiki（identity + yuan + ishiki 模板，含 {{userName}} 等替换）
     // 放在用户档案之后：先建立"用户是谁"的语境，再讲"你是谁、你和用户什么关系"。
     parts.push(ishiki);
+
+    if (!forSubagent && this._canInjectAppearancePrompt(targetModel)) {
+      const appearance = readCachedAgentAppearanceSummary(this.agentDir);
+      const appearancePrompt = appearance
+        ? formatAgentAppearancePrompt(appearance.summary, this._config.locale || "")
+        : "";
+      if (appearancePrompt) parts.push(appearancePrompt);
+    }
 
     // 工作台 = 当前工作目录（注入实际路径）
     const cwdPath = cwdOverride !== null ? cwdOverride : (this._cb?.getCwd?.() || "");

@@ -36,6 +36,10 @@ vi.mock("../lib/memory/memory-ticker.js", () => ({
 }));
 
 import { Agent } from "../core/agent.ts";
+import {
+  readAgentAvatarResource,
+  writeCachedAgentAppearanceSummary,
+} from "../lib/agent-appearance-summary.ts";
 
 function bootstrapAgentDir(rootDir) {
   const agentsDir = path.join(rootDir, "agents");
@@ -78,6 +82,20 @@ function makeAgent(agentsDir, rootDir) {
     userDir: path.join(rootDir, "user"),
     productDir: path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "lib"),
   } as any);
+}
+
+function writeAgentAvatar(agentDir) {
+  fs.mkdirSync(path.join(agentDir, "avatars"), { recursive: true });
+  fs.writeFileSync(
+    path.join(agentDir, "avatars", "agent.png"),
+    Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lw6N6wAAAABJRU5ErkJggg==",
+      "base64",
+    ),
+  );
+  const resource = readAgentAvatarResource(agentDir);
+  if (!resource) throw new Error("expected test avatar resource");
+  return resource;
 }
 
 describe("agent.systemPrompt: master / per-session 解耦", () => {
@@ -204,6 +222,83 @@ describe("agent.systemPrompt: master / per-session 解耦", () => {
     expect(prompt).toContain("查看文件和目录时优先用 read/grep/find/ls。");
     expect(prompt).toContain("改已有源码用 edit、新建或全量替换用 write，不要用 shell 重定向改源码。");
     expect(prompt).toContain("运行测试、构建、包脚本、生成器和命令行工具时用 shell。");
+
+    await agent.dispose();
+  });
+
+  it("system prompt 注入缓存后的 Agent 自我外观，而不是图片说明", async () => {
+    const { agentDir } = bootstrapAgentDir(tmpDir);
+    const avatar = writeAgentAvatar(agentDir);
+    writeCachedAgentAppearanceSummary(agentDir, {
+      avatarHash: avatar.hash,
+      summary: "你的形象是银白色短发，神情安静，穿着深色外套。",
+      model: "vision-a",
+    });
+
+    const agent = makeAgent(agentsDir, tmpDir);
+    await agent.init(() => {});
+    agent._config.locale = "zh-CN";
+
+    const targetModel = { id: "chat-vision", provider: "openai", input: ["text", "image"] };
+    const prompt = agent.buildSystemPrompt({ forceMemoryEnabled: false, targetModel });
+
+    expect(prompt).toContain("## 你的样子");
+    expect(prompt).toContain("你的形象是银白色短发，神情安静，穿着深色外套。");
+    expect(prompt).not.toContain("来自图片分析");
+    expect(prompt).not.toContain("这张头像");
+    expect(prompt.indexOf("ishiki body")).toBeLessThan(prompt.indexOf("## 你的样子"));
+
+    const subagentPrompt = agent.buildSystemPrompt({ forceMemoryEnabled: false, forSubagent: true, targetModel });
+    expect(subagentPrompt).not.toContain("## 你的样子");
+
+    await agent.dispose();
+  });
+
+  it("没有看图能力时，即使有旧外观缓存也不注入 system prompt", async () => {
+    const { agentDir } = bootstrapAgentDir(tmpDir);
+    const avatar = writeAgentAvatar(agentDir);
+    writeCachedAgentAppearanceSummary(agentDir, {
+      avatarHash: avatar.hash,
+      summary: "你的形象是银白色短发，神情安静。",
+      model: "vision-a",
+    });
+
+    const agent = makeAgent(agentsDir, tmpDir);
+    await agent.init(() => {});
+    agent._config.locale = "zh-CN";
+
+    const prompt = agent.buildSystemPrompt({
+      forceMemoryEnabled: false,
+      targetModel: { id: "text-only", provider: "openai", input: ["text"] },
+    });
+
+    expect(prompt).not.toContain("## 你的样子");
+    expect(prompt).not.toContain("银白色短发");
+
+    await agent.dispose();
+  });
+
+  it("system prompt 不注入过期头像对应的外观缓存", async () => {
+    const { agentDir } = bootstrapAgentDir(tmpDir);
+    const avatar = writeAgentAvatar(agentDir);
+    writeCachedAgentAppearanceSummary(agentDir, {
+      avatarHash: avatar.hash,
+      summary: "你的形象是银白色短发，神情安静。",
+      model: "vision-a",
+    });
+    fs.writeFileSync(path.join(agentDir, "avatars", "agent.png"), Buffer.from("changed-avatar"));
+
+    const agent = makeAgent(agentsDir, tmpDir);
+    await agent.init(() => {});
+    agent._config.locale = "zh-CN";
+
+    const prompt = agent.buildSystemPrompt({
+      forceMemoryEnabled: false,
+      targetModel: { id: "chat-vision", provider: "openai", input: ["text", "image"] },
+    });
+
+    expect(prompt).not.toContain("## 你的样子");
+    expect(prompt).not.toContain("银白色短发");
 
     await agent.dispose();
   });
