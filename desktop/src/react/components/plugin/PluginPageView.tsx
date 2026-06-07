@@ -21,6 +21,7 @@ export function PluginPageView({ pluginId }: Props) {
     pluginId,
     agentId,
     slot: 'page',
+    readyOnTimeout: true,
     capabilityGrants: page?.hostCapabilities ?? [],
   });
   const status = surfaceUrl.status === 'ready' ? iframeStatus : surfaceUrl.status;
