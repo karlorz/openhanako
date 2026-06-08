@@ -43,7 +43,7 @@ describe("DeferredResultCoordinator", () => {
     expect(store.query("task-1")).toMatchObject({ delivered: true });
   });
 
-  it("silently marks delivered for UI-only tasks without interlude (no record, no agent notification)", async () => {
+  it("records UI-only media results as non-context entries without waking the parent agent or creating interludes", async () => {
     store.defer("task-img", "/sessions/a.jsonl", {
       type: "image-generation",
       mediaKind: "image",
@@ -53,11 +53,22 @@ describe("DeferredResultCoordinator", () => {
     store.resolve("task-img", { sessionFiles: [{ fileId: "sf_img" }] });
 
     await vi.waitFor(() => {
-      expect(store.query("task-img")).toMatchObject({ delivered: true });
+      expect(sessionCoordinator.recordCustomEntry).toHaveBeenCalledOnce();
     });
 
     expect(sessionCoordinator.deliverCustomMessage).not.toHaveBeenCalled();
-    expect(sessionCoordinator.recordCustomEntry).not.toHaveBeenCalled();
+    expect(sessionCoordinator.recordCustomEntry).toHaveBeenCalledWith(
+      "/sessions/a.jsonl",
+      "hana-deferred-result",
+      expect.objectContaining({
+        schemaVersion: 1,
+        taskId: "task-img",
+        status: "success",
+        type: "image-generation",
+        result: { sessionFiles: [{ fileId: "sf_img" }] },
+      }),
+    );
+    expect(store.query("task-img")).toMatchObject({ delivered: true });
   });
 
   it("records UI-only results as custom entries when interlude is opted in", async () => {
@@ -195,6 +206,7 @@ describe("DeferredResultCoordinator", () => {
       sessionPath: "/agents/hanako/sessions/bridge/owner/chat.jsonl",
       meta: {
         type: "image-generation",
+        deliveryIntent: "ui_only",
         deliveryTarget: { kind: "bridge", platform: "wechat", chatId: "wx-user" },
       },
       deferredAt: Date.now(),
@@ -206,6 +218,7 @@ describe("DeferredResultCoordinator", () => {
     await coordinator.flushUndelivered();
 
     expect(sessionCoordinator.deliverCustomMessage).not.toHaveBeenCalled();
+    expect(sessionCoordinator.recordCustomEntry).not.toHaveBeenCalled();
     expect(store.query("task-bridge")).toMatchObject({
       delivered: false,
     });

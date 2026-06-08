@@ -108,10 +108,10 @@ export class DeferredResultCoordinator {
   async _deliverTask(taskId) {
     const task = this.store.query(taskId);
     if (!isDeliverable(task)) return false;
+    if (isExternallyDeliveredTask(task)) return false;
     if (isUiOnlyDeferredResultTask(task) && !shouldNotifyAgentOnFailure(task)) {
       return await this._recordUiOnlyTask(taskId, task);
     }
-    if (isExternallyDeliveredTask(task)) return false;
 
     if (
       typeof this.sessionCoordinator.isRunnableSessionPath === "function"
@@ -136,10 +136,6 @@ export class DeferredResultCoordinator {
   }
 
   async _recordUiOnlyTask(taskId, task) {
-    if (!task?.meta?.interlude) {
-      this.store.markDelivered(taskId);
-      return true;
-    }
     if (typeof this.recordCustomEntry !== "function") {
       this.log.warn?.(`[deferred-result] UI-only delivery unavailable for ${taskId}`);
       return false;
