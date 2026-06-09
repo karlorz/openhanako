@@ -131,6 +131,77 @@ describe("SessionCoordinator", () => {
     expect(createAgentSessionMock.mock.calls[0][0].resourceLoader.getSystemPrompt()).toBe("MEMORY OFF");
   });
 
+  it("refreshes agent appearance after the fresh session exists instead of blocking prompt snapshot", async () => {
+    const order: string[] = [];
+    const agent = {
+      sessionDir: "/tmp/agent-sessions",
+      memoryMasterEnabled: true,
+      sessionMemoryEnabled: true,
+      setMemoryEnabled: vi.fn(),
+      refreshAppearanceSummary: vi.fn(async () => {
+        order.push("refresh");
+        return "你的形象安静而专注。";
+      }),
+      buildSystemPrompt: vi.fn(() => {
+        order.push("prompt");
+        return "BASE";
+      }),
+    };
+
+    createAgentSessionMock.mockImplementationOnce(async (opts) => {
+      order.push("create");
+      return {
+        session: {
+          sessionManager: { getSessionFile: () => "/tmp/session.jsonl" },
+          subscribe: vi.fn(() => vi.fn()),
+          setActiveToolsByName: vi.fn(),
+          model: opts.model,
+        },
+      };
+    });
+
+    const model = { id: "vision-chat", provider: "test", input: ["text", "image"] };
+    const coordinator = new SessionCoordinator({
+      agentsDir: "/tmp/agents",
+      getAgent: () => agent,
+      getActiveAgentId: () => "hana",
+      getModels: () => ({
+        currentModel: model,
+        authStorage: {},
+        modelRegistry: {},
+        resolveThinkingLevel: () => "medium",
+      }),
+      getResourceLoader: () => ({
+        getSystemPrompt: () => "BASE",
+        getAppendSystemPrompt: () => [],
+        getExtensions: () => ({ extensions: [], errors: [] }),
+        getSkills: () => ({ skills: [], diagnostics: [] }),
+        getAgentsFiles: () => ({ agentsFiles: [] }),
+      }),
+      getSkills: () => null,
+      buildTools: () => ({ tools: [], customTools: [] }),
+      emitEvent: vi.fn(),
+      getHomeCwd: () => "/tmp/home",
+      agentIdFromSessionPath: () => "hana",
+      switchAgentOnly: async () => {},
+      getConfig: () => ({}),
+      getPrefs: () => ({ getThinkingLevel: () => "medium" }),
+      getAgents: () => new Map(),
+      getActivityStore: () => null,
+      getAgentById: () => agent,
+      listAgents: () => [],
+    });
+
+    await coordinator.createSession(null, "/tmp/workspace", true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(agent.refreshAppearanceSummary).toHaveBeenCalledWith({
+      targetModel: model,
+      rebuildSystemPrompt: true,
+    });
+    expect(order).toEqual(["prompt", "create", "refresh"]);
+  });
+
   it("keeps different cached session memory flags without mutating the agent session flag on switch", async () => {
     const agentDir = path.join(tempDir, "agents", "hana");
     const sessionDir = path.join(agentDir, "sessions");

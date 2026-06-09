@@ -903,14 +903,6 @@ export class SessionCoordinator {
     }; // pre-populated for resourceLoader proxy
     const pluginSessionMeta = normalizePluginSessionMeta({ ownerPluginId, sessionKind, sessionVisibility });
 
-    if (!restore && typeof agent.refreshAppearanceSummary === "function") {
-      try {
-        await agent.refreshAppearanceSummary({ targetModel: effectiveModel, rebuildSystemPrompt: true });
-      } catch (err) {
-        log.warn(`agent appearance summary refresh failed: ${err?.message || err}`);
-      }
-    }
-
     // 快照当前 system prompt，per-session 隔离。
     // 后续记忆编译、技能变更只影响新对话，已有对话的 prompt 不变（保护 prefix cache）。
     const systemPromptSnapshot = restoredPromptSnapshot?.systemPrompt
@@ -1298,7 +1290,22 @@ export class SessionCoordinator {
       }
     }
 
+    if (!restore) {
+      this._refreshAgentAppearanceSummaryAfterCreate(agent, resolvedModel || effectiveModel || null);
+    }
+
     return { session, sessionPath: sessionPath || mapKey, agentId: creatingAgentId };
+  }
+
+  _refreshAgentAppearanceSummaryAfterCreate(agent: any, targetModel: any) {
+    if (!agent || typeof agent.refreshAppearanceSummary !== "function") return;
+    setTimeout(() => {
+      void Promise.resolve()
+        .then(() => agent.refreshAppearanceSummary({ targetModel, rebuildSystemPrompt: true }))
+        .catch((err) => {
+          log.warn(`agent appearance summary refresh failed: ${err?.message || err}`);
+        });
+    }, 0);
   }
 
   async createDetachedSession({
