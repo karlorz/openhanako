@@ -172,9 +172,9 @@ if (typeof window === 'undefined') {
 // Stub store methods used by loadMessages / switchSession
 function installStoreMethods() {
   const s = mockState as MockState;
-  s.initSession = vi.fn((path: string, items: unknown[], hasMore: boolean) => {
+  s.initSession = vi.fn((path: string, items: unknown[], hasMore: boolean, revision?: string | null) => {
     const chat = mockState.chatSessions as Record<string, unknown>;
-    chat[path] = { items, hasMore, loadingMore: false };
+    chat[path] = { items, hasMore, loadingMore: false, revision: revision ?? null };
   });
   s.bumpLoadMessagesVersion = vi.fn((path: string) => {
     const versions = mockState._loadMessagesVersion as Record<string, number>;
@@ -242,7 +242,7 @@ import { hanaFetch } from '../../hooks/use-hana-fetch';
 import { clearChat } from '../../stores/agent-actions';
 import { loadDeskFiles } from '../../stores/desk-actions';
 import { bumpMessageLiveVersion, clearMessageLiveVersion } from '../../stores/message-live-version';
-import { archiveSession, completeSessionTodos, continueDeletedAgentSession, createNewSession, ensureSession, loadMessages, loadSessions, pinSession, switchSession } from '../../stores/session-actions';
+import { archiveSession, completeSessionTodos, continueDeletedAgentSession, createNewSession, ensureSession, loadMessages, loadSessions, pinSession, reconcileCurrentSessionMessages, switchSession } from '../../stores/session-actions';
 import { snapshotStreamBuffer } from '../../stores/stream-invalidator';
 
 const mockFetch = vi.mocked(hanaFetch);
@@ -1417,6 +1417,243 @@ function jsonResponse(body: unknown, ok = true): Response {
       expect(ok).toBe(false);
       expect(mockState.sessions).toBe(sessions);
       expect(mockState.addToast).toHaveBeenCalledWith('session.pinFailed', 'info', 3000);
+    });
+  });
+
+  // ── #1610: 会话修订点同步（/rc 接管期间消息漏同步修复） ──
+
+  describe('loadMessages revision stamp', () => {
+    it('stamps the server revision into the hydrated session cache', async () => {
+      const sessionPath = '/session/revisioned.jsonl';
+      mockFetch.mockResolvedValueOnce(jsonResponse({
+        messages: [{ role: 'user', content: 'hi' }],
+        blocks: [],
+        todos: [],
+        hasMore: false,
+        revision: '2048:1765500000000',
+      }));
+
+      await loadMessages(sessionPath);
+
+      const cached = (mockState.chatSessions as Record<string, { revision?: string | null }>)[sessionPath];
+      expect(cached.revision).toBe('2048:1765500000000');
+    });
+
+    it('stamps a null revision when the server omits it', async () => {
+      const sessionPath = '/session/no-revision.jsonl';
+      mockFetch.mockResolvedValueOnce(jsonResponse({
+        messages: [],
+        blocks: [],
+        todos: [],
+        hasMore: false,
+      }));
+
+      await loadMessages(sessionPath);
+
+      const cached = (mockState.chatSessions as Record<string, { revision?: string | null }>)[sessionPath];
+      expect(cached.revision).toBeNull();
+    });
+  });
+
+  describe('reconcileCurrentSessionMessages', () => {
+    const sessionPath = '/session/rc-target.jsonl';
+
+    function installCachedCurrentSession({
+      cachedRevision = 'rev-old',
+      listRevision = 'rev-new',
+    }: { cachedRevision?: string | null; listRevision?: string | null } = {}) {
+      Object.assign(mockState, {
+        currentSessionPath: sessionPath,
+        sessions: [{ path: sessionPath, revision: listRevision, modified: '2026-06-10T08:00:00.000Z', messageCount: 3 }],
+        chatSessions: {
+          [sessionPath]: { items: [], hasMore: false, loadingMore: false, revision: cachedRevision },
+        },
+      });
+    }
+
+    it('re-pulls the current session when the list revision drifts from the cached one', async () => {
+      installCachedCurrentSession({ cachedRevision: 'rev-old', listRevision: 'rev-new' });
+      mockFetch.mockResolvedValueOnce(jsonResponse({
+        messages: [
+          { role: 'user', content: 'from telegram' },
+          { role: 'assistant', content: 'rc reply' },
+        ],
+        blocks: [],
+        todos: [],
+        hasMore: false,
+        revision: 'rev-new',
+      }));
+
+      await reconcileCurrentSessionMessages('test_drift');
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        `/api/sessions/messages?path=${encodeURIComponent(sessionPath)}`,
+      );
+      const cached = (mockState.chatSessions as Record<string, { items: unknown[]; revision?: string | null }>)[sessionPath];
+      expect(cached.items).toHaveLength(2);
+      expect(cached.revision).toBe('rev-new');
+    });
+
+    it('skips the fetch when the cached revision matches the list revision', async () => {
+      installCachedCurrentSession({ cachedRevision: 'rev-same', listRevision: 'rev-same' });
+
+      await reconcileCurrentSessionMessages('test_match');
+
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('re-pulls once when the cached revision is unknown', async () => {
+      installCachedCurrentSession({ cachedRevision: null, listRevision: 'rev-new' });
+      mockFetch.mockResolvedValueOnce(jsonResponse({
+        messages: [], blocks: [], todos: [], hasMore: false, revision: 'rev-new',
+      }));
+
+      await reconcileCurrentSessionMessages('test_unknown_cache');
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      const cached = (mockState.chatSessions as Record<string, { revision?: string | null }>)[sessionPath];
+      expect(cached.revision).toBe('rev-new');
+    });
+
+    it('does not re-pull while the session is streaming', async () => {
+      installCachedCurrentSession();
+      Object.assign(mockState, { streamingSessions: [sessionPath] });
+
+      await reconcileCurrentSessionMessages('test_streaming');
+
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('does not re-pull when the session has no message cache yet', async () => {
+      installCachedCurrentSession();
+      Object.assign(mockState, { chatSessions: {} });
+
+      await reconcileCurrentSessionMessages('test_cold');
+
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('does not re-pull when the list projection carries no revision', async () => {
+      installCachedCurrentSession({ listRevision: null });
+
+      await reconcileCurrentSessionMessages('test_no_list_revision');
+
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('does not re-pull while a session switch is pending', async () => {
+      installCachedCurrentSession();
+      Object.assign(mockState, { pendingSessionSwitchPath: '/session/other.jsonl' });
+
+      await reconcileCurrentSessionMessages('test_pending_switch');
+
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('deduplicates concurrent triggers into one in-flight fetch', async () => {
+      installCachedCurrentSession();
+      let resolveFetch: (value: Response) => void = () => {};
+      mockFetch.mockImplementationOnce(() => new Promise<Response>((resolve) => {
+        resolveFetch = resolve;
+      }));
+
+      const first = reconcileCurrentSessionMessages('ws_reconnect');
+      const second = reconcileCurrentSessionMessages('window_focus');
+
+      resolveFetch(jsonResponse({ messages: [], blocks: [], todos: [], hasMore: false, revision: 'rev-new' }));
+      await Promise.all([first, second]);
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('allows a follow-up reconcile after the previous one settles', async () => {
+      installCachedCurrentSession();
+      mockFetch.mockResolvedValueOnce(jsonResponse({
+        messages: [], blocks: [], todos: [], hasMore: false, revision: 'rev-mid',
+      }));
+
+      await reconcileCurrentSessionMessages('first');
+
+      // 列表又前进了一个修订点
+      Object.assign(mockState, {
+        sessions: [{ path: sessionPath, revision: 'rev-final' }],
+      });
+      mockFetch.mockResolvedValueOnce(jsonResponse({
+        messages: [], blocks: [], todos: [], hasMore: false, revision: 'rev-final',
+      }));
+
+      await reconcileCurrentSessionMessages('second');
+
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      const cached = (mockState.chatSessions as Record<string, { revision?: string | null }>)[sessionPath];
+      expect(cached.revision).toBe('rev-final');
+    });
+  });
+
+  describe('switchSession revision reconcile', () => {
+    it('re-pulls a cached session whose list revision drifted while it was in the background', async () => {
+      const target = '/session/cached-stale.jsonl';
+      Object.assign(mockState, {
+        currentSessionPath: '/session/current.jsonl',
+        sessions: [
+          { path: target, cwd: '/tmp/work', revision: 'rev-after-rc' },
+        ],
+        chatSessions: {
+          [target]: { items: [{ type: 'message', data: { id: '0' } }], hasMore: false, loadingMore: false, revision: 'rev-before-rc' },
+        },
+      });
+      mockFetch.mockImplementation(async (url: string) => {
+        if (String(url) === '/api/sessions/switch') {
+          return jsonResponse({ ok: true, isStreaming: false });
+        }
+        if (String(url).startsWith('/api/sessions/messages')) {
+          return jsonResponse({
+            messages: [
+              { role: 'user', content: 'old' },
+              { role: 'user', content: 'rc message' },
+            ],
+            blocks: [],
+            todos: [],
+            hasMore: false,
+            revision: 'rev-after-rc',
+          });
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      });
+
+      await switchSession(target);
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        `/api/sessions/messages?path=${encodeURIComponent(target)}`,
+      );
+      const cached = (mockState.chatSessions as Record<string, { items: unknown[]; revision?: string | null }>)[target];
+      expect(cached.items).toHaveLength(2);
+      expect(cached.revision).toBe('rev-after-rc');
+    });
+
+    it('does not re-pull a cached session whose revision still matches the list', async () => {
+      const target = '/session/cached-fresh.jsonl';
+      Object.assign(mockState, {
+        currentSessionPath: '/session/current.jsonl',
+        sessions: [
+          { path: target, cwd: '/tmp/work', revision: 'rev-same' },
+        ],
+        chatSessions: {
+          [target]: { items: [{ type: 'message', data: { id: '0' } }], hasMore: false, loadingMore: false, revision: 'rev-same' },
+        },
+      });
+      mockFetch.mockImplementation(async (url: string) => {
+        if (String(url) === '/api/sessions/switch') {
+          return jsonResponse({ ok: true, isStreaming: false });
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      });
+
+      await switchSession(target);
+
+      expect(mockFetch).not.toHaveBeenCalledWith(
+        `/api/sessions/messages?path=${encodeURIComponent(target)}`,
+      );
     });
   });
 });

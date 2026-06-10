@@ -92,7 +92,16 @@ describe('chat-slice', () => {
         hasMore: false,
         loadingMore: false,
         oldestId: undefined,
+        revision: null,
       });
+    });
+
+    it('记录 hydrate 时的磁盘修订点，缺省为 null', () => {
+      slice.initSession('/a', [], false, '4096:1765500000000');
+      expect(slice.chatSessions['/a']?.revision).toBe('4096:1765500000000');
+
+      slice.initSession('/b', [], false);
+      expect(slice.chatSessions['/b']?.revision).toBeNull();
     });
 
     it('oldestId 取第一条 message，不被前置幕间条目占位', () => {

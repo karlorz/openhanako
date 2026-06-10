@@ -213,18 +213,20 @@ export async function loadMessages(forPath?: string): Promise<void> {
     const rawTodos = data.todos || [];
     const migratedTodos = migrateLegacyTodos({ todos: rawTodos });
     const items = buildItemsFromHistory(data);
+    // 修订点 stamp：记录本次快照对应的磁盘修订点，后续 reconcile 与列表投影对比。
+    const revision = typeof data.revision === 'string' ? data.revision : null;
     useStore.getState().setSessionRegistryFiles(
       targetPath,
       Array.isArray(data.sessionFiles) ? data.sessionFiles : [],
     );
     useStore.getState().setSessionTodosForPath(targetPath, migratedTodos);
     if (items.length > 0) {
-      useStore.getState().initSession(targetPath, items, data.hasMore ?? false);
+      useStore.getState().initSession(targetPath, items, data.hasMore ?? false, revision);
       if (targetPath === useStore.getState().currentSessionPath) {
         useStore.setState({ welcomeVisible: false });
       }
     } else {
-      useStore.getState().initSession(targetPath, [], false);
+      useStore.getState().initSession(targetPath, [], false, revision);
     }
     // In-flight guard: jsonl 仅在 turn_end 落盘。若 session 在 stream 进行中
     // 被 reload（switchSession 冷启动 / stream-resume truncated），合并 buffer
@@ -303,6 +305,59 @@ export async function loadMoreMessages(forPath?: string): Promise<void> {
     console.error('[loadMoreMessages] error:', err);
     useStore.getState().setLoadingMore(targetPath, false);
   }
+}
+
+// ══════════════════════════════════════════════════════
+// 会话修订点校验补拉（issue #1610）
+// ══════════════════════════════════════════════════════
+
+// per-session in-flight 去重：focus / online / WS reconnect 等触发器可能同时到达，
+// 同一会话同一时刻最多一个补拉请求在途。
+const _revisionReconcileInFlight = new Map<string, Promise<void>>();
+
+/**
+ * 校验「当前打开会话」的缓存内容是否落后于磁盘真相，落后则补拉。
+ *
+ * 修订点对比：chatSessions[path].revision（hydrate 时 stamp 的 stat 签名）
+ * vs store.sessions 列表投影的 revision（最近一次列表刷新看到的磁盘状态）。
+ * 两者不一致说明磁盘在本端没有消费到的窗口内前进过——典型场景是 Bridge /rc
+ * 接管期间 web/mobile 端 WS 断连（手机锁屏），live 事件全部丢失。
+ *
+ * 边界（刻意保守，宁可少拉）：
+ *   - 只处理当前打开的会话；后台会话切换回来时由 switchSession 触发同一校验
+ *   - 流式进行中不补拉：live 事件流正在喂内容，turn 结束后列表刷新会再触发
+ *   - 列表投影无 revision（老服务端 / 内存占位）不盲拉
+ *   - 缓存 revision 为 null（未知，如 WS 端新会话的空 init）且列表有 revision
+ *     时补拉一次，把修订点 stamp 上
+ *
+ * 调用方约定：在「拿到新鲜列表之后」调用（loadSessions / loadMobileSessions 之后），
+ * 否则对比的是旧投影，没有意义。
+ */
+export function reconcileCurrentSessionMessages(reason = 'unknown'): Promise<void> | undefined {
+  const s = useStore.getState();
+  const target = s.currentSessionPath;
+  if (!target || s.pendingNewSession || s.pendingSessionSwitchPath) return undefined;
+  if ((s.streamingSessions || []).includes(target)) return undefined;
+  const cached = s.chatSessions?.[target];
+  if (!cached) return undefined; // 冷启动 / 切换路径负责首载
+  const projection = s.sessions.find((session) => session.path === target);
+  const listRevision = typeof projection?.revision === 'string' ? projection.revision : null;
+  if (!listRevision) return undefined;
+  if ((cached.revision ?? null) === listRevision) return undefined;
+
+  const existing = _revisionReconcileInFlight.get(target);
+  if (existing) return existing;
+
+  const inFlight = loadMessages(target)
+    .catch((err) => {
+      // loadMessages 内部已兜底，这里只防御未来改动让异常冒出导致 in-flight 卡死。
+      console.warn(`[session] revision reconcile failed (${reason}):`, err);
+    })
+    .finally(() => {
+      _revisionReconcileInFlight.delete(target);
+    });
+  _revisionReconcileInFlight.set(target, inFlight);
+  return inFlight;
 }
 
 // ══════════════════════════════════════════════════════
@@ -443,6 +498,13 @@ export async function switchSession(path: string): Promise<void> {
       docContextAttached: false,
       ...agentPatch,
     });
+
+    // 缓存命中跳过了 loadMessages 时，校验修订点：会话在后台期间（如 Bridge /rc
+    // 接管 + 本端 WS 断连）磁盘可能已前进，缓存不能直接当真相（issue #1610）。
+    // fire-and-forget：先呈现缓存内容，补拉结果通过 store 更新自然落地。
+    if (hasData) {
+      void reconcileCurrentSessionMessages('session_switch');
+    }
 
     await resetDeskForSessionWorkspace({
       cwd: data.cwd || null,

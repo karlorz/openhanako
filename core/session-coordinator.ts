@@ -3123,6 +3123,9 @@ export class SessionCoordinator {
         title: null,
         firstMessage: "",
         modified: new Date(entry.lastTouchedAt || Date.now()),
+        // 内存占位投影没有磁盘修订点；revision=null 表示「未知」，
+        // 前端 reconcile 对 null 不做盲目重拉。
+        revision: null,
         messageCount: 0,
         cwd: entry.session?.sessionManager?.getCwd?.() || "",
         agentId: entry.agentId || this._d.getActiveAgentId(),

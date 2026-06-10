@@ -31,6 +31,7 @@ import {
   isActiveDesktopSessionPath,
   isArchivedDesktopSessionPath,
 } from "../../core/message-utils.ts";
+import { sessionFileRevision } from "../../core/session-list-projection-cache.ts";
 import {
   extractLatestTodos,
   loadLatestTodoSnapshotFromSessionFile,
@@ -198,6 +199,20 @@ function resolveHistoryPageBounds(sourceMessages, { beforeId, limit, forceAll })
     : total;
   const startIdx = Math.max(0, endIdx - limit);
   return { total, startIdx, endIdx, hasMore: startIdx > 0 };
+}
+
+/**
+ * 读取会话文件的磁盘修订点（stat 签名，与 /api/sessions 列表投影同源同格式）。
+ * stat 失败（请求竞态中文件被归档/删除）返回 null —— 显式的「修订点未知」，
+ * 前端对 null 的策略是下次触发时重新校验，不会把差异静默吞掉。
+ */
+async function readSessionFileRevision(sessionPath) {
+  if (!sessionPath) return null;
+  try {
+    return sessionFileRevision(await fs.stat(sessionPath));
+  } catch {
+    return null;
+  }
 }
 
 export function createSessionsRoute(engine, hub = null) {
@@ -506,6 +521,9 @@ export function createSessionsRoute(engine, hub = null) {
           title: s.title || null,
           firstMessage: (s.firstMessage || "").slice(0, 100),
           modified: s.modified?.toISOString() || null,
+          // 磁盘修订点（stat 签名）。web/mobile 端用它对比已缓存会话内容，
+          // 决定是否补拉 /rc 接管等离线窗口写入的消息（issue #1610）。
+          revision: typeof s.revision === "string" ? s.revision : null,
           messageCount: s.messageCount || 0,
           cwd: s.cwd || null,
           agentId: s.agentId || null,
@@ -751,6 +769,10 @@ export function createSessionsRoute(engine, hub = null) {
       });
       if (!auth.allowed) return c.json({ error: "insufficient_scope", reason: auth.reason }, 403);
       const resolvedSessionPath = queryPath || engine.currentSessionPath || null;
+      // 修订点必须在读取内容之前取：读取期间若有新写入，revision 只会偏旧
+      // （前端下次触发时多补拉一次，方向安全），不会偏新（把没读到的写入
+      // 标成「已同步」会让 /rc 消息永久漏掉，issue #1610 的反方向竞态）。
+      const revision = await readSessionFileRevision(resolvedSessionPath);
       const sourceMessages = await loadSessionHistoryMessages(engine, resolvedSessionPath);
 
       // 分页参数
@@ -993,7 +1015,7 @@ export function createSessionsRoute(engine, hub = null) {
         engine.activityHub?.rebroadcastSession?.(resolvedSessionPath);
       }
 
-      return c.json({ messages, blocks: slicedBlocks, todos, hasMore, sessionFiles });
+      return c.json({ messages, blocks: slicedBlocks, todos, hasMore, sessionFiles, revision });
     } catch (err) {
       return c.json({ error: err.message }, 500);
     }

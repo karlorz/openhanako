@@ -45,6 +45,11 @@ export interface Session {
   title: string | null;
   firstMessage: string;
   modified: string;
+  /**
+   * 服务端磁盘修订点（stat 签名）。null = 服务端未提供（老服务端 / 内存占位投影）。
+   * 与 chatSessions[path].revision 对比用于判断缓存内容是否落后于磁盘真相。
+   */
+  revision?: string | null;
   messageCount: number;
   agentId: string | null;
   agentName: string | null;
