@@ -27,6 +27,7 @@ import { InputContextRow } from './input/InputContextRow';
 import { InputControlBar } from './input/InputControlBar';
 import type { PermissionMode } from './input/PlanModeButton';
 import { SessionConfirmationPrompt } from './input/SessionConfirmationPrompt';
+import { CapabilityDriftNotice } from './input/CapabilityDriftNotice';
 import { serializeEditor } from '../utils/editor-serializer';
 import {
   buildFileMentionItems,
@@ -64,6 +65,18 @@ import type { ChatListItem, SessionConfirmationBlock } from '../stores/chat-type
 import type { AudioWaveform } from '../stores/chat-types';
 
 const EMPTY_FILE_REFS: readonly import('../types/file-ref').FileRef[] = Object.freeze([]);
+
+// #1624：刷新完成瞬间 drift 已清空但 busy 态还在的兜底渲染数据（只用于 busy 分支）
+const EMPTY_CAPABILITY_DRIFT: import('../types').SessionCapabilityDrift = Object.freeze({
+  version: 1,
+  fingerprint: '',
+  frozenFingerprint: '',
+  addedToolNames: [],
+  removedToolNames: [],
+  invalidToolNames: [],
+  promptChanged: false,
+  hasDrift: false,
+});
 
 function chatVideoMimeTypeForName(name: string, fallback?: string): string {
   if (fallback?.startsWith('video/')) return fallback;
@@ -308,6 +321,9 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
 
   const globalModelInfo = useMemo(() => models.find(m => m.isCurrent), [models]);
   const sessionModel = useStore(s => s.currentSessionPath ? s.sessionModelsByPath[s.currentSessionPath] : undefined);
+  // #1624：当前 session 的工具能力漂移提示（服务端 restore 时算好，前端只消费）
+  const capabilityDrift = useStore(s => s.currentSessionPath ? (s.capabilityDriftBySession[s.currentSessionPath] ?? null) : null);
+  const capabilityRefreshing = useStore(s => s.currentSessionPath ? s.capabilityRefreshingSessions.includes(s.currentSessionPath) : false);
   const currentModelInfo = sessionModel || globalModelInfo;
   // input 数组缺失视为未知；只有显式 text-only 的模型才在 UI 上标记“辅助视觉”。
   const supportsVision = !Array.isArray(currentModelInfo?.input) || currentModelInfo.input.includes("image");
@@ -1165,7 +1181,10 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
   const hasContent = inputText.trim().length > 0 || attachedFiles.length > 0 || docContextAttached || quotedSelections.length > 0
     || editorHasInlineNode(editor, 'skillBadge')
     || editorHasInlineNode(editor, 'fileBadge');
-  const canSend = hasContent && connected && !isStreaming && !modelSwitching && !pendingSessionSwitchPath && !inputLocked;
+  // capabilityRefreshing / compacting：压缩到 reload 完成之间 session 没有可用
+  // runtime，此窗口内发 prompt 会冷建第二个 runtime 与 reload 竞争（#1624 I2）。
+  const canSend = hasContent && connected && !isStreaming && !modelSwitching && !pendingSessionSwitchPath && !inputLocked
+    && !capabilityRefreshing && !compacting;
 
   const loadVisionAuxiliaryConfig = useCallback(async () => {
     if (surface === 'mobile') {
@@ -1362,6 +1381,17 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
     if (sending) return;
     if (modelSwitching) return;
     if (useStore.getState().pendingSessionSwitchPath) return;
+    if (type === 'prompt') {
+      // 压缩 / 能力刷新（fresh compact）期间禁发 prompt：此窗口内 session 没有
+      // 可用 runtime，发消息会冷建第二个 runtime 与压缩后的 reload 竞争（#1624 I2）。
+      // Enter 发送不走 canSend，必须在提交路径同样拦截；按 keyed 状态现读现查。
+      const guardState = useStore.getState();
+      const guardPath = guardState.currentSessionPath;
+      if (guardPath && (
+        guardState.capabilityRefreshingSessions.includes(guardPath)
+        || guardState.compactingSessions.includes(guardPath)
+      )) return;
+    }
     setSending(true);
 
     try {
@@ -1736,6 +1766,12 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
         )}
       </div>
       <div className={styles['input-stack']}>
+        {(capabilityDrift || capabilityRefreshing) && !visibleSessionConfirmation && !deletedAgentReadOnly && currentSessionPath && (
+          <CapabilityDriftNotice
+            sessionPath={currentSessionPath}
+            drift={capabilityDrift ?? EMPTY_CAPABILITY_DRIFT}
+          />
+        )}
         {visibleSessionConfirmation && (
           <SessionConfirmationPrompt
             block={visibleSessionConfirmation}

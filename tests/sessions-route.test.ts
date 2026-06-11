@@ -2423,4 +2423,111 @@ describe("sessions route", () => {
       sessionPath,
     );
   });
+
+  // ── #1610: web/mobile 会话修订点（revision）──
+
+  it("passes the projection revision through the session list response", async () => {
+    const { createSessionsRoute } = await import("../server/routes/sessions.ts");
+    const app = new Hono();
+
+    const engine = {
+      listSessions: vi.fn(async () => [{
+        path: "/tmp/agents/hana/sessions/a.jsonl",
+        title: "Bridge thread",
+        firstMessage: "hello",
+        modified: new Date("2026-06-10T07:00:00.000Z"),
+        messageCount: 2,
+        cwd: "/tmp/work",
+        agentId: "hana",
+        agentName: "Hana",
+        revision: "1024:1765500000000",
+      }]),
+      rcState: null,
+    };
+
+    app.route("/api", createSessionsRoute(engine));
+
+    const res = await app.request("/api/sessions");
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data[0].revision).toBe("1024:1765500000000");
+  });
+
+  it("defaults the session list revision to null when the projection has none", async () => {
+    const { createSessionsRoute } = await import("../server/routes/sessions.ts");
+    const app = new Hono();
+
+    const engine = {
+      listSessions: vi.fn(async () => [{
+        path: "/tmp/agents/hana/sessions/in-memory.jsonl",
+        title: null,
+        firstMessage: "",
+        modified: new Date("2026-06-10T07:00:00.000Z"),
+        messageCount: 0,
+        cwd: "/tmp/work",
+        agentId: "hana",
+        agentName: "Hana",
+      }]),
+      rcState: null,
+    };
+
+    app.route("/api", createSessionsRoute(engine));
+
+    const res = await app.request("/api/sessions");
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data[0].revision).toBeNull();
+  });
+
+  it("returns the on-disk revision with the session messages payload", async () => {
+    const { createSessionsRoute } = await import("../server/routes/sessions.ts");
+    const app = new Hono();
+
+    const agentsDir = path.join(tmpDir, "agents");
+    const sessionDir = path.join(agentsDir, "hana", "sessions");
+    fs.mkdirSync(sessionDir, { recursive: true });
+    const sessionPath = path.join(sessionDir, "rc-target.jsonl");
+    fs.writeFileSync(sessionPath, JSON.stringify({ type: "session", id: "s1", cwd: "/tmp/work" }) + "\n");
+    const stat = fs.statSync(sessionPath);
+
+    const engine = {
+      agentsDir,
+      currentSessionPath: sessionPath,
+      deferredResults: null,
+      agentIdFromSessionPath: vi.fn(() => "hana"),
+      getAgent: vi.fn(() => ({ agentName: "Hana" })),
+    };
+
+    app.route("/api", createSessionsRoute(engine));
+
+    const res = await app.request(`/api/sessions/messages?path=${encodeURIComponent(sessionPath)}`);
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data.revision).toBe(`${stat.size}:${stat.mtimeMs}`);
+  });
+
+  it("returns a null messages revision when the session file cannot be stat-ed", async () => {
+    const { createSessionsRoute } = await import("../server/routes/sessions.ts");
+    const app = new Hono();
+    const sessionPath = "/tmp/agents/hana/sessions/raced-away.jsonl";
+
+    const engine = {
+      agentsDir: "/tmp/agents",
+      currentSessionPath: sessionPath,
+      deferredResults: null,
+      agentIdFromSessionPath: vi.fn(() => "hana"),
+      getAgent: vi.fn(() => ({ agentName: "Hana" })),
+    };
+
+    app.route("/api", createSessionsRoute(engine));
+
+    const res = await app.request(`/api/sessions/messages?path=${encodeURIComponent(sessionPath)}`);
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data.revision).toBeNull();
+  });
 });

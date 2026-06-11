@@ -1,6 +1,10 @@
 import fs from "fs";
 import path from "path";
 import { createPluginContext } from "./plugin-context.ts";
+import {
+  createPluginRouteRequestContext,
+  isPluginBusCapabilityError,
+} from "./plugin-route-request-context.ts";
 import { freshImport } from "./fresh-import.ts";
 import { normalizePluginConfigSchema } from "./plugin-config.ts";
 import { semverGte } from "../lib/plugin-versioning.ts";
@@ -107,7 +111,12 @@ function normalizeActivationEvents(raw, hasLifecycle) {
   return hasLifecycle ? ["onStartup"] : [];
 }
 
+// 区分"字段缺失"与"显式声明"：manifest 完全没写该字段（老插件）返回 null，
+// 由 plugin-route-request-context 在两个列表都缺失时按 legacy（声明全部）放行；
+// 只要写了字段（包括显式空数组、非数组的非法值）就视为显式声明，按声明严格
+// 校验——显式 `capabilities: []` 表达"不需要任何敏感 capability"，不得放行。
 function normalizeCapabilityList(raw) {
+  if (raw == null) return null;
   if (!Array.isArray(raw)) return [];
   return [...new Set(raw
     .map((item) => typeof item === "string" ? item.trim() : "")
@@ -948,15 +957,44 @@ export class PluginManager {
 
     // Error isolation: Hono's onError is the correct hook for handler throws
     app.onError((err, c) => {
+      if (isPluginBusCapabilityError(err)) {
+        ctx.log.warn(`route bus capability denied: ${err.message}`);
+        return c.json({
+          error: (err as any).code,
+          detail: err.message,
+          capability: (err as any).capability,
+          permission: (err as any).permission,
+          pluginId: (err as any).pluginId,
+          declared: (err as any).declared,
+          granted: (err as any).granted,
+        }, 403);
+      }
       ctx.log.error("route error:", err.message);
       return c.json({ error: "Plugin internal error", plugin: entry.id }, 500);
     });
 
-    // Middleware: inject ctx + agentId (from proxy header)
+    // Middleware: inject ctx + agentId + request-level context.
+    // 代理层通过 Hono env 的 `pluginRouteRequest` 传入本次请求的 principal 与
+    // agentId；这里铸造为请求级变量 `pluginRequestContext`（principal +
+    // manifest/grant 校验的 bus），状态只挂在请求上，不落到 ctx / 全局。
+    const injectRequestContext = (c: any) => {
+      c.set("pluginCtx", ctx);
+      const request = c.env?.pluginRouteRequest || null;
+      const agentId = (typeof request?.agentId === "string" && request.agentId)
+        ? request.agentId
+        : (c.req.header("X-Hana-Agent-Id") || null);
+      c.set("agentId", agentId);
+      c.set("pluginRequestContext", createPluginRouteRequestContext({
+        pluginCtx: ctx,
+        accessLevel: entry.accessLevel,
+        capabilities: entry.capabilities,
+        sensitiveCapabilities: entry.sensitiveCapabilities,
+        principal: request?.principal || null,
+        agentId,
+      }));
+    };
     app.use("*", async (c, next) => {
-      (c as any).set("pluginCtx", ctx);
-      const agentId = c.req.header("X-Hana-Agent-Id") || null;
-      (c as any).set("agentId", agentId);
+      injectRequestContext(c);
       await next();
     });
 
@@ -968,11 +1006,9 @@ export class PluginManager {
         if (typeof mod.default === "function") {
           const sub = mod.default;
           if (sub && typeof sub.fetch === "function") {
-            // Static Hono app — inject ctx + agentId middleware onto sub-app too
+            // Static Hono app — inject the same request-context middleware onto sub-app too
             sub.use("*", async (c, next) => {
-              c.set("pluginCtx", ctx);
-              const agentId = c.req.header("X-Hana-Agent-Id") || null;
-              c.set("agentId", agentId);
+              injectRequestContext(c);
               await next();
             });
             const prefix = "/" + stripPluginSourceExt(file);

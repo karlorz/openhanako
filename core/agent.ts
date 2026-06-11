@@ -1298,6 +1298,15 @@ export class Agent {
         "- Do not decide platform-specific display or sending behavior in the Agent layer; consumers handle it"
     );
 
+    parts.push(isZh
+      ? "\n## 可见 UI 上下文\n\n" +
+        "当用户用「这个、当前、打开的、可见的、选中的、置顶的」等说法指代 Hana 界面里正在看的文件、预览或文件夹时，先调用 current_status 获取 ui_context，再决定要读哪个文件或目录。\n\n" +
+        "ui_context 是用户当前可见界面的被动元信息，可能包含当前查看的文件夹、激活文件或预览标题、以及置顶 viewer 文件。它只描述 Hana 已收集到的 UI 视野；如果返回为空或不足以确定对象，向用户确认，不要猜路径。"
+      : "\n## Visible UI Context\n\n" +
+        "When the user refers to something in the Hana UI with words like current, open, visible, selected, pinned, this file, this folder, or what I am looking at, call current_status with the ui_context key before deciding which file or folder to inspect.\n\n" +
+        "ui_context is passive metadata about the user's visible UI state. It may include the currently viewed folder, active file or preview title, and pinned viewer files. It only describes UI state Hana has collected; if it is empty or not enough to identify the target, ask the user instead of guessing a path."
+    );
+
     if (!forSubagent) {
       const proactiveDelegation = getResolvedExperimentValue(
         this._cb?.getPreferences?.(),

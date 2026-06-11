@@ -194,6 +194,20 @@
       "deleteConfirm": "このアーカイブを完全に削除しますか？取り消せません。",
       "deleteFailed": "削除に失敗しました",
       "daysAgo": "{days} 日前にアーカイブ"
+    },
+    "capabilityDrift": {
+      "title": "ツール構成が更新されています",
+      "addedTools": "新しいツール {count} 件",
+      "removedTools": "{count} 件のツールが利用不可",
+      "promptUpdated": "プロンプト更新",
+      "separator": "、",
+      "refreshButton": "エージェントのツールを更新",
+      "dismissButton": "閉じる",
+      "confirmText": "更新すると古い会話は要約に圧縮され、詳細が失われる可能性があります。続行しますか？",
+      "confirmButton": "更新する",
+      "cancelButton": "キャンセル",
+      "refreshing": "会話を圧縮してツールを更新中…",
+      "refreshFailed": "更新に失敗しました"
     }
   },
   "common": {
@@ -324,7 +338,11 @@
       "xhigh": "フル推論"
     },
     "contextWindow": "コンテキスト {windowK}k",
-    "tokensUsed": "使用済み {tokensK}k ({pct}%)"
+    "tokensUsed": "使用済み {tokensK}k ({pct}%)",
+    "contextActions": "コンテキスト操作",
+    "refreshAndCompact": "更新して圧縮",
+    "refreshAndCompactTooltip": "最新の記憶とツールセットに更新",
+    "compact": "圧縮"
   },
   "slash": {
     "diary": "今日の日記を書く",
@@ -1249,7 +1267,6 @@
       "totalTokens": "合計 Tokens",
       "cacheRead": "キャッシュ読込",
       "cacheHitRate": "ヒット率",
-
       "uncached": "非キャッシュ",
       "modelMix": "モデル分布",
       "dailyUsage": "日別使用量",
@@ -2188,7 +2205,10 @@
     "notConfigured": "{platform} は設定されていません",
     "goToSettings": "設定へ",
     "resetContext": "コンテキストをリセット",
-    "resetContextTip": "次のメッセージから新しい会話が始まります"
+    "resetContextTip": "次のメッセージから新しい会話が始まります",
+    "replyInterrupted": "（応答が中断されました。上記の内容は不完全な可能性があります）",
+    "replyFailed": "（応答の生成に失敗しました。しばらくしてからもう一度お試しください）",
+    "sessionBusy": "デスクトップセッションはまだ応答中です。しばらくしてから再送してください"
   },
   "notification": {
     "turnCompletionBody": "このターンは完了しました"
@@ -2343,6 +2363,7 @@
     "settingsTimeout": "「{label}」の変更確認がタイムアウトしました。設定は変更されていません",
     "subagentMaxConcurrent": "現在 {max} 個のサブエージェントが実行中です。完了をお待ちください。",
     "subagentParentSessionRequired": "subagent にはアクティブな親会話とバックグラウンドタスクストアが必要です。このコンテキストでは継続可能なインスタンスを作成できません。",
+    "subagentWriteAccessDenied": "書き込み権限を付与できません：親セッションが読み取り専用モードのため、サブエージェントの権限は親を超えられません。セッションを操作可能モードに切り替えて再試行するか、access:\"read\" で再ディスパッチしてください。",
     "subagentFailed": "サブエージェントの実行に失敗しました: {msg}",
     "subagentTimeout": "サブエージェントがタイムアウトしました（{minutes}分）",
     "subagentAborted": "サブエージェントが中止されました",

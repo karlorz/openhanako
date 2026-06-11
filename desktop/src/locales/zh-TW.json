@@ -194,6 +194,20 @@
       "deleteConfirm": "永久刪除此封存？此操作無法復原。",
       "deleteFailed": "刪除失敗",
       "daysAgo": "封存於 {days} 天前"
+    },
+    "capabilityDrift": {
+      "title": "工具能力有更新",
+      "addedTools": "新增 {count} 個工具",
+      "removedTools": "{count} 個工具已失效",
+      "promptUpdated": "提示詞有更新",
+      "separator": "、",
+      "refreshButton": "重新整理 Agent 工具",
+      "dismissButton": "忽略",
+      "confirmText": "重新整理會把舊對話壓縮成摘要，細節可能遺失。要繼續嗎？",
+      "confirmButton": "確認重新整理",
+      "cancelButton": "取消",
+      "refreshing": "正在壓縮對話並重新整理工具…",
+      "refreshFailed": "重新整理失敗"
     }
   },
   "common": {
@@ -324,7 +338,11 @@
       "xhigh": "最強推理"
     },
     "contextWindow": "上下文 {windowK}k",
-    "tokensUsed": "已用 {tokensK}k ({pct}%)"
+    "tokensUsed": "已用 {tokensK}k ({pct}%)",
+    "contextActions": "上下文操作",
+    "refreshAndCompact": "更新並壓縮",
+    "refreshAndCompactTooltip": "更新到最新的記憶和工具集",
+    "compact": "壓縮"
   },
   "slash": {
     "diary": "寫今日日記",
@@ -1249,7 +1267,6 @@
       "totalTokens": "Tokens",
       "cacheRead": "快取命中",
       "cacheHitRate": "命中率",
-
       "uncached": "未快取消耗",
       "modelMix": "模型分佈",
       "dailyUsage": "每日用量",
@@ -2180,7 +2197,10 @@
     "notConfigured": "尚未設定 {platform}",
     "goToSettings": "前往設定",
     "resetContext": "重啟上下文",
-    "resetContextTip": "下次訊息將開啟新對話"
+    "resetContextTip": "下次訊息將開啟新對話",
+    "replyInterrupted": "（回覆中斷，以上內容可能不完整）",
+    "replyFailed": "（回覆生成失敗，請稍後重試）",
+    "sessionBusy": "目前桌面工作階段仍在回覆中，請稍後再傳"
   },
   "notification": {
     "turnCompletionBody": "這一輪已經完成"
@@ -2335,6 +2355,7 @@
     "settingsTimeout": "「{label}」修改確認逾時，設定未變更",
     "subagentMaxConcurrent": "目前已有 {max} 個子 agent 在執行，請等待完成後再發起。",
     "subagentParentSessionRequired": "subagent 需要活躍父會話和背景任務儲存，無法在目前上下文建立可繼續實例。",
+    "subagentWriteAccessDenied": "無法授予寫入權限：父會話處於唯讀模式，子代理權限不能超過父會話。請把會話切換到可操作模式後重試，或改用 access:\"read\" 重新派單。",
     "subagentFailed": "子 agent 執行失敗: {msg}",
     "subagentTimeout": "子 agent 執行逾時（{minutes} 分鐘）",
     "subagentAborted": "子 agent 已被終止",

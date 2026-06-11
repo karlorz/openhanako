@@ -6,7 +6,11 @@ import path from "path";
 import { createChannelsRoute } from "../server/routes/channels.ts";
 import { ChannelManager } from "../core/channel-manager.ts";
 import { createChannel, getChannelMeta, readBookmarks } from "../lib/channels/channel-store.ts";
-import { updateAgentPhoneProjectionMeta } from "../lib/conversations/agent-phone-projection.ts";
+import {
+  getAgentPhoneProjectionPath,
+  readAgentPhoneProjection,
+  updateAgentPhoneProjectionMeta,
+} from "../lib/conversations/agent-phone-projection.ts";
 
 function mktemp() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "hana-channels-route-test-"));
@@ -232,6 +236,37 @@ describe("channels route membership contract", () => {
 
     const getRes = await app.request("/api/conversations/ch_crew/agent-phone-tool-mode");
     expect(await getRes.json()).toMatchObject({ mode: "write" });
+  });
+
+  it("persists DM agent phone tool mode in the owner agent's conversation projection (#1614 切换入口持久化)", async () => {
+    // 默认 read_only（未配置过）
+    const before = await app.request("/api/conversations/dm%3Abob/agent-phone-tool-mode?agentId=alice");
+    expect(await before.json()).toMatchObject({ mode: "read_only" });
+
+    const setRes = await app.request("/api/conversations/dm%3Abob/agent-phone-tool-mode?agentId=alice", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: "write" }),
+    });
+    expect(setRes.status).toBe(200);
+    expect(await setRes.json()).toMatchObject({ ok: true, mode: "write" });
+
+    // 状态归属：写进 conversation 自己的 projection meta（dm-router 回信时从这里读）
+    const aliceDir = path.join(tmpDir, "agents", "alice");
+    const projection = readAgentPhoneProjection(getAgentPhoneProjectionPath(aliceDir, "dm:bob"));
+    expect((projection.meta as any).toolMode).toBe("write");
+
+    const getRes = await app.request("/api/conversations/dm%3Abob/agent-phone-tool-mode?agentId=alice");
+    expect(await getRes.json()).toMatchObject({ mode: "write" });
+
+    // 切回 read_only 同样持久化（双向切换）
+    await app.request("/api/conversations/dm%3Abob/agent-phone-tool-mode?agentId=alice", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: "read_only" }),
+    });
+    const reverted = readAgentPhoneProjection(getAgentPhoneProjectionPath(aliceDir, "dm:bob"));
+    expect((reverted.meta as any).toolMode).toBe("read_only");
   });
 
   it("aborts the removed member's running phone session when removing a channel member", async () => {

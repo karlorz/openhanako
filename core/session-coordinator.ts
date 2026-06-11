@@ -84,7 +84,7 @@ import {
   summarizeCachePrefixContract,
 } from "../lib/llm/cache-prefix-contract.ts";
 import { buildSessionCacheSnapshot as buildSessionCacheSnapshotValue } from "./session-cache-snapshot.ts";
-import { repairRestoredToolSnapshot, sameToolNames } from "./tool-snapshot-repair.ts";
+import { repairRestoredToolSnapshotDetailed, sameToolNames } from "./tool-snapshot-repair.ts";
 import {
   SESSION_PROMPT_SNAPSHOT_VERSION,
   freezeAgentsFilesResult,
@@ -740,6 +740,9 @@ export class SessionCoordinator {
     ownerPluginId = null,
     sessionKind = null,
     sessionVisibility = null,
+    // #1624 显式刷新（fresh compact）：restore 时忽略冻结的 promptSnapshot/toolNames，
+    // 按当前 agent 配置重建两份快照并持久化。只在用户显式触发时为 true。
+    refreshCapabilitySnapshots = false,
   }: any = {}) {
     const t0 = Date.now();
     const agent = explicitAgent
@@ -780,7 +783,9 @@ export class SessionCoordinator {
         }
       }
     }
-    const restoredPromptSnapshot = restore && sessionPathForMeta
+    // #1624 refreshCapabilitySnapshots：跳过冻结 promptSnapshot，下游 fresh-build
+    // 路径会按当前配置重建并在 metaPatch 持久化（与 !restoredPromptSnapshot 同一条路）。
+    const restoredPromptSnapshot = restore && sessionPathForMeta && !refreshCapabilitySnapshots
       ? await this._readSessionPromptSnapshot(agent, sessionPathForMeta)
       : null;
     const restoredPromptModel = restore && !restoredPromptSnapshot
@@ -1141,6 +1146,8 @@ export class SessionCoordinator {
     ];
     let snapshotToolNames = null;  // null signals "do not call setActiveToolsByName"
     let shouldPersistRestoredToolNames = false;
+    // #1624：dismissed fingerprint 仍从 session-meta 读出，保留未来手动提示链路。
+    let restoredDriftDismissedFingerprint: string | null = null;
 
     if (restore) {
       if (sessionPath) {
@@ -1155,12 +1162,26 @@ export class SessionCoordinator {
             log.warn(`session-meta read for tool-snapshot restore failed, recomputing from current agent config: ${err.message}`);
           }
         }
-        if (metaEntry && Array.isArray(metaEntry.toolNames)) {
+        restoredDriftDismissedFingerprint =
+          typeof metaEntry?.capabilityDriftDismissedFingerprint === "string"
+            ? metaEntry.capabilityDriftDismissedFingerprint
+            : null;
+        if (refreshCapabilitySnapshots) {
+          // #1624 显式刷新：Case C 语义重算（含插件工具），强制持久化，
+          // 并清空 dismissed 状态（旧 fingerprint 对新快照没有意义）。
+          const disabled = agent.config?.tools?.disabled ?? DEFAULT_DISABLED_TOOL_NAMES;
+          snapshotToolNames = computeToolSnapshot(allToolNames, disabled, {
+            extraDisabled: extraDisabledToolNames,
+          });
+          shouldPersistRestoredToolNames = true;
+          restoredDriftDismissedFingerprint = null;
+        } else if (metaEntry && Array.isArray(metaEntry.toolNames)) {
           const restoredToolNames = uniqueToolNames(metaEntry.toolNames);
           const gatedRestoredToolNames = computeToolSnapshot(restoredToolNames, [], {
             extraDisabled: stableFeatureDisabledToolNames,
           });  // Case A, with current global feature gates enforced
-          snapshotToolNames = repairRestoredToolSnapshot(gatedRestoredToolNames, allToolNames);
+          const repair = repairRestoredToolSnapshotDetailed(gatedRestoredToolNames, allToolNames);
+          snapshotToolNames = repair.toolNames;
           shouldPersistRestoredToolNames = !sameToolNames(snapshotToolNames, metaEntry.toolNames);
         } else {
           // Legacy sessions created before tool snapshots had no stable tool
@@ -1183,6 +1204,10 @@ export class SessionCoordinator {
         extraDisabled: extraDisabledToolNames,
       });
     }
+
+    // #1624 的能力漂移提示模板保留，但 restore 不再主动计算/唤醒。
+    // 这里刻意不构造 live prompt / tool diff，避免切换旧会话时为隐藏提醒付出额外成本。
+    let capabilityDrift = null;
 
     Object.assign(sessionEntry, {
       session,
@@ -1207,6 +1232,9 @@ export class SessionCoordinator {
       sessionKind: pluginSessionMeta?.kind || null,
       sessionVisibility: pluginSessionMeta?.visibility || "public",
       memoryReflectionSnapshot,
+      // #1624：session 级提示数据，归属 sessionEntry（keyed by sessionPath），不挂 agent/engine
+      capabilityDrift,
+      capabilityDriftDismissedFingerprint: restoredDriftDismissedFingerprint,
       lastTouchedAt: Date.now(),
       unsub,
     });
@@ -1267,6 +1295,10 @@ export class SessionCoordinator {
       if (!restoredPromptSnapshot) metaPatch.promptSnapshot = promptSnapshotToWrite;
       if (shouldPersistRestoredToolNames && snapshotToolNames !== null) {
         metaPatch.toolNames = snapshotToolNames;
+      }
+      if (refreshCapabilitySnapshots) {
+        // #1624 显式刷新：dismissed 状态随旧快照一并失效
+        metaPatch.capabilityDriftDismissedFingerprint = null;
       }
       if (Object.keys(metaPatch).length > 0) {
         await this.writeSessionMeta(sessionPath, metaPatch);
@@ -2903,7 +2935,40 @@ export class SessionCoordinator {
     }
   }
 
-  async reloadSessionRuntime(sessionPath: any) {
+  /**
+   * #1624：返回当前应展示的"工具能力有更新"提示数据；无漂移或已被 dismiss
+   * （dismissed fingerprint === 当前 live fingerprint）时返回 null。
+   * 数据在 restore 完成时算好挂在 sessionEntry 上，这里只做读取与 dismiss 过滤。
+   */
+  getSessionCapabilityDriftNotice(sessionPath: any) {
+    const entry = this._sessions.get(sessionPath);
+    const drift = entry?.capabilityDrift;
+    if (!drift?.hasDrift) return null;
+    if (entry.capabilityDriftDismissedFingerprint === drift.fingerprint) return null;
+    return {
+      ...drift,
+      addedToolNames: [...drift.addedToolNames],
+      removedToolNames: [...drift.removedToolNames],
+      invalidToolNames: [...drift.invalidToolNames],
+    };
+  }
+
+  /**
+   * #1624：记录"用户关闭了当前 fingerprint 的提示"。持久化在 session-meta
+   * （跟 session 走，跨重启生效）；指纹再次变化时才重新提示。
+   */
+  async dismissSessionCapabilityDrift(sessionPath: any, fingerprint: any) {
+    this._assertActiveDesktopSessionPath(sessionPath, "dismissSessionCapabilityDrift");
+    if (typeof fingerprint !== "string" || !fingerprint) {
+      throw new Error("dismissSessionCapabilityDrift: fingerprint required");
+    }
+    const entry = this._sessions.get(sessionPath);
+    if (entry) entry.capabilityDriftDismissedFingerprint = fingerprint;
+    await this.writeSessionMeta(sessionPath, { capabilityDriftDismissedFingerprint: fingerprint });
+    return { ok: true };
+  }
+
+  async reloadSessionRuntime(sessionPath: any, { refreshCapabilitySnapshots = false }: any = {}) {
     this._assertActiveDesktopSessionPath(sessionPath, "reloadSessionRuntime");
     if (this._isDeletedAgentSessionPath(sessionPath)) {
       throw new Error("reloadSessionRuntime: session belongs to a deleted agent");
@@ -2942,6 +3007,7 @@ export class SessionCoordinator {
       agent,
       agentId: targetAgentId,
       preserveAgentMemoryState: true,
+      refreshCapabilitySnapshots,
     });
     return result.session;
   }
@@ -3123,6 +3189,9 @@ export class SessionCoordinator {
         title: null,
         firstMessage: "",
         modified: new Date(entry.lastTouchedAt || Date.now()),
+        // 内存占位投影没有磁盘修订点；revision=null 表示「未知」，
+        // 前端 reconcile 对 null 不做盲目重拉。
+        revision: null,
         messageCount: 0,
         cwd: entry.session?.sessionManager?.getCwd?.() || "",
         agentId: entry.agentId || this._d.getActiveAgentId(),

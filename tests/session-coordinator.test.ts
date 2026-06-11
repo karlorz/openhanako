@@ -1847,7 +1847,11 @@ describe("SessionCoordinator", () => {
     expect(restoreOptions.resourceLoader.getAgentsFiles()).toEqual({ agentsFiles: [{ path: "/AGENTS.md", content: "rules v1" }] });
     expect(restoredSession._baseSystemPrompt).toBe("FINAL PROMPT V1");
     expect(restoredSession.agent.state.systemPrompt).toBe("FINAL PROMPT V1");
-    expect(agent.buildSystemPrompt).toHaveBeenCalledTimes(1);
+    // #1624 起 restore 会额外 build 一次"当前" prompt 做漂移对比（比较用，不得泄漏进
+    // session——上面两条断言已锁定冻结快照仍然生效），并产出 promptChanged 提示。
+    const driftNotice = coordinator.getSessionCapabilityDriftNotice(sessionFile);
+    expect(driftNotice).not.toBeNull();
+    expect(driftNotice.promptChanged).toBe(true);
   });
 
   it("restores a prompt-snapshotted session with xhigh before the SDK model is available", async () => {

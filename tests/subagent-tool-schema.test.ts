@@ -46,4 +46,16 @@ describe("subagent tool schema", () => {
     expect(props?.instance?.description).toMatch(/[Ll]egacy/);
     expect(props?.model?.description).toMatch(/chat model/);
   });
+
+  it("access 描述写清两档语义与父档约束（#1614：模型据此主动选档）", async () => {
+    const schema = await loadSubagentToolDef();
+    const desc = schema.parameters?.properties?.access?.description || "";
+    // read = 探索/调研/审查只读
+    expect(desc).toMatch(/read-only/i);
+    expect(desc).toMatch(/research|exploration|review/i);
+    // write = 执行/修改，且父会话必须可操作（不能超过父档）
+    expect(desc).toMatch(/execution|edits|commands/i);
+    expect(desc).toMatch(/parent session/i);
+    expect(desc).toMatch(/read-only.*(reject|error|denied)|((reject|error|denied)).*read-only/i);
+  });
 });

@@ -148,6 +148,7 @@ function clearSessionRuntimeCaches(path: string): void {
     const { [path]: _todos, ...todosBySession } = s.todosBySession || {};
     const { [path]: _todosLive, ...todosLiveVersionBySession } = s.todosLiveVersionBySession || {};
     const { [path]: _authorizedFolders, ...sessionAuthorizedFoldersByPath } = s.sessionAuthorizedFoldersByPath || {};
+    const { [path]: _capabilityDrift, ...capabilityDriftBySession } = s.capabilityDriftBySession || {};
     return {
       attachedFilesBySession,
       sessionRegistryFilesByPath,
@@ -162,6 +163,8 @@ function clearSessionRuntimeCaches(path: string): void {
       todosBySession,
       todosLiveVersionBySession,
       sessionAuthorizedFoldersByPath,
+      capabilityDriftBySession,
+      capabilityRefreshingSessions: (s.capabilityRefreshingSessions || []).filter((sessionPath: string) => sessionPath !== path),
       inlineErrors: s.inlineErrors ? { ...s.inlineErrors, [path]: null } : s.inlineErrors,
     };
   });
@@ -213,18 +216,20 @@ export async function loadMessages(forPath?: string): Promise<void> {
     const rawTodos = data.todos || [];
     const migratedTodos = migrateLegacyTodos({ todos: rawTodos });
     const items = buildItemsFromHistory(data);
+    // 修订点 stamp：记录本次快照对应的磁盘修订点，后续 reconcile 与列表投影对比。
+    const revision = typeof data.revision === 'string' ? data.revision : null;
     useStore.getState().setSessionRegistryFiles(
       targetPath,
       Array.isArray(data.sessionFiles) ? data.sessionFiles : [],
     );
     useStore.getState().setSessionTodosForPath(targetPath, migratedTodos);
     if (items.length > 0) {
-      useStore.getState().initSession(targetPath, items, data.hasMore ?? false);
+      useStore.getState().initSession(targetPath, items, data.hasMore ?? false, revision);
       if (targetPath === useStore.getState().currentSessionPath) {
         useStore.setState({ welcomeVisible: false });
       }
     } else {
-      useStore.getState().initSession(targetPath, [], false);
+      useStore.getState().initSession(targetPath, [], false, revision);
     }
     // In-flight guard: jsonl 仅在 turn_end 落盘。若 session 在 stream 进行中
     // 被 reload（switchSession 冷启动 / stream-resume truncated），合并 buffer
@@ -303,6 +308,59 @@ export async function loadMoreMessages(forPath?: string): Promise<void> {
     console.error('[loadMoreMessages] error:', err);
     useStore.getState().setLoadingMore(targetPath, false);
   }
+}
+
+// ══════════════════════════════════════════════════════
+// 会话修订点校验补拉（issue #1610）
+// ══════════════════════════════════════════════════════
+
+// per-session in-flight 去重：focus / online / WS reconnect 等触发器可能同时到达，
+// 同一会话同一时刻最多一个补拉请求在途。
+const _revisionReconcileInFlight = new Map<string, Promise<void>>();
+
+/**
+ * 校验「当前打开会话」的缓存内容是否落后于磁盘真相，落后则补拉。
+ *
+ * 修订点对比：chatSessions[path].revision（hydrate 时 stamp 的 stat 签名）
+ * vs store.sessions 列表投影的 revision（最近一次列表刷新看到的磁盘状态）。
+ * 两者不一致说明磁盘在本端没有消费到的窗口内前进过——典型场景是 Bridge /rc
+ * 接管期间 web/mobile 端 WS 断连（手机锁屏），live 事件全部丢失。
+ *
+ * 边界（刻意保守，宁可少拉）：
+ *   - 只处理当前打开的会话；后台会话切换回来时由 switchSession 触发同一校验
+ *   - 流式进行中不补拉：live 事件流正在喂内容，turn 结束后列表刷新会再触发
+ *   - 列表投影无 revision（老服务端 / 内存占位）不盲拉
+ *   - 缓存 revision 为 null（未知，如 WS 端新会话的空 init）且列表有 revision
+ *     时补拉一次，把修订点 stamp 上
+ *
+ * 调用方约定：在「拿到新鲜列表之后」调用（loadSessions / loadMobileSessions 之后），
+ * 否则对比的是旧投影，没有意义。
+ */
+export function reconcileCurrentSessionMessages(reason = 'unknown'): Promise<void> | undefined {
+  const s = useStore.getState();
+  const target = s.currentSessionPath;
+  if (!target || s.pendingNewSession || s.pendingSessionSwitchPath) return undefined;
+  if ((s.streamingSessions || []).includes(target)) return undefined;
+  const cached = s.chatSessions?.[target];
+  if (!cached) return undefined; // 冷启动 / 切换路径负责首载
+  const projection = s.sessions.find((session) => session.path === target);
+  const listRevision = typeof projection?.revision === 'string' ? projection.revision : null;
+  if (!listRevision) return undefined;
+  if ((cached.revision ?? null) === listRevision) return undefined;
+
+  const existing = _revisionReconcileInFlight.get(target);
+  if (existing) return existing;
+
+  const inFlight = loadMessages(target)
+    .catch((err) => {
+      // loadMessages 内部已兜底，这里只防御未来改动让异常冒出导致 in-flight 卡死。
+      console.warn(`[session] revision reconcile failed (${reason}):`, err);
+    })
+    .finally(() => {
+      _revisionReconcileInFlight.delete(target);
+    });
+  _revisionReconcileInFlight.set(target, inFlight);
+  return inFlight;
 }
 
 // ══════════════════════════════════════════════════════
@@ -444,6 +502,13 @@ export async function switchSession(path: string): Promise<void> {
       ...agentPatch,
     });
 
+    // 缓存命中跳过了 loadMessages 时，校验修订点：会话在后台期间（如 Bridge /rc
+    // 接管 + 本端 WS 断连）磁盘可能已前进，缓存不能直接当真相（issue #1610）。
+    // fire-and-forget：先呈现缓存内容，补拉结果通过 store 更新自然落地。
+    if (hasData) {
+      void reconcileCurrentSessionMessages('session_switch');
+    }
+
     await resetDeskForSessionWorkspace({
       cwd: data.cwd || null,
       workspaceMountId: data.workspaceMountId || null,
@@ -490,6 +555,9 @@ export async function switchSession(path: string): Promise<void> {
         contextWindow: data.currentModelContextWindow ?? undefined,
       });
     }
+
+    // #1624：服务端在 restore 时算好的工具能力漂移提示（无漂移 / 已 dismiss → null）
+    useStore.getState().setSessionCapabilityDrift(path, data.capabilityDrift || null);
 
     await requestActiveSessionStreamResume(path, isStreaming);
     if (myVersion !== _switchVersion) return;
@@ -971,6 +1039,64 @@ export async function pinSession(path: string, pinned: boolean): Promise<boolean
     console.error('[session] pin failed:', err);
     showSidebarToast(window.t(pinned ? 'session.pinFailed' : 'session.unpinFailed'));
     return false;
+  }
+}
+
+// ══════════════════════════════════════════════════════
+// #1624 工具能力漂移：dismiss / 显式刷新（fresh compact）
+// ══════════════════════════════════════════════════════
+
+/** 关闭当前 fingerprint 的提示；服务端持久化在 session-meta，指纹再变才重新提示 */
+export async function dismissSessionCapabilityDrift(path: string, fingerprint: string): Promise<boolean> {
+  // 乐观隐藏：dismiss 是低风险操作，失败时恢复提示
+  const prevDrift = useStore.getState().capabilityDriftBySession[path] || null;
+  useStore.getState().setSessionCapabilityDrift(path, null);
+  try {
+    const res = await hanaFetch('/api/sessions/capability-drift/dismiss', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path, fingerprint }),
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error || res.statusText);
+    return true;
+  } catch (err) {
+    console.warn('[session] capability drift dismiss failed:', err);
+    useStore.getState().setSessionCapabilityDrift(path, prevDrift);
+    return false;
+  }
+}
+
+/**
+ * 显式刷新 Agent 工具：fresh compact——旧对话压缩成摘要 checkpoint，
+ * 用当前配置重建 prompt/工具快照。成功后重新拉取消息（jsonl 多了 compact 记录）。
+ */
+export async function refreshSessionCapabilities(path: string): Promise<boolean> {
+  const store = useStore.getState();
+  if (store.capabilityRefreshingSessions.includes(path)) return false;
+  store.setSessionCapabilityRefreshing(path, true);
+  try {
+    const res = await hanaFetch('/api/sessions/fresh-compact', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path }),
+      // Fresh compact runs an LLM summarization over the whole conversation;
+      // long sessions routinely exceed the 30s hanaFetch default. A premature
+      // abort here surfaces a false failure while the server keeps compacting.
+      timeout: 180_000,
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error || res.statusText);
+    useStore.getState().setSessionCapabilityDrift(path, data.capabilityDrift || null);
+    await loadMessages(path);
+    return true;
+  } catch (err) {
+    console.error('[session] capability refresh failed:', err);
+    const state = useStore.getState();
+    state.setInlineError?.(path, `${tr('session.capabilityDrift.refreshFailed')}: ${errorMessage(err)}`, 6000);
+    return false;
+  } finally {
+    useStore.getState().setSessionCapabilityRefreshing(path, false);
   }
 }
 
