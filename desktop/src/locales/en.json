@@ -2665,6 +2665,7 @@
     "memorySearchTagsDesc": "Tag filter, 2-5 keyword tags for precise matching, e.g. [\"chocolate\", \"food preference\"]",
     "memorySearchDateFromDesc": "Start date, format YYYY-MM-DD",
     "memorySearchDateToDesc": "End date, format YYYY-MM-DD",
+    "memorySearchCrossChannelDesc": "Whether to search memories from other channels. Defaults to false: a channel session only sees the current channel and general memories; pass true explicitly when needed",
     "memorySearchEmpty": "No relevant content found in memory.",
     "memorySearchError": "Memory search error: {msg}",
     "fallbackUserName": "User",

@@ -2665,6 +2665,7 @@
     "memorySearchTagsDesc": "标签过滤，输入 2~5 个关键词标签来精确匹配。例如 [\"巧克力\", \"食物偏好\"]",
     "memorySearchDateFromDesc": "起始日期，格式 YYYY-MM-DD",
     "memorySearchDateToDesc": "结束日期，格式 YYYY-MM-DD",
+    "memorySearchCrossChannelDesc": "是否跨频道检索其它频道的记忆。默认 false：频道会话里只能看到当前频道和通用记忆；确有需要再显式传 true",
     "memorySearchEmpty": "记忆库里没有找到相关内容。",
     "memorySearchError": "记忆搜索出错: {msg}",
     "fallbackUserName": "用户",

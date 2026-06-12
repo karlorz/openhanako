@@ -2460,6 +2460,7 @@
     "memorySearchTagsDesc": "タグフィルター、2~5 個のキーワードタグで正確にマッチ。例: [\"チョコレート\", \"食の好み\"]",
     "memorySearchDateFromDesc": "開始日、形式 YYYY-MM-DD",
     "memorySearchDateToDesc": "終了日、形式 YYYY-MM-DD",
+    "memorySearchCrossChannelDesc": "他のチャンネルの記憶を横断検索するか。既定は false：チャンネルセッションでは現在のチャンネルと一般記憶のみ参照できます。必要な場合のみ明示的に true を渡してください",
     "memorySearchEmpty": "記憶バンクに関連する内容が見つかりませんでした。",
     "memorySearchError": "記憶検索エラー: {msg}",
     "fallbackUserName": "ユーザー",

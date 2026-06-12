@@ -692,6 +692,16 @@ export class Agent {
   setUtilityModel(val) { this._utilityModel = val; }
   setMemoryModel(val) { this._memoryModel = val; }
 
+  /**
+   * 为某个会话面创建带作用域的 search_memory 实例（同一 FactStore，不复制数据归属）。
+   * 频道 phone 会话用它替换默认实例：默认排除其它频道的事实，跨频道需显式参数（#1670）。
+   * FactStore 未初始化（记忆未启用 / runtime 未就绪）时返回 null，调用方不得注入兜底实例。
+   */
+  createConversationScopedMemorySearchTool(conversationScope) {
+    if (!this._factStore) return null;
+    return createMemorySearchTool(this._factStore, { conversationScope });
+  }
+
   // ════════════════════════════
   //  状态访问
   // ════════════════════════════

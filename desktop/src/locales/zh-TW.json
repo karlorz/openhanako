@@ -2452,6 +2452,7 @@
     "memorySearchTagsDesc": "標籤過濾，輸入 2~5 個關鍵字標籤來精確匹配。例如 [\"巧克力\", \"食物偏好\"]",
     "memorySearchDateFromDesc": "起始日期，格式 YYYY-MM-DD",
     "memorySearchDateToDesc": "結束日期，格式 YYYY-MM-DD",
+    "memorySearchCrossChannelDesc": "是否跨頻道檢索其它頻道的記憶。預設 false：頻道會話裡只能看到當前頻道和通用記憶；確有需要再顯式傳 true",
     "memorySearchEmpty": "記憶庫裡沒有找到相關內容。",
     "memorySearchError": "記憶搜尋出錯: {msg}",
     "fallbackUserName": "使用者",

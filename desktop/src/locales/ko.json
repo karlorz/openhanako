@@ -2460,6 +2460,7 @@
     "memorySearchTagsDesc": "태그 필터, 정확한 매칭을 위해 2~5개 키워드 태그. 예: [\"초콜릿\", \"음식 취향\"]",
     "memorySearchDateFromDesc": "시작 날짜, 형식 YYYY-MM-DD",
     "memorySearchDateToDesc": "종료 날짜, 형식 YYYY-MM-DD",
+    "memorySearchCrossChannelDesc": "다른 채널의 기억을 교차 검색할지 여부. 기본값 false: 채널 세션에서는 현재 채널과 일반 기억만 볼 수 있으며, 필요할 때만 명시적으로 true를 전달하세요",
     "memorySearchEmpty": "기억 뱅크에서 관련 내용을 찾을 수 없어요.",
     "memorySearchError": "기억 검색 오류: {msg}",
     "fallbackUserName": "사용자",
