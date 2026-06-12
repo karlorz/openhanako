@@ -158,6 +158,10 @@ npm test
 npm run typecheck
 ```
 
+## 致谢
+
+- [tw93/kami](https://github.com/tw93/kami)：beautify 插件 HTML 美学规范的「路由器 + 平级章节按需获取」渐进披露结构受其启发。
+
 ## 许可证
 
 [Apache License 2.0](LICENSE)
