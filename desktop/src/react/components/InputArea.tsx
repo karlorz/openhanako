@@ -44,7 +44,7 @@ import {
   evaluateChatAudioSendPreflight,
   evaluateChatVideoSendPreflight,
   getModelAudioInputMode,
-  notifyTextModelImageBlocked,
+  notifyTextModelImageFileOnly,
   notifyTextModelAudioBlocked,
   notifyTextModelVideoBlocked,
 } from '../utils/chat-image-send-preflight';
@@ -1418,13 +1418,16 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
         model: currentModelInfo,
         loadVisionAuxiliaryConfig,
       });
-      if (!imagePreflight.ok) {
-        notifyTextModelImageBlocked({
+      // #1647：视觉能力不可用不再拦下整条消息。图片始终携带文件身份
+      //（displayMessage.attachments → 服务端登记 SessionFile + 注入路径 marker），
+      // 这里只决定是否附带像素载荷；降级是显式的（toast 告知 + 不读字节）。
+      const imagesAsFileOnly = !imagePreflight.ok;
+      if (imagesAsFileOnly) {
+        notifyTextModelImageFileOnly({
           t,
           addToast: useStore.getState().addToast,
           openSettings: () => openProviderModelSettings(currentModelInfo?.provider),
         });
-        return;
       }
       const videoPreflight = await evaluateChatVideoSendPreflight({
         attachments: inputFiles,
@@ -1480,7 +1483,9 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
       const imageBase64Map = new Map<string, { base64Data: string; mimeType: string }>();
       const videoBase64Map = new Map<string, { base64Data: string; mimeType: string }>();
       const audioBase64Map = new Map<string, { base64Data: string; mimeType: string }>();
-      for (const img of imageFiles) {
+      // 单图读取失败同样不拦整条消息：该图退化为仅文件身份，显式提示（#1647）
+      const imageFileOnlyPaths = new Set<string>();
+      for (const img of imagesAsFileOnly ? [] : imageFiles) {
         try {
           if (img.base64Data && img.mimeType) {
             images.push({ type: 'image', data: img.base64Data, mimeType: img.mimeType });
@@ -1496,10 +1501,10 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
           }
         } catch (err) {
           console.warn('[input] failed to read image attachment', err);
-          useStore.getState().addToast(t('input.imageReadFailed'), 'error', 6000, {
+          imageFileOnlyPaths.add(img.path);
+          useStore.getState().addToast(t('input.imageReadFailedSentAsFile'), 'warning', 6000, {
             dedupeKey: `image-read-failed:${img.path}`,
           });
-          return;
         }
       }
       for (const audio of sendAudiosNatively ? audioFiles : []) {
@@ -1588,7 +1593,7 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
             name: f.name,
             isDir: !!f.isDirectory,
             mimeType: f.mimeType || cached?.mimeType || cachedVideo?.mimeType || cachedAudio?.mimeType || undefined,
-            visionAuxiliary: imageFile && !supportsVision,
+            visionAuxiliary: imageFile && !supportsVision && !imagesAsFileOnly && !imageFileOnlyPaths.has(f.path),
             ...(f.waveform ? { waveform: f.waveform } : {}),
           };
         }) : undefined,
