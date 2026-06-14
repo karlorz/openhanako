@@ -81,6 +81,46 @@ describe("server auth service", () => {
     });
   });
 
+  it("accepts device credential via query token for LAN connections (B1 fix)", async () => {
+    tmpDir = makeTmpDir();
+    const { createDeviceCredential } = await import("../core/device-registry.ts");
+    const { createServerAuthService } = await import("../core/server-auth.ts");
+    const issued = createDeviceCredential(tmpDir, {
+      serverNodeId: "node_local",
+      userId: "user_local",
+      studioIds: ["studio_local"],
+      displayName: "Desktop LAN",
+      deviceKind: "desktop",
+      trustState: "lan",
+      scopes: ["chat"],
+      now: "2026-05-16T00:00:00.000Z",
+    });
+    const auth = createServerAuthService({
+      hanakoHome: tmpDir,
+      loopbackToken: "local-secret",
+      runtimeContext: runtimeContext(),
+    });
+
+    // Query token accepted for LAN when allowQueryToken is true (B1 fix)
+    expect(auth.authenticateRequest({
+      queryToken: issued.secret,
+      allowQueryToken: true,
+      connectionKind: "lan",
+    })).toMatchObject({
+      kind: "device",
+      credentialKind: "device_credential",
+      connectionKind: "lan",
+      trustState: "lan",
+    });
+
+    // Query token still rejected for custom_remote (tunnel) connections
+    expect(auth.authenticateRequest({
+      queryToken: issued.secret,
+      allowQueryToken: true,
+      connectionKind: "custom_remote",
+    })).toBeNull();
+  });
+
   it("authenticates a paired device credential", async () => {
     tmpDir = makeTmpDir();
     const { createDeviceCredential } = await import("../core/device-registry.ts");
