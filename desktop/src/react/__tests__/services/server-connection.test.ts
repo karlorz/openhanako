@@ -489,6 +489,24 @@ describe('server connection helpers', () => {
     expect(buildConnectionWsUrl(connection!, '/ws')).toBe('ws://127.0.0.1:3210/ws?token=test-token-123');
   });
 
+  it('appends query token to WebSocket URL for LAN device-credential connections (B1 fix)', () => {
+    const local = createLocalServerConnection({
+      serverPort: '3210',
+      serverToken: 'local-token',
+    })!;
+    const lan = {
+      ...local,
+      connectionId: 'lan:node_lan:studio_lan',
+      kind: 'lan' as const,
+      baseUrl: 'http://100.125.173.118:14500',
+      wsUrl: 'ws://100.125.173.118:14500',
+      token: 'hana_dev_test-key',
+      credentialKind: 'device_credential' as const,
+    };
+
+    expect(buildConnectionWsUrl(lan, '/ws')).toBe('ws://100.125.173.118:14500/ws?token=hana_dev_test-key');
+  });
+
   it('merges stable server identity without changing transport details', () => {
     const connection = createLocalServerConnection({
       serverPort: '3210',
