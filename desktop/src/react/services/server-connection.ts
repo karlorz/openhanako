@@ -162,7 +162,11 @@ function appendQueryParam(url: string, key: string, value: string): string {
 }
 
 export function canUseQueryToken(connection: ServerConnection): boolean {
-  return connection.kind === 'local' && connection.credentialKind === 'loopback_token';
+  // Server accepts query tokens only for local and lan connections, not custom_remote.
+  // See core/server-auth.ts parseCredential.
+  if (connection.kind === 'custom_remote') return false;
+  return connection.credentialKind === 'loopback_token'
+      || connection.credentialKind === 'device_credential';
 }
 
 function headersToRecord(headers: HeadersInit | undefined): Record<string, string> {
