@@ -1799,6 +1799,8 @@
       "permissionModeReadOnly": "読み取り専用モード",
       "receiptEnabled": "返信前の通知",
       "receiptEnabledDesc": "メッセージ受信後、返信前に「受信済み・返信中」の短い通知を送信します",
+      "richStreamingEnabled": "リッチテキストストリーミング",
+      "richStreamingEnabledDesc": "既定では各プラットフォームのリッチテキストとストリーミング機能を使い、オフにすると従来の互換送信に戻します",
       "readOnly": "読み取り専用モード",
       "readOnlyDesc": "ブリッジボットはファイルの読み取りのみ可能で、書き込みやコマンド実行はできません",
       "howTo": "セットアップガイド",

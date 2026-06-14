@@ -1791,6 +1791,8 @@
       "permissionModeReadOnly": "唯讀模式",
       "receiptEnabled": "回覆前提示",
       "receiptEnabledDesc": "收到訊息後，先傳送一條「已接收並正在回覆」的提示",
+      "richStreamingEnabled": "富文字串流傳輸",
+      "richStreamingEnabledDesc": "預設使用平台富文字和串流能力；關閉後改用舊的相容傳送方式",
       "readOnly": "唯讀模式",
       "readOnlyDesc": "外部平台的機器人只能讀取檔案，不能執行寫入和命令操作",
       "howTo": "如何接入？",

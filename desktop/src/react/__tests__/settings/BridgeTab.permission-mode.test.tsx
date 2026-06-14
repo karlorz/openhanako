@@ -35,6 +35,7 @@ function bridgeState(overrides = {}) {
       permissionMode: 'auto',
       readOnly: false,
       receiptEnabled: true,
+      richStreamingEnabled: true,
       knownUsers: {},
       owner: {},
     },
@@ -78,6 +79,7 @@ describe('BridgeTab permission mode', () => {
     render(<BridgeTab />);
 
     expect(screen.getByText('settings.bridge.receiptEnabled')).not.toBeNull();
+    expect(screen.getByText('settings.bridge.richStreamingEnabled')).not.toBeNull();
     expect(screen.queryByText('settings.bridge.readOnly')).toBeNull();
     expect(screen.getByText('settings.bridge.permissionMode')).not.toBeNull();
 
@@ -107,6 +109,20 @@ describe('BridgeTab permission mode', () => {
     fireEvent.click(receiptToggle);
 
     expect(saveGlobalSettings).toHaveBeenCalledWith({ receiptEnabled: false });
+  });
+
+  it('saves the rich streaming toggle through global bridge settings', async () => {
+    const saveGlobalSettings = vi.fn();
+    vi.mocked(useBridgeState).mockReturnValue(bridgeState({ saveGlobalSettings }) as never);
+
+    render(<BridgeTab />);
+
+    const richToggle = screen.getByRole('switch', { name: /settings\.bridge\.richStreamingEnabled/ });
+    expect(richToggle.getAttribute('aria-checked')).toBe('true');
+
+    fireEvent.click(richToggle);
+
+    expect(saveGlobalSettings).toHaveBeenCalledWith({ richStreamingEnabled: false });
   });
 
   it('keeps bridge permission mode in loading state until backend truth arrives', () => {

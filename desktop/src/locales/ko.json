@@ -1799,6 +1799,8 @@
       "permissionModeReadOnly": "읽기 전용 모드",
       "receiptEnabled": "응답 전 안내",
       "receiptEnabledDesc": "메시지를 받으면 실제 답변 전에 '받았고 답변 중'이라는 짧은 안내를 먼저 보냅니다",
+      "richStreamingEnabled": "리치 텍스트 스트리밍",
+      "richStreamingEnabledDesc": "기본적으로 플랫폼의 리치 텍스트와 스트리밍 기능을 사용하고, 끄면 기존 호환 전송 방식으로 돌아갑니다",
       "readOnly": "읽기 전용 모드",
       "readOnlyDesc": "브릿지 봇은 파일만 읽을 수 있고, 쓰기나 명령 실행은 불가능해요",
       "howTo": "설정 가이드",

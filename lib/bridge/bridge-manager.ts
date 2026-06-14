@@ -42,6 +42,11 @@ function isAbortLikeError(err) {
     || err?.type === "aborted";
 }
 
+function unrefTimer(timer) {
+  if (typeof timer?.unref === "function") timer.unref();
+  return timer;
+}
+
 // ── Adapter Registry ─────────────────────────────────────
 // 每个平台注册：create 工厂、凭证提取、owner sessionKey 构造。
 // 新增平台只需在此注册 + 提供 adapter 文件。
@@ -885,28 +890,82 @@ export class BridgeManager {
     return delivery?.receiptMode === "fold_into_stream" && typeof delivery?.startReceipt === "function";
   }
 
-  _sendLlmWaitingReceipt(platform, chatId, agentId, replyContext = null) {
-    const receiptText = this._llmWaitingReceiptText(agentId);
-    if (receiptText === undefined) return;
-
-    const entry = this._platforms.get(this._getPlatformKey(platform, agentId));
-    const adapter = entry?.adapter;
-    if (!adapter) return;
-
-    if (receiptText && adapter.sendReply) {
-      this._sendAdapterReply(adapter, chatId, receiptText, replyContext).catch(() => {});
-    } else if (adapter.sendTypingIndicator) {
-      adapter.sendTypingIndicator(chatId).catch(() => {});
-    }
+  _resolveReceiptCapability(adapter, isGroup) {
+    const capability = adapter?.receiptCapabilities;
+    if (!capability) return null;
+    const scope = isGroup ? "group" : "dm";
+    if (capability.scopes?.length && !capability.scopes.includes(scope)) return null;
+    if (capability.mode === "native_typing" && adapter?.sendTypingIndicator) return capability;
+    if (capability.mode === "text" && adapter?.sendReply) return capability;
+    return null;
   }
 
-  async _startLlmWaitingReceipt({ delivery, platform, chatId, agentId, replyContext }) {
+  _receiptOptions(replyContext = null) {
+    const context = this._normalizeReplyContext(replyContext);
+    if (!context) return {};
+    return {
+      replyContext: context,
+      ...(context.messageThreadId != null ? { messageThreadId: context.messageThreadId } : {}),
+    };
+  }
+
+  _startNativeTypingReceipt(adapter, chatId, capability, replyContext = null) {
+    const options = this._receiptOptions(replyContext);
+    const refreshIntervalMs = Number.isFinite(capability.refreshIntervalMs)
+      ? capability.refreshIntervalMs
+      : 0;
+    let stopped = false;
+    let timer = null;
+
+    const send = () => {
+      if (stopped) return;
+      adapter.sendTypingIndicator(chatId, options).catch(() => {});
+    };
+    send();
+
+    if (refreshIntervalMs > 0) {
+      timer = unrefTimer(setInterval(send, refreshIntervalMs));
+    }
+
+    return {
+      mode: "native_typing",
+      stop: async () => {
+        if (stopped) return;
+        stopped = true;
+        if (timer) clearInterval(timer);
+        if (capability.cancellable && adapter.cancelTypingIndicator) {
+          try { await adapter.cancelTypingIndicator(chatId, options); } catch {}
+        }
+      },
+    };
+  }
+
+  async _startLlmWaitingReceipt({ delivery, platform, chatId, agentId, replyContext, isGroup = false }) {
+    const empty = { mode: "none", stop: async () => {} };
     if (this._deliveryFoldsReceipt(delivery)) {
       const receiptText = this._llmWaitingReceiptText(agentId);
       if (receiptText) await delivery.startReceipt(receiptText);
-      return;
+      return empty;
     }
-    this._sendLlmWaitingReceipt(platform, chatId, agentId, replyContext);
+
+    const receiptText = this._llmWaitingReceiptText(agentId);
+    if (receiptText === undefined) return empty;
+
+    const entry = this._platforms.get(this._getPlatformKey(platform, agentId));
+    const adapter = entry?.adapter;
+    if (!adapter) return empty;
+
+    const capability = this._resolveReceiptCapability(adapter, isGroup);
+    if (capability?.mode === "native_typing") {
+      return this._startNativeTypingReceipt(adapter, chatId, capability, replyContext);
+    }
+
+    if (receiptText && adapter.sendReply) {
+      this._sendAdapterReply(adapter, chatId, receiptText, replyContext).catch(() => {});
+      return { mode: "text", stop: async () => {} };
+    }
+
+    return empty;
   }
 
   /**
@@ -1251,8 +1310,14 @@ export class BridgeManager {
     if (mode === "draft") {
       return this._createDraftStreamDelivery({ adapter, chatId, capability, context });
     }
+    if (mode === "rich_draft") {
+      return this._createRichDraftStreamDelivery({ adapter, chatId, capability, context });
+    }
     if (mode === "edit_message") {
       return this._createEditMessageStreamDelivery({ adapter, chatId, capability, context });
+    }
+    if (mode === "cardkit_stream") {
+      return this._createCardKitStreamDelivery({ adapter, chatId, capability, context });
     }
     if (mode === "block") {
       return this._createBlockStreamDelivery({ adapter, chatId, context });
@@ -1261,15 +1326,38 @@ export class BridgeManager {
   }
 
   _resolveStreamingCapability(adapter, isGroup) {
-    const capability = adapter?.streamingCapabilities;
-    if (!capability || isGroup) return null;
+    if (!adapter || isGroup) return null;
+    const candidates = [
+      ...(Array.isArray(adapter.richStreamingCapabilities)
+        ? adapter.richStreamingCapabilities
+        : [adapter.richStreamingCapabilities]),
+      ...(Array.isArray(adapter.streamingCapabilities)
+        ? adapter.streamingCapabilities
+        : [adapter.streamingCapabilities]),
+    ].filter(Boolean);
+    for (const capability of candidates) {
+      if (this._isStreamingCapabilitySupported(adapter, capability)) return capability;
+    }
+    return null;
+  }
+
+  _isStreamingCapabilitySupported(adapter, capability) {
+    if (!capability) return false;
     if (capability.scopes?.length && !capability.scopes.includes("dm")) return null;
+    if (capability.requiresRichStreaming && this.engine.getBridgeRichStreamingEnabled?.() === false) return null;
     if (capability.mode === "draft" && adapter?.sendDraft && adapter?.sendReply) return capability;
+    if (capability.mode === "rich_draft" && adapter?.sendRichDraft && adapter?.sendRichReply) return capability;
     if (
       capability.mode === "edit_message" &&
       adapter?.startStreamReply &&
       adapter?.updateStreamReply &&
       adapter?.finishStreamReply
+    ) return capability;
+    if (
+      capability.mode === "cardkit_stream" &&
+      adapter?.startRichStreamReply &&
+      adapter?.updateRichStreamReply &&
+      adapter?.finishRichStreamReply
     ) return capability;
     if (capability.mode === "block" && this.blockStreaming && adapter?.sendBlockReply) return capability;
     return null;
@@ -1368,6 +1456,56 @@ export class BridgeManager {
     };
   }
 
+  _createRichDraftStreamDelivery({ adapter, chatId, capability, context }) {
+    const draftId = this._nextDraftId();
+    const minIntervalMs = Number.isFinite(capability.minIntervalMs) ? capability.minIntervalMs : 500;
+    const maxChars = Number.isFinite(capability.maxChars) ? capability.maxChars : 32768;
+    let lastSentText = "";
+    let lastDraftTs = 0;
+    let failed = false;
+
+    const sendSnapshot = (accumulated, force = false) => {
+      if (failed) return;
+      const { text } = this._cleanStreamSnapshot(accumulated);
+      const next = this._truncateStreamText(text.trim(), maxChars);
+      if (!next || next === lastSentText) return;
+      const now = Date.now();
+      if (!force && lastDraftTs && now - lastDraftTs < minIntervalMs) return;
+      lastDraftTs = now;
+      lastSentText = next;
+      adapter.sendRichDraft(chatId, next, {
+        draftId,
+        messageThreadId: context.messageThreadId,
+      }).catch(() => { failed = true; });
+    };
+
+    return {
+      mode: "rich_draft",
+      onDelta: (_delta, accumulated) => sendSnapshot(accumulated || _delta),
+      finish: async (cleaned) => {
+        const { text, mediaUrls } = this._cleanStreamSnapshot(cleaned);
+        const textOnly = text.trim();
+        if (textOnly) {
+          const finalText = this._truncateStreamText(textOnly, maxChars);
+          if (!failed) {
+            try {
+              await adapter.sendRichDraft(chatId, finalText, {
+                draftId,
+                messageThreadId: context.messageThreadId,
+              });
+              await adapter.sendRichReply(chatId, textOnly, context);
+              return mediaUrls;
+            } catch {
+              failed = true;
+            }
+          }
+          await this._sendAdapterReply(adapter, chatId, textOnly, context);
+        }
+        return mediaUrls;
+      },
+    };
+  }
+
   _createEditMessageStreamDelivery({ adapter, chatId, capability, context }) {
     const minIntervalMs = Number.isFinite(capability.minIntervalMs) ? capability.minIntervalMs : 500;
     const maxChars = Number.isFinite(capability.maxChars) ? capability.maxChars : 150_000;
@@ -1447,6 +1585,88 @@ export class BridgeManager {
     };
   }
 
+  _createCardKitStreamDelivery({ adapter, chatId, capability, context }) {
+    const minIntervalMs = Number.isFinite(capability.minIntervalMs) ? capability.minIntervalMs : 500;
+    const maxChars = Number.isFinite(capability.maxChars) ? capability.maxChars : 150_000;
+    const receiptMode = capability.receiptMode || "fold_into_stream";
+    let streamState = null;
+    let lastSentText = "";
+    let lastUpdateTs = 0;
+    let failed = false;
+    let chain = Promise.resolve();
+
+    const startMessage = async (text) => {
+      streamState = await adapter.startRichStreamReply(chatId, text, context);
+    };
+
+    const enqueueSnapshot = (accumulated, force = false) => {
+      if (failed) return;
+      const { text } = this._cleanStreamSnapshot(accumulated);
+      const next = this._truncateStreamText(text.trim(), maxChars);
+      if (!next || next === lastSentText) return;
+      const now = Date.now();
+      if (!force && lastUpdateTs && now - lastUpdateTs < minIntervalMs) return;
+      lastUpdateTs = now;
+      lastSentText = next;
+      chain = chain.then(async () => {
+        if (!streamState) {
+          await startMessage(next);
+        } else {
+          await adapter.updateRichStreamReply(chatId, streamState, next, context);
+        }
+      }).catch(() => { failed = true; });
+    };
+
+    return {
+      mode: "cardkit_stream",
+      receiptMode,
+      startReceipt: async (receiptText) => {
+        if (failed || streamState) return;
+        const next = this._truncateStreamText(String(receiptText || "").trim(), maxChars);
+        if (!next) return;
+        lastSentText = next;
+        lastUpdateTs = Date.now();
+        try {
+          await startMessage(next);
+        } catch {
+          failed = true;
+        }
+      },
+      onDelta: (_delta, accumulated) => enqueueSnapshot(accumulated || _delta),
+      finish: async (cleaned) => {
+        const { text, mediaUrls } = this._cleanStreamSnapshot(cleaned);
+        const textOnly = text.trim();
+        await chain;
+        if (!textOnly) {
+          if (!failed && streamState && lastSentText) {
+            try {
+              await adapter.finishRichStreamReply(chatId, streamState, lastSentText, context);
+            } catch {
+              failed = true;
+            }
+          }
+          return mediaUrls;
+        }
+        const finalText = this._truncateStreamText(textOnly, maxChars);
+        if (!failed) {
+          try {
+            if (!streamState) {
+              await startMessage(finalText);
+              await adapter.finishRichStreamReply(chatId, streamState, finalText, context);
+            } else {
+              await adapter.finishRichStreamReply(chatId, streamState, finalText, context);
+            }
+            return mediaUrls;
+          } catch {
+            failed = true;
+          }
+        }
+        await this._sendAdapterReply(adapter, chatId, textOnly, context);
+        return mediaUrls;
+      },
+    };
+  }
+
   _cleanStreamSnapshot(text) {
     return cleanStreamSnapshot(text);
   }
@@ -1472,6 +1692,7 @@ export class BridgeManager {
     const batch = this._takePendingBatch(sessionKey);
     if (!batch || batch.lines.length === 0) return;
     this._processing.add(sessionKey);
+    let receiptDelivery = null;
 
     // 取出所有缓冲消息和附件
     const { lines, attachments: pendingAttachments = [], platform, chatId, senderName, avatarUrl, userId, qqPrincipal, isGroup, isOwner, bridgeRole, agentId, messageThreadId, replyContext } = batch;
@@ -1537,10 +1758,6 @@ export class BridgeManager {
         messageThreadId,
         replyContext,
       });
-      const foldsReceipt = this._deliveryFoldsReceipt(delivery);
-      if (!foldsReceipt) {
-        this._sendLlmWaitingReceipt(platform, chatId, agentId, replyContext);
-      }
 
       // 如果 agent 正在 streaming，用 steer 注入而不是新建 prompt
       // 但如果有图片附件，不走 steer（Pi SDK 不支持往 streaming 中追加图片），等当前回复结束后正常处理
@@ -1548,9 +1765,7 @@ export class BridgeManager {
         debugLog()?.log("bridge", `steer ${platform} dm (${lines.length} msg(s))`);
         return;
       }
-      if (foldsReceipt) {
-        await this._startLlmWaitingReceipt({ delivery, platform, chatId, agentId, replyContext });
-      }
+      receiptDelivery = await this._startLlmWaitingReceipt({ delivery, platform, chatId, agentId, replyContext, isGroup });
 
       debugLog()?.log("bridge", `flush ${platform} ${isGroup ? "group" : "dm"} (${lines.length} msg(s), ${merged.length} chars${images.length ? `, ${images.length} image(s)` : ""})`);
 
@@ -1630,6 +1845,7 @@ export class BridgeManager {
         debugLog()?.error("bridge", `${platform} message handling failed: ${err.message}`);
       }
     } finally {
+      try { await receiptDelivery?.stop?.(); } catch {}
       this._processing.delete(sessionKey);
     }
 
@@ -1697,11 +1913,19 @@ export class BridgeManager {
       messageThreadId,
       replyContext,
     });
-    await this._startLlmWaitingReceipt({ delivery, platform, chatId, agentId, replyContext });
+    let receiptDelivery = null;
 
     debugLog()?.log("bridge", `rc-attached flush ${platform} (${text.length} chars → ${desktopSessionPath})`);
 
     try {
+      receiptDelivery = await this._startLlmWaitingReceipt({
+        delivery,
+        platform,
+        chatId,
+        agentId,
+        replyContext,
+        isGroup: false,
+      });
       const displayMessage = {
         text,
         source: "bridge_rc",
@@ -1765,6 +1989,7 @@ export class BridgeManager {
         }
       }
     } finally {
+      try { await receiptDelivery?.stop?.(); } catch {}
       if (!alreadyLocked) this._processing.delete(sessionKey);
     }
 

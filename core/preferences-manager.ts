@@ -286,6 +286,22 @@ export class PreferencesManager {
     this.savePreferences(prefs);
   }
 
+  /** 读取 bridge 富文本流式开关（全局，默认开启） */
+  getBridgeRichStreamingEnabled() {
+    return this._cache.bridge?.richStreamingEnabled !== false;
+  }
+
+  /** 保存 bridge 富文本流式开关；false 表示强制走旧兼容路径 */
+  setBridgeRichStreamingEnabled(enabled) {
+    const prefs = this._mutableCopy();
+    const bridge = { ...(prefs.bridge || {}) };
+    if (enabled === false) bridge.richStreamingEnabled = false;
+    else delete bridge.richStreamingEnabled;
+    if (Object.keys(bridge).length === 0) delete prefs.bridge;
+    else prefs.bridge = bridge;
+    this.savePreferences(prefs);
+  }
+
   /** 读取自动化运行权限模式（全局，默认自动审核）。 */
   getAutomationPermissionMode() {
     return normalizeAutomationPermissionMode(this._cache.automation || {});

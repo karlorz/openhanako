@@ -117,6 +117,7 @@ export function buildBridgeStatus(engine: any, manager: any, agent: any) {
   const permissionMode = engine.getBridgePermissionMode?.()
     || normalizeBridgePermissionMode({ readOnly });
   const receiptEnabled = engine.getBridgeReceiptEnabled?.() !== false;
+  const richStreamingEnabled = engine.getBridgeRichStreamingEnabled?.() !== false;
 
   return {
     agentId: agent.id,
@@ -138,6 +139,7 @@ export function buildBridgeStatus(engine: any, manager: any, agent: any) {
     permissionMode,
     readOnly,
     receiptEnabled,
+    richStreamingEnabled,
     knownUsers: collectKnownUsers(index),
     owner: ownerDict,
   };
@@ -236,12 +238,12 @@ export function createBridgeRoute(engine: any, bridgeManagerRef: any) {
     return c.json({ ok: true });
   });
 
-  /** 更新 bridge 总设置（permissionMode / legacy readOnly / receiptEnabled）— global preferences */
+  /** 更新 bridge 总设置（permissionMode / legacy readOnly / receiptEnabled / richStreamingEnabled）— global preferences */
   route.post("/bridge/settings", async (c) => {
     const body = await safeJson(c);
     const scopeDenied = denyWithoutScope(c, "bridge.manage");
     if (scopeDenied) return scopeDenied;
-    const { permissionMode, readOnly, receiptEnabled } = body;
+    const { permissionMode, readOnly, receiptEnabled, richStreamingEnabled } = body;
     if (typeof permissionMode === "string") {
       const normalized = normalizeBridgePermissionMode({ permissionMode });
       if (normalized !== permissionMode) {
@@ -257,9 +259,12 @@ export function createBridgeRoute(engine: any, bridgeManagerRef: any) {
     if (typeof receiptEnabled === "boolean") {
       engine.setBridgeReceiptEnabled(receiptEnabled);
     }
+    if (typeof richStreamingEnabled === "boolean") {
+      engine.setBridgeRichStreamingEnabled?.(richStreamingEnabled);
+    }
     debugLog()?.log(
       "api",
-      `POST /api/bridge/settings permissionMode=${permissionMode} readOnly=${readOnly} receiptEnabled=${receiptEnabled}`,
+      `POST /api/bridge/settings permissionMode=${permissionMode} readOnly=${readOnly} receiptEnabled=${receiptEnabled} richStreamingEnabled=${richStreamingEnabled}`,
     );
     const savedPermissionMode = engine.getBridgePermissionMode?.()
       || normalizeBridgePermissionMode({ readOnly: engine.getBridgeReadOnly() });
@@ -268,6 +273,7 @@ export function createBridgeRoute(engine: any, bridgeManagerRef: any) {
       permissionMode: savedPermissionMode,
       readOnly: engine.getBridgeReadOnly(),
       receiptEnabled: engine.getBridgeReceiptEnabled(),
+      richStreamingEnabled: engine.getBridgeRichStreamingEnabled?.() !== false,
     });
   });
 

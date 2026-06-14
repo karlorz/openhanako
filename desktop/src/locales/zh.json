@@ -1983,6 +1983,8 @@
       "permissionModeReadOnly": "只读模式",
       "receiptEnabled": "回复前提示",
       "receiptEnabledDesc": "收到消息后，先发送一条“已接收并正在回复”的提示",
+      "richStreamingEnabled": "富文本流式传输",
+      "richStreamingEnabledDesc": "默认使用平台富文本和流式能力；关闭后改用旧的兼容发送方式",
       "readOnly": "只读模式",
       "readOnlyDesc": "外部平台的机器人只能读取文件，不能执行写入和命令操作",
       "howTo": "如何接入？",

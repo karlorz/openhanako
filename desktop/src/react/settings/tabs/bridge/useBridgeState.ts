@@ -32,6 +32,7 @@ export interface BridgeStatus {
   permissionMode: BridgePermissionMode;
   readOnly: boolean;
   receiptEnabled: boolean;
+  richStreamingEnabled: boolean;
   knownUsers: { telegram?: KnownUser[]; feishu?: KnownUser[]; whatsapp?: KnownUser[]; qq?: KnownUser[]; wechat?: KnownUser[] };
   owner: { telegram?: string; feishu?: string; whatsapp?: string; qq?: string; wechat?: string };
 }
@@ -50,6 +51,7 @@ function normalizeBridgeStatus(data: any): BridgeStatus | null {
     permissionMode: data.permissionMode || (data.readOnly === true ? 'read_only' : 'auto'),
     readOnly: data.readOnly === true,
     receiptEnabled: data.receiptEnabled !== false,
+    richStreamingEnabled: data.richStreamingEnabled !== false,
     knownUsers: data.knownUsers || {},
     owner: data.owner || {},
   };
@@ -246,7 +248,7 @@ export function useBridgeState() {
     }
   };
 
-  const saveGlobalSettings = async (partial: { permissionMode?: BridgePermissionMode; readOnly?: boolean; receiptEnabled?: boolean }) => {
+  const saveGlobalSettings = async (partial: { permissionMode?: BridgePermissionMode; readOnly?: boolean; receiptEnabled?: boolean; richStreamingEnabled?: boolean }) => {
     setGlobalSettingsSaving(true);
     try {
       const res = await hanaFetch('/api/bridge/settings', {
@@ -256,12 +258,13 @@ export function useBridgeState() {
       });
       const saved = await res.json();
       if (saved.error) throw new Error(saved.error);
-      if (typeof saved.permissionMode === 'string' && typeof saved.readOnly === 'boolean' && typeof saved.receiptEnabled === 'boolean') {
+      if (typeof saved.permissionMode === 'string' && typeof saved.readOnly === 'boolean' && typeof saved.receiptEnabled === 'boolean' && typeof saved.richStreamingEnabled === 'boolean') {
         setStatus(prev => prev ? {
           ...prev,
           permissionMode: saved.permissionMode,
           readOnly: saved.readOnly,
           receiptEnabled: saved.receiptEnabled,
+          richStreamingEnabled: saved.richStreamingEnabled,
         } : prev);
       }
       showToast(t('settings.saved'), 'success');

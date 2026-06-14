@@ -1983,6 +1983,8 @@
       "permissionModeReadOnly": "Read-only mode",
       "receiptEnabled": "Reply receipt",
       "receiptEnabledDesc": "Send a short \"received and replying\" notice before the actual response",
+      "richStreamingEnabled": "Rich streaming",
+      "richStreamingEnabledDesc": "Use platform rich-text and streaming features by default; turn off to use the legacy compatible delivery path",
       "readOnly": "Read-only mode",
       "readOnlyDesc": "Bridge bots can only read files, no writing or command execution",
       "howTo": "Setup Guide",

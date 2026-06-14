@@ -24,6 +24,11 @@ export function BridgeTab() {
   const receiptEnabled = typeof b.status?.receiptEnabled === 'boolean'
     ? b.status.receiptEnabled
     : snapshotBridge?.receiptEnabled;
+  const richStreamingEnabled = typeof b.status?.richStreamingEnabled === 'boolean'
+    ? b.status.richStreamingEnabled
+    : snapshotBridge
+      ? snapshotBridge.richStreamingEnabled !== false
+      : undefined;
   const globalSettingsPending = !permissionMode || b.globalSettingsSaving;
 
   return (
@@ -48,6 +53,18 @@ export function BridgeTab() {
               on={receiptEnabled}
               ariaLabel={t('settings.bridge.receiptEnabled')}
               onChange={(on) => b.saveGlobalSettings({ receiptEnabled: on })}
+              disabled={b.globalSettingsSaving}
+            />
+          }
+        />
+        <SettingsRow
+          label={t('settings.bridge.richStreamingEnabled')}
+          hint={t('settings.bridge.richStreamingEnabledDesc')}
+          control={
+            <Toggle
+              on={richStreamingEnabled}
+              ariaLabel={t('settings.bridge.richStreamingEnabled')}
+              onChange={(on) => b.saveGlobalSettings({ richStreamingEnabled: on })}
               disabled={b.globalSettingsSaving}
             />
           }

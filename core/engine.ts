@@ -981,6 +981,8 @@ export class HanaEngine {
   setBridgeReadOnly(v) { this._prefs.setBridgeReadOnly(v); }
   getBridgeReceiptEnabled() { return this._prefs.getBridgeReceiptEnabled(); }
   setBridgeReceiptEnabled(v) { this._prefs.setBridgeReceiptEnabled(v); }
+  getBridgeRichStreamingEnabled() { return this._prefs.getBridgeRichStreamingEnabled(); }
+  setBridgeRichStreamingEnabled(v) { this._prefs.setBridgeRichStreamingEnabled(v); }
   setOutboundProxyRuntime(runtime) { this._outboundProxyRuntime = runtime || null; }
   getNetworkProxy() { return this._prefs.getNetworkProxy(); }
   setNetworkProxy(v) {

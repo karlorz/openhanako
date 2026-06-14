@@ -1250,6 +1250,8 @@ describe("migration #2: migrateBridgeToPerAgent", () => {
       primaryAgent: "hana",
       bridge: {
         permissionMode: "operate",
+        receiptEnabled: false,
+        richStreamingEnabled: false,
         telegram: { token: "tok123" },
       },
     });
@@ -1258,7 +1260,11 @@ describe("migration #2: migrateBridgeToPerAgent", () => {
 
     const config = readAgentConfig(agentsDir, "hana");
     expect(config.bridge.telegram.token).toBe("tok123");
-    expect(prefs.getPreferences().bridge).toEqual({ permissionMode: "operate" });
+    expect(prefs.getPreferences().bridge).toEqual({
+      permissionMode: "operate",
+      receiptEnabled: false,
+      richStreamingEnabled: false,
+    });
   });
 
   it("legacy owner key：owner.telegram（无 composite）→ 归入 primary agent", () => {

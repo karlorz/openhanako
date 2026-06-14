@@ -286,7 +286,7 @@ function cleanDanglingProviderRefs(ctx) {
  * preferences.json 中的 bridge.telegram / feishu / qq / wechat / whatsapp
  * 各自可能带 agentId 字段指定归属 agent。迁移后每个 platform config
  * 写入对应 agent 的 config.yaml，owner 信息一并合入。
- * bridge.permissionMode / readOnly / receiptEnabled 保留为全局偏好。
+ * bridge.permissionMode / readOnly / receiptEnabled / richStreamingEnabled 保留为全局偏好。
  */
 function migrateBridgeToPerAgent(ctx) {
   const { agentsDir, prefs, log } = ctx;
@@ -303,6 +303,7 @@ function migrateBridgeToPerAgent(ctx) {
     ? explicitPermissionMode === SESSION_PERMISSION_MODES.READ_ONLY
     : bridge.readOnly === true;
   const receiptEnabled = bridge.receiptEnabled === false ? false : undefined;
+  const richStreamingEnabled = bridge.richStreamingEnabled === false ? false : undefined;
 
   const PLATFORMS = ["telegram", "feishu", "qq", "wechat", "whatsapp"];
   const agentConfigs = new Map(); // agentId → { platform: config }
@@ -381,6 +382,7 @@ function migrateBridgeToPerAgent(ctx) {
   }
   if (readOnly) nextBridgePrefs.readOnly = true;
   if (receiptEnabled === false) nextBridgePrefs.receiptEnabled = false;
+  if (richStreamingEnabled === false) nextBridgePrefs.richStreamingEnabled = false;
   if (Object.keys(nextBridgePrefs).length > 0) preferences.bridge = nextBridgePrefs;
   else delete preferences.bridge;
   prefs.savePreferences(preferences);
