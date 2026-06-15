@@ -318,6 +318,28 @@ export async function connectDeviceServerConnection({
   const token = normalizeToken(credential);
   if (!token) throw new Error('server access key required');
 
+  // Prefer main-process probe when available: bypasses renderer CSP for the
+  // initial connect (CSP <meta> is built from the active connection, so a fetch
+  // to a NEW remote URL is blocked before the connection can become active).
+  const hana = typeof window !== 'undefined' ? (window as any).hana : undefined;
+  if (hana && typeof hana.probeConnection === 'function') {
+    const probe = await hana.probeConnection({ baseUrl: normalizedBaseUrl, credential: token });
+    if (!probe || !probe.ok) {
+      throw new Error(`connect probe failed: ${(probe && probe.error) || 'unknown'}`);
+    }
+    const identity = probe.identity as ServerIdentity;
+    const connection = createDeviceServerConnection({
+      baseUrl: normalizedBaseUrl,
+      credential: token,
+      identity,
+    });
+    // Persist as active so the next page load's CSP includes the origin.
+    persistServerConnectionSelection(connection);
+    if (typeof location !== 'undefined') location.reload();
+    return connection;
+  }
+
+  // Fallback: direct fetch (dev:web mode, tests, or builds without preload).
   await requestJson(fetchImpl, `${normalizedBaseUrl}/api/web-auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -336,6 +358,7 @@ export async function connectDeviceServerConnection({
     identity,
   });
 }
+
 
 export function refreshLocalServerConnection({
   existingConnection,
