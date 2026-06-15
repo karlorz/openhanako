@@ -129,4 +129,19 @@ describe('DeskTree drag payloads for workspace roots', () => {
     ]);
     expect(startDrag).not.toHaveBeenCalled();
   });
+
+  it('exposes the full filename on the hovered tree row, not only the text span', () => {
+    useStore.setState({
+      deskBasePath: '/Users/me/project',
+      deskWorkspaceMountId: null,
+      deskWorkspaceNativeRoot: null,
+      deskFiles: [{ name: 'very-long-report-name-that-truncates.md', isDir: false }],
+      deskTreeFilesByPath: { '': [{ name: 'very-long-report-name-that-truncates.md', isDir: false }] },
+    } as never);
+
+    const { container } = renderTree();
+    const item = container.querySelector('[data-desk-path="very-long-report-name-that-truncates.md"]');
+
+    expect(item?.getAttribute('title')).toBe('very-long-report-name-that-truncates.md');
+  });
 });

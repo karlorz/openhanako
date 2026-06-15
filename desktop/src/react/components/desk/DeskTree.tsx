@@ -516,6 +516,7 @@ function TreeNode({
         className={`${s.treeItem}${selected ? ` ${s.treeItemSelected}` : ''}${dropTarget ? ` ${s.treeItemDropTarget}` : ''}`}
         role="treeitem"
         aria-label={file.name}
+        title={file.name}
         aria-expanded={file.isDir ? expanded : undefined}
         data-desk-item=""
         data-desk-path={subdir}
