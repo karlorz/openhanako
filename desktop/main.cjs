@@ -8,7 +8,7 @@
  * 4. 关闭 splash，显示主窗口
  * 5. 优雅关闭
  */
-const { app, BrowserWindow, WebContentsView, globalShortcut, ipcMain, dialog, session, shell, nativeTheme, Tray, Menu, nativeImage, systemPreferences, Notification, webContents, screen, powerSaveBlocker } = require("electron");
+const { app, BrowserWindow, WebContentsView, globalShortcut, ipcMain, dialog, session, shell, nativeTheme, Tray, Menu, nativeImage, systemPreferences, Notification, webContents, screen, powerSaveBlocker, net } = require("electron");
 const os = require("os");
 const path = require("path");
 const crypto = require("crypto");
@@ -4552,6 +4552,51 @@ wrapIpcHandler("onboarding-complete", async () => {
     createMainWindow,
   });
   registerQuickChatShortcutBestEffort();
+});
+
+// ── LAN 连接探测（绕过 renderer CSP 的初始验证 fetch）──
+// Browsers cannot set Authorization headers on WebSocket(), but more critically
+// here: the renderer's CSP <meta> is built from the already-active connection,
+// so the initial /api/web-auth/login fetch to a NEW remote URL is blocked before
+// the connection can become active (chicken-and-egg). This handler runs in the
+// main process via net.fetch, which is NOT subject to renderer CSP. On success
+// the renderer persists the connection and reloads so CSP picks up the origin.
+wrapIpcHandler("connect:probe", async (event, payload) => {
+  const baseUrl = String(payload && payload.baseUrl || "").replace(/\/+$/, "");
+  const credential = String(payload && payload.credential || "");
+  if (!baseUrl) return { ok: false, error: "baseUrl required" };
+  if (!credential) return { ok: false, error: "credential required" };
+  // SSRF guard: only allow http/https URLs. A compromised renderer could call
+  // this channel directly with an arbitrary URL; net.fetch runs in main and is
+  // not bound by renderer CSP, so we must validate the scheme here.
+  if (!/^https?:\/\//i.test(baseUrl)) {
+    return { ok: false, error: "baseUrl must be http(s)" };
+  }
+  // Sender validation (Electron Security §17): only accept probes from our own
+  // renderer (file:// origin). Prevents cross-origin invoke exploitation.
+  const senderUrl = event.senderFrame && event.senderFrame.url;
+  if (!senderUrl || !senderUrl.startsWith("file://")) {
+    return { ok: false, error: "forbidden sender" };
+  }
+  try {
+    const loginRes = await net.fetch(`${baseUrl}/api/web-auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ credential }),
+    });
+    if (!loginRes.ok) return { ok: false, error: `login HTTP ${loginRes.status}` };
+    const idRes = await net.fetch(`${baseUrl}/api/server/identity`, {
+      headers: { Authorization: `Bearer ${credential}` },
+    });
+    if (!idRes.ok) return { ok: false, error: `identity HTTP ${idRes.status}` };
+    const identity = await idRes.json();
+    return { ok: true, identity };
+  } catch (e) {
+    // Expected network errors (DNS, connection refused, TLS) surface here as
+    // {ok:false} rather than ipc rejections — gives the renderer a clean error
+    // message without tripping wrapIpcHandler's error logger.
+    return { ok: false, error: String((e && e.message) || e) };
+  }
 });
 
 // ── 窗口控制 IPC（Windows/Linux 自绘标题栏用）──
