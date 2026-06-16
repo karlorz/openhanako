@@ -339,7 +339,7 @@
     "deskContext": "看着书桌说",
     "pastedImage": "粘贴图片",
     "textModelImageFileOnly": "当前模型不能查看图片，也未启用辅助视觉：图片将作为文件发送，模型只能看到文件路径，看不到图片内容。",
-    "textModelVideoBlocked": "当前模型不支持视频输入。请在设置里开启视频能力，或切换到支持视频的模型。",
+    "textModelVideoFileOnly": "当前模型不支持直接查看视频：视频将作为文件发送，模型只能看到文件路径，看不到视频内容。",
     "textModelAudioBlocked": "当前模型不支持音频输入。请切换到支持音频的模型。",
     "imageReadFailedSentAsFile": "图片内容读取失败，这张图已改为按文件路径发送，模型不会看到它的内容。",
     "videoReadFailed": "视频读取失败，消息没有发送。请重新添加视频。",

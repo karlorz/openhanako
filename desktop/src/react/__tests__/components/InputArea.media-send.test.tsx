@@ -674,6 +674,51 @@ describe('InputArea media send', () => {
     expect(window.platform.readFileBase64).not.toHaveBeenCalled();
   });
 
+  it('keeps video attachments on the file-only path for unsupported models', async () => {
+    useStore.setState({
+      attachedFiles: [{
+        fileId: 'sf_clip',
+        path: '/tmp/hana/session-files/clip.mp4',
+        name: 'clip.mp4',
+        mimeType: 'video/mp4',
+        isDirectory: false,
+      }],
+      attachedFilesBySession: {
+        '/session/media.jsonl': [{
+          fileId: 'sf_clip',
+          path: '/tmp/hana/session-files/clip.mp4',
+          name: 'clip.mp4',
+          mimeType: 'video/mp4',
+          isDirectory: false,
+        }],
+      },
+    } as never);
+
+    render(React.createElement(InputArea));
+
+    fireEvent.click(screen.getByTestId('send'));
+
+    await waitFor(() => {
+      expect(mocks.wsSend).toHaveBeenCalledTimes(1);
+    });
+    const payload = JSON.parse(String(mocks.wsSend.mock.calls[0][0]));
+    expect(payload.videos).toBeUndefined();
+    expect(payload.text).toBe('[附件] clip.mp4');
+    expect(payload.sessionFileRefs).toEqual([{
+      fileId: 'sf_clip',
+      sessionPath: '/session/media.jsonl',
+      label: 'clip.mp4',
+      kind: 'attachment',
+    }]);
+    expect(payload.displayMessage.attachments[0]).toMatchObject({
+      fileId: 'sf_clip',
+      path: '/tmp/hana/session-files/clip.mp4',
+      name: 'clip.mp4',
+      mimeType: 'video/mp4',
+    });
+    expect(window.platform.readFileBase64).not.toHaveBeenCalled();
+  });
+
   it('sends ordinary attachments by fileId instead of using visible path text as the machine contract', async () => {
     useStore.setState({
       attachedFiles: [{

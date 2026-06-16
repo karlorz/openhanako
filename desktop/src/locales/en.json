@@ -339,7 +339,7 @@
     "deskContext": "With desk context",
     "pastedImage": "Pasted image",
     "textModelImageFileOnly": "The current model cannot view images and auxiliary vision is not enabled: images are sent as files, so the model only sees the file path, not the image content.",
-    "textModelVideoBlocked": "The current model does not support video input. Enable video capability in settings, or switch to a video-capable model.",
+    "textModelVideoFileOnly": "The current model cannot view videos directly: videos are sent as files, so the model only sees the file path, not the video content.",
     "textModelAudioBlocked": "The current model does not support audio input. Switch to an audio-capable model.",
     "imageReadFailedSentAsFile": "Failed to read the image bytes; this image was sent as a file path instead, so the model will not see its content.",
     "videoReadFailed": "Could not read the video, so the message was not sent. Attach it again.",

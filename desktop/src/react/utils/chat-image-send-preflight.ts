@@ -248,7 +248,7 @@ export function notifyTextModelImageFileOnly({
   );
 }
 
-export function notifyTextModelVideoBlocked({
+export function notifyTextModelVideoFileOnly({
   t,
   addToast,
   openSettings,
@@ -258,11 +258,11 @@ export function notifyTextModelVideoBlocked({
   openSettings: () => void;
 }): void {
   addToast(
-    t('input.textModelVideoBlocked'),
+    t('input.textModelVideoFileOnly'),
     'warning',
     9000,
     {
-      dedupeKey: 'text-model-video-blocked',
+      dedupeKey: 'text-model-video-file-only',
       action: {
         label: t('input.openModelSettings'),
         onClick: openSettings,

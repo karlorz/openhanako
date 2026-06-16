@@ -46,7 +46,7 @@ import {
   getModelAudioInputMode,
   notifyTextModelImageFileOnly,
   notifyTextModelAudioBlocked,
-  notifyTextModelVideoBlocked,
+  notifyTextModelVideoFileOnly,
 } from '../utils/chat-image-send-preflight';
 import { openProviderModelSettings } from '../utils/model-settings-navigation';
 import { shouldShowThinkingControl } from '../utils/model-thinking';
@@ -1449,13 +1449,14 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
         attachments: inputFiles,
         model: currentModelInfo,
       });
-      if (!videoPreflight.ok) {
-        notifyTextModelVideoBlocked({
+      const sendVideosNatively = videoPreflight.ok && videoPreflight.reason === 'native-video';
+      const videosAsFileOnly = !videoPreflight.ok;
+      if (videosAsFileOnly) {
+        notifyTextModelVideoFileOnly({
           t,
           addToast: useStore.getState().addToast,
           openSettings: () => openProviderModelSettings(currentModelInfo?.provider),
         });
-        return;
       }
       const audioPreflight = await evaluateChatAudioSendPreflight({
         attachments: inputFiles,
@@ -1465,7 +1466,7 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
       const otherFiles = hasFiles ? inputFiles.filter(f =>
         f.isDirectory || (
           !isImageFile(f.name)
-          && !isVideoFile(f.name)
+          && !(sendVideosNatively && isVideoFile(f.name))
           && !(sendAudiosNatively && isAudioFileName(f.name, f.mimeType))
         )
       ) : [];
@@ -1546,7 +1547,7 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
           return;
         }
       }
-      for (const video of videoFiles) {
+      for (const video of sendVideosNatively ? videoFiles : []) {
         try {
           if (video.base64Data && video.mimeType) {
             const mimeType = chatVideoMimeTypeForName(video.name, video.mimeType);

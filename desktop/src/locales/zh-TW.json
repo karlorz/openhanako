@@ -306,7 +306,7 @@
     "deskContext": "看著書桌說",
     "pastedImage": "貼上圖片",
     "textModelImageFileOnly": "當前模型不能查看圖片，也未啟用輔助視覺：圖片將作為檔案發送，模型只能看到檔案路徑，看不到圖片內容。",
-    "textModelVideoBlocked": "目前模型不支援影片輸入。請在設定中開啟影片能力，或切換到支援影片的模型。",
+    "textModelVideoFileOnly": "目前模型不支援直接查看影片：影片將作為檔案發送，模型只能看到檔案路徑，看不到影片內容。",
     "textModelAudioBlocked": "目前模型不支援音訊輸入。請切換到支援音訊的模型。",
     "imageReadFailedSentAsFile": "圖片內容讀取失敗，這張圖已改為按檔案路徑發送，模型不會看到它的內容。",
     "videoReadFailed": "影片讀取失敗，訊息沒有傳送。請重新加入影片。",
