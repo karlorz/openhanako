@@ -96,4 +96,4 @@ Manual smoke for the remote server:
 - Release branch is `dev`; CI targets `main` and `dev`.
 - Browser verification expects a dev server at `${HANA_BROWSER_VERIFY_URL:-http://localhost:5173}`.
 - `skillwiki doctor` can exit non-zero when only warnings exist; inspect its JSON summary before treating it as a blocker.
-- Remote server deploy automation is pending refactor; do not treat `scripts/deploy-sg01-server.sh` as the committed deploy path. The replacement design is `docs/server-install.md`; destructive reset/import behavior is separately scoped in `docs/reinit-data-failsafe.md`.
+- Remote server deploy automation is pending refactor; do not treat `scripts/deploy-sg01-server.sh` as the committed deploy path. The replacement design is `docs/server-install.md`; the initial upgrade implementation is `scripts/install-server.mjs`, and destructive reset/import behavior is separately scoped in `docs/reinit-data-failsafe.md`.
