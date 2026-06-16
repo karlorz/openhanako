@@ -15,7 +15,8 @@ Generated during the 2026-06-15 remote attachment preview fix closeout.
 - Missing optional dependency: `claude-mem` only
 - Existing CI: `.github/workflows/ci.yml`, targets `main` and `dev`
 - Release workflow: `.github/workflows/build.yml`, tag-triggered `v*`
-- Upstream sync workflow: `scripts/sync-upstream.sh --check` checks stable upstream releases by default; prerelease candidate review requires `--include-prerelease`
+- Upstream sync workflow: `node scripts/sync-upstream.mjs --check` checks stable upstream releases by default; prerelease candidate review requires `--include-prerelease`
+- Fork sync rules: `docs/fork-sync/rules.yml` is the machine-readable policy used by `scripts/sync-upstream.mjs`.
 - Web framework: Vite + React + Electron
 - Browser verification capability: `playwright-cli` plugin present
 - Deep research capability: `deep-research` plugin present
@@ -60,7 +61,8 @@ Generated during the 2026-06-15 remote attachment preview fix closeout.
   - `.github/workflows/ci.yml`
 - `fork_sync_maintenance`
   - `FORK_SYNC.md`
-  - `scripts/sync-upstream.sh`
+  - `docs/fork-sync/rules.yml`
+  - `scripts/sync-upstream.mjs`
   - `scripts/track-upstream-issues.mjs`
   - `docs/upstream-issues/**`
   - `tests/upstream-issue-tracker.test.js`
@@ -83,7 +85,7 @@ Ran a manual core `/dev-loop` cycle audit on 2026-06-15 after the remote preview
 - Doctor caveat: `skillwiki doctor` reports `32 pass`, `1 warn`, `0 errors`, but exits non-zero with the warning. Treat the JSON summary as authoritative for blocking decisions, not the exit code alone.
 - GitHub CLI caveat: plain `gh repo view` initially resolved to upstream `liliMozi/openhanako`. Ran `gh repo set-default karlorz/openhanako`; future CI/PR checks should still prefer explicit `--repo karlorz/openhanako` when scripted.
 - CI health: no recent GitHub Actions runs exist on `dev` yet after adding the branch trigger, so the workflow is configured but not proven by a post-change run.
-- Upstream release check: `v0.324.0` is a GitHub prerelease. The sync helper now ignores prereleases by default and reports the fork up to date at the `v0.323.0` stable baseline; `--include-prerelease --check` is the explicit prerelease review path.
+- Upstream release check: `v0.324.0` is a GitHub prerelease. The sync helper ignores prereleases by default and reports the fork up to date at the `v0.323.0` stable baseline; `--include-prerelease --check` is the explicit prerelease review path.
 - Codex cache caveat: dev-loop's cached skill copy references `skills/dev-loop/scripts/preflight-inventory.js`, but the Codex plugin package currently stores that helper at plugin root `scripts/preflight-inventory.js`. Use the plugin-root script as the fallback until the packaging layout is repaired upstream.
 
 ## Claude Review Follow-Up

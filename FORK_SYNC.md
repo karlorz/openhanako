@@ -37,8 +37,9 @@ Current status:
 ## Sync cadence
 
 - **Stable release-tag sync, manual.** Pull when upstream cuts a new non-prerelease release tag. Do NOT track `main` HEAD and do NOT treat prereleases as production sync targets.
-- **Detection:** run `scripts/sync-upstream.sh --check` anytime. It compares the latest stable upstream release tag against the sync log (below) and tells you if there's something to sync.
-- **Prerelease review:** run `scripts/sync-upstream.sh --include-prerelease --check` only when intentionally reviewing a prerelease candidate. This is not the normal production update path.
+- **Machine-readable rules:** `docs/fork-sync/rules.yml` is the source of truth for release-target policy, diverging-file rules, issue-tracking states, and verification commands. This runbook explains the same policy for humans.
+- **Detection:** run `node scripts/sync-upstream.mjs --check` anytime. It compares the latest stable upstream release tag against the sync log (below) and tells you if there's something to sync.
+- **Prerelease review:** run `node scripts/sync-upstream.mjs --include-prerelease --check` only when intentionally reviewing a prerelease candidate. This is not the normal production update path.
 - **Issue check:** as part of every sync, run `node scripts/track-upstream-issues.mjs search` and glance at [#1749](https://github.com/liliMozi/openhanako/issues/1749) plus the pending draft list. If upstream accepted equivalent fixes, the divergence shrinks.
 
 ## Diverging files
@@ -92,7 +93,7 @@ Full context: [[projects/openhanako/work/2026-06-15-csp-ws-lan-connect-fix]], [[
 
 ## Sync workflow
 
-Run: `scripts/sync-upstream.sh` (see `--help` for flags). By default it syncs only stable upstream releases; use `--include-prerelease` only for explicit prerelease candidate review.
+Run: `node scripts/sync-upstream.mjs` (see `--help` for flags). By default it syncs only stable upstream releases; use `--include-prerelease` only for explicit prerelease candidate review.
 
 What the script does:
 
