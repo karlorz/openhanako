@@ -1289,7 +1289,14 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
             const upload = data?.uploads?.[0];
             if (upload?.dest) {
               upsertUploadedSessionFile(upload, sessionPath);
-              addAttachedFile({ fileId: upload.fileId, path: upload.dest, name: upload.name || uploadPayload.name, isDirectory: false });
+              addAttachedFile({
+                fileId: upload.fileId,
+                path: upload.dest,
+                name: upload.name || uploadPayload.name,
+                isDirectory: false,
+                base64Data: uploadPayload.base64Data,
+                mimeType: uploadPayload.mimeType,
+              });
             } else {
               notifyPasteUploadFailure(t, upload?.error);
               console.warn('[paste] upload-blob failed', upload?.error || data);

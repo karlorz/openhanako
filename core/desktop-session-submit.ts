@@ -23,8 +23,10 @@
  * @param {object|null|undefined} [opts.context]
  * @returns {Promise<{ text: string | null, toolMedia: string[] }>}
  */
+import fs from "fs";
 import path from "path";
 import { extOfName, inferFileKind } from "../lib/file-metadata.ts";
+import { sessionFilesCacheDir } from "../lib/session-files/session-file-registry.ts";
 import { collectMediaItems } from "../lib/tools/media-details.ts";
 import { formatSettingsUpdateText } from "../lib/tools/settings-update-result.ts";
 import { materializeBridgeInboundFiles } from "../lib/session-files/bridge-inbound-files.ts";
@@ -446,6 +448,14 @@ function registerDisplayAttachments({ hanakoHome, sessionPath, attachments, regi
     let sessionFile = null;
 
     if (!next.fileId && next.path && path.isAbsolute(next.path) && typeof registerSessionFile === "function") {
+      const materializedPath = materializeTempUploadForSession({
+        hanakoHome,
+        sessionPath,
+        filePath: next.path,
+      });
+      if (materializedPath !== next.path) {
+        next = { ...next, path: materializedPath };
+      }
       sessionFile = serializeSessionFile(registerSessionFile({
         sessionPath,
         filePath: next.path,
@@ -498,6 +508,48 @@ function registerDisplayAttachments({ hanakoHome, sessionPath, attachments, regi
     videoAttachmentPaths: uniquePaths(videoAttachmentPaths),
     audioAttachmentPaths: uniquePaths(audioAttachmentPaths),
   };
+}
+
+function materializeTempUploadForSession({ hanakoHome, sessionPath, filePath }) {
+  if (!hanakoHome || !sessionPath || !filePath || !path.isAbsolute(filePath)) return filePath;
+  const uploadsRoot = path.resolve(hanakoHome, "uploads");
+  const sourcePath = path.resolve(filePath);
+  if (!isPathInside(uploadsRoot, sourcePath)) return filePath;
+
+  try {
+    const stat = fs.lstatSync(sourcePath);
+    if (stat.isSymbolicLink()) return filePath;
+    const cacheDir = sessionFilesCacheDir(hanakoHome, sessionPath);
+    fs.mkdirSync(cacheDir, { recursive: true });
+    const destPath = uniqueMaterializedPath(cacheDir, path.basename(sourcePath));
+    if (stat.isDirectory()) {
+      fs.cpSync(sourcePath, destPath, { recursive: true, force: false, errorOnExist: true });
+    } else {
+      fs.copyFileSync(sourcePath, destPath, fs.constants.COPYFILE_EXCL);
+    }
+    try { fs.utimesSync(destPath, stat.atime, stat.mtime); } catch {}
+    return destPath;
+  } catch (err) {
+    console.warn(`[desktop-session-submit] temp upload materialization failed for ${filePath}: ${err?.message || err}`);
+    return filePath;
+  }
+}
+
+function isPathInside(root, target) {
+  const rel = path.relative(root, target);
+  return rel === "" || (!!rel && !rel.startsWith("..") && !path.isAbsolute(rel));
+}
+
+function uniqueMaterializedPath(cacheDir, filename) {
+  const parsed = path.parse(filename || "upload");
+  const base = parsed.name || "upload";
+  const ext = parsed.ext || "";
+  for (let i = 0; i < 100; i += 1) {
+    const suffix = i === 0 ? "" : `-${i}`;
+    const candidate = path.join(cacheDir, `${base}${suffix}${ext}`);
+    if (!fs.existsSync(candidate)) return candidate;
+  }
+  return path.join(cacheDir, `${base}-${Date.now().toString(36)}${ext}`);
 }
 
 function displayAttachmentPresentation(attachment) {
