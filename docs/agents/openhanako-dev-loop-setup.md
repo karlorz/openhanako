@@ -96,8 +96,8 @@ Config cleanup performed after the review:
 
 - Removed unparsed top-level `memory_layer`, duplicate `ci:` block, and extra `interview.work_item.default/source` fields.
 - Moved custom repo/context metadata under `notes`.
-- Promoted `remote_hosts` to a parsed dev-loop field; `deploy_script` stays unset until the unified Linux server install/upgrade flow replaces the local sg01 helper.
+- Promoted `remote_hosts` to a parsed dev-loop field; `deploy_script` stays unset so unattended dev-loop cycles do not deploy hosts. Server operations use `scripts/install-server.mjs` / `docs/server-install.md`.
 - Added `CLAUDE.md` so AUDIT and DEPLOY fallback discovery have a repo-local operating guide.
-- Kept `scripts/deploy-sg01-server.sh` out of committed setup because it is pending refactor.
+- Retired the local sg01 SSH deploy helper after `install-server` coverage existed for install, upgrade, and status planning.
 - Patched the local dev-loop skill source/cache to document manual fallback when worker Agent spawn fails before returning JSON.
 - Repaired the active Codex dev-loop cache so `skills/dev-loop/references/codex-tools.md` exists at the skill-relative path used by `SKILL.md`; patched the cache sync helper to preserve that path on future syncs.

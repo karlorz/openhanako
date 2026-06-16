@@ -1,6 +1,6 @@
 # Unified Linux Server Install Design
 
-Status: design only. Do not implement this from `scripts/deploy-sg01-server.sh`; that helper is a temporary local deployment path and must remain uncommitted until replaced.
+Status: initial implementation exists in `scripts/install-server.mjs`. The old sg01 SSH deploy helper is retired; this flow is the supported replacement.
 
 ## Goal
 
@@ -202,4 +202,4 @@ Before implementation starts:
 - Unit-test upgrade rollback when health verification fails.
 - Unit-test generated systemd unit content.
 - Integration-test install/upgrade in a disposable Linux container or VM.
-- Verify that `scripts/deploy-sg01-server.sh` is not invoked by the new flow.
+- Verify that the old sg01 SSH deploy helper is not invoked by the new flow.
