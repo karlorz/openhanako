@@ -2,6 +2,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
@@ -273,6 +274,134 @@ export function buildStatusPlan({ hostProfile = "default", paths = {} } = {}) {
   };
 }
 
+export function resolveHanaDataRoot({
+  env = process.env,
+  homeDir = os.homedir(),
+} = {}) {
+  const configured = typeof env.HANA_HOME === "string" ? env.HANA_HOME.trim() : "";
+  return configured || path.join(homeDir, ".hanako");
+}
+
+export function buildReinitDataDryRunPlan({
+  dataRoot = resolveHanaDataRoot(),
+  planDir = "/var/lib/hanaagent/reinit-plans",
+  now = new Date(),
+  serviceName = DEFAULT_PATHS.serviceName,
+  serviceState = {},
+  paths = {},
+} = {}) {
+  const resolvedPaths = { ...DEFAULT_PATHS, ...paths };
+  const createdAt = now.toISOString();
+  const expiresAt = new Date(now.getTime() + 60 * 60 * 1000).toISOString();
+  const stamp = formatPlanTimestamp(now);
+  const shortHash = createHash("sha256")
+    .update(`${createdAt}\n${dataRoot}\n${serviceName}`)
+    .digest("hex")
+    .slice(0, 8);
+  const planId = `reinit-${stamp}-${shortHash}`;
+  const backupDestination = path.join(resolvedPaths.installRoot, "backups", `${planId}.tar.gz`);
+  const planFile = path.join(planDir, `${planId}.json`);
+
+  return {
+    kind: "install-server-reinit-data-dry-run-plan",
+    dryRun: true,
+    mutatesData: false,
+    planId,
+    createdAt,
+    expiresAt,
+    dataRoot,
+    planFile,
+    service: {
+      name: serviceName,
+      active: serviceState.active ?? null,
+      enabled: serviceState.enabled ?? null,
+      mainPid: serviceState.mainPid ?? null,
+    },
+    backup: {
+      destination: backupDestination,
+      manifest: `${backupDestination}.manifest.json`,
+      includes: [
+        dataRoot,
+        resolvedPaths.serviceUnit,
+        planFile,
+      ],
+      restoreCommand: `node scripts/install-server.mjs reinit-data --restore ${backupDestination}`,
+    },
+    exportCategories: [
+      {
+        id: "providers_llm",
+        description: "Provider credentials, model catalog, provider catalog, and LLM preferences required for calls after reinit.",
+        candidateFiles: [
+          "auth.json",
+          "models.json",
+          "models-cache.json",
+          "provider-catalog.json",
+          "provider-plugins/",
+          "user/preferences.json",
+        ],
+      },
+      {
+        id: "connected_remote_hana",
+        description: "Access, device, and server network settings required for a paired desktop client to reconnect.",
+        candidateFiles: [
+          "server-network.json",
+          "server-info.json",
+          "server-node.json",
+          "devices.json",
+          "device-credentials.json",
+          "pairing-sessions.json",
+          "users.json",
+          "studios.json",
+        ],
+      },
+    ],
+    notPreserved: [
+      "persona",
+      "agents",
+      "memories",
+      "sessions",
+      "workspaces",
+      "desk_content",
+      "plugins",
+      "plugin_state",
+      "uploaded_files",
+      "generated_media",
+      "general_preferences",
+    ],
+    wouldRemoveOrReplace: [
+      path.join(dataRoot, "agents"),
+      path.join(dataRoot, "sessions"),
+      path.join(dataRoot, "workspaces"),
+      path.join(dataRoot, "uploads"),
+      path.join(dataRoot, "session-files"),
+      path.join(dataRoot, "provider-plugins"),
+    ],
+    healthChecks: [
+      `systemctl is-active ${serviceName}`,
+      "authenticated GET /api/health",
+      "paired desktop LAN reconnect smoke",
+    ],
+    confirmation: {
+      confirmCommand: `node scripts/install-server.mjs reinit-data --confirm ${planId}`,
+      status: "not-implemented",
+      reason: "Dry-run planning is implemented first; confirm requires backup, restore, import, and audit gates before destructive behavior is allowed.",
+    },
+    audit: {
+      reportPath: path.join(resolvedPaths.installRoot, "backups", `${planId}.audit.json`),
+      redactSecrets: true,
+    },
+  };
+}
+
+export function writeReinitDataDryRunPlan(plan) {
+  if (!plan?.planFile) {
+    fail("reinit-data dry-run plan requires planFile");
+  }
+  fs.mkdirSync(path.dirname(plan.planFile), { recursive: true });
+  fs.writeFileSync(plan.planFile, `${JSON.stringify(plan, null, 2)}\n`);
+  return plan;
+}
+
 function assertNoDestructiveDataSteps(steps) {
   const unsafe = steps.find((step) => /rm -rf|delete data|clear data|reinit-data|wipe|truncate/i.test(step.command));
   if (unsafe) {
@@ -444,6 +573,10 @@ function defaultTimestamp() {
   return new Date().toISOString().replace(/[:.]/g, "-");
 }
 
+function formatPlanTimestamp(date) {
+  return date.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+}
+
 function runCommand(command, args) {
   const result = spawnSync(command, args, { encoding: "utf8", stdio: "pipe" });
   if (result.error) {
@@ -460,6 +593,17 @@ function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, "utf8"));
 }
 
+function inspectServiceState(serviceName = DEFAULT_PATHS.serviceName) {
+  const active = runCommand("systemctl", ["is-active", serviceName]);
+  const enabled = runCommand("systemctl", ["is-enabled", serviceName]);
+  const mainPid = runCommand("systemctl", ["show", "-p", "MainPID", "--value", serviceName]);
+  return {
+    active: active.status === 0 ? active.stdout.trim() : null,
+    enabled: enabled.status === 0 ? enabled.stdout.trim() : null,
+    mainPid: mainPid.status === 0 ? mainPid.stdout.trim() : null,
+  };
+}
+
 function usage() {
   return `install-server - HanaAgent Linux server installer
 
@@ -469,10 +613,11 @@ Usage:
   node scripts/install-server.mjs upgrade --metadata <release.json> --current-version <version> --platform linux --arch arm64 --dry-run
   node scripts/install-server.mjs status
   node scripts/install-server.mjs backup --output <path>
+  node scripts/install-server.mjs reinit-data [--dry-run] [--data-root <path>] [--plan-dir <path>]
 
 Notes:
   upgrade dry-run is safe and does not mutate host state.
-  destructive reset/import is intentionally separate as reinit-data and is not implemented here.`;
+  reinit-data currently supports dry-run planning only; confirm/restore fail closed until backup and restore gates are implemented.`;
 }
 
 function parseArgs(argv) {
@@ -492,6 +637,18 @@ function parseArgs(argv) {
         break;
       case "--arch":
         options.arch = rest[++i];
+        break;
+      case "--data-root":
+        options.dataRoot = rest[++i];
+        break;
+      case "--plan-dir":
+        options.planDir = rest[++i];
+        break;
+      case "--confirm":
+        options.confirmPlanId = rest[++i];
+        break;
+      case "--restore":
+        options.restorePath = rest[++i];
         break;
       case "--execute":
         options.dryRun = false;
@@ -554,6 +711,24 @@ function main(argv = process.argv.slice(2)) {
   }
   if (options.command === "status") {
     console.log(JSON.stringify(buildStatusPlan(), null, 2));
+    return;
+  }
+  if (options.command === "reinit-data") {
+    if (options.confirmPlanId) {
+      fail("reinit-data --confirm is not implemented yet; run reinit-data --dry-run only until backup/restore gates are wired.");
+    }
+    if (options.restorePath) {
+      fail("reinit-data --restore is not implemented yet; run reinit-data --dry-run only until backup/restore gates are wired.");
+    }
+    if (!options.dryRun) {
+      fail("reinit-data execution is not implemented yet; run reinit-data --dry-run only.");
+    }
+    const plan = buildReinitDataDryRunPlan({
+      dataRoot: options.dataRoot || resolveHanaDataRoot(),
+      planDir: options.planDir,
+      serviceState: inspectServiceState(DEFAULT_PATHS.serviceName),
+    });
+    console.log(JSON.stringify(writeReinitDataDryRunPlan(plan), null, 2));
     return;
   }
   if (options.command === "backup") {
