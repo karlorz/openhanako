@@ -40,6 +40,8 @@ contextBridge.exposeInMainWorld("hana", {
   getAppVersion: () => ipcRenderer.invoke("get-app-version"),
   getPendingAnnouncement: () => ipcRenderer.invoke("get-pending-announcement"),
   ackAnnouncement: () => ipcRenderer.invoke("ack-announcement"),
+  getBuildInfo: () => ipcRenderer.invoke("get-build-info"),
+  checkUpdate: () => ipcRenderer.invoke("check-update"),
   // Auto-update (Windows)
   autoUpdateCheck: () => ipcRenderer.invoke("auto-update-check"),
   autoUpdateDownload: () => ipcRenderer.invoke("auto-update-download"),
