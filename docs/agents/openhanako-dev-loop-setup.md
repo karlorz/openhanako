@@ -28,7 +28,7 @@ Generated during the 2026-06-15 remote attachment preview fix closeout.
 - `knowledge_layer`: `skillwiki`
 - `release_branch`: `dev`
 - `publish_via`: `ci-tag-trigger`
-- `deploy_hosts`: `sg01` for server, local macOS app via `npm run install:local`
+- `remote_hosts`: empty for unattended loops; server install/upgrade remains manual via `scripts/install-server.mjs`
 - `interview_backend`: `grill-me`
 - `interview_trigger`: `auto`
 - External memory: none for now; do not add a `memory_layer` field to dev-loop config because v1.24.5 does not parse it.
@@ -65,7 +65,13 @@ Generated during the 2026-06-15 remote attachment preview fix closeout.
   - `scripts/sync-upstream.mjs`
   - `scripts/track-upstream-issues.mjs`
   - `docs/upstream-issues/**`
+  - `tests/sync-upstream.test.js`
   - `tests/upstream-issue-tracker.test.js`
+- `install_server_maintenance`
+  - `scripts/install-server.mjs`
+  - `tests/install-server-upgrade.test.js`
+  - `docs/server-install.md`
+  - `docs/reinit-data-failsafe.md`
 
 ## Grill-Me Decision
 
@@ -96,8 +102,12 @@ Config cleanup performed after the review:
 
 - Removed unparsed top-level `memory_layer`, duplicate `ci:` block, and extra `interview.work_item.default/source` fields.
 - Moved custom repo/context metadata under `notes`.
-- Promoted `remote_hosts` to a parsed dev-loop field; `deploy_script` stays unset so unattended dev-loop cycles do not deploy hosts. Server operations use `scripts/install-server.mjs` / `docs/server-install.md`.
+- Set `remote_hosts: []`; `deploy_script` stays unset so unattended dev-loop cycles do not deploy hosts. Server operations use `scripts/install-server.mjs` / `docs/server-install.md`.
 - Added `CLAUDE.md` so AUDIT and DEPLOY fallback discovery have a repo-local operating guide.
 - Retired the local sg01 SSH deploy helper after `install-server` coverage existed for install, upgrade, and status planning.
 - Patched the local dev-loop skill source/cache to document manual fallback when worker Agent spawn fails before returning JSON.
 - Repaired the active Codex dev-loop cache so `skills/dev-loop/references/codex-tools.md` exists at the skill-relative path used by `SKILL.md`; patched the cache sync helper to preserve that path on future syncs.
+
+## Post-Cycle Tuning
+
+After the 2026-06-16 maintenance cycle, the compact config now treats fork-sync and install-server as the two automation-ready maintenance paths. The old shell sync helper and sg01 deploy helper are retired; unattended dev-loop runs should test and review these paths but never push, pull, deploy, or target `sg01` unless a later attended release explicitly changes the config.
