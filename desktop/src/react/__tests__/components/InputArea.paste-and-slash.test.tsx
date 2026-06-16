@@ -207,6 +207,7 @@ function seedInputState(overrides: Partial<ReturnType<typeof useStore.getState>>
     previewOpen: false,
     activeTabId: null,
     chatSessions: {},
+    sessionRegistryFilesByPath: {},
     serverPort: 3210,
     serverToken: null,
     modelSwitching: false,
@@ -436,7 +437,7 @@ describe('InputArea paste and slash menu behavior', () => {
     await waitFor(() => {
       expect(attachFilesFromPaths).toHaveBeenCalledWith(['/Users/hana/Desktop/report.pdf'], {
         '/Users/hana/Desktop/report.pdf': 'report.pdf',
-      });
+      }, { pathOwner: 'client' });
     });
     expect(mocks.hanaFetch).not.toHaveBeenCalledWith('/api/upload-blob', expect.anything());
   });
@@ -448,8 +449,27 @@ describe('InputArea paste and slash menu behavior', () => {
           uploads: [{
             fileId: 'sf_pasted_image',
             dest: '/hana/session-files/pasted.png',
+            filePath: '/hana/session-files/pasted.png',
             name: 'pasted.png',
+            label: 'pasted.png',
+            ext: 'png',
+            mime: 'image/png',
             isDirectory: false,
+            resource: {
+              schemaVersion: 1,
+              resourceId: 'res_sf_pasted_image',
+              name: 'studios/studio_remote/resources/res_sf_pasted_image',
+              studioId: 'studio_remote',
+              type: 'file',
+              source: 'session_file',
+              fileId: 'sf_pasted_image',
+              lifecycle: { status: 'available', missingAt: null },
+              storage: { provider: 'session_file', localOnly: true },
+              links: {
+                self: '/api/resources/res_sf_pasted_image',
+                content: '/api/resources/res_sf_pasted_image/content',
+              },
+            },
           }],
         }), { status: 200 });
       }
@@ -489,6 +509,16 @@ describe('InputArea paste and slash menu behavior', () => {
       }]);
     });
     expect(useStore.getState().attachedFiles[0]).not.toHaveProperty('base64Data');
+    expect(useStore.getState().sessionRegistryFilesByPath['/session/input.jsonl']?.[0]).toMatchObject({
+      fileId: 'sf_pasted_image',
+      filePath: '/hana/session-files/pasted.png',
+      resource: expect.objectContaining({
+        resourceId: 'res_sf_pasted_image',
+        links: expect.objectContaining({
+          content: '/api/resources/res_sf_pasted_image/content',
+        }),
+      }),
+    });
   });
 
   it('compresses oversized pasted images before upload-blob', async () => {
