@@ -1297,6 +1297,7 @@
       "updateLatestCheckedAt": "最新です（最終確認: {time}）",
       "updateManifestReleasedAt": "配布マニフェストの発行日: {date}",
       "updateManifestReleasedAtViaMirror": "配布マニフェストの発行日: {date}（バックアップ経由）",
+      "updateDisabled": "このローカルビルドではアップデートが無効です",
       "updateCheckBtn": "アップデートを確認",
       "updateRetryBtn": "再試行",
       "updateNeedInstall": "先に HanaAgent をアプリケーションフォルダに移動してください",
@@ -1310,6 +1311,8 @@
         "improvement": "改善",
         "migration": "移行"
       },
+      "localBuild": "ローカル Fork ビルド",
+      "localBuildDirty": "未コミット変更あり",
       "launchAtLogin": "ログイン時に起動",
       "keepAwake": "ロック中も実行を継続",
       "betaUpdates": "ベータ版アップデートを受け取る",

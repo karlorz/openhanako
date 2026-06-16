@@ -45,7 +45,7 @@ export interface UpdateDigestHistoryResult {
 }
 
 export interface AutoUpdateState {
-  status: 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'installing' | 'error' | 'latest';
+  status: 'idle' | 'disabled' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'installing' | 'error' | 'latest';
   version: string | null;
   releaseNotes: string | null;
   releaseUrl: string | null;
@@ -144,6 +144,17 @@ export interface TrainUpdateProgress {
    */
   overallReceivedBytes?: number;
   overallTotalBytes?: number;
+}
+
+export interface BuildInfo {
+  appVersion: string | null;
+  channel: string;
+  sourceRepo: string;
+  gitSha: string | null;
+  baseTag: string | null;
+  dirty: boolean | null;
+  updateEnabled: boolean;
+  signatureKind: string | null;
 }
 
 export interface AutoLaunchStatus {
@@ -610,9 +621,11 @@ export interface PlatformApi {
   /** 升级后首启合订本：entries 为 (书签, 当前] 区间的 digest 史册切片，新→旧 */
   getPendingAnnouncement?(): Promise<{ version: string; entries: ReleaseDigest[] } | null>;
   ackAnnouncement?(): Promise<void>;
+  getBuildInfo?(): Promise<BuildInfo>;
+  checkUpdate?(): Promise<{ version: string; downloadUrl: string } | null>;
 
   // ── Auto-update (Windows) ──
-  autoUpdateCheck?(): Promise<string | null>;
+  autoUpdateCheck?(): Promise<AutoUpdateState | void>;
   autoUpdateDownload?(): Promise<boolean>;
   autoUpdateInstall?(): Promise<boolean>;
   autoUpdateState?(): Promise<AutoUpdateState>;
