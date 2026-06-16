@@ -1,0 +1,108 @@
+releaseTarget:
+  upstreamRemote: upstream
+  upstreamRepo: liliMozi/openhanako
+  upstreamBranch: main
+  forkBranch: dev
+  stableOnlyDefault: true
+  prereleaseFlag: --include-prerelease
+  syncLog: FORK_SYNC.md
+
+issueTracking:
+  tracker: scripts/track-upstream-issues.mjs
+  commands:
+    - status
+    - search
+    - draft
+  states:
+    - existing/open
+    - draft/pending-approval
+    - tracked/no-upstream-issue
+  submission: never
+
+criticalFileClasses:
+  - lan_connect_auth
+  - remote_attachment_preview
+  - desktop_packaging
+  - fork_sync_maintenance
+
+conflictRules:
+  divergingFiles:
+    - core/server-auth.ts
+    - desktop/src/react/services/server-connection.ts
+    - desktop/main.cjs
+    - desktop/preload.cjs
+    - tests/server-auth.test.ts
+    - desktop/src/react/__tests__/services/server-connection.test.ts
+    - desktop/src/modules/connection-csp.js
+    - desktop/src/react/services/resource-url.ts
+    - desktop/src/react/utils/user-attachment-media.ts
+    - desktop/src/react/MainContent.tsx
+    - desktop/src/react/components/InputArea.tsx
+    - desktop/src/react/stores/chat-slice.ts
+    - desktop/src/react/stores/selectors/file-refs.ts
+    - desktop/src/react/utils/uploaded-session-file.ts
+    - server/routes/upload.ts
+    - tests/csp-sync.test.ts
+    - tests/upload-route.test.ts
+    - desktop/src/react/__tests__/components/MainContent.drag.test.tsx
+    - desktop/src/react/__tests__/components/InputArea.paste-and-slash.test.tsx
+    - desktop/src/react/__tests__/components/InputArea.media-send.test.tsx
+    - desktop/src/react/__tests__/services/resource-url.test.ts
+    - desktop/src/react/__tests__/stores/chat-slice.test.ts
+    - desktop/src/react/__tests__/stores/selectors/file-refs.test.ts
+    - desktop/src/react/__tests__/utils/user-attachment-media.test.ts
+  policies:
+    core/server-auth.ts:
+      class: lan_connect_auth
+      risk: high
+      resolution: HUMAN REVIEW ALWAYS. Never auto-resolve.
+    desktop/src/react/services/server-connection.ts:
+      class: lan_connect_auth
+      risk: high
+      resolution: HUMAN REVIEW. Preserve connect probe and query-token behavior.
+    desktop/src/modules/connection-csp.js:
+      class: remote_attachment_preview
+      risk: high
+      resolution: HUMAN REVIEW. Keep scoped remote resource origins in img-src and media-src.
+    desktop/src/react/services/resource-url.ts:
+      class: remote_attachment_preview
+      risk: high
+      resolution: HUMAN REVIEW. Preserve remote session resource URL synthesis.
+
+verification:
+  tier1Tests:
+    - tests/server-auth.test.ts
+    - tests/csp-sync.test.ts
+    - desktop/src/react/__tests__/services/server-connection.test.ts
+    - desktop/src/react/__tests__/components/MainContent.drag.test.tsx
+    - desktop/src/react/__tests__/components/InputArea.paste-and-slash.test.tsx
+    - desktop/src/react/__tests__/components/InputArea.media-send.test.tsx
+    - desktop/src/react/__tests__/services/ws-message-handler.test.ts
+    - desktop/src/react/__tests__/services/resource-url.test.ts
+    - desktop/src/react/__tests__/stores/chat-slice.test.ts
+    - desktop/src/react/__tests__/stores/selectors/file-refs.test.ts
+    - desktop/src/react/__tests__/components/shared/MediaViewer/media-source.test.ts
+    - desktop/src/react/__tests__/utils/open-media-viewer.test.ts
+    - desktop/src/react/__tests__/utils/user-attachment-media.test.ts
+    - desktop/src/react/__tests__/components/RightWorkspacePanel.test.tsx
+    - tests/upload-route.test.ts
+  commands:
+    - npm run build:main
+    - npm run build:preload
+  bundleGreps:
+    - file: desktop/main.bundle.cjs
+      pattern: connect:probe
+      label: connect:probe present in desktop/main.bundle.cjs
+    - file: desktop/preload.bundle.cjs
+      pattern: probeConnection
+      label: probeConnection present in desktop/preload.bundle.cjs
+    - file: desktop/src/modules/connection-csp.js
+      patterns:
+        - media-src
+        - httpSourcesOnly
+      label: runtime connection CSP keeps scoped remote resource-origin logic
+  liveSmoke:
+    - Clear localStorage in HanaAgent desktop, then reload.
+    - Connect LAN Server to http://100.125.173.118:14500 with the device key.
+    - Confirm no CSP connect errors, no WS_DISCONNECTED, and WebSocket establishes.
+    - Paste/upload an image, send it, switch chats, return, and confirm chat thumbnail plus Conversation Files preview still render.
