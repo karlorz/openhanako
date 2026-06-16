@@ -34,6 +34,17 @@ describe("package build order", () => {
     expectClientBeforeServer("dist:linux", scripts["dist:linux"]);
   });
 
+  it("writes local build metadata before ad-hoc signing during local macOS install", () => {
+    const scripts = packageScripts();
+
+    expectTextBefore(
+      "install:local",
+      scripts["install:local"],
+      "node scripts/write-local-build-info.mjs",
+      "node scripts/sign-local.cjs",
+    );
+  });
+
   it("builds renderer assets before the server runtime in the release workflow", () => {
     const workflow = fs.readFileSync(path.join(rootDir, ".github", "workflows", "build.yml"), "utf-8");
 
