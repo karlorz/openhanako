@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildUpgradePlan,
+  buildInstallPlan,
+  buildStatusPlan,
   createShellUpgradeOps,
   createSystemdUnit,
   executeUpgradePlan,
@@ -194,5 +196,53 @@ describe("install-server upgrade planner", () => {
     expect(backupIndex).toBeGreaterThanOrEqual(0);
     expect(backupIndex).toBeLessThan(switchIndex);
     expect(calls.join("\n")).not.toMatch(/rm -rf|reinit-data|delete data/i);
+  });
+
+  it("install plan covers sg01 without SSH deploy, git reset, or local build commands", () => {
+    const plan = buildInstallPlan({
+      metadata,
+      platform: "linux",
+      arch: "arm64",
+      uid: 0,
+      hasSudo: false,
+      dryRun: true,
+      hostProfile: "sg01",
+    });
+
+    expect(plan.hostProfile).toBe("sg01");
+    expect(plan.asset.name).toBe("hanaagent-server-v0.400.0-linux-arm64.tar.gz");
+    expect(plan.paths.serviceName).toBe("hanaagent");
+    expect(plan.steps.map((step) => step.id)).toEqual([
+      "preflight",
+      "create-user",
+      "create-directories",
+      "download",
+      "verify-checksum",
+      "extract-release",
+      "write-systemd-unit",
+      "switch-current",
+      "enable-service",
+      "restart-service",
+      "health-check",
+    ]);
+    expect(plan.steps.map((step) => step.command).join("\n")).not.toMatch(
+      /ssh|git reset|npm ci|npm run build:server|rm -rf|cp -R|deploy-sg01-server/i,
+    );
+  });
+
+  it("status plan is read-only and reports the hanaagent service/current release", () => {
+    const plan = buildStatusPlan({ hostProfile: "sg01" });
+
+    expect(plan.hostProfile).toBe("sg01");
+    expect(plan.steps.every((step) => step.readOnly)).toBe(true);
+    expect(plan.steps.map((step) => step.id)).toEqual([
+      "read-current-link",
+      "read-service-state",
+      "read-service-enabled",
+      "read-listening-address",
+      "read-last-backup",
+    ]);
+    expect(plan.steps.map((step) => step.command).join("\n")).toContain("systemctl is-active hanaagent");
+    expect(plan.steps.map((step) => step.command).join("\n")).not.toMatch(/restart|stop|start|rm -rf/i);
   });
 });
