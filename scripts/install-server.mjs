@@ -151,6 +151,128 @@ export function buildUpgradePlan({
   };
 }
 
+export function buildInstallPlan({
+  metadata,
+  platform = process.platform,
+  arch = process.arch,
+  uid = typeof process.getuid === "function" ? process.getuid() : 0,
+  hasSudo = commandExists("sudo"),
+  dryRun = true,
+  hostProfile = "default",
+  paths = {},
+} = {}) {
+  if (!metadata?.tag) {
+    fail("Release metadata must include a tag");
+  }
+  if (metadata.prerelease) {
+    fail("Prerelease install requires an explicit prerelease channel; not enabled in this plan");
+  }
+
+  const resolvedPaths = { ...DEFAULT_PATHS, ...paths };
+  const normalizedArch = normalizeArch(arch);
+  const targetReleaseDir = path.posix.join(resolvedPaths.releasesDir, `${metadata.tag}-linux-${normalizedArch}`);
+  const privilege = resolvePrivilegeModel({ uid, hasSudo });
+  const asset = resolveLinuxAsset(metadata, { platform, arch: normalizedArch });
+  const steps = [
+    {
+      id: "preflight",
+      command: "verify linux host, systemd, artifact metadata, and target paths",
+    },
+    {
+      id: "create-user",
+      command: "create hanaagent system user and group if missing",
+    },
+    {
+      id: "create-directories",
+      command: `create ${resolvedPaths.installRoot}, ${resolvedPaths.releasesDir}, ${resolvedPaths.configDir}, and ${resolvedPaths.dataDir}`,
+    },
+    {
+      id: "download",
+      command: `download ${asset.url} to staging`,
+    },
+    {
+      id: "verify-checksum",
+      command: `verify sha256 ${asset.sha256}`,
+    },
+    {
+      id: "extract-release",
+      command: `extract ${asset.name ?? "server artifact"} to ${targetReleaseDir}`,
+    },
+    {
+      id: "write-systemd-unit",
+      command: `write ${resolvedPaths.serviceUnit} for ${resolvedPaths.serviceName}`,
+    },
+    {
+      id: "switch-current",
+      command: `atomically switch ${resolvedPaths.currentLink} to ${targetReleaseDir}`,
+    },
+    {
+      id: "enable-service",
+      command: `systemctl enable ${resolvedPaths.serviceName}`,
+    },
+    {
+      id: "restart-service",
+      command: `systemctl restart ${resolvedPaths.serviceName}`,
+    },
+    {
+      id: "health-check",
+      command: "verify local server health endpoint",
+    },
+  ];
+
+  assertNoDestructiveDataSteps(steps);
+
+  return {
+    kind: "install-server-install-plan",
+    dryRun,
+    hostProfile,
+    tag: metadata.tag,
+    platform: "linux",
+    arch: normalizedArch,
+    asset,
+    paths: resolvedPaths,
+    privilege,
+    targetReleaseDir,
+    steps,
+  };
+}
+
+export function buildStatusPlan({ hostProfile = "default", paths = {} } = {}) {
+  const resolvedPaths = { ...DEFAULT_PATHS, ...paths };
+  return {
+    kind: "install-server-status-plan",
+    hostProfile,
+    paths: resolvedPaths,
+    steps: [
+      {
+        id: "read-current-link",
+        readOnly: true,
+        command: `readlink ${resolvedPaths.currentLink}`,
+      },
+      {
+        id: "read-service-state",
+        readOnly: true,
+        command: `systemctl is-active ${resolvedPaths.serviceName}`,
+      },
+      {
+        id: "read-service-enabled",
+        readOnly: true,
+        command: `systemctl is-enabled ${resolvedPaths.serviceName}`,
+      },
+      {
+        id: "read-listening-address",
+        readOnly: true,
+        command: "inspect configured bind address and listening port",
+      },
+      {
+        id: "read-last-backup",
+        readOnly: true,
+        command: `list latest backup under ${path.posix.join(resolvedPaths.installRoot, "backups")}`,
+      },
+    ],
+  };
+}
+
 function assertNoDestructiveDataSteps(steps) {
   const unsafe = steps.find((step) => /rm -rf|delete data|clear data|reinit-data|wipe|truncate/i.test(step.command));
   if (unsafe) {
@@ -343,6 +465,7 @@ function usage() {
 
 Usage:
   node scripts/install-server.mjs upgrade --metadata <release.json> --current-version <version> [--dry-run]
+  node scripts/install-server.mjs install --metadata <release.json> --platform linux --arch arm64 --dry-run
   node scripts/install-server.mjs upgrade --metadata <release.json> --current-version <version> --platform linux --arch arm64 --dry-run
   node scripts/install-server.mjs status
   node scripts/install-server.mjs backup --output <path>
@@ -415,8 +538,22 @@ function main(argv = process.argv.slice(2)) {
     }
     return;
   }
+  if (options.command === "install") {
+    if (!options.metadataPath) fail("install requires --metadata <release.json>");
+    const plan = buildInstallPlan({
+      metadata: readJson(options.metadataPath),
+      platform: options.platform,
+      arch: options.arch,
+      dryRun: options.dryRun,
+    });
+    console.log(JSON.stringify(plan, null, 2));
+    if (!options.dryRun) {
+      fail("Host-mutating install execution is not wired yet; run dry-run or implement tested install ops.");
+    }
+    return;
+  }
   if (options.command === "status") {
-    console.log(JSON.stringify({ serviceName: DEFAULT_PATHS.serviceName, currentLink: DEFAULT_PATHS.currentLink }, null, 2));
+    console.log(JSON.stringify(buildStatusPlan(), null, 2));
     return;
   }
   if (options.command === "backup") {

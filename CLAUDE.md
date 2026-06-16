@@ -20,9 +20,11 @@ This checkout is the `karlorz/openhanako` fork. Work normally happens on branch 
 
 ## Deploy
 
-Server deploy automation is intentionally pending. Do not use or commit
-`scripts/deploy-sg01-server.sh`; the next deployment work should replace it
-with the unified Linux server install/upgrade flow.
+The old sg01 SSH deploy helper has been retired. Use the unified Linux
+server flow in `scripts/install-server.mjs` / `docs/server-install.md`
+for server install, upgrade, and status planning. Do not add a dev-loop
+`deploy_script` unless a future attended release explicitly wants automatic
+host deployment.
 
 For local macOS desktop verification, use:
 
