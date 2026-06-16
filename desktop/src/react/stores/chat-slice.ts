@@ -46,6 +46,39 @@ export interface ChatSlice {
 }
 
 const MAX_CACHED_SESSIONS = 8;
+type UserAttachment = NonNullable<ChatMessage['attachments']>[number];
+
+function mergeConfirmedUserAttachments(
+  currentAttachments: ChatMessage['attachments'],
+  serverAttachments: NonNullable<ChatMessage['attachments']>,
+): NonNullable<ChatMessage['attachments']> {
+  if (!Array.isArray(currentAttachments) || currentAttachments.length === 0) return serverAttachments;
+  return serverAttachments.map((attachment) => {
+    const current = findMatchingAttachment(currentAttachments, attachment);
+    if (!current) return attachment;
+    return {
+      ...attachment,
+      ...(!attachment.base64Data && current.base64Data ? { base64Data: current.base64Data } : {}),
+      ...(!attachment.mimeType && current.mimeType ? { mimeType: current.mimeType } : {}),
+      ...(!attachment.waveform && current.waveform ? { waveform: current.waveform } : {}),
+    };
+  });
+}
+
+function findMatchingAttachment(
+  attachments: readonly UserAttachment[],
+  target: UserAttachment,
+): UserAttachment | null {
+  if (target.fileId) {
+    const byFileId = attachments.find(item => item.fileId === target.fileId);
+    if (byFileId) return byFileId;
+  }
+  if (target.path) {
+    const byPath = attachments.find(item => item.path === target.path);
+    if (byPath) return byPath;
+  }
+  return null;
+}
 
 export const createChatSlice = (
   set: (partial: Partial<ChatSlice> | ((s: ChatSlice) => Partial<ChatSlice>)) => void,
@@ -165,6 +198,9 @@ export const createChatSlice = (
         ...message,
         id: current.data.id,
         sourceEntryId: message.sourceEntryId ?? current.data.sourceEntryId,
+        ...(Array.isArray(message.attachments)
+          ? { attachments: mergeConfirmedUserAttachments(current.data.attachments, message.attachments) }
+          : {}),
       };
       delete nextData.sendStatus;
       delete nextData.sendError;
