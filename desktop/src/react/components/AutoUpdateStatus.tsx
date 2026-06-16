@@ -89,6 +89,7 @@ export function AutoUpdateStatus({ state, agentName = 'Hanako', onInstall }: Aut
   }
 
   const messages: Partial<Record<AutoUpdateState['status'], string>> = {
+    disabled: t('settings.about.updateDisabled'),
     checking: t('settings.about.updateChecking'),
     available: t('settings.about.updateAvailable', { version: state.version ?? '' }),
     installing: t('settings.about.updateInstalling'),

@@ -27,6 +27,7 @@ contextBridge.exposeInMainWorld("hana", {
   probeConnection: (payload) => ipcRenderer.invoke("connect:probe", payload),
   runEditCommand: (command) => ipcRenderer.invoke("run-edit-command", command),
   getAppVersion: () => ipcRenderer.invoke("get-app-version"),
+  getBuildInfo: () => ipcRenderer.invoke("get-build-info"),
   checkUpdate: () => ipcRenderer.invoke("check-update"),
   // Auto-update (Windows)
   autoUpdateCheck: () => ipcRenderer.invoke("auto-update-check"),
