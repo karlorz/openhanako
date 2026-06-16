@@ -1,14 +1,21 @@
 import { describe, expect, it } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { spawnSync } from "node:child_process";
 
 import {
   buildUpgradePlan,
   buildInstallPlan,
+  buildReinitDataDryRunPlan,
   buildStatusPlan,
   createShellUpgradeOps,
   createSystemdUnit,
   executeUpgradePlan,
+  resolveHanaDataRoot,
   resolveLinuxAsset,
   resolvePrivilegeModel,
+  writeReinitDataDryRunPlan,
 } from "../scripts/install-server.mjs";
 
 const metadata = {
@@ -244,5 +251,72 @@ describe("install-server upgrade planner", () => {
     ]);
     expect(plan.steps.map((step) => step.command).join("\n")).toContain("systemctl is-active hanaagent");
     expect(plan.steps.map((step) => step.command).join("\n")).not.toMatch(/restart|stop|start|rm -rf/i);
+  });
+
+  it("resolves reinit-data data root from HANA_HOME before falling back to ~/.hanako", () => {
+    expect(resolveHanaDataRoot({ env: { HANA_HOME: "/srv/hana-data" }, homeDir: "/home/hana" })).toBe("/srv/hana-data");
+    expect(resolveHanaDataRoot({ env: {}, homeDir: "/home/hana" })).toBe("/home/hana/.hanako");
+  });
+
+  it("writes a reinit-data dry-run plan without mutating the data root", () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-reinit-plan-"));
+    const dataRoot = path.join(tmpDir, "hana-home");
+    const planDir = path.join(tmpDir, "plans");
+    fs.mkdirSync(dataRoot, { recursive: true });
+    fs.writeFileSync(path.join(dataRoot, "provider-catalog.json"), "{\"providers\":[]}\n");
+    fs.writeFileSync(path.join(dataRoot, "sessions.json"), "{\"sessions\":[\"keep-until-confirm\"]}\n");
+
+    const before = fs.readdirSync(dataRoot).sort();
+    const plan = buildReinitDataDryRunPlan({
+      dataRoot,
+      planDir,
+      now: new Date("2026-06-16T15:00:00.000Z"),
+      serviceState: { active: "active", enabled: "enabled", mainPid: "1972422" },
+    });
+    const written = writeReinitDataDryRunPlan(plan);
+    const after = fs.readdirSync(dataRoot).sort();
+    const saved = JSON.parse(fs.readFileSync(written.planFile, "utf8"));
+
+    expect(after).toEqual(before);
+    expect(saved).toMatchObject({
+      kind: "install-server-reinit-data-dry-run-plan",
+      dryRun: true,
+      mutatesData: false,
+      dataRoot,
+      service: {
+        name: "hanaagent",
+        active: "active",
+        enabled: "enabled",
+        mainPid: "1972422",
+      },
+    });
+    expect(saved.planId).toMatch(/^reinit-20260616T150000Z-[a-f0-9]{8}$/);
+    expect(saved.planFile).toBe(path.join(planDir, `${saved.planId}.json`));
+    expect(saved.backup.destination).toContain(saved.planId);
+    expect(saved.backup.restoreCommand).toContain("reinit-data --restore");
+    expect(saved.exportCategories.map((item) => item.id)).toEqual([
+      "providers_llm",
+      "connected_remote_hana",
+    ]);
+    expect(saved.notPreserved).toEqual(expect.arrayContaining([
+      "agents",
+      "memories",
+      "sessions",
+      "workspaces",
+      "plugins",
+      "uploaded_files",
+    ]));
+    expect(JSON.stringify(saved)).not.toMatch(/rm -rf|truncate|delete data|wipe/i);
+  });
+
+  it("keeps reinit-data confirm and restore fail-closed until backup/restore are implemented", () => {
+    const script = path.join(process.cwd(), "scripts", "install-server.mjs");
+    const confirm = spawnSync(process.execPath, [script, "reinit-data", "--confirm", "plan-1"], { encoding: "utf8" });
+    const restore = spawnSync(process.execPath, [script, "reinit-data", "--restore", "/tmp/backup.tar.gz"], { encoding: "utf8" });
+
+    expect(confirm.status).not.toBe(0);
+    expect(`${confirm.stdout}\n${confirm.stderr}`).toMatch(/not implemented|dry-run/i);
+    expect(restore.status).not.toBe(0);
+    expect(`${restore.stdout}\n${restore.stderr}`).toMatch(/not implemented|dry-run/i);
   });
 });
