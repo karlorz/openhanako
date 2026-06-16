@@ -1,4 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import fs from "fs";
+import os from "os";
+import path from "path";
 
 // ── Mocks（必须在 import 之前声明）──
 
@@ -16,6 +19,8 @@ const mockAutoUpdater = {
 
 const mockWindows = [];
 let mockExePath = "/Applications/HanaAgent.app/Contents/MacOS/HanaAgent";
+const tempDirs: string[] = [];
+const originalResourcesPath = (process as typeof process & { resourcesPath?: string }).resourcesPath;
 
 vi.mock("electron", () => ({
   ipcMain: { handle: vi.fn() },
@@ -41,21 +46,14 @@ describe("auto-updater", () => {
   let mod;
   let ipcMain;
 
-  beforeEach(async () => {
-    vi.clearAllMocks();
+  async function reloadAutoUpdater() {
     vi.resetModules();
     handlers = {};
     ipcHandlers = {};
-    mockWindows.length = 0;
 
     mockAutoUpdater.on.mockImplementation((event, handler) => {
       handlers[event] = handler;
     });
-    mockAutoUpdater.autoDownload = true;
-    mockAutoUpdater.autoInstallOnAppQuit = true;
-    mockAutoUpdater.allowPrerelease = false;
-    mockAutoUpdater.installDirectory = undefined;
-    mockExePath = "/Applications/HanaAgent.app/Contents/MacOS/HanaAgent";
 
     ({ ipcMain } = await import("electron"));
     ipcMain.handle.mockImplementation((name, handler) => {
@@ -63,6 +61,44 @@ describe("auto-updater", () => {
     });
 
     mod = await import("../desktop/auto-updater.cjs");
+  }
+
+  function setResourcesPath(resourcesPath: string | undefined) {
+    Object.defineProperty(process, "resourcesPath", {
+      configurable: true,
+      value: resourcesPath,
+    });
+  }
+
+  function writeBuildInfo(buildInfo: Record<string, unknown>) {
+    const resourcesPath = fs.mkdtempSync(path.join(os.tmpdir(), "hana-build-info-"));
+    tempDirs.push(resourcesPath);
+    fs.writeFileSync(
+      path.join(resourcesPath, "build-info.json"),
+      JSON.stringify(buildInfo, null, 2),
+      "utf-8",
+    );
+    setResourcesPath(resourcesPath);
+  }
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    mockWindows.length = 0;
+    mockAutoUpdater.autoDownload = true;
+    mockAutoUpdater.autoInstallOnAppQuit = true;
+    mockAutoUpdater.allowPrerelease = false;
+    mockAutoUpdater.installDirectory = undefined;
+    mockExePath = "/Applications/HanaAgent.app/Contents/MacOS/HanaAgent";
+    setResourcesPath(undefined);
+
+    await reloadAutoUpdater();
+  });
+
+  afterEach(() => {
+    setResourcesPath(originalResourcesPath);
+    for (const dir of tempDirs.splice(0)) {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   function createMockWindow() {
@@ -91,6 +127,41 @@ describe("auto-updater", () => {
     initWithMockWindow();
     expect(mockAutoUpdater.autoDownload).toBe(false);
     expect(mockAutoUpdater.autoInstallOnAppQuit).toBe(false);
+  });
+
+  it("does not configure or check updates when packaged build metadata disables updates", async () => {
+    writeBuildInfo({
+      appVersion: "0.323.0",
+      channel: "local",
+      sourceRepo: "karlorz/openhanako",
+      gitSha: "abc1234",
+      baseTag: "v0.323.0",
+      dirty: false,
+      updateEnabled: false,
+      signatureKind: "adhoc",
+    });
+    await reloadAutoUpdater();
+
+    const win = initWithMockWindow();
+
+    expect(mockAutoUpdater.setFeedURL).not.toHaveBeenCalled();
+    expect(mockAutoUpdater.on).not.toHaveBeenCalled();
+    expect(mod.getState()).toEqual(expect.objectContaining({
+      status: "disabled",
+      error: null,
+    }));
+    expect(win.webContents.send).toHaveBeenCalledWith(
+      "auto-update-state",
+      expect.objectContaining({ status: "disabled" }),
+    );
+
+    await ipcHandlers["auto-update-check"]();
+
+    expect(mockAutoUpdater.checkForUpdates).not.toHaveBeenCalled();
+    expect(mod.getState()).toEqual(expect.objectContaining({
+      status: "disabled",
+      error: null,
+    }));
   });
 
   it("pins the NSIS install directory to the running exe directory on Windows", async () => {

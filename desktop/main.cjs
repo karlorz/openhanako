@@ -29,6 +29,7 @@ const { readTextFileSnapshot, writeTextFileIfUnchanged } = require("./file-text-
 const chokidar = require("chokidar");
 const { wrapIpcHandler, wrapIpcBestEffortHandler, wrapIpcOn } = require('./ipc-wrapper.cjs');
 const themeRegistry = require('./src/shared/theme-registry.cjs');
+const { readBuildInfo } = require("./src/shared/build-info.cjs");
 const {
   completeOnboardingAndOpenMain,
   submitOnboardingCompleteIntent,
@@ -3822,6 +3823,13 @@ wrapIpcHandler("run-edit-command", (event, command) => {
   return true;
 });
 wrapIpcHandler("get-app-version", () => app.getVersion());
+wrapIpcHandler("get-build-info", () => {
+  const info = readBuildInfo();
+  return {
+    ...info,
+    appVersion: info.appVersion || app.getVersion(),
+  };
+});
 // 旧版兼容：check-update 返回 auto-updater 状态中的可用版本信息
 wrapIpcHandler("check-update", () => {
   const s = getUpdateState();
