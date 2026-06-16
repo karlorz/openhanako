@@ -313,7 +313,7 @@ describe('InputArea media send', () => {
       visionAuxiliary: true,
     });
     expect(payload.displayMessage.attachments[0]).not.toHaveProperty('base64Data');
-    const optimisticItem = useStore.getState().chatSessions.sess_media?.items[0];
+    const optimisticItem = useStore.getState().chatSessions['/session/media.jsonl']?.items[0];
     expect(optimisticItem?.type).toBe('message');
     if (optimisticItem?.type !== 'message') throw new Error('expected optimistic message');
     expect(optimisticItem.data.attachments?.[0]).toMatchObject({
@@ -480,7 +480,7 @@ describe('InputArea media send', () => {
       visionAuxiliary: true,
     });
     expect(payload.displayMessage.attachments[0]).not.toHaveProperty('base64Data');
-    const optimisticItem = useStore.getState().chatSessions.sess_media?.items[0];
+    const optimisticItem = useStore.getState().chatSessions['/session/media.jsonl']?.items[0];
     expect(optimisticItem?.type).toBe('message');
     if (optimisticItem?.type !== 'message') throw new Error('expected optimistic message');
     expect(optimisticItem.data.attachments?.[0]).toMatchObject({

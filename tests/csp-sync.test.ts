@@ -321,8 +321,8 @@ describe('CSP sync', () => {
     expect(written).toContain('ws://192.168.1.9:14500');
   });
 
-  it('locks active remote origin into connect-src/img-src/media-src without bare http/https schemes', () => {
-    const csp = renderRuntimeConnectionCsp({
+  it('runtime desktop CSP allows active remote resource origins for image and media rendering', () => {
+    const csp = parseCsp(renderRuntimeConnectionCsp({
       activeServerConnectionId: 'lan:remote:studio',
       serverConnections: {
         'lan:remote:studio': {
