@@ -18,8 +18,6 @@ This is a permanent personal fork unless upstream accepts equivalent fixes. See 
 
 Use release-tag syncs from upstream, not continuous upstream `main` tracking. Preserve local fixes by behavior and tests, not by blindly preferring either side during conflicts.
 
-Current pre-sync state (2026-07-11): upstream has published prerelease tags through `v0.380.10`, but the latest non-prerelease release remains `v0.357.17`, already synced by the fork. The refreshed read-only merge outlook still has seven textual conflicts and 42 overlapping paths; see `FORK_SYNC.md` for the exact list and preserve-both/take-stable decisions. Do not start the production sync or bump package metadata until a new stable release exists.
-
 ## Core Terms
 
 - **Local owner connection**: Electron desktop owns and spawns its own local server; local file URLs can use `platform.getFileUrl`.
@@ -79,39 +77,15 @@ npx vitest run \
   --exclude "**/node_modules/**"
 ```
 
-Also run `npm run typecheck` and `git diff --check`. For user-facing desktop fixes, build/install with `SKIP_NOTARIZE=true npm run install:local`, verify codesign, then confirm `/Applications/HanaAgent.app` bundle metadata, `Contents/Resources/build-info.json`, and Settings → About all match the `package.json` version before manual smoke.
+Also run `npm run typecheck` and `git diff --check`. For user-facing desktop fixes, build/install with `SKIP_NOTARIZE=true npm run install:local`, verify codesign, and launch `/Applications/HanaAgent.app`.
 
 Manual smoke for the remote server:
 
 1. Connect to `http://100.125.173.118:14500`.
-   - To clear `localStorage` and reconnect without retyping a previously saved key, run `node scripts/hana-desktop-smoke-helper.mjs --restart --verify --url http://100.125.173.118:14500`.
-   - Contract gates are explicit and repeatable, for example `--require-contract input.drafts@1`; evidence defaults to `.claude/remote-assessment/latest.json` and can be changed with `--assessment-out PATH`. Exit `3` means functional verification passed but a requested contract is missing, unconfirmed, or deployment-coupled. `websocket.ticket@1` is migration-readiness evidence, not a generic LAN core requirement.
-   - If the LAN connection has never been saved in this app profile, prefer `HANA_DESKTOP_SMOKE_TOKEN=<device-key>` over `--token` for the first helper run.
-   - A normal `--verify` run always reports two independent results: `functional.status` for identity/WebSocket operation and `environment.status` for server release freshness, feature-contract evidence, and host compatibility. `functional.status: pass` does not mean the Remote Server is current. Environment attention or an unavailable GitHub release lookup remains non-fatal in Phase 1; identity or WebSocket failure still exits nonzero.
 2. Paste/upload an image.
 3. Send it.
 4. Switch chats and return.
 5. Confirm chat thumbnail and Conversation Files preview still render, including older sessions.
-
-### Offline work-item prerequisite check
-
-Candidate specs may declare `remote_requirements` in YAML frontmatter. An
-attended operator sets `WORK_ITEM_SPEC` to the candidate spec's absolute path,
-refreshes `.claude/remote-assessment/latest.json` with the desktop smoke helper,
-and then runs the configured `check-remote-prerequisites.mjs` command. Refresh
-evidence only with attended authority.
-Attended refresh is the only supported evidence refresh workflow.
-
-The checker is offline, credential-free, and read-only: it reads only the
-supplied work-item and assessment paths. It reports `unknown` when evidence is
-absent, invalid, or stale. Prep must not scrape credentials, read renderer or
-localStorage state, or contact sg01 merely because a candidate has remote
-requirements. Generic `/dev-loop prep` does not invoke this checker.
-
-When the result is `deployment-coupled`, split the work into explicit client,
-server, release, upgrade, and post-upgrade verification stages. Automatic prep
-integration requires a separate dev-loop plugin source change and release; do
-not patch an installed plugin cache.
 
 ## Dev-Loop Notes
 
@@ -122,4 +96,4 @@ not patch an installed plugin cache.
 - Release branch is `dev`; CI targets `main` and `dev`.
 - Browser verification expects a dev server at `${HANA_BROWSER_VERIFY_URL:-http://localhost:5173}`.
 - `skillwiki doctor` can exit non-zero when only warnings exist; inspect its JSON summary before treating it as a blocker.
-- The old sg01 SSH deploy helper is retired. Server install/upgrade/status planning lives in `scripts/install-server.mjs` and `docs/server-install.md`; destructive reset/import behavior is separately scoped in `docs/reinit-data-failsafe.md`. Dev-loop `deploy_script` remains unset so unattended cycles do not deploy hosts.
+- Remote server deploy automation is pending refactor; do not treat `scripts/deploy-sg01-server.sh` as the committed deploy path. The replacement design is `docs/server-install.md`; the initial upgrade implementation is `scripts/install-server.mjs`, and destructive reset/import behavior is separately scoped in `docs/reinit-data-failsafe.md`.
