@@ -5,11 +5,17 @@ import '@testing-library/jest-dom/vitest';
 import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AttachedFilesBar } from '../../components/input/AttachedFilesBar';
+import { useStore } from '../../stores';
 
 describe('AttachedFilesBar media chips', () => {
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
+    useStore.setState({
+      serverConnections: {},
+      activeServerConnectionId: null,
+      activeServerConnection: null,
+    } as never);
     delete (window as unknown as { platform?: unknown }).platform;
   });
 
@@ -31,6 +37,51 @@ describe('AttachedFilesBar media chips', () => {
 
     fireEvent.click(screen.getByLabelText('Remove pasted.png'));
     expect(onRemove).toHaveBeenCalledWith(0);
+  });
+
+  it('renders remote session-file image attachments through resource URLs without inline bytes', () => {
+    const onRemove = vi.fn();
+    const remoteConnection = {
+      connectionId: 'lan:remote:studio',
+      kind: 'lan',
+      serverId: 'remote',
+      studioId: 'studio_remote',
+      label: 'Remote Hana',
+      baseUrl: 'http://100.125.173.118:14500',
+      wsUrl: 'ws://100.125.173.118:14500',
+      token: 'remote-token',
+      authState: 'paired',
+      trustState: 'lan',
+      credentialKind: 'device_credential',
+      platformAccountId: null,
+      officialServiceKind: null,
+      capabilities: ['chat', 'resources'],
+    };
+    useStore.setState({
+      serverConnections: { [remoteConnection.connectionId]: remoteConnection },
+      activeServerConnectionId: remoteConnection.connectionId,
+      activeServerConnection: remoteConnection,
+    } as never);
+    window.platform = {
+      getFileUrl: vi.fn((path: string) => `file://${path}`),
+    } as unknown as typeof window.platform;
+
+    const { container } = render(<AttachedFilesBar
+      files={[{
+        fileId: 'sf_pasted_image',
+        path: '/root/.hanako/session-files/pasted.png',
+        name: 'pasted.png',
+        mimeType: 'image/png',
+      } as never]}
+      onRemove={onRemove}
+    />);
+
+    const image = container.querySelector('img');
+    expect(image).toHaveAttribute(
+      'src',
+      'http://100.125.173.118:14500/api/resources/res_sf_pasted_image/content?token=remote-token',
+    );
+    expect(window.platform.getFileUrl).not.toHaveBeenCalled();
   });
 
   it('renders audio attachments with a play control, fake waveform, and remove action', () => {
