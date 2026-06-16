@@ -39,8 +39,8 @@ vault_sync:
   retry_budget: 3
   presync_skill: auto-detect
 
-# Release and CI. Do not set deploy_script until the unified Linux
-# install/upgrade flow replaces the local sg01 helper.
+# Release and CI. Keep deploy_script unset unless an attended release
+# explicitly opts into host deployment through install-server.
 publish_via: ci-tag-trigger
 release_workflow: .github/workflows/build.yml
 ci_configured: true
