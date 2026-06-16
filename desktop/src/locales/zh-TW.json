@@ -1379,6 +1379,7 @@
       "updateLatestCheckedAt": "已是最新（上次檢查 {time}）",
       "updateManifestReleasedAt": "貨架清單簽發於 {date}",
       "updateManifestReleasedAtViaMirror": "貨架清單簽發於 {date}（經備用源）",
+      "updateDisabled": "此本地建置已停用更新",
       "updateCheckBtn": "檢查更新",
       "updateRetryBtn": "重試",
       "updateNeedInstall": "請先將 HanaAgent 移動到應用程式資料夾",
@@ -1392,6 +1393,8 @@
         "improvement": "改進",
         "migration": "遷移"
       },
+      "localBuild": "本地 Fork 建置",
+      "localBuildDirty": "有未提交變更",
       "launchAtLogin": "開機自啟",
       "keepAwake": "鎖定時保持執行",
       "betaUpdates": "接收測試版更新",
