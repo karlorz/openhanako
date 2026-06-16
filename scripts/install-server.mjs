@@ -527,16 +527,21 @@ export function createShellUpgradeOps({
     },
     async download(plan) {
       await checked("mkdir", ["-p", stagingDir], { plan, privileged: true });
-      downloadedArchive = path.posix.join(stagingDir, plan.asset.name ?? `hanaagent-${plan.tag}.tar.gz`);
+      downloadedArchive = path.posix.join(stagingDir, safeAssetArchiveName(plan));
       await checked("curl", ["-fL", plan.asset.url, "-o", downloadedArchive], { plan, privileged: true });
       return { downloadedArchive };
     },
     async verifyChecksum(plan) {
       if (!downloadedArchive) fail("download must run before verifyChecksum");
-      await checked("sh", ["-c", `printf '%s  %s\n' '${plan.asset.sha256}' '${downloadedArchive}' | sha256sum -c -`], {
+      const result = await checked("sha256sum", [downloadedArchive], {
         plan,
         privileged: true,
       });
+      const actual = String(result.stdout || "").trim().split(/\s+/)[0]?.toLowerCase();
+      const expected = String(plan.asset.sha256 || "").toLowerCase();
+      if (actual !== expected) {
+        fail(`sha256 mismatch for ${downloadedArchive}: expected ${expected}, got ${actual || "unknown"}`);
+      }
       return true;
     },
     async extractRelease(plan) {
@@ -567,6 +572,17 @@ export function createShellUpgradeOps({
       return true;
     },
   };
+}
+
+function safeAssetArchiveName(plan) {
+  const fallback = `hanaagent-${plan.tag}.tar.gz`;
+  const name = typeof plan.asset?.name === "string" && plan.asset.name.trim()
+    ? plan.asset.name.trim()
+    : fallback;
+  if (name.includes("/") || name.includes("\\") || name === "." || name === "..") {
+    fail(`Release asset name must be a filename: ${name}`);
+  }
+  return name;
 }
 
 function defaultTimestamp() {
