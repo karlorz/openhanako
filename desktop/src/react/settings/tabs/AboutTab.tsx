@@ -13,7 +13,7 @@ import { digestLocale, digestText, kindLabel } from '../../components/shared/rel
 import { useAutoUpdateState } from '../../hooks/use-auto-update-state';
 import { useTrainUpdateState } from '../../hooks/use-train-update-state';
 import { ConfirmDialog, Overlay } from '../../ui';
-import type { InviteChannelStatus, UpdateDigestHistoryResult } from '../../types';
+import type { BuildInfo, InviteChannelStatus, UpdateDigestHistoryResult } from '../../types';
 import appIconUrl from '../../../icon.png';
 import styles from '../Settings.module.css';
 import updateStyles from '../../components/AutoUpdateStatus.module.css';
@@ -433,6 +433,7 @@ export function AboutTab() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [history, setHistory] = useState<UpdateDigestHistoryResult>(EMPTY_HISTORY);
+  const [buildInfo, setBuildInfo] = useState<BuildInfo | null>(null);
   const shellUpdate = useAutoUpdateState();
   const {
     currentVersion,
@@ -449,19 +450,29 @@ export function AboutTab() {
   const isBeta = readConfigBoolean(settingsConfig, cfg => cfg.update_channel === 'beta', false);
   // 默认 true：老用户（preferences 里没写这个字段）保持原有"自动检查"行为
   const autoCheck = readConfigBoolean(settingsConfig, cfg => cfg.auto_check_updates, true);
+  const displayVersion = buildInfo?.appVersion || currentVersion;
+  const updatesEnabled = buildInfo?.updateEnabled !== false && shellUpdate?.status !== 'disabled';
+  const sourceRepo = buildInfo?.sourceRepo || 'liliMozi/openhanako';
+  const sourceRepoUrl = /^[-_.A-Za-z0-9]+\/[-_.A-Za-z0-9]+$/.test(sourceRepo)
+    ? `https://github.com/${sourceRepo}`
+    : 'https://github.com/liliMozi/openhanako';
+  const isLocalBuild = buildInfo?.channel === 'local' || buildInfo?.updateEnabled === false;
 
   const handleCheck = useCallback(() => {
+    if (!updatesEnabled) return;
     void hana?.autoUpdateCheck?.();
     void checkTrainNow();
-  }, [checkTrainNow, hana]);
+  }, [checkTrainNow, hana, updatesEnabled]);
 
   const handleApply = useCallback(() => {
+    if (!updatesEnabled) return;
     void applyTrainNow();
-  }, [applyTrainNow]);
+  }, [applyTrainNow, updatesEnabled]);
 
   const handleInstallShell = useCallback(async () => {
+    if (!updatesEnabled) return;
     await hana?.autoUpdateInstall?.();
-  }, [hana]);
+  }, [hana, updatesEnabled]);
 
   const handleHistoryOpen = useCallback(async () => {
     setHistoryOpen(true);
@@ -475,19 +486,33 @@ export function AboutTab() {
     }
   }, []);
 
+  useEffect(() => {
+    let alive = true;
+    hana?.getBuildInfo?.()
+      .then((info) => {
+        if (alive && info) setBuildInfo(info);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [hana]);
+
   const handleBetaToggle = useCallback(async (on: boolean) => {
+    if (!updatesEnabled) return;
     const channel = on ? 'beta' : 'stable';
     hana?.autoUpdateSetChannel?.(channel);
     await autoSaveConfig({ update_channel: channel }, { silent: true });
     await loadSettingsConfig();
     hana?.autoUpdateCheck?.();
     void checkTrainNow();
-  }, [checkTrainNow, hana]);
+  }, [checkTrainNow, hana, updatesEnabled]);
 
   const handleAutoCheckToggle = useCallback(async (on: boolean) => {
+    if (!updatesEnabled) return;
     await autoSaveConfig({ auto_check_updates: on }, { silent: true });
     await loadSettingsConfig();
-  }, []);
+  }, [updatesEnabled]);
 
   // 平台更新条件行：仅当壳更新待命时出现，平时不渲染——一个
   // 一年两次的事件不该常年占一行。两层文案：minShell 真的挡住
@@ -514,20 +539,38 @@ export function AboutTab() {
         <img className={styles['about-icon']} src={appIconUrl} alt="HanaAgent" />
         <div className={styles['about-name']}>HanaAgent</div>
         <div className={styles['about-tagline']}>{t('settings.about.tagline')}</div>
-        {currentVersion && <div className={styles['about-version']}>v{currentVersion}</div>}
-        <TrainUpdateArea
-          agentName={settingsConfig?.agent?.name || 'Hanako'}
-          available={available}
-          lastError={lastError}
-          lastCheckedAt={lastCheckedAt}
-          manifestReleasedAt={manifestReleasedAt}
-          phase={phase}
-          progress={progress}
-          onApply={handleApply}
-          onRetry={handleCheck}
-        />
+        {displayVersion && <div className={styles['about-version']}>v{displayVersion}</div>}
+        {isLocalBuild && (
+          <div className={styles['about-build-info']}>
+            <span className={styles['about-build-badge']}>{t('settings.about.localBuild')}</span>
+            <span>{sourceRepo}</span>
+            {buildInfo?.gitSha && <span>{buildInfo.gitSha.slice(0, 7)}</span>}
+            {buildInfo?.baseTag && <span>{`base: ${buildInfo.baseTag}`}</span>}
+            {buildInfo?.dirty === true && <span>{t('settings.about.localBuildDirty')}</span>}
+            {buildInfo?.signatureKind && <span>{buildInfo.signatureKind}</span>}
+          </div>
+        )}
+        {updatesEnabled ? (
+          <TrainUpdateArea
+            agentName={settingsConfig?.agent?.name || 'Hanako'}
+            available={available}
+            lastError={lastError}
+            lastCheckedAt={lastCheckedAt}
+            manifestReleasedAt={manifestReleasedAt}
+            phase={phase}
+            progress={progress}
+            onApply={handleApply}
+            onRetry={handleCheck}
+          />
+        ) : (
+          <div className={updateStyles.root}>
+            <div className={updateStyles.row}>
+              <span className={updateStyles.message}>{t('settings.about.updateDisabled')}</span>
+            </div>
+          </div>
+        )}
         <div className={styles['about-update-actions']}>
-          {showCheckButton && (
+          {updatesEnabled && showCheckButton && (
             <button type="button" className={styles['about-check-update-btn']} onClick={handleCheck}>
               {t('settings.about.updateCheckBtn')}
             </button>
@@ -557,10 +600,10 @@ export function AboutTab() {
               href="#"
               onClick={(e) => {
                 e.preventDefault();
-                hana?.openExternal?.('https://github.com/liliMozi');
+                hana?.openExternal?.(sourceRepoUrl);
               }}
             >
-              github.com/liliMozi
+              github.com/{sourceRepo}
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
                 <polyline points="15 3 21 3 21 9" />
@@ -569,29 +612,33 @@ export function AboutTab() {
             </a>
           }
         />
-        <SettingsRow
-          label={t('settings.about.autoCheckUpdates')}
-          control={<Toggle on={autoCheck} onChange={handleAutoCheckToggle} />}
-        />
-        <SettingsRow
-          label={t('settings.about.betaUpdates')}
-          control={<Toggle on={isBeta} onChange={handleBetaToggle} />}
-        />
-        {showPlatformRow && (
-          <SettingsRow
-            label={platformRowLabel}
-            hint={shellUpdate?.version ? `v${shellUpdate.version}` : undefined}
-            hintVariant={minShellBlocked ? 'warn' : 'default'}
-            control={
-              <button type="button" className={styles['about-check-update-btn']} onClick={handleInstallShell}>
-                {t('settings.about.updateInstall')}
-              </button>
-            }
-          />
+        {updatesEnabled && (
+          <>
+            <SettingsRow
+              label={t('settings.about.autoCheckUpdates')}
+              control={<Toggle on={autoCheck} onChange={handleAutoCheckToggle} />}
+            />
+            <SettingsRow
+              label={t('settings.about.betaUpdates')}
+              control={<Toggle on={isBeta} onChange={handleBetaToggle} />}
+            />
+            {showPlatformRow && (
+              <SettingsRow
+                label={platformRowLabel}
+                hint={shellUpdate?.version ? `v${shellUpdate.version}` : undefined}
+                hintVariant={minShellBlocked ? 'warn' : 'default'}
+                control={
+                  <button type="button" className={styles['about-check-update-btn']} onClick={handleInstallShell}>
+                    {t('settings.about.updateInstall')}
+                  </button>
+                }
+              />
+            )}
+          </>
         )}
       </SettingsSection>
 
-      <InviteChannelSection />
+      {updatesEnabled && <InviteChannelSection />}
 
       {/* License 全文：ExpandableRow 直接作为 tab 末尾元素 */}
       <ExpandableRow label={t('settings.about.licenseToggle')}>
