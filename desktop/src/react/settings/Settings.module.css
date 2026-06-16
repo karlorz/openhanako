@@ -3636,6 +3636,26 @@
     font-family: var(--font-mono);
 }
 
+.about-build-info {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 4px 8px;
+    max-width: min(100%, 420px);
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    line-height: 1.5;
+}
+
+.about-build-info span {
+    overflow-wrap: anywhere;
+}
+
+.about-build-badge {
+    color: var(--accent);
+}
+
 .about-check-update-btn {
     margin-top: var(--space-xs);
     padding: 4px 12px;

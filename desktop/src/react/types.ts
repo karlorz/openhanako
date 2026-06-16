@@ -3,7 +3,7 @@ import type { ThinkingLevel } from './stores/model-slice';
 // ── Auto-update ──
 
 export interface AutoUpdateState {
-  status: 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'installing' | 'error' | 'latest';
+  status: 'idle' | 'disabled' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'installing' | 'error' | 'latest';
   version: string | null;
   releaseNotes: string | null;
   releaseUrl: string | null;
@@ -15,6 +15,17 @@ export interface AutoUpdateState {
     total: number;
   } | null;
   error: string | null;
+}
+
+export interface BuildInfo {
+  appVersion: string | null;
+  channel: string;
+  sourceRepo: string;
+  gitSha: string | null;
+  baseTag: string | null;
+  dirty: boolean | null;
+  updateEnabled: boolean;
+  signatureKind: string | null;
 }
 
 export interface AutoLaunchStatus {
@@ -454,10 +465,11 @@ export interface PlatformApi {
 
   // ── App info ──
   getAppVersion?(): Promise<string>;
+  getBuildInfo?(): Promise<BuildInfo>;
   checkUpdate?(): Promise<{ version: string; downloadUrl: string } | null>;
 
   // ── Auto-update (Windows) ──
-  autoUpdateCheck?(): Promise<string | null>;
+  autoUpdateCheck?(): Promise<AutoUpdateState | void>;
   autoUpdateDownload?(): Promise<boolean>;
   autoUpdateInstall?(): Promise<boolean>;
   autoUpdateState?(): Promise<AutoUpdateState>;
