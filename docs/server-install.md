@@ -111,6 +111,33 @@ Expected service defaults:
 
 `install-server upgrade` never deletes the current release before the new one is verified.
 
+The initial implementation lives at `scripts/install-server.mjs`. It supports a safe dry-run planner and an explicit `--execute` path:
+
+```sh
+node scripts/install-server.mjs upgrade --metadata release.json --current-version v0.323.0 --dry-run
+node scripts/install-server.mjs upgrade --metadata release.json --current-version v0.323.0 --execute
+```
+
+The release metadata file has this shape:
+
+```json
+{
+  "tag": "v0.400.0",
+  "prerelease": false,
+  "assets": [
+    {
+      "platform": "linux",
+      "arch": "arm64",
+      "name": "hanaagent-server-v0.400.0-linux-arm64.tar.gz",
+      "url": "https://example.test/hanaagent-server-v0.400.0-linux-arm64.tar.gz",
+      "sha256": "64_hex_chars"
+    }
+  ]
+}
+```
+
+`--dry-run` is non-mutating and prints the plan. `--execute` is host-mutating and is intended to be run only on the target Linux server after release assets and checksums exist.
+
 Upgrade sequence:
 
 1. Resolve target version from an explicit `--version` or latest stable release.
