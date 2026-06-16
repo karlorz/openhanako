@@ -40,6 +40,47 @@ function normalizeCsp(csp: string): string {
     .join('; ');
 }
 
+function parseCsp(csp: string): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  for (const directive of csp.split(';')) {
+    const parts = directive.trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) continue;
+    out[parts[0]] = parts.slice(1);
+  }
+  return out;
+}
+
+function renderRuntimeConnectionCsp(storageValue: unknown): string {
+  const src = fs.readFileSync(
+    path.resolve(__dirname, '..', 'desktop', 'src', 'modules', 'connection-csp.js'),
+    'utf-8',
+  );
+  let written = '';
+  const context = vm.createContext({
+    URL,
+    localStorage: {
+      getItem: (key: string) => key === 'hana-server-connections-v1'
+        ? JSON.stringify(storageValue)
+        : null,
+    },
+    window: {
+      location: {
+        host: '',
+        hostname: '',
+      },
+    },
+    document: {
+      write: (html: string) => {
+        written += html;
+      },
+    },
+  });
+  vm.runInContext(src, context);
+  const match = written.match(/content="([^"]+)"/);
+  if (!match) throw new Error(`CSP meta not written: ${written}`);
+  return match[1].replace(/&quot;/g, '"');
+}
+
 describe('CSP sync', () => {
   const profiles = extractCspProfiles();
   const htmlDir = path.resolve(__dirname, '..', 'desktop', 'src');
@@ -141,5 +182,26 @@ describe('CSP sync', () => {
 
     expect(written).toContain('http://192.168.1.9:14500');
     expect(written).toContain('ws://192.168.1.9:14500');
+  });
+
+  it('runtime desktop CSP allows active remote resource origins for image and media rendering', () => {
+    const csp = parseCsp(renderRuntimeConnectionCsp({
+      activeServerConnectionId: 'lan:remote:studio',
+      serverConnections: {
+        'lan:remote:studio': {
+          connectionId: 'lan:remote:studio',
+          kind: 'lan',
+          baseUrl: 'http://100.125.173.118:14500',
+          wsUrl: 'ws://100.125.173.118:14500',
+        },
+      },
+    }));
+
+    expect(csp['connect-src']).toContain('http://100.125.173.118:14500');
+    expect(csp['connect-src']).toContain('ws://100.125.173.118:14500');
+    expect(csp['img-src']).toContain('http://100.125.173.118:14500');
+    expect(csp['media-src']).toContain('http://100.125.173.118:14500');
+    expect(csp['img-src']).not.toContain('http:');
+    expect(csp['media-src']).not.toContain('http:');
   });
 });
