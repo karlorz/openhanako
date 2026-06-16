@@ -526,6 +526,43 @@ describe('selectSessionFiles', () => {
     });
   });
 
+  it('registry 文件和消息附件重复时保留附件里的 inline preview 数据', () => {
+    const items: ChatListItem[] = [{
+      type: 'message',
+      data: {
+        id: 'image-msg',
+        role: 'user',
+        attachments: [{
+          fileId: 'sf_image',
+          path: '/cache/pasted.png',
+          name: 'pasted.png',
+          isDir: false,
+          mimeType: 'image/png',
+          base64Data: 'IMAGE_BASE64',
+        }],
+      },
+    }];
+    const refs = selectSessionFiles(sessionState(items, '/s/image', [{
+      fileId: 'sf_image',
+      filePath: '/cache/pasted.png',
+      label: 'pasted.png',
+      ext: 'png',
+      mime: 'image/png',
+      kind: 'image',
+      status: 'available',
+    }]), '/s/image');
+
+    expect(refs).toHaveLength(1);
+    expect(refs[0]).toMatchObject({
+      fileId: 'sf_image',
+      source: 'session-registry',
+      name: 'pasted.png',
+      path: '/cache/pasted.png',
+      kind: 'image',
+      inlineData: { base64: 'IMAGE_BASE64', mimeType: 'image/png' },
+    });
+  });
+
   it('会话文件列表默认排除 voice-input，但仍保留普通音频附件', () => {
     const refs = selectSessionFiles(sessionState([], '/s/listed-voice', [{
       fileId: 'sf_voice_input',
