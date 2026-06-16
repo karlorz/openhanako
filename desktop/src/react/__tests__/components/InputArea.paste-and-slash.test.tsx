@@ -891,6 +891,17 @@ describe('InputArea paste and slash menu behavior', () => {
         mimeType: 'image/png',
       }]);
     });
+    expect(useStore.getState().attachedFiles[0]).not.toHaveProperty('base64Data');
+    expect(useStore.getState().sessionRegistryFilesByPath['/session/input.jsonl']?.[0]).toMatchObject({
+      fileId: 'sf_pasted_image',
+      filePath: '/hana/session-files/pasted.png',
+      resource: expect.objectContaining({
+        resourceId: 'res_sf_pasted_image',
+        links: expect.objectContaining({
+          content: '/api/resources/res_sf_pasted_image/content',
+        }),
+      }),
+    });
   });
 
   it('compresses oversized pasted images before upload-blob', async () => {
