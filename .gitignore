@@ -3,6 +3,8 @@
 # ═══════════════════════════════════════════
 agents/
 user/
+!docs/agents/
+!docs/agents/**
 !skills2set/hana-plugin-creator/agents/
 !skills2set/hana-plugin-creator/agents/**
 !skills2set/office-documents/agents/
@@ -48,12 +50,16 @@ node_modules/
 .pi/
 
 # IDE / 工具
-.claude/
+.claude/*
+!.claude/dev-loop.config.md
+.claude/dev-loop-debug/
+.claude/dev-loop-work/
 .agents/skills/
 *.code-workspace
 
 # 项目私有文件
 CLAUDE.md
+!/CLAUDE.md
 
 # 临时文件
 tmp/
