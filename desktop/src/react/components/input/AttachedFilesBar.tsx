@@ -3,10 +3,20 @@ import { AttachmentChip } from '../shared/AttachmentChip';
 import { AudioAttachmentChip } from '../shared/AudioAttachmentChip';
 import { FolderIcon } from '../shared/FolderIcon';
 import { kindOfFileName } from '../../utils/file-kind';
+import { getUserAttachmentImageSrc } from '../../utils/user-attachment-media';
 import styles from './InputArea.module.css';
 
+type AttachedInputFile = {
+  fileId?: string;
+  path: string;
+  name: string;
+  isDirectory?: boolean;
+  base64Data?: string;
+  mimeType?: string;
+};
+
 export const AttachedFilesBar = memo(function AttachedFilesBar({ files, onRemove }: {
-  files: Array<{ path: string; name: string; isDirectory?: boolean; base64Data?: string; mimeType?: string }>;
+  files: AttachedInputFile[];
   onRemove: (index: number) => void;
 }) {
   return (
@@ -48,10 +58,10 @@ function ImageAttachmentChip({
   file,
   onRemove,
 }: {
-  file: { path: string; name: string; base64Data?: string; mimeType?: string };
+  file: AttachedInputFile;
   onRemove: () => void;
 }) {
-  const src = getMediaUrl(file);
+  const src = getUserAttachmentImageSrc(file);
   return (
     <span className={styles['media-attachment-chip']} title={file.name}>
       <span className={styles['image-attachment-preview']} aria-hidden="true">
@@ -80,14 +90,6 @@ function RemoveButton({ name, onRemove }: { name: string; onRemove: () => void }
       </svg>
     </button>
   );
-}
-
-function getMediaUrl(file: { path: string; base64Data?: string; mimeType?: string }) {
-  if (file.base64Data && file.mimeType) {
-    return `data:${file.mimeType};base64,${file.base64Data}`;
-  }
-  if (typeof window === 'undefined') return null;
-  return window.platform?.getFileUrl?.(file.path) || null;
 }
 
 function ClipIcon() {
