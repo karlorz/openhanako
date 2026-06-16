@@ -39,8 +39,8 @@ vault_sync:
   retry_budget: 3
   presync_skill: auto-detect
 
-# Release and CI. Keep deploy_script unset unless an attended release
-# explicitly opts into host deployment through install-server.
+# Release and CI. Keep deploy_script unset; host install/upgrade stays
+# manual/attended through install-server.
 publish_via: ci-tag-trigger
 release_workflow: .github/workflows/build.yml
 ci_configured: true
@@ -48,8 +48,7 @@ ci_discovery: explicit
 required_checks:
   - "test (macos-latest, 24.15.0)"
   - "test (windows-latest, 24.15.0)"
-remote_hosts:
-  - sg01
+remote_hosts: []
 release_policy:
   auto_bump: false
   tag_format: "v{version}"
@@ -95,12 +94,25 @@ critical_paths:
   fork_sync_maintenance:
     code:
       - FORK_SYNC.md
-      - scripts/sync-upstream.sh
+      - docs/fork-sync/rules.yml
+      - scripts/sync-upstream.mjs
       - scripts/track-upstream-issues.mjs
       - docs/upstream-issues/**
+      - tests/sync-upstream.test.js
       - tests/upstream-issue-tracker.test.js
     vault:
       - projects/openhanako/fork-sync-policy
+  install_server_maintenance:
+    code:
+      - scripts/install-server.mjs
+      - tests/install-server-upgrade.test.js
+      - docs/server-install.md
+      - docs/reinit-data-failsafe.md
+      - .claude/dev-loop.config.md
+    vault:
+      - projects/openhanako/work/2026-06-16-design-unified-linux-install-server
+      - projects/openhanako/work/2026-06-16-implement-install-server-upgrade
+      - projects/openhanako/work/2026-06-16-replace-sg01-deploy-helper
 
 # TDD with Superpowers:
 # - mandatory on deterministic credential/CSP/upload paths
@@ -117,6 +129,7 @@ prd_disciplines:
       - desktop/src/react/services/server-connection.ts
       - desktop/src/react/services/resource-url.ts
       - desktop/src/react/utils/user-attachment-media.ts
+      - scripts/install-server.mjs
       - server/routes/upload.ts
   - skill: superpowers:test-driven-development
     when: execute
