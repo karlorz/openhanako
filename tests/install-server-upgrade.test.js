@@ -18,6 +18,8 @@ import {
   writeReinitDataDryRunPlan,
 } from "../scripts/install-server.mjs";
 
+const ARM64_SHA256 = "a".repeat(64);
+
 const metadata = {
   tag: "v0.400.0",
   prerelease: false,
@@ -34,7 +36,7 @@ const metadata = {
       arch: "arm64",
       name: "hanaagent-server-v0.400.0-linux-arm64.tar.gz",
       url: "https://example.test/hanaagent-server-v0.400.0-linux-arm64.tar.gz",
-      sha256: "a".repeat(64),
+      sha256: ARM64_SHA256,
     },
   ],
 };
@@ -43,7 +45,7 @@ describe("install-server upgrade planner", () => {
   it("selects the linux-arm64 release asset for arm64 hosts", () => {
     expect(resolveLinuxAsset(metadata, { platform: "linux", arch: "arm64" })).toMatchObject({
       name: "hanaagent-server-v0.400.0-linux-arm64.tar.gz",
-      sha256: "a".repeat(64),
+      sha256: ARM64_SHA256,
     });
   });
 
@@ -182,6 +184,7 @@ describe("install-server upgrade planner", () => {
     const ops = createShellUpgradeOps({
       run: async (cmd, args) => {
         calls.push([cmd, ...args].join(" "));
+        if (cmd === "sha256sum") return { status: 0, stdout: `${ARM64_SHA256}  ${args[0]}\n`, stderr: "" };
         return { status: 0, stdout: "", stderr: "" };
       },
       now: () => "2026-06-16T14-00-00Z",
@@ -203,6 +206,48 @@ describe("install-server upgrade planner", () => {
     expect(backupIndex).toBeGreaterThanOrEqual(0);
     expect(backupIndex).toBeLessThan(switchIndex);
     expect(calls.join("\n")).not.toMatch(/rm -rf|reinit-data|delete data/i);
+  });
+
+  it("verifies checksums without interpolating release asset names into a shell", async () => {
+    const hostileName = "hanaagent-server-v0.400.0-linux-arm64.tar.gz'; touch pwn #";
+    const hostileMetadata = {
+      ...metadata,
+      assets: [{
+        ...metadata.assets[1],
+        name: hostileName,
+      }],
+    };
+    const plan = buildUpgradePlan({
+      metadata: hostileMetadata,
+      currentVersion: "v0.323.0",
+      platform: "linux",
+      arch: "arm64",
+      uid: 0,
+      hasSudo: false,
+      dryRun: false,
+    });
+    const calls = [];
+    const ops = createShellUpgradeOps({
+      run: async (cmd, args) => {
+        calls.push([cmd, args]);
+        if (cmd === "sha256sum") return { status: 0, stdout: `${ARM64_SHA256}  ${args[0]}\n`, stderr: "" };
+        return { status: 0, stdout: "", stderr: "" };
+      },
+      stagingDir: "/tmp/hanaagent-upgrade-test",
+    });
+
+    await ops.download(plan);
+    await ops.verifyChecksum(plan);
+
+    expect(calls).toContainEqual([
+      "curl",
+      ["-fL", plan.asset.url, "-o", path.posix.join("/tmp/hanaagent-upgrade-test", hostileName)],
+    ]);
+    expect(calls).toContainEqual([
+      "sha256sum",
+      [path.posix.join("/tmp/hanaagent-upgrade-test", hostileName)],
+    ]);
+    expect(calls.some(([cmd, args]) => cmd === "sh" && args.includes("-c"))).toBe(false);
   });
 
   it("install plan covers sg01 without SSH deploy, git reset, or local build commands", () => {
