@@ -60,6 +60,12 @@
     } catch {}
   }
 
+  function httpSourcesOnly(sources) {
+    return Object.keys(sources).filter(function (source) {
+      return /^(http|https):\/\//.test(source);
+    });
+  }
+
   var scopedSources = readPersistedConnectionSources();
   addDevSources(scopedSources);
   var connectSources = BASE_CSP["connect-src"].concat(Object.keys(scopedSources));
