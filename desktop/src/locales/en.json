@@ -1351,6 +1351,7 @@
       "updateLatestCheckedAt": "Up to date (last checked {time})",
       "updateManifestReleasedAt": "Shelf manifest issued {date}",
       "updateManifestReleasedAtViaMirror": "Shelf manifest issued {date} (via backup source)",
+      "updateDisabled": "Updates are disabled for this local build",
       "updateCheckBtn": "Check for updates",
       "updateRetryBtn": "Retry",
       "updateNeedInstall": "Please move HanaAgent to the Applications folder first",
@@ -1364,6 +1365,8 @@
         "improvement": "Improvement",
         "migration": "Migration"
       },
+      "localBuild": "Local fork build",
+      "localBuildDirty": "dirty",
       "launchAtLogin": "Launch at login",
       "keepAwake": "Keep running while locked",
       "betaUpdates": "Receive beta updates",
