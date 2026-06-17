@@ -306,6 +306,38 @@ ExecStart=/opt/hanaagent/server/hana-server
     expect(calls.join("\n")).not.toMatch(/rm -rf|reinit-data|delete data/i);
   });
 
+  it("extracts server bundle contents into the release root", async () => {
+    const plan = buildUpgradePlan({
+      metadata,
+      currentVersion: "v0.323.0",
+      platform: "linux",
+      arch: "arm64",
+      uid: 0,
+      hasSudo: false,
+      dryRun: false,
+    });
+    const calls = [];
+    const staging = "/tmp/hanaagent-upgrade-extract-test";
+    const archivePath = path.posix.join(staging, "hanaagent-server-v0.400.0-linux-arm64.tar.gz");
+    const ops = createShellUpgradeOps({
+      run: async (cmd, args) => {
+        calls.push([cmd, args]);
+        if (cmd === "sha256sum") return { status: 0, stdout: `${ARM64_SHA256}  ${args[0]}\n`, stderr: "" };
+        return { status: 0, stdout: "", stderr: "" };
+      },
+      stagingDir: staging,
+    });
+
+    await ops.download(plan);
+    await ops.verifyChecksum(plan);
+    await ops.extractRelease(plan);
+
+    expect(calls).toContainEqual([
+      "tar",
+      ["-xzf", archivePath, "-C", plan.targetReleaseDir, "--strip-components=1"],
+    ]);
+  });
+
   it("verifies checksums without interpolating release asset names into a shell", async () => {
     const hostileName = "hanaagent-server-v0.400.0-linux-arm64.tar.gz'; touch pwn #";
     const hostileMetadata = {
