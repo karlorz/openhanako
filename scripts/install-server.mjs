@@ -1178,7 +1178,7 @@ export function createShellUpgradeOps({
     async extractRelease(plan) {
       if (!downloadedArchive) fail("download must run before extractRelease");
       await checked("mkdir", ["-p", plan.targetReleaseDir], { plan, privileged: true });
-      await checked("tar", ["-xzf", downloadedArchive, "-C", plan.targetReleaseDir, "--strip-components=0"], {
+      await checked("tar", ["-xzf", downloadedArchive, "-C", plan.targetReleaseDir, "--strip-components=1"], {
         plan,
         privileged: true,
       });
