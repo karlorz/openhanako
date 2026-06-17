@@ -1,0 +1,162 @@
+# Fork Sync Policy
+
+This fork (`karlorz/openhanako`, default branch `dev`) carries local fixes that diverge from upstream (`liliMozi/openhanako`, branch `main`). This document is the **operational runbook** for syncing upstream releases without losing the local fixes.
+
+For the *why* behind these decisions, see the wiki: `projects/openhanako/fork-sync-policy.md`.
+
+---
+
+## Stance
+
+- **Permanent fork.** We maintain this for personal use. No PR planned upstream.
+- **Upstream issue tracker:** [#1749](https://github.com/liliMozi/openhanako/issues/1749) — our bug report (CSP + WS auth). If the maintainer ever accepts equivalent fixes upstream, revisit the permanent-fork decision.
+- **Issue tracking rule:** every local fix gets a tracking row. Only upstream-eligible fixes get issue search/draft work; fork-only maintenance is documented without upstream issue noise.
+
+## Upstream issue tracking
+
+Run the tracker whenever a local fix is added or before an upstream release-tag sync:
+
+```bash
+node scripts/track-upstream-issues.mjs status
+node scripts/track-upstream-issues.mjs search
+node scripts/track-upstream-issues.mjs draft
+```
+
+The script never submits GitHub issues. It only prints/searches upstream state and writes local draft issue files under `docs/upstream-issues/drafts/`.
+
+Current status:
+
+| Fix | Status | Upstream issue state | Action |
+|-----|--------|----------------------|--------|
+| LAN/Tailscale CSP + WebSocket auth | `existing/open` | [#1749](https://github.com/liliMozi/openhanako/issues/1749) | Check during every sync; close or shrink divergence only if upstream accepts equivalent behavior. |
+| Remote plugin iframe credential query leak | `draft/pending-approval` | No exact issue found; related [#1493](https://github.com/liliMozi/openhanako/issues/1493), [#1546](https://github.com/liliMozi/openhanako/issues/1546) | Review `docs/upstream-issues/drafts/plugin-iframe-remote-credential-query-leak.md`; submit only after owner approval. |
+| Remote attachment preview persistence | `draft/pending-approval` | No exact issue found | Review `docs/upstream-issues/drafts/remote-attachment-preview-persistence.md`; submit only after owner approval. |
+| Local fork build identity + disabled local auto-update | `tracked/no-upstream-issue` | Fork-only | Keep local; no upstream issue unless this becomes a general local-build-channel feature request. |
+| Fork sync issue tracking + prerelease policy | `tracked/no-upstream-issue` | Fork-only | Keep local; documents and automates this fork's maintenance workflow. |
+
+## Sync cadence
+
+- **Stable release-tag sync, manual.** Pull when upstream cuts a new non-prerelease release tag. Do NOT track `main` HEAD and do NOT treat prereleases as production sync targets.
+- **Machine-readable rules:** `docs/fork-sync/rules.yml` is the source of truth for release-target policy, diverging-file rules, issue-tracking states, and verification commands. This runbook explains the same policy for humans.
+- **Detection:** run `node scripts/sync-upstream.mjs --check` anytime. It compares the latest stable upstream release tag against the sync log (below) and tells you if there's something to sync.
+- **Prerelease review:** run `node scripts/sync-upstream.mjs --include-prerelease --check` only when intentionally reviewing a prerelease candidate. This is not the normal production update path.
+- **Issue check:** as part of every sync, run `node scripts/track-upstream-issues.mjs search` and glance at [#1749](https://github.com/liliMozi/openhanako/issues/1749) plus the pending draft list. If upstream accepted equivalent fixes, the divergence shrinks.
+
+## Diverging files
+
+### LAN connect/auth fixes
+
+| File | Commit | Risk if upstream touches | Resolution policy |
+|------|--------|--------------------------|-------------------|
+| `core/server-auth.ts` | `80ea81ae` | **HIGH** — security-critical; upstream may ship CVE fixes | **HUMAN REVIEW ALWAYS.** Never auto-resolve. Our change is 1 line in `parseCredential` (allows query tokens for LAN). Upstream changes here may intersect semantically. |
+| `desktop/src/react/services/server-connection.ts` | `ae7fd31c` | **HIGH** — connection logic evolves | **HUMAN REVIEW.** Our changes are additive (probe path in `connectDeviceServerConnection`, `canUseQueryToken` device_credential branch). Upstream likely adds new features; conflicts usually merge cleanly but verify. |
+| `desktop/main.cjs` | `ae7fd31c` | **MEDIUM** — IPC handlers added occasionally | **Usually auto-mergeable.** Our change adds `net` to the electron import line + a new `wrapIpcHandler("connect:probe", ...)` block. Verify the `net` import survives any upstream rewrite of line 11. |
+| `desktop/preload.cjs` | `ae7fd31c` | **MEDIUM** — new channels exposed occasionally | **Usually auto-mergeable.** Our change adds one line (`probeConnection`) inside the existing `contextBridge.exposeInMainWorld` block. |
+| `tests/server-auth.test.ts` | `80ea81ae` | Medium | **Prefer ours**, but if upstream restructures the test file heavily, review. |
+| `desktop/src/react/__tests__/services/server-connection.test.ts` | `80ea81ae` + `ae7fd31c` | Low | **Prefer ours** (they test our fixes). |
+
+### Remote upload/resource preview fixes
+
+These files fix remote desktop attachment import and preview when the macOS desktop is connected to `http://100.125.173.118:14500`. Upstream may touch these areas independently; preserve the tests and the end-to-end invariant, not just exact code.
+
+| File | Risk if upstream touches | Resolution policy |
+|------|--------------------------|-------------------|
+| `desktop/src/modules/connection-csp.js` | **HIGH** — renderer CSP controls whether persisted remote resources can render | **HUMAN REVIEW.** Active remote HTTP(S) origin must be present in `img-src` and `media-src`, while WS origins stay in `connect-src` only. Do not widen to bare `http:`/`https:`. |
+| `desktop/src/react/services/resource-url.ts` | **HIGH** — resource URL resolution for remote session files | **HUMAN REVIEW.** Remote `sf_*` session files without explicit resource links must synthesize `/api/resources/res_<fileId>/content` with token query support. |
+| `desktop/src/react/utils/user-attachment-media.ts` | Medium | Prefer resource URLs for remote attachments after inline bytes are gone; local `platform.getFileUrl` remains the fallback for local transport. |
+| `desktop/src/react/MainContent.tsx` | Medium | Preserve path ownership rules: native paste/drop/select from macOS uploads client-owned blobs over `/api/upload-blob`; app/workspace drags of server-owned files must not re-upload. |
+| `desktop/src/react/components/InputArea.tsx` | Medium | Preserve optimistic inline media bytes for the current chat render, but keep persisted `displayMessage.attachments` free of `base64Data`. |
+| `desktop/src/react/stores/chat-slice.ts` | Medium | Preserve optimistic inline bytes when replacing a pending user message with the server echo. |
+| `desktop/src/react/stores/selectors/file-refs.ts` | Medium | Duplicate session-registry/message attachments should merge instead of discarding inline preview/resource metadata. |
+| `desktop/src/react/utils/uploaded-session-file.ts` | Low | Shared utility for registering uploaded session files; keep it small and store-focused. |
+| `server/routes/upload.ts` | Medium | `/api/upload-blob` must accept image/audio plus listed document attachment MIME types, enforce size limits, and register session-owned files. |
+| Affected tests under `desktop/src/react/__tests__/...`, `tests/csp-sync.test.ts`, `tests/upload-route.test.ts` | Low | Prefer ours unless upstream has equivalent coverage for remote preview persistence and client-owned blob import. |
+
+## The fixed commits / divergence clusters
+
+1. **`80ea81ae`** — Bug B: allow query token auth for LAN WebSocket connections
+   - `core/server-auth.ts`: `parseCredential` accepts query tokens for `local` + `lan` (was: `local` only)
+   - `desktop/src/react/services/server-connection.ts`: `canUseQueryToken` includes `device_credential`
+   - + tests in both suites
+2. **`ae7fd31c`** — Bug A: main-process pre-validation for LAN connect (CSP bootstrapping)
+   - `desktop/main.cjs`: `ipcMain.handle("connect:probe", ...)` using `net.fetch` with SSRF guard + sender validation
+   - `desktop/preload.cjs`: exposes `probeConnection`
+   - `desktop/src/react/services/server-connection.ts`: `connectDeviceServerConnection` probes via main, persists, reloads
+   - + tests in `server-connection.test.ts`
+3. **Remote attachment upload/resource preview fix** — Bug C: pasted/uploaded images and documents on a remote desktop connection
+   - macOS client-owned paths are uploaded as blobs to the active remote server instead of sending `/Users/...` paths for the Linux server to import.
+   - Remote session images use resource URLs after transient inline bytes disappear.
+   - Active remote HTTP(S) origins are allowed by runtime CSP for `img-src` and `media-src`, fixing previews after switching chats.
+   - + tests in `tests/csp-sync.test.ts`, `tests/upload-route.test.ts`, and the affected React media/resource/store suites.
+
+Full context: [[projects/openhanako/work/2026-06-15-csp-ws-lan-connect-fix]], [[projects/openhanako/work/2026-06-15-csp-bootstrapping-permanent-fix]], and [[concepts/openhanako-remote-session-file-preview]] in the wiki.
+
+## Sync workflow
+
+Run: `node scripts/sync-upstream.mjs` (see `--help` for flags). By default it syncs only stable upstream releases; use `--include-prerelease` only for explicit prerelease candidate review.
+
+What the script does:
+
+1. **Fetch** — `git fetch upstream --tags`
+2. **Issue tracking** — run `node scripts/track-upstream-issues.mjs search`; update `docs/upstream-issues/README.md` and draft status if upstream issue state changed.
+3. **Detect** — compare latest upstream tag vs the sync log (below). Exit with "up to date" if no new tag.
+4. **Preflight report** — list which diverging files upstream touched since the last sync. Cat this doc's per-file policy tables.
+5. **Rebase** — `git rebase <latest-tag>` on `dev`. If clean → proceed. If conflict → **STOP**, drop to shell, print the per-file policy for the conflicting files, wait for manual resolution, resume on your signal.
+6. **Tier 1 — Unit tests:** run the LAN auth/connect tests plus the remote attachment/resource suite. **STOP if any fail.** Do not deploy.
+7. **Tier 2 — Bundle grep:** after rebuilding bundles, verify `grep -c "connect:probe" desktop/main.bundle.cjs` ≥ 1, `grep -c "probeConnection" desktop/preload.bundle.cjs` ≥ 1, and the packaged `connection-csp.js` still contains `media-src` plus remote resource-origin logic. **STOP if missing.**
+8. **Tier 3 — Live smoke (manual):** print a checklist, refuse "complete" until you confirm:
+   - Clear `localStorage` in the desktop app, reload
+   - Settings → Access → Connect LAN Server → URL + key → Connect (should succeed with NO console hack)
+   - DevTools Console: no `Refused to connect ... CSP` errors; WS establishes (no `[WS_DISCONNECTED]`)
+   - Paste/upload an image, send it, switch to another chat, switch back, and confirm the chat thumbnail and Conversation Files preview still render
+9. **Log** — append to the sync log below with: date, tag synced, conflicts encountered + resolution, test result.
+
+## Verification contract (what "the fix still works" means)
+
+After every sync, ALL of these must hold:
+
+- **Unit tests pass:** LAN auth/connect tests and remote attachment/resource preview tests exit 0
+- **Bundles contain the fix:** `connect:probe` in `main.bundle.cjs`, `probeConnection` in `preload.bundle.cjs`
+- **Runtime CSP contains resource allowances:** active remote HTTP(S) origin is scoped into `img-src` and `media-src` without widening to bare `http:`/`https:`
+- **Live connect works:** desktop connects to sg01 (`http://100.125.173.118:14500`) with no localStorage hack, no CSP violation, WS establishes
+- **Live upload/preview works:** pasted or uploaded images preview immediately, survive chat switching, and old session attachments continue previewing
+
+Useful focused command:
+
+```bash
+npx vitest run \
+  tests/server-auth.test.ts \
+  tests/csp-sync.test.ts \
+  desktop/src/react/__tests__/services/server-connection.test.ts \
+  desktop/src/react/__tests__/components/MainContent.drag.test.tsx \
+  desktop/src/react/__tests__/components/InputArea.paste-and-slash.test.tsx \
+  desktop/src/react/__tests__/components/InputArea.media-send.test.tsx \
+  desktop/src/react/__tests__/services/resource-url.test.ts \
+  desktop/src/react/__tests__/stores/chat-slice.test.ts \
+  desktop/src/react/__tests__/stores/selectors/file-refs.test.ts \
+  desktop/src/react/__tests__/utils/user-attachment-media.test.ts \
+  desktop/src/react/__tests__/components/shared/MediaViewer/media-source.test.ts \
+  desktop/src/react/__tests__/utils/open-media-viewer.test.ts \
+  desktop/src/react/__tests__/components/RightWorkspacePanel.test.tsx \
+  tests/upload-route.test.ts \
+  --exclude "**/node_modules/**"
+```
+
+If any fails, the sync is **not complete** — either resolve upstream-side (the fix was removed and needs re-application) or do not deploy.
+
+## Rollback
+
+If a sync breaks something we cannot quickly resolve:
+
+```bash
+git reflog  # find the pre-rebase HEAD
+git reset --hard <pre-rebase-sha>
+```
+
+The server on sg01 and the desktop app stay on the last-known-good bundles until we explicitly redeploy.
+
+## Sync log
+
+| Date | Upstream tag | Conflicts | Resolution | Tests | Live smoke | Notes |
+|------|--------------|-----------|------------|-------|------------|-------|
+| 2026-06-15 | `v0.323.0` (baseline) | — | — | — | — | Fork established from upstream `v0.323.0`. `dev` at `434c3e30`. No later upstream sync performed yet. |

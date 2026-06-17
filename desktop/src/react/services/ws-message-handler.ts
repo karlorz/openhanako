@@ -254,6 +254,7 @@ function attachmentsEqual(a: any, b: any): boolean {
   for (let i = 0; i < left.length; i += 1) {
     const la = left[i] || {};
     const rb = right[i] || {};
+    if ((la.fileId || '') !== (rb.fileId || '')) return false;
     if ((la.path || '') !== (rb.path || '')) return false;
     if ((la.name || '') !== (rb.name || '')) return false;
     if (!!la.isDir !== !!rb.isDir) return false;

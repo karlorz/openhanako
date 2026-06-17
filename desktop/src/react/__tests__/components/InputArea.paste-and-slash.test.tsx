@@ -207,6 +207,7 @@ function seedInputState(overrides: Partial<ReturnType<typeof useStore.getState>>
     previewOpen: false,
     activeTabId: null,
     chatSessions: {},
+    sessionRegistryFilesByPath: {},
     serverPort: 3210,
     serverToken: null,
     modelSwitching: false,
@@ -436,20 +437,39 @@ describe('InputArea paste and slash menu behavior', () => {
     await waitFor(() => {
       expect(attachFilesFromPaths).toHaveBeenCalledWith(['/Users/hana/Desktop/report.pdf'], {
         '/Users/hana/Desktop/report.pdf': 'report.pdf',
-      });
+      }, { pathOwner: 'client' });
     });
     expect(mocks.hanaFetch).not.toHaveBeenCalledWith('/api/upload-blob', expect.anything());
   });
 
-  it('registers pasted image blob uploads as path-backed attachments without base64Data', async () => {
+  it('keeps pasted image preview bytes while registering the upload as a path-backed session file', async () => {
     mocks.hanaFetch.mockImplementation(async (path: string) => {
       if (path === '/api/upload-blob') {
         return new Response(JSON.stringify({
           uploads: [{
             fileId: 'sf_pasted_image',
             dest: '/hana/session-files/pasted.png',
+            filePath: '/hana/session-files/pasted.png',
             name: 'pasted.png',
+            label: 'pasted.png',
+            ext: 'png',
+            mime: 'image/png',
             isDirectory: false,
+            resource: {
+              schemaVersion: 1,
+              resourceId: 'res_sf_pasted_image',
+              name: 'studios/studio_remote/resources/res_sf_pasted_image',
+              studioId: 'studio_remote',
+              type: 'file',
+              source: 'session_file',
+              fileId: 'sf_pasted_image',
+              lifecycle: { status: 'available', missingAt: null },
+              storage: { provider: 'session_file', localOnly: true },
+              links: {
+                self: '/api/resources/res_sf_pasted_image',
+                content: '/api/resources/res_sf_pasted_image/content',
+              },
+            },
           }],
         }), { status: 200 });
       }
@@ -486,9 +506,80 @@ describe('InputArea paste and slash menu behavior', () => {
         path: '/hana/session-files/pasted.png',
         name: 'pasted.png',
         isDirectory: false,
+        base64Data: 'AQID',
+        mimeType: 'image/png',
       }]);
     });
-    expect(useStore.getState().attachedFiles[0]).not.toHaveProperty('base64Data');
+    expect(useStore.getState().sessionRegistryFilesByPath['/session/input.jsonl']?.[0]).toMatchObject({
+      fileId: 'sf_pasted_image',
+      filePath: '/hana/session-files/pasted.png',
+      resource: expect.objectContaining({
+        resourceId: 'res_sf_pasted_image',
+        links: expect.objectContaining({
+          content: '/api/resources/res_sf_pasted_image/content',
+        }),
+      }),
+    });
+  });
+
+  it('keeps inline image bytes for pasted welcome-screen uploads until the first send', async () => {
+    seedInputState({
+      currentSessionPath: null,
+      pendingNewSession: true,
+      welcomeVisible: true,
+    });
+    mocks.hanaFetch.mockImplementation(async (path: string) => {
+      if (path === '/api/upload-blob') {
+        return new Response(JSON.stringify({
+          uploads: [{
+            dest: '/root/.hanako/uploads/input.pastedImage_mabc1234.png',
+            name: 'input.pastedImage.png',
+            isDirectory: false,
+          }],
+        }), { status: 200 });
+      }
+      return new Response('{}', { status: 200 });
+    });
+    const getFilePath = vi.fn(() => null);
+    window.platform = { getFilePath } as unknown as typeof window.platform;
+    render(React.createElement(InputArea));
+
+    const preventDefault = vi.fn();
+    const file = new File([new Uint8Array([1, 2, 3])], 'clipboard.png', { type: 'image/png' });
+    const handled = tiptapPasteHandler()?.(null, {
+      preventDefault,
+      clipboardData: {
+        items: [{
+          kind: 'file',
+          type: 'image/png',
+          getAsFile: () => file,
+        }],
+      },
+    } as unknown as ClipboardEvent);
+
+    expect(handled).toBe(true);
+    await waitFor(() => {
+      expect(mocks.hanaFetch).toHaveBeenCalledWith('/api/upload-blob', expect.objectContaining({
+        method: 'POST',
+        body: expect.any(String),
+      }));
+    });
+    const body = JSON.parse(String(mocks.hanaFetch.mock.calls.find(([path]) => path === '/api/upload-blob')?.[1]?.body));
+    expect(body).toMatchObject({
+      name: 'input.pastedImage.png',
+      mimeType: 'image/png',
+      base64Data: 'AQID',
+    });
+    expect(body).not.toHaveProperty('sessionPath');
+    await waitFor(() => {
+      expect(useStore.getState().attachedFiles).toEqual([{
+        path: '/root/.hanako/uploads/input.pastedImage_mabc1234.png',
+        name: 'input.pastedImage.png',
+        isDirectory: false,
+        base64Data: 'AQID',
+        mimeType: 'image/png',
+      }]);
+    });
   });
 
   it('compresses oversized pasted images before upload-blob', async () => {

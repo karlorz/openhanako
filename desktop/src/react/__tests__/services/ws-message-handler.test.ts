@@ -1013,6 +1013,62 @@ describe('ws-message-handler turn_end side effects', () => {
     });
   });
 
+  it('hydrates replayed optimistic user attachments when the server adds fileId metadata', () => {
+    useStore.setState({
+      currentSessionPath: '/session/a.jsonl',
+      pendingNewSession: false,
+      chatSessions: {
+        '/session/a.jsonl': {
+          items: [{
+            type: 'message',
+            data: {
+              id: 'client-user-remote-image',
+              role: 'user',
+              text: '',
+              timestamp: 1,
+              attachments: [{
+                path: '/root/.hanako/session-files/hash/pasted.png',
+                name: 'pasted.png',
+                isDir: false,
+              }],
+              sendStatus: 'pending',
+            },
+          }],
+          hasMore: false,
+          loadingMore: false,
+        },
+      },
+    } as never);
+
+    handleServerMessage({
+      type: 'session_user_message',
+      __fromReplay: true,
+      sessionPath: '/session/a.jsonl',
+      clientMessageId: 'client-user-remote-image',
+      message: {
+        text: '',
+        timestamp: 2,
+        attachments: [{
+          fileId: 'sf_remote_pasted',
+          path: '/root/.hanako/session-files/hash/pasted.png',
+          name: 'pasted.png',
+          isDir: false,
+        }],
+      },
+    });
+
+    const items = useStore.getState().chatSessions['/session/a.jsonl']?.items || [];
+    expect(items).toHaveLength(1);
+    const item = items[0];
+    expect(item?.type).toBe('message');
+    if (!item || item.type !== 'message') throw new Error('expected message item');
+    expect(item.data.attachments?.[0]).toMatchObject({
+      fileId: 'sf_remote_pasted',
+      path: '/root/.hanako/session-files/hash/pasted.png',
+    });
+    expect(item.data.sendStatus).toBeUndefined();
+  });
+
   it('coalesces rapid turn_end session refreshes into one list request', async () => {
     vi.useFakeTimers();
     const requestContextUsage = vi.fn();

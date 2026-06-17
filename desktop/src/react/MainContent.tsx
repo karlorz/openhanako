@@ -11,8 +11,10 @@ import { useState, useRef, useCallback } from 'react';
 import { useStore } from './stores';
 import { hanaFetch } from './hooks/use-hana-fetch';
 import { toSlash, baseName } from './utils/format';
-import { isAudioFileName } from './utils/file-kind';
+import { isAudioFileName, kindOfFileName } from './utils/file-kind';
 import { buildWaveformFromBase64 } from './utils/audio-waveform';
+import { isLocalOwnerConnection, resolveServerConnection } from './services/server-connection';
+import { upsertUploadedSessionFile } from './utils/uploaded-session-file';
 import type { AudioWaveform } from './stores/chat-types';
 import {
   clearAppFileDragPayload,
@@ -26,6 +28,12 @@ import { ComputerUseOverlay } from './components/ComputerUseOverlay';
 declare function t(key: string, vars?: Record<string, string | number>): string;
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- deskFiles item typing */
+
+type AttachPathOwner = 'auto' | 'client' | 'server';
+
+interface AttachFilesFromPathsOptions {
+  pathOwner?: AttachPathOwner;
+}
 
 // ── 拖拽附件 drop handler（从 bridge.ts appInput shim 迁移） ──
 
@@ -78,6 +86,54 @@ function chatAudioMimeTypeForName(name: string): string {
   return mimeMap[ext] || 'audio/wav';
 }
 
+function uploadBlobMimeTypeForName(name: string): string | null {
+  const ext = name.toLowerCase().replace(/^.*\./, '');
+  const kind = kindOfFileName(name);
+  if (kind === 'audio') return chatAudioMimeTypeForName(name);
+  if (kind === 'image') {
+    const imageMimeMap: Record<string, string> = {
+      png: 'image/png',
+      jpg: 'image/jpeg',
+      jpeg: 'image/jpeg',
+      gif: 'image/gif',
+      webp: 'image/webp',
+    };
+    return imageMimeMap[ext] || null;
+  }
+  const mimeMap: Record<string, string> = {
+    pdf: 'application/pdf',
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    xls: 'application/vnd.ms-excel',
+    md: 'text/markdown',
+    markdown: 'text/markdown',
+    txt: 'text/plain',
+    csv: 'text/csv',
+    json: 'application/json',
+    xml: 'application/xml',
+  };
+  return mimeMap[ext] || null;
+}
+
+function isLikelyClientLocalPath(srcPath: string): boolean {
+  const normalized = toSlash(srcPath);
+  return normalized.startsWith('/Users/')
+    || normalized.startsWith('/Volumes/')
+    || normalized.startsWith('/private/')
+    || normalized.startsWith('/var/folders/')
+    || /^[A-Za-z]:\//.test(normalized)
+    || normalized.startsWith('//');
+}
+
+function shouldUploadClientBlobPath(
+  srcPath: string,
+  options: AttachFilesFromPathsOptions,
+): boolean {
+  if (options.pathOwner === 'server') return false;
+  if (options.pathOwner === 'client') return true;
+  return isLikelyClientLocalPath(srcPath);
+}
+
 async function computeAudioWaveformsForPaths(srcPaths: string[]): Promise<Record<string, { waveform: AudioWaveform }>> {
   const out: Record<string, { waveform: AudioWaveform }> = {};
   if (typeof window.platform?.readFileBase64 !== 'function') return out;
@@ -96,6 +152,55 @@ async function computeAudioWaveformsForPaths(srcPaths: string[]): Promise<Record
   return out;
 }
 
+async function attachLocalBlobFileFromPath(params: {
+  srcPath: string;
+  name: string;
+  mimeType: string;
+  sessionPath: string | null;
+}): Promise<boolean> {
+  const { srcPath, name, mimeType, sessionPath } = params;
+  const base64Data = await window.platform?.readFileBase64?.(srcPath);
+  if (!base64Data) return false;
+
+  const waveform = mimeType.startsWith('audio/')
+    ? await buildWaveformFromBase64(base64Data, mimeType).catch((err) => {
+      console.warn('[upload] failed to compute audio waveform', err);
+      return undefined;
+    })
+    : undefined;
+
+  const res = await hanaFetch('/api/upload-blob', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name,
+      base64Data,
+      mimeType,
+      ...(waveform ? { waveform } : {}),
+      ...(sessionPath ? { sessionPath } : {}),
+    }),
+  });
+  const data = await res.json();
+  const upload = data?.uploads?.[0];
+  if (!upload?.dest) {
+    console.warn('[upload] local blob upload failed', upload?.error || data);
+    return false;
+  }
+
+  const keepInlineData = mimeType.startsWith('image/') || mimeType.startsWith('audio/');
+  upsertUploadedSessionFile(upload, sessionPath);
+  useStore.getState().addAttachedFile({
+    fileId: upload.fileId,
+    path: upload.dest,
+    name: upload.name || name,
+    isDirectory: false,
+    mimeType,
+    ...(keepInlineData ? { base64Data } : {}),
+    waveform: upload.waveform || waveform,
+  });
+  return true;
+}
+
 /**
  * attachFilesFromPaths — 将文件系统路径列表附加为聊天附件
  *
@@ -104,6 +209,7 @@ async function computeAudioWaveformsForPaths(srcPaths: string[]): Promise<Record
 export async function attachFilesFromPaths(
   srcPaths: string[],
   nameMap: Record<string, string> = {},
+  options: AttachFilesFromPathsOptions = {},
 ): Promise<void> {
   if (srcPaths.length === 0) return;
   if (blockChatAttachmentDropOutsideChat()) return;
@@ -143,8 +249,42 @@ export async function attachFilesFromPaths(
   }
   if (srcPaths.length === 0) return;
 
+  const sessionPath = useStore.getState().currentSessionPath || null;
+  const connection = resolveServerConnection(useStore.getState());
+  if (!isLocalOwnerConnection(connection) && typeof window.platform?.readFileBase64 === 'function') {
+    const remainingPaths: string[] = [];
+    const failed: string[] = [];
+    for (const srcPath of srcPaths) {
+      const name = nameMap[srcPath] || baseName(srcPath);
+      const mimeType = uploadBlobMimeTypeForName(name);
+      if (!mimeType || !shouldUploadClientBlobPath(srcPath, options)) {
+        remainingPaths.push(srcPath);
+        continue;
+      }
+      try {
+        const ok = await attachLocalBlobFileFromPath({
+          srcPath,
+          name,
+          mimeType,
+          sessionPath,
+        });
+        if (!ok) failed.push(name);
+      } catch (err) {
+        console.warn('[upload] local blob upload error', err);
+        failed.push(name);
+      }
+    }
+    if (failed.length > 0) {
+      useStore.getState().addToast(
+        t('error.uploadPartialFail', { files: failed.join(', ') }),
+        'error',
+      );
+    }
+    srcPaths = remainingPaths;
+  }
+  if (srcPaths.length === 0) return;
+
   try {
-    const sessionPath = useStore.getState().currentSessionPath || null;
     const metadataByPath = await computeAudioWaveformsForPaths(srcPaths);
     const res = await hanaFetch('/api/upload', {
       method: 'POST',
@@ -159,6 +299,7 @@ export async function attachFilesFromPaths(
     const failed: string[] = [];
     for (const item of data.uploads || []) {
       if (item.dest) {
+        upsertUploadedSessionFile(item, sessionPath);
         useStore.getState().addAttachedFile({
           fileId: item.fileId,
           path: item.dest,
@@ -209,7 +350,7 @@ export async function attachAppFileDragPayloadToInput(payload: AppFileDragPayloa
   const paths = payload.files
     .filter(file => file.path)
     .map(file => file.path);
-  await attachFilesFromPaths(paths);
+  await attachFilesFromPaths(paths, {}, { pathOwner: 'server' });
 }
 
 async function handleDrop(e: React.DragEvent): Promise<void> {
@@ -232,7 +373,7 @@ async function handleDrop(e: React.DragEvent): Promise<void> {
       nameMap[filePath] = file.name;
     }
   }
-  await attachFilesFromPaths(srcPaths, nameMap);
+  await attachFilesFromPaths(srcPaths, nameMap, { pathOwner: 'client' });
 }
 
 // ── DropText ──

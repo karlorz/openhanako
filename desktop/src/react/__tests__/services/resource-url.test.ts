@@ -87,6 +87,25 @@ describe('resolveFileRefUrl', () => {
     expect(platform.getFileUrl).not.toHaveBeenCalled();
   });
 
+  it('synthesizes a session-file resource URL for older remote refs that only have fileId', () => {
+    const platform = { getFileUrl: vi.fn((p: string) => `file:///mock${p}`) };
+
+    const result = resolveFileRefUrl(fileRef({
+      fileId: 'sf_uploaded_image',
+      resource: undefined,
+      version: { mtimeMs: 11, size: 22 },
+    }), {
+      connection: remoteConnection,
+      platform,
+    });
+
+    expect(result).toEqual({
+      mode: 'resource-content',
+      url: 'https://hana.example/api/resources/res_sf_uploaded_image/content?v=11-22',
+    });
+    expect(platform.getFileUrl).not.toHaveBeenCalled();
+  });
+
   it('can resolve a resource URL without a desktop platform bridge', () => {
     const result = resolveFileRefUrl(fileRef({ path: '' }), {
       connection: remoteConnection,

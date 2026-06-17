@@ -37,6 +37,8 @@ import { buildSessionFileSourceKey, sessionFilesCacheDir } from "../../lib/sessi
 
 const MAX_FILES = 9;
 const MAX_FILENAME_BYTES = 255;
+const MAX_ATTACHMENT_BLOB_BYTES = 25 * 1024 * 1024;
+const MAX_ATTACHMENT_BLOB_BASE64_CHARS = Math.ceil(MAX_ATTACHMENT_BLOB_BYTES / 3) * 4;
 const WINDOWS_RESERVED_CHARS = new Set(["<", ">", ":", "\"", "/", "\\", "|", "?", "*"]);
 const WINDOWS_RESERVED_DEVICE_NAMES = new Set([
   "con",
@@ -63,23 +65,52 @@ const WINDOWS_RESERVED_DEVICE_NAMES = new Set([
   "lpt9",
 ]);
 const SESSION_FILE_PRESENTATIONS = new Set(["attachment", "voice-input"]);
+const ATTACHMENT_MIME_TO_EXT = Object.freeze({
+  "application/pdf": ".pdf",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+  "application/vnd.ms-excel": ".xls",
+  "text/markdown": ".md",
+  "text/csv": ".csv",
+  "application/json": ".json",
+  "application/xml": ".xml",
+  "text/xml": ".xml",
+  "text/plain": ".txt",
+});
+
+function normalizeMimeType(mimeType) {
+  return typeof mimeType === "string" ? mimeType.trim().toLowerCase() : "";
+}
 
 function extFromMime(mimeType) {
-  return extensionFromChatImageMime(mimeType) || extensionFromChatAudioMime(mimeType);
+  const normalized = normalizeMimeType(mimeType);
+  return extensionFromChatImageMime(normalized)
+    || extensionFromChatAudioMime(normalized)
+    || ATTACHMENT_MIME_TO_EXT[normalized]
+    || "";
 }
 
-function isAllowedUploadBlobMime(mimeType) {
-  return isAllowedChatImageMime(mimeType) || isAllowedUploadAudioMime(mimeType);
+function isAllowedAttachmentBlobMime(mimeType) {
+  return Object.prototype.hasOwnProperty.call(ATTACHMENT_MIME_TO_EXT, normalizeMimeType(mimeType));
 }
 
-function isUploadBlobBase64WithinLimit(base64Data, mimeType) {
+function isAllowedUploadBlobMime(mimeType, presentation = "attachment") {
+  if (isAllowedChatImageMime(mimeType) || isAllowedUploadAudioMime(mimeType)) return true;
+  return presentation === "attachment" && isAllowedAttachmentBlobMime(mimeType);
+}
+
+function isUploadBlobBase64WithinLimit(base64Data, mimeType, presentation = "attachment") {
   if (isAllowedChatImageMime(mimeType)) return isChatImageBase64WithinLimit(base64Data);
   if (isAllowedUploadAudioMime(mimeType)) return isChatAudioBase64WithinLimit(base64Data);
+  if (presentation === "attachment" && isAllowedAttachmentBlobMime(mimeType)) {
+    return typeof base64Data === "string" && base64Data.length <= MAX_ATTACHMENT_BLOB_BASE64_CHARS;
+  }
   return false;
 }
 
-function uploadBlobMaxBase64Chars(mimeType) {
+function uploadBlobMaxBase64Chars(mimeType, presentation = "attachment") {
   if (isAllowedUploadAudioMime(mimeType)) return MAX_CHAT_AUDIO_BASE64_CHARS;
+  if (presentation === "attachment" && isAllowedAttachmentBlobMime(mimeType)) return MAX_ATTACHMENT_BLOB_BASE64_CHARS;
   return MAX_CHAT_IMAGE_BASE64_CHARS;
 }
 
@@ -463,14 +494,6 @@ export function createUploadRoute(engine) {
           results.push({ error: "base64Data required" });
           continue;
         }
-        if (typeof mimeType !== "string" || !isAllowedUploadBlobMime(mimeType)) {
-          results.push({ error: "unsupported mimeType" });
-          continue;
-        }
-        if (!isUploadBlobBase64WithinLimit(base64Data, mimeType)) {
-          results.push({ error: `blob too large (max ${uploadBlobMaxBase64Chars(mimeType)} bytes)` });
-          continue;
-        }
         const presentation = normalizeSessionFilePresentation(blobs[i]?.presentation ?? body?.presentation);
         if (!presentation) {
           results.push({ error: "unsupported presentation" });
@@ -480,9 +503,21 @@ export function createUploadRoute(engine) {
           results.push({ error: "voice-input requires audio mimeType" });
           continue;
         }
+        if (typeof mimeType !== "string" || !isAllowedUploadBlobMime(mimeType, presentation)) {
+          results.push({ error: "unsupported mimeType" });
+          continue;
+        }
+        if (!isUploadBlobBase64WithinLimit(base64Data, mimeType, presentation)) {
+          results.push({ error: `blob too large (max ${uploadBlobMaxBase64Chars(mimeType, presentation)} bytes)` });
+          continue;
+        }
         const buf = Buffer.from(base64Data, "base64");
         if (buf.length === 0) {
           results.push({ error: "empty blob" });
+          continue;
+        }
+        if (presentation === "attachment" && isAllowedAttachmentBlobMime(mimeType) && buf.length > MAX_ATTACHMENT_BLOB_BYTES) {
+          results.push({ error: `blob too large (max ${MAX_ATTACHMENT_BLOB_BYTES} bytes)` });
           continue;
         }
 

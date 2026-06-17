@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import fs from 'fs';
 import path from 'path';
+import vm from 'vm';
 
 /**
  * CSP 双源同步检查：
@@ -37,6 +38,47 @@ function normalizeCsp(csp: string): string {
     .filter(Boolean)
     .sort()
     .join('; ');
+}
+
+function parseCsp(csp: string): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  for (const directive of csp.split(';')) {
+    const parts = directive.trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) continue;
+    out[parts[0]] = parts.slice(1);
+  }
+  return out;
+}
+
+function renderRuntimeConnectionCsp(storageValue: unknown): string {
+  const src = fs.readFileSync(
+    path.resolve(__dirname, '..', 'desktop', 'src', 'modules', 'connection-csp.js'),
+    'utf-8',
+  );
+  let written = '';
+  const context = vm.createContext({
+    URL,
+    localStorage: {
+      getItem: (key: string) => key === 'hana-server-connections-v1'
+        ? JSON.stringify(storageValue)
+        : null,
+    },
+    window: {
+      location: {
+        host: '',
+        hostname: '',
+      },
+    },
+    document: {
+      write: (html: string) => {
+        written += html;
+      },
+    },
+  });
+  vm.runInContext(src, context);
+  const match = written.match(/content="([^"]+)"/);
+  if (!match) throw new Error(`CSP meta not written: ${written}`);
+  return match[1].replace(/&quot;/g, '"');
 }
 
 describe('CSP sync', () => {
@@ -89,5 +131,26 @@ describe('CSP sync', () => {
     expect(runtimeCsp).not.toMatch(/connect-src[^;]*\shttps:(?:\s|;|$)/);
     expect(runtimeCsp).not.toMatch(/connect-src[^;]*\sws:(?:\s|;|$)/);
     expect(runtimeCsp).not.toMatch(/connect-src[^;]*\swss:(?:\s|;|$)/);
+  });
+
+  it('runtime desktop CSP allows active remote resource origins for image and media rendering', () => {
+    const csp = parseCsp(renderRuntimeConnectionCsp({
+      activeServerConnectionId: 'lan:remote:studio',
+      serverConnections: {
+        'lan:remote:studio': {
+          connectionId: 'lan:remote:studio',
+          kind: 'lan',
+          baseUrl: 'http://100.125.173.118:14500',
+          wsUrl: 'ws://100.125.173.118:14500',
+        },
+      },
+    }));
+
+    expect(csp['connect-src']).toContain('http://100.125.173.118:14500');
+    expect(csp['connect-src']).toContain('ws://100.125.173.118:14500');
+    expect(csp['img-src']).toContain('http://100.125.173.118:14500');
+    expect(csp['media-src']).toContain('http://100.125.173.118:14500');
+    expect(csp['img-src']).not.toContain('http:');
+    expect(csp['media-src']).not.toContain('http:');
   });
 });

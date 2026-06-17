@@ -760,6 +760,89 @@ describe("submitDesktopSessionMessage", () => {
     }
   });
 
+  it("materializes temp upload display attachments into the session file cache", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-temp-upload-materialize-"));
+    try {
+      const uploadsDir = path.join(tmpDir, "uploads");
+      fs.mkdirSync(uploadsDir, { recursive: true });
+      const uploadPath = path.join(uploadsDir, "Pasted image_mabc1234.png");
+      fs.writeFileSync(uploadPath, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+      const session = makeFakeSession();
+      const sessionPath = path.join(tmpDir, "main.jsonl");
+      fs.writeFileSync(sessionPath, "{}\n");
+      const registeredPaths: string[] = [];
+      const registerSessionFile = vi.fn(({ sessionPath, filePath, label, origin, storageKind }) => {
+        registeredPaths.push(filePath);
+        return {
+          id: "sf_materialized_upload",
+          fileId: "sf_materialized_upload",
+          sessionPath,
+          filePath,
+          realPath: filePath,
+          displayName: label,
+          filename: path.basename(filePath),
+          label,
+          ext: "png",
+          mime: "image/png",
+          size: 4,
+          kind: "image",
+          origin,
+          storageKind,
+          createdAt: 1,
+        };
+      });
+      const engine = {
+        hanakoHome: tmpDir,
+        registerSessionFile,
+        ensureSessionLoaded: vi.fn(async () => session),
+        promptSession: vi.fn(async (sessionPath, text, opts) => session.prompt(text, opts)),
+        emitEvent: vi.fn(),
+        setUiContext: vi.fn(),
+      };
+
+      await submitDesktopSessionMessage(engine, {
+        sessionPath,
+        text: "can you read it",
+        images: [{ type: "image", data: "BASE64", mimeType: "image/png" }],
+        displayMessage: {
+          text: "can you read it",
+          attachments: [{
+            path: uploadPath,
+            name: "Pasted image.png",
+            isDir: false,
+            base64Data: "BASE64",
+            mimeType: "image/png",
+          }],
+        },
+      });
+
+      const registeredPath = registeredPaths[0];
+      expect(registeredPath.startsWith(path.join(tmpDir, "session-files") + path.sep)).toBe(true);
+      expect(registeredPath).not.toBe(uploadPath);
+      expect(fs.existsSync(registeredPath)).toBe(true);
+      expect(registerSessionFile).toHaveBeenCalledWith(expect.objectContaining({
+        sessionPath,
+        filePath: registeredPath,
+        label: "Pasted image.png",
+        origin: "user_attachment",
+        storageKind: "managed_cache",
+      }));
+      expect(engine.promptSession).toHaveBeenCalledWith(
+        sessionPath,
+        `${sessionFileMarker({
+          fileId: "sf_materialized_upload",
+          sessionPath,
+          label: "Pasted image.png",
+        })}\n[attached_image: ${registeredPath}]\ncan you read it`,
+        expect.objectContaining({
+          imageAttachmentPaths: [registeredPath],
+        }),
+      );
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
   it("registers bridge inbound files for desktop /rc target sessions", async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-desktop-inbound-"));
     try {
