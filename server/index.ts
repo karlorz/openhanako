@@ -364,6 +364,7 @@ const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app });
 // CORS（默认允许 localhost 开发前端和 production Electron file:// 前端；HANA_CORS_ORIGIN 可收紧到单一来源）+ 鉴权
 const corsAllowedOrigin = process.env.HANA_CORS_ORIGIN;
 app.use("*", async (c: any, next: any) => {
+  c.header("Referrer-Policy", "no-referrer");
   const origin = c.req.header("origin") || "";
   const isAllowed = isCorsOriginAllowed({
     origin,
