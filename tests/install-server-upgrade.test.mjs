@@ -763,6 +763,12 @@ describe("install-server release resolution", () => {
     expect(meta.assets[0].url).toBe("https://x.test/old-linux-arm64.tar.gz");
   });
 
+  it("resolveRelease returns the latest release including prereleases when channel is prerelease", async () => {
+    const meta = await resolveRelease({ channel: "prerelease" }, mockClient);
+    expect(meta.tag).toBe("v0.323.0-karlorz.1");
+    expect(meta.prerelease).toBe(true);
+  });
+
   it("resolveRelease refuses a prerelease without --channel prerelease", async () => {
     await expect(resolveRelease({ version: "v0.323.0-karlorz.1" }, mockClient)).rejects.toThrow(/prerelease/i);
   });
