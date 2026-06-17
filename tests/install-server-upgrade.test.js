@@ -21,6 +21,7 @@ import {
   resolvePrivilegeModel,
   resolveRelease,
   selectServerAsset,
+  runUpgrade,
   writeReinitDataDryRunPlan,
 } from "../scripts/install-server.mjs";
 
@@ -732,5 +733,46 @@ describe("install-server release resolution", () => {
       getRelease: async () => null,
     };
     await expect(resolveRelease({}, noLinux)).rejects.toThrow(/Linux/i);
+  });
+});
+
+describe("install-server runUpgrade (command resolution)", () => {
+  const runOpts = (overrides = {}) => ({
+    httpClient: mockClient,
+    currentVersion: "v0.290.0",
+    platform: "linux",
+    arch: "arm64",
+    ...overrides,
+  });
+
+  it("zero-arg resolves latest stable and builds a dry-run plan", async () => {
+    const plan = await runUpgrade([], runOpts());
+    expect(plan.tag).toBe("v0.300.0");
+    expect(plan.dryRun).toBe(true);
+    expect(plan.asset.name).toBe("hanaagent-server-v0.300.0-linux-arm64.tar.gz");
+    // resolved asset has no sha256 until the sidecar is fetched at download time
+    expect(plan.asset.sha256).toBeNull();
+  });
+
+  it("--version pin resolves that tag (with --channel prerelease)", async () => {
+    const plan = await runUpgrade(["--version", "v0.323.0-karlorz.1", "--channel", "prerelease"], runOpts());
+    expect(plan.tag).toBe("v0.323.0-karlorz.1");
+  });
+
+  it("explicit --metadata wins and skips the GitHub fetch", async () => {
+    const explicit = {
+      tag: "vX",
+      prerelease: false,
+      assets: [{ platform: "linux", arch: "arm64", name: "n", url: "u", sha256: "a".repeat(64) }],
+    };
+    const noFetch = { listReleases: async () => { throw new Error("should not fetch"); }, getRelease: async () => { throw new Error("should not fetch"); } };
+    const plan = await runUpgrade(["--metadata", "<file>"], runOpts({ httpClient: noFetch, metadata: explicit }));
+    expect(plan.tag).toBe("vX");
+    expect(plan.asset.sha256).toBe("a".repeat(64));
+  });
+
+  it("zero-arg propagates resolution failure (no stable release)", async () => {
+    const onlyPre = { listReleases: async () => [MOCK_RELEASES[0]], getRelease: async () => null };
+    await expect(runUpgrade([], runOpts({ httpClient: onlyPre }))).rejects.toThrow(/stable/i);
   });
 });
