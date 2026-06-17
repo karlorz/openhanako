@@ -64,6 +64,58 @@ export function normalizeArch(arch) {
   }
 }
 
+// Selects the host's Linux server asset from normalized release metadata.
+// Reused by buildUpgradePlan so resolution and plan-building share one path.
+export function selectServerAsset(metadata, { platform = process.platform, arch = process.arch } = {}) {
+  if (platform !== "linux") {
+    fail(`install-server supports Linux only; got ${platform}`);
+  }
+  const normalizedArch = normalizeArch(arch);
+  const asset = (metadata.assets ?? []).find((item) => {
+    return item.platform === "linux" && normalizeArch(item.arch) === normalizedArch;
+  });
+  if (!asset) {
+    fail(`No Linux ${normalizedArch} server asset found in release ${metadata.tag ?? "(no tag)"}`);
+  }
+  return asset;
+}
+
+// Matches hanaagent-server-<tag>-<os>-<arch>.tar.gz asset names published by
+// scripts/pack-server-bundle.mjs. os uses the dist-server mapping (mac/win/linux).
+const SERVER_ASSET_NAME_RE = /^hanaagent-server-(.+)-(linux|mac|win)-(arm64|x64)\.tar\.gz$/;
+
+function assetFromGithubAsset(g) {
+  const m = SERVER_ASSET_NAME_RE.exec(g.name ?? "");
+  if (!m) return null;
+  return { platform: m[2], arch: m[3], name: g.name, url: g.browser_download_url, sha256: null };
+}
+
+// Resolves release metadata for upgrade/install. httpClient is injected so this
+// is unit-testable without network; createGithubReleasesClient provides the real
+// one for the CLI. Returns { tag, prerelease, assets[] } with only Linux assets.
+// GitHub Releases does not expose asset sha256, so assets carry sha256: null —
+// the download op verifies against the <asset>.sha256 sidecar at install time.
+export async function resolveRelease({ version, channel = "stable", repo = "karlorz/openhanako" } = {}, httpClient) {
+  if (!httpClient) fail("resolveRelease requires an injected httpClient");
+  let gh;
+  if (version) {
+    gh = await httpClient.getRelease(version);
+    if (!gh) fail(`Release not found: ${version}`);
+  } else {
+    const all = await httpClient.listReleases();
+    gh = all.find((r) => !r.prerelease) ?? null;
+    if (!gh) fail("No stable release found; pass --version or --channel prerelease");
+  }
+  if (gh.prerelease && channel !== "prerelease") {
+    fail(`Release ${gh.tag_name} is a prerelease; re-run with --channel prerelease`);
+  }
+  const assets = (gh.assets ?? []).map(assetFromGithubAsset).filter((a) => a && a.platform === "linux");
+  if (assets.length === 0) {
+    fail(`Release ${gh.tag_name} has no Linux server bundle asset`);
+  }
+  return { tag: gh.tag_name, prerelease: !!gh.prerelease, repo, assets };
+}
+
 export function buildUpgradePlan({
   metadata,
   currentVersion,
