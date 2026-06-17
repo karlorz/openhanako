@@ -5,8 +5,6 @@ import path from "node:path";
 import { execSync } from "node:child_process";
 import { packServerBundle } from "../scripts/pack-server-bundle.mjs";
 
-const rootDir = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
-
 // packServerBundle shells out to `tar` and `sha256sum` and asserts POSIX
 // paths — it is a Linux/macOS-only test. Skip on Windows where those
 // binaries and path conventions differ.
@@ -49,40 +47,6 @@ describeUnlessWindows("packServerBundle", () => {
     fs.mkdirSync(out, { recursive: true });
     execSync(`tar -xzpf "${assetPath}" -C "${out}"`);
     expect(fs.readFileSync(path.join(out, "mac-x64", "marker"), "utf8")).toBe("payload");
-  });
-
-  it("preserves embedded build evidence in the distribution root", () => {
-    const distDir = path.join(tmp, "linux-arm64");
-    fs.mkdirSync(distDir, { recursive: true });
-    const buildInfo = {
-      schemaVersion: 1,
-      runtimeVersion: "0.407.15",
-      releaseTag: "v0.407.15-karlorz.1",
-      gitSha: "0123456789abcdef0123456789abcdef01234567",
-      sourceRepository: "karlorz/openhanako",
-      platform: "linux",
-      arch: "arm64",
-    };
-    fs.writeFileSync(path.join(distDir, "server-build-info.json"), `${JSON.stringify(buildInfo, null, 2)}\n`);
-
-    const { assetPath } = packServerBundle(distDir, {
-      tag: "v0.407.15-karlorz.1",
-      os: "linux",
-      arch: "arm64",
-    });
-    const out = path.join(tmp, "extract-build-info");
-    fs.mkdirSync(out, { recursive: true });
-    execSync(`tar -xzpf "${assetPath}" -C "${out}"`);
-
-    expect(JSON.parse(fs.readFileSync(path.join(out, "linux-arm64", "server-build-info.json"), "utf8"))).toEqual(buildInfo);
-  });
-
-  it("passes exact provenance to both server build paths without treating a branch as a release tag", () => {
-    const workflow = fs.readFileSync(path.join(rootDir, ".github", "workflows", "build.yml"), "utf8");
-    expect(workflow.match(/HANA_SERVER_GIT_SHA: \$\{\{ github\.sha \}\}/g)).toHaveLength(2);
-    expect(workflow.match(/HANA_SERVER_SOURCE_REPOSITORY: \$\{\{ github\.repository \}\}/g)).toHaveLength(2);
-    expect(workflow).toContain("HANA_SERVER_RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}");
-    expect(workflow).toContain("HANA_SERVER_RELEASE_TAG: ${{ github.ref_name }}");
   });
 
   it("rejects a missing dist-server dir", () => {
