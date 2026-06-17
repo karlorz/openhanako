@@ -45,7 +45,13 @@ export function packServerBundle(distServerDir, { tag, os, arch } = {}) {
   if (result.status !== 0) {
     fail(`packServerBundle: tar failed: ${result.stderr?.toString() || `exit ${result.status}`}`);
   }
-  return { assetPath, name, sha256: sha256OfFile(assetPath) };
+  const sha256 = sha256OfFile(assetPath);
+  // Write a <asset>.sha256 sidecar so install-server upgrade can verify the
+  // download without an inline sha256 (GitHub Releases exposes none). Format
+  // matches `sha256sum` output so the consume side parses the first token.
+  const sidecarPath = `${assetPath}.sha256`;
+  fs.writeFileSync(sidecarPath, `${sha256}  ${name}\n`);
+  return { assetPath, sidecarPath, name, sha256 };
 }
 
 if (process.argv[1] === __filename) {

@@ -25,6 +25,11 @@ describe("packServerBundle", () => {
     // sha256 matches an independent computation
     const independent = execSync(`sha256sum "${result.assetPath}"`).toString().split(/\s+/)[0];
     expect(result.sha256).toBe(independent);
+
+    // a <asset>.sha256 sidecar is written in sha256sum format for the consume side
+    expect(fs.existsSync(result.sidecarPath)).toBe(true);
+    const sidecar = fs.readFileSync(result.sidecarPath, "utf8").trim();
+    expect(sidecar).toBe(`${result.sha256}  ${result.name}`);
   });
 
   it("produces a tarball that extracts back to the original contents", () => {

@@ -243,12 +243,15 @@ jobs:
           OUT=$(node scripts/pack-server-bundle.mjs "$DIST" "${{ github.ref_name }}" "${{ matrix.os }}" "${{ matrix.arch }}")
           echo "$OUT"
           echo "asset_path=$(node -e 'console.log(JSON.parse(process.argv[1]).assetPath)' "$OUT")" >> "$GITHUB_OUTPUT"
+          echo "sidecar_path=$(node -e 'console.log(JSON.parse(process.argv[1]).sidecarPath)' "$OUT")" >> "$GITHUB_OUTPUT"
 
       - name: Upload server-bundle artifact
         uses: actions/upload-artifact@v4
         with:
           name: server-bundle-${{ matrix.os }}-${{ matrix.arch }}
-          path: ${{ steps.pack.outputs.asset_path }}
+          path: |
+            ${{ steps.pack.outputs.asset_path }}
+            ${{ steps.pack.outputs.sidecar_path }}
           if-no-files-found: error
 
   release:
@@ -311,7 +314,7 @@ jobs:
             done
 
           echo "=== Uploading server bundles ==="
-          find artifacts -type f -name 'hanaagent-server-*.tar.gz' -print0 |
+          find artifacts -type f \( -name 'hanaagent-server-*.tar.gz' -o -name 'hanaagent-server-*.tar.gz.sha256' \) -print0 |
             while IFS= read -r -d '' f; do
               echo "  $f"
               gh release upload "${{ github.ref_name }}" "$f" --clobber
