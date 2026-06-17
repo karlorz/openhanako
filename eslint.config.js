@@ -60,7 +60,7 @@ export default [
       'scripts/**/*.{js,mjs,ts}',
       'server/**/*.{js,ts}',
       'shared/**/*.{js,ts}',
-      'tests/**/*.{js,ts,tsx}',
+      'tests/**/*.{js,mjs,ts}',
     ],
     languageOptions: {
       globals: {
@@ -73,7 +73,7 @@ export default [
 
   // Vitest files mix Node helpers with jsdom/browser primitives.
   {
-    files: ['tests/**/*.{js,ts,tsx}'],
+    files: ['tests/**/*.{js,mjs,ts,tsx}'],
     languageOptions: {
       globals: {
         ...globals.node,
