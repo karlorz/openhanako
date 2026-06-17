@@ -88,7 +88,7 @@ Five server-bundle assets, one per target:
 - `hanaagent-server-<tag>-mac-x64.tar.gz`
 - `hanaagent-server-<tag>-win-x64.tar.gz`
 
-Each tarball is produced by `scripts/pack-server-bundle.mjs` from the matching `dist-server/<os>-<arch>/` build output. The asset's sha256 is computed at pack time and used by `install-server upgrade` to verify the download before extraction. The release verify gate fails the release if any of the five is missing.
+Each tarball is produced by `scripts/pack-server-bundle.mjs` from the matching `dist-server/<os>-<arch>/` build output. The asset's sha256 is computed at pack time and published as a same-name `.sha256` sidecar used by `install-server upgrade` to verify the download before extraction. The release verify gate fails the release if any tarball or sidecar is missing.
 
 ## Service Model
 
