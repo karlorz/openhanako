@@ -13,20 +13,24 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-latest
+          - os: macos-15
             target: dmg
             arch: arm64
-          - os: macos-latest
+            runner: macos-15
+          - os: macos-15-intel
             target: dmg
             arch: x64
+            runner: macos-15-intel
           - os: windows-latest
             target: nsis
             arch: x64
+            runner: windows-latest
           - os: ubuntu-latest
             target: AppImage
             arch: x64
+            runner: ubuntu-latest
 
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.runner }}
 
     steps:
       - uses: actions/checkout@v4
@@ -209,16 +213,16 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: read
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { plat: linux,  os: linux, arch: arm64 }
-          - { plat: linux,  os: linux, arch: x64 }
-          - { plat: darwin, os: mac,   arch: arm64 }
-          - { plat: darwin, os: mac,   arch: x64 }
-          - { plat: win32,  os: win,   arch: x64 }
+          - { plat: linux,  os: linux, arch: arm64, runner: ubuntu-24.04-arm }
+          - { plat: linux,  os: linux, arch: x64,   runner: ubuntu-latest }
+          - { plat: darwin, os: mac,   arch: arm64, runner: macos-15 }
+          - { plat: darwin, os: mac,   arch: x64,   runner: macos-15-intel }
+          - { plat: win32,  os: win,   arch: x64,   runner: windows-latest }
 
     steps:
       - uses: actions/checkout@v4
@@ -237,6 +241,7 @@ jobs:
 
       - name: Pack release asset
         id: pack
+        shell: bash
         run: |
           set -e
           DIST="dist-server/${{ matrix.os }}-${{ matrix.arch }}"
@@ -366,10 +371,15 @@ jobs:
           echo "$ASSETS" | grep -qE '^HanaAgent-.*-Linux-(x64|amd64)\.deb$' || MISSING+=("Linux deb")
 
           echo "$ASSETS" | grep -qx 'hanaagent-server-${{ github.ref_name }}-linux-arm64.tar.gz' || MISSING+=("server-linux-arm64")
+          echo "$ASSETS" | grep -qx 'hanaagent-server-${{ github.ref_name }}-linux-arm64.tar.gz.sha256' || MISSING+=("server-linux-arm64.sha256")
           echo "$ASSETS" | grep -qx 'hanaagent-server-${{ github.ref_name }}-linux-x64.tar.gz'   || MISSING+=("server-linux-x64")
+          echo "$ASSETS" | grep -qx 'hanaagent-server-${{ github.ref_name }}-linux-x64.tar.gz.sha256'   || MISSING+=("server-linux-x64.sha256")
           echo "$ASSETS" | grep -qx 'hanaagent-server-${{ github.ref_name }}-mac-arm64.tar.gz'  || MISSING+=("server-mac-arm64")
+          echo "$ASSETS" | grep -qx 'hanaagent-server-${{ github.ref_name }}-mac-arm64.tar.gz.sha256'  || MISSING+=("server-mac-arm64.sha256")
           echo "$ASSETS" | grep -qx 'hanaagent-server-${{ github.ref_name }}-mac-x64.tar.gz'    || MISSING+=("server-mac-x64")
+          echo "$ASSETS" | grep -qx 'hanaagent-server-${{ github.ref_name }}-mac-x64.tar.gz.sha256'    || MISSING+=("server-mac-x64.sha256")
           echo "$ASSETS" | grep -qx 'hanaagent-server-${{ github.ref_name }}-win-x64.tar.gz'    || MISSING+=("server-win-x64")
+          echo "$ASSETS" | grep -qx 'hanaagent-server-${{ github.ref_name }}-win-x64.tar.gz.sha256'    || MISSING+=("server-win-x64.sha256")
 
           # 清洁性检查：不应该有 blockmap 漏进来
           if echo "$ASSETS" | grep -qE '\.blockmap$'; then

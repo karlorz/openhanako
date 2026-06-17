@@ -103,8 +103,14 @@ export async function resolveRelease({ version, channel = "stable", repo = "karl
     if (!gh) fail(`Release not found: ${version}`);
   } else {
     const all = await httpClient.listReleases();
-    gh = all.find((r) => !r.prerelease) ?? null;
-    if (!gh) fail("No stable release found; pass --version or --channel prerelease");
+    gh = channel === "prerelease"
+      ? all[0] ?? null
+      : all.find((r) => !r.prerelease) ?? null;
+    if (!gh) {
+      fail(channel === "prerelease"
+        ? "No release found; pass --version"
+        : "No stable release found; pass --version or --channel prerelease");
+    }
   }
   if (gh.prerelease && channel !== "prerelease") {
     fail(`Release ${gh.tag_name} is a prerelease; re-run with --channel prerelease`);
