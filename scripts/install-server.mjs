@@ -124,13 +124,14 @@ export function buildUpgradePlan({
   uid = typeof process.getuid === "function" ? process.getuid() : 0,
   hasSudo = commandExists("sudo"),
   dryRun = true,
+  channel = "stable",
   paths = {},
 } = {}) {
   if (!metadata?.tag) {
     fail("Release metadata must include a tag");
   }
-  if (metadata.prerelease) {
-    fail("Prerelease upgrade requires an explicit prerelease channel; not enabled in this plan");
+  if (metadata.prerelease && channel !== "prerelease") {
+    fail("Prerelease upgrade requires --channel prerelease (or an exact prerelease --version)");
   }
   if (!currentVersion) {
     fail("Current installed version is required before planning an upgrade");
@@ -141,7 +142,10 @@ export function buildUpgradePlan({
   const targetReleaseDir = path.posix.join(resolvedPaths.releasesDir, `${metadata.tag}-linux-${normalizedArch}`);
   const previousReleaseDir = path.posix.join(resolvedPaths.releasesDir, currentVersion);
   const privilege = resolvePrivilegeModel({ uid, hasSudo });
-  const asset = resolveLinuxAsset(metadata, { platform, arch: normalizedArch });
+  const asset = selectServerAsset(metadata, { platform, arch: normalizedArch });
+  if (asset.sha256 != null && !/^[a-fA-F0-9]{64}$/.test(asset.sha256)) {
+    fail(`Release asset ${asset.name ?? asset.url ?? normalizedArch} has an invalid sha256`);
+  }
 
   const steps = [
     {
@@ -162,7 +166,9 @@ export function buildUpgradePlan({
     {
       id: "verify-checksum",
       mutatesService: false,
-      command: `verify sha256 ${asset.sha256}`,
+      command: asset.sha256
+        ? `verify sha256 ${asset.sha256}`
+        : `verify sha256 from ${asset.name ?? "server artifact"}.sha256 sidecar`,
     },
     {
       id: "extract-release",
@@ -965,6 +971,7 @@ export function createShellUpgradeOps({
   backupDir = path.posix.join(DEFAULT_PATHS.installRoot, "backups"),
 } = {}) {
   let downloadedArchive = null;
+  let downloadedSidecar = null;
   let backupArchive = null;
 
   async function checked(cmd, args, options = {}) {
@@ -1011,6 +1018,16 @@ export function createShellUpgradeOps({
       await checked("mkdir", ["-p", stagingDir], { plan, privileged: true });
       downloadedArchive = path.posix.join(stagingDir, safeAssetArchiveName(plan));
       await checked("curl", ["-fL", plan.asset.url, "-o", downloadedArchive], { plan, privileged: true });
+      // When the release metadata has no inline sha256 (GitHub Releases never
+      // exposes one), fetch the <asset>.sha256 sidecar published alongside it
+      // so verifyChecksum has an expected value to compare against.
+      if (plan.asset.sha256 == null) {
+        downloadedSidecar = `${downloadedArchive}.sha256`;
+        await checked("curl", ["-fL", `${plan.asset.url}.sha256`, "-o", downloadedSidecar], {
+          plan,
+          privileged: true,
+        });
+      }
       return { downloadedArchive };
     },
     async verifyChecksum(plan) {
@@ -1020,9 +1037,18 @@ export function createShellUpgradeOps({
         privileged: true,
       });
       const actual = String(result.stdout || "").trim().split(/\s+/)[0]?.toLowerCase();
-      const expected = String(plan.asset.sha256 || "").toLowerCase();
-      if (actual !== expected) {
-        fail(`sha256 mismatch for ${downloadedArchive}: expected ${expected}, got ${actual || "unknown"}`);
+      let expected;
+      if (plan.asset.sha256) {
+        expected = String(plan.asset.sha256).toLowerCase();
+      } else {
+        if (!downloadedSidecar || !fs.existsSync(downloadedSidecar)) {
+          fail(`sha256 sidecar missing for ${downloadedArchive}; expected ${plan.asset.name ?? ""}.sha256 alongside the asset`);
+        }
+        // sidecar is "<sha256>  <name>" (sha256sum format) — first token is the hash
+        expected = String(fs.readFileSync(downloadedSidecar, "utf8")).trim().split(/\s+/)[0]?.toLowerCase();
+      }
+      if (!expected || actual !== expected) {
+        fail(`sha256 mismatch for ${downloadedArchive}: expected ${expected || "unknown"}, got ${actual || "unknown"}`);
       }
       return true;
     },
@@ -1156,13 +1182,90 @@ function inspectServiceState(serviceName = DEFAULT_PATHS.serviceName) {
   };
 }
 
+const DEFAULT_GITHUB_REPO = "karlorz/openhanako";
+
+// Real GitHub releases API client used by the CLI. Returns the same shape
+// resolveRelease's injected mock does: { listReleases(), getRelease(tag) }.
+// Auth is optional (GITHUB_TOKEN/GH_TOKEN) — unauthenticated calls work but
+// are rate-limited harder.
+export function createGithubReleasesClient(env = process.env, repo = DEFAULT_GITHUB_REPO) {
+  const auth = env.GITHUB_TOKEN || env.GH_TOKEN;
+  const headers = {
+    Accept: "application/vnd.github+json",
+    "User-Agent": "install-server",
+    ...(auth ? { Authorization: `Bearer ${auth}` } : {}),
+  };
+  async function api(p) {
+    const res = await fetch(`https://api.github.com/repos/${repo}/${p}`, { headers });
+    if (!res.ok) fail(`GitHub API ${p} failed: ${res.status}`);
+    return res.json();
+  }
+  return {
+    async listReleases() {
+      return api("releases?per_page=30");
+    },
+    async getRelease(tag) {
+      const res = await fetch(`https://api.github.com/repos/${repo}/releases/tags/${tag}`, { headers });
+      return res.status === 404 ? null : res.json();
+    },
+  };
+}
+
+// Best-effort current installed version: read the current symlink basename.
+// Fails closed (requiring --current-version) if the link can't be resolved.
+function readCurrentVersion() {
+  try {
+    const target = fs.readlinkSync(DEFAULT_PATHS.currentLink);
+    return path.basename(target);
+  } catch {
+    fail(`upgrade requires --current-version (could not read ${DEFAULT_PATHS.currentLink}); run 'install-server status' first`);
+  }
+}
+
+// Testable resolution+plan wrapper for the upgrade command. Parses argv with
+// the shared parseArgs, resolves metadata (explicit --metadata file, injected
+// metadata object, or GitHub via httpClient), then builds the upgrade plan.
+// No host mutation — dry-run only. main() adds the --execute execution path.
+export async function runUpgrade(argv, {
+  httpClient,
+  currentVersion,
+  metadata: explicitMetadata = null,
+  platform = process.platform,
+  arch = process.arch,
+  uid = typeof process.getuid === "function" ? process.getuid() : 0,
+  hasSudo = commandExists("sudo"),
+  paths = {},
+} = {}) {
+  const options = parseArgs(["upgrade", ...argv]);
+  let metadata = explicitMetadata;
+  if (!metadata && !options.metadataPath) {
+    metadata = await resolveRelease({ version: options.version, channel: options.channel ?? "stable" }, httpClient);
+  }
+  const plan = buildUpgradePlan({
+    metadata,
+    currentVersion,
+    platform,
+    arch,
+    uid,
+    hasSudo,
+    dryRun: options.dryRun,
+    channel: options.channel ?? "stable",
+    paths,
+  });
+  return plan;
+}
+
 function usage() {
   return `install-server - HanaAgent Linux server installer
 
 Usage:
+  node scripts/install-server.mjs upgrade [--current-version <version>] [--dry-run]
+    resolve latest stable release from GitHub (no --metadata needed)
+  node scripts/install-server.mjs upgrade --version <tag> [--channel prerelease] [--current-version <version>] [--dry-run]
+    pin an exact release tag (use --channel prerelease for pre-releases)
   node scripts/install-server.mjs upgrade --metadata <release.json> --current-version <version> [--dry-run]
+    use explicit local metadata instead of GitHub
   node scripts/install-server.mjs install --metadata <release.json> --platform linux --arch arm64 --dry-run
-  node scripts/install-server.mjs upgrade --metadata <release.json> --current-version <version> --platform linux --arch arm64 --dry-run
   node scripts/install-server.mjs status
   node scripts/install-server.mjs backup --output <path> [--data-root <path>]
   node scripts/install-server.mjs reinit-data [--dry-run] [--data-root <path>] [--plan-dir <path>]
@@ -1170,7 +1273,8 @@ Usage:
   node scripts/install-server.mjs reinit-data --restore <backup-path> [--data-root <path>]
 
 Notes:
-  upgrade dry-run is safe and does not mutate host state.
+  upgrade resolves latest stable by default; prereleases require --channel prerelease or an exact prerelease --version.
+  upgrade --execute is host-mutating (stops service, swaps /opt/hanaagent/current); --dry-run is safe.
   reinit-data --confirm requires a non-expired dry-run plan and creates a verified backup before moving data aside.
   reinit-data --restore verifies the backup archive before replacing the current data root.`;
 }
@@ -1189,6 +1293,12 @@ function parseArgs(argv) {
         break;
       case "--current-version":
         options.currentVersion = rest[++i];
+        break;
+      case "--version":
+        options.version = rest[++i];
+        break;
+      case "--channel":
+        options.channel = rest[++i];
         break;
       case "--platform":
         options.platform = rest[++i];
@@ -1235,25 +1345,39 @@ function main(argv = process.argv.slice(2)) {
     return;
   }
   if (options.command === "upgrade") {
-    if (!options.metadataPath) fail("upgrade requires --metadata <release.json>");
-    const plan = buildUpgradePlan({
-      metadata: readJson(options.metadataPath),
-      currentVersion: options.currentVersion,
-      platform: options.platform,
-      arch: options.arch,
-      dryRun: options.dryRun,
-    });
-    if (options.dryRun) {
-      console.log(JSON.stringify(plan, null, 2));
-    } else {
-      executeUpgradePlan(plan, createShellUpgradeOps()).then((result) => {
+    const planPromise = (async () => {
+      let metadata;
+      if (options.metadataPath) {
+        metadata = readJson(options.metadataPath);
+      } else {
+        metadata = await resolveRelease(
+          { version: options.version, channel: options.channel ?? "stable" },
+          createGithubReleasesClient(),
+        );
+      }
+      const currentVersion = options.currentVersion || readCurrentVersion();
+      return buildUpgradePlan({
+        metadata,
+        currentVersion,
+        platform: options.platform,
+        arch: options.arch,
+        dryRun: options.dryRun,
+        channel: options.channel ?? "stable",
+      });
+    })();
+    planPromise.then((plan) => {
+      if (options.dryRun) {
+        console.log(JSON.stringify(plan, null, 2));
+        return;
+      }
+      return executeUpgradePlan(plan, createShellUpgradeOps()).then((result) => {
         console.log(JSON.stringify(result, null, 2));
         if (!result.ok) process.exitCode = 1;
-      }).catch((error) => {
-        console.error(error instanceof Error ? error.message : String(error));
-        process.exitCode = 1;
       });
-    }
+    }).catch((error) => {
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exitCode = 1;
+    });
     return;
   }
   if (options.command === "install") {
