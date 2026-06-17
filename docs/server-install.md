@@ -78,7 +78,17 @@ Rules:
 - The downloaded artifact is verified before extraction.
 - A checksum mismatch aborts before touching the active service.
 
-The implementation work item must define the exact release asset shape. Today the build system produces server bundles under `dist-server/linux-${arch}/`; the installer design assumes later CI publishes those bundles as release assets.
+Release asset shape (published by `.github/workflows/build.yml` on every `v*` tag):
+
+Five server-bundle assets, one per target:
+
+- `hanaagent-server-<tag>-linux-arm64.tar.gz`
+- `hanaagent-server-<tag>-linux-x64.tar.gz`
+- `hanaagent-server-<tag>-mac-arm64.tar.gz`
+- `hanaagent-server-<tag>-mac-x64.tar.gz`
+- `hanaagent-server-<tag>-win-x64.tar.gz`
+
+Each tarball is produced by `scripts/pack-server-bundle.mjs` from the matching `dist-server/<os>-<arch>/` build output. The asset's sha256 is computed at pack time and used by `install-server upgrade` to verify the download before extraction. The release verify gate fails the release if any of the five is missing.
 
 ## Service Model
 
