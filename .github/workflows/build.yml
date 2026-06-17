@@ -205,8 +205,53 @@ jobs:
             dist/latest*.yml
           if-no-files-found: error
 
+  server-bundles:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { plat: linux,  os: linux, arch: arm64 }
+          - { plat: linux,  os: linux, arch: x64 }
+          - { plat: darwin, os: mac,   arch: arm64 }
+          - { plat: darwin, os: mac,   arch: x64 }
+          - { plat: win32,  os: win,   arch: x64 }
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24.15.0"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build server bundle (${{ matrix.plat }} ${{ matrix.arch }})
+        run: node scripts/build-server.mjs ${{ matrix.plat }} ${{ matrix.arch }}
+
+      - name: Pack release asset
+        id: pack
+        run: |
+          set -e
+          DIST="dist-server/${{ matrix.os }}-${{ matrix.arch }}"
+          OUT=$(node scripts/pack-server-bundle.mjs "$DIST" "${{ github.ref_name }}" "${{ matrix.os }}" "${{ matrix.arch }}")
+          echo "$OUT"
+          echo "asset_path=$(node -e 'console.log(JSON.parse(process.argv[1]).assetPath)' "$OUT")" >> "$GITHUB_OUTPUT"
+
+      - name: Upload server-bundle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-bundle-${{ matrix.os }}-${{ matrix.arch }}
+          path: ${{ steps.pack.outputs.asset_path }}
+          if-no-files-found: error
+
   release:
-    needs: build
+    needs: [build, server-bundles]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
@@ -264,6 +309,13 @@ jobs:
               gh release upload "${{ github.ref_name }}" "$f" --clobber
             done
 
+          echo "=== Uploading server bundles ==="
+          find artifacts -type f -name 'hanaagent-server-*.tar.gz' -print0 |
+            while IFS= read -r -d '' f; do
+              echo "  $f"
+              gh release upload "${{ github.ref_name }}" "$f" --clobber
+            done
+
           echo "=== Uploading latest.yml (Windows) ==="
           WIN_YML=$(find artifacts -name 'latest.yml' | head -1)
           if [ -n "$WIN_YML" ]; then
@@ -308,6 +360,12 @@ jobs:
           echo "$ASSETS" | grep -qE '^HanaAgent-.*-Windows-x64\.exe$' || MISSING+=("Windows-x64.exe")
           echo "$ASSETS" | grep -qE '^HanaAgent-.*-Linux-(x64|x86_64)\.AppImage$' || MISSING+=("Linux AppImage")
           echo "$ASSETS" | grep -qE '^HanaAgent-.*-Linux-(x64|amd64)\.deb$' || MISSING+=("Linux deb")
+
+          echo "$ASSETS" | grep -qx 'hanaagent-server-${{ github.ref_name }}-linux-arm64.tar.gz' || MISSING+=("server-linux-arm64")
+          echo "$ASSETS" | grep -qx 'hanaagent-server-${{ github.ref_name }}-linux-x64.tar.gz'   || MISSING+=("server-linux-x64")
+          echo "$ASSETS" | grep -qx 'hanaagent-server-${{ github.ref_name }}-mac-arm64.tar.gz'  || MISSING+=("server-mac-arm64")
+          echo "$ASSETS" | grep -qx 'hanaagent-server-${{ github.ref_name }}-mac-x64.tar.gz'    || MISSING+=("server-mac-x64")
+          echo "$ASSETS" | grep -qx 'hanaagent-server-${{ github.ref_name }}-win-x64.tar.gz'    || MISSING+=("server-win-x64")
 
           # 清洁性检查：不应该有 blockmap 漏进来
           if echo "$ASSETS" | grep -qE '\.blockmap$'; then
