@@ -343,6 +343,7 @@ jobs:
           if-no-files-found: error
 
   server-bundles:
+    if: startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: read
     runs-on: ubuntu-latest
