@@ -1,0 +1,11 @@
+# Source and test files are LF-only. Without this, Windows checkouts with
+# core.autocrlf=true convert LF->CRLF and break ESM parsing under vitest/esbuild.
+*.mjs text eol=lf
+*.js text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.cjs text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.md text eol=lf
