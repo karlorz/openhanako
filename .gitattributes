@@ -4,6 +4,18 @@
 # 自动识别二进制文件，eol=lf 只作用于文本文件。
 * text=auto eol=lf
 
+# Source and test files are LF-only. Keep these explicit entries so Windows
+# checkouts and ESM test files retain the intended line-ending contract.
+*.mjs text eol=lf
+*.js text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.cjs text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.md text eol=lf
+
 # 显式标记常见二进制，避免启发式误判
 *.png binary
 *.jpg binary
