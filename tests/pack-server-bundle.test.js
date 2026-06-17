@@ -49,4 +49,11 @@ describe("packServerBundle", () => {
     expect(() => packServerBundle(distDir, { tag: "v1", os: "solaris", arch: "arm64" })).toThrow();
     expect(() => packServerBundle(distDir, { tag: "v1", os: "linux", arch: "riscv" })).toThrow();
   });
+
+  it("rejects a tag with characters unsafe for a release asset filename", () => {
+    const distDir = path.join(tmp, "linux-arm64");
+    fs.mkdirSync(distDir, { recursive: true });
+    expect(() => packServerBundle(distDir, { tag: "v1/evil", os: "linux", arch: "arm64" })).toThrow();
+    expect(() => packServerBundle(distDir, { tag: "v1 space", os: "linux", arch: "arm64" })).toThrow();
+  });
 });
