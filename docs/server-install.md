@@ -121,14 +121,28 @@ Expected service defaults:
 
 `install-server upgrade` never deletes the current release before the new one is verified.
 
-The initial implementation lives at `scripts/install-server.mjs`. It supports a safe dry-run planner and an explicit `--execute` path:
+Resolution — `--metadata` is optional. When omitted, `upgrade` resolves the
+target from the GitHub releases API:
 
 ```sh
-node scripts/install-server.mjs upgrade --metadata release.json --current-version v0.323.0 --dry-run
+# latest stable (auto-resolved from karlorz/openhanako)
+node scripts/install-server.mjs upgrade --current-version v0.323.0 --dry-run
+# pinned version (prereleases require --channel prerelease)
+node scripts/install-server.mjs upgrade --version v0.323.0-karlorz.1 --channel prerelease --current-version v0.323.0 --dry-run
+# apply
+node scripts/install-server.mjs upgrade --version v0.323.0-karlorz.1 --channel prerelease --current-version v0.323.0 --execute
+# explicit metadata still accepted (skips the GitHub fetch)
 node scripts/install-server.mjs upgrade --metadata release.json --current-version v0.323.0 --execute
 ```
 
-The release metadata file has this shape:
+`--current-version` is required unless `/opt/hanaagent/current` resolves a
+release name (then it is inferred). Resolution refuses prereleases unless
+`--channel prerelease` or an exact prerelease `--version` is given. GitHub
+Releases does not expose asset sha256, so the download step fetches the
+`<asset>.sha256` sidecar published alongside each server bundle and verifies
+the archive against it before extraction.
+
+For local/explicit metadata, the release metadata file has this shape:
 
 ```json
 {
