@@ -2,16 +2,20 @@ import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
 
 import {
   buildUpgradePlan,
   buildInstallPlan,
   buildReinitDataDryRunPlan,
+  buildReinitDataConfirmPlan,
   buildStatusPlan,
+  createShellReinitDataOps,
   createShellUpgradeOps,
   createSystemdUnit,
+  executeReinitDataPlan,
+  executeReinitDataRestore,
   executeUpgradePlan,
+  loadReinitDataPlan,
   resolveHanaDataRoot,
   resolveLinuxAsset,
   resolvePrivilegeModel,
@@ -410,6 +414,8 @@ describe("install-server upgrade planner", () => {
     expect(saved.planFile).toBe(path.join(planDir, `${saved.planId}.json`));
     expect(saved.backup.destination).toContain(saved.planId);
     expect(saved.backup.restoreCommand).toContain("reinit-data --restore");
+    expect(saved.confirmation.status).toBe("requires-confirm");
+    expect(saved.confirmation.reason).not.toMatch(/not implemented/i);
     expect(saved.exportCategories.map((item) => item.id)).toEqual([
       "providers_llm",
       "connected_remote_hana",
@@ -425,14 +431,205 @@ describe("install-server upgrade planner", () => {
     expect(JSON.stringify(saved)).not.toMatch(/rm -rf|truncate|delete data|wipe/i);
   });
 
-  it("keeps reinit-data confirm and restore fail-closed until backup/restore are implemented", () => {
-    const script = path.join(process.cwd(), "scripts", "install-server.mjs");
-    const confirm = spawnSync(process.execPath, [script, "reinit-data", "--confirm", "plan-1"], { encoding: "utf8" });
-    const restore = spawnSync(process.execPath, [script, "reinit-data", "--restore", "/tmp/backup.tar.gz"], { encoding: "utf8" });
+  it("loads a reinit-data plan by id and rejects missing plans", () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-reinit-load-"));
+    const dataRoot = path.join(tmpDir, "hana-home");
+    const planDir = path.join(tmpDir, "plans");
+    const dryRun = writeReinitDataDryRunPlan(buildReinitDataDryRunPlan({
+      dataRoot,
+      planDir,
+      now: new Date("2026-06-16T15:00:00.000Z"),
+    }));
 
-    expect(confirm.status).not.toBe(0);
-    expect(`${confirm.stdout}\n${confirm.stderr}`).toMatch(/not implemented|dry-run/i);
-    expect(restore.status).not.toBe(0);
-    expect(`${restore.stdout}\n${restore.stderr}`).toMatch(/not implemented|dry-run/i);
+    expect(loadReinitDataPlan(dryRun.planId, { planDir })).toMatchObject({
+      kind: "install-server-reinit-data-dry-run-plan",
+      planId: dryRun.planId,
+      dataRoot,
+    });
+    expect(() => loadReinitDataPlan("missing-plan", { planDir })).toThrow(/not found|missing/i);
+  });
+
+  it("refuses expired or data-root-mismatched reinit-data confirmation plans", () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-reinit-confirm-"));
+    const dryRun = buildReinitDataDryRunPlan({
+      dataRoot: path.join(tmpDir, "hana-home"),
+      planDir: path.join(tmpDir, "plans"),
+      now: new Date("2026-06-16T15:00:00.000Z"),
+    });
+
+    expect(() => buildReinitDataConfirmPlan({
+      plan: dryRun,
+      now: new Date("2026-06-16T16:00:01.000Z"),
+      dataRoot: dryRun.dataRoot,
+      uid: 0,
+      hasSudo: false,
+    })).toThrow(/expired/i);
+    expect(() => buildReinitDataConfirmPlan({
+      plan: dryRun,
+      now: new Date("2026-06-16T15:30:00.000Z"),
+      dataRoot: path.join(tmpDir, "other-hana-home"),
+      uid: 0,
+      hasSudo: false,
+    })).toThrow(/data root/i);
+  });
+
+  it("confirms reinit-data only after backup verification and writes an audit", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-reinit-execute-"));
+    const dataRoot = path.join(tmpDir, "hana-home");
+    const planDir = path.join(tmpDir, "plans");
+    fs.mkdirSync(dataRoot, { recursive: true });
+    const dryRun = buildReinitDataDryRunPlan({
+      dataRoot,
+      planDir,
+      now: new Date("2026-06-16T15:00:00.000Z"),
+      serviceState: { active: "active" },
+      paths: { installRoot: path.join(tmpDir, "install") },
+    });
+    const confirmPlan = buildReinitDataConfirmPlan({
+      plan: dryRun,
+      now: new Date("2026-06-16T15:30:00.000Z"),
+      dataRoot,
+      uid: 0,
+      hasSudo: false,
+    });
+    const calls = [];
+    const result = await executeReinitDataPlan(confirmPlan, {
+      preflight: async () => calls.push("preflight"),
+      stopService: async () => calls.push("stop"),
+      createBackup: async () => calls.push("backup"),
+      verifyBackup: async () => calls.push("verify-backup"),
+      moveDataRootAside: async () => calls.push("move-aside"),
+      startService: async () => calls.push("start"),
+      healthCheck: async () => calls.push("health"),
+      writeAudit: async () => calls.push("audit"),
+    });
+
+    expect(result).toMatchObject({ ok: true, resetStarted: true });
+    expect(calls).toEqual([
+      "preflight",
+      "stop",
+      "backup",
+      "verify-backup",
+      "move-aside",
+      "start",
+      "health",
+      "audit",
+    ]);
+  });
+
+  it("does not reset data when reinit-data backup fails", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-reinit-backup-fail-"));
+    const dataRoot = path.join(tmpDir, "hana-home");
+    const dryRun = buildReinitDataDryRunPlan({
+      dataRoot,
+      planDir: path.join(tmpDir, "plans"),
+      now: new Date("2026-06-16T15:00:00.000Z"),
+      paths: { installRoot: path.join(tmpDir, "install") },
+    });
+    const confirmPlan = buildReinitDataConfirmPlan({
+      plan: dryRun,
+      now: new Date("2026-06-16T15:30:00.000Z"),
+      dataRoot,
+      uid: 0,
+      hasSudo: false,
+    });
+    const calls = [];
+    const result = await executeReinitDataPlan(confirmPlan, {
+      preflight: async () => calls.push("preflight"),
+      stopService: async () => calls.push("stop"),
+      createBackup: async () => {
+        calls.push("backup");
+        throw new Error("backup failed");
+      },
+      verifyBackup: async () => calls.push("verify-backup"),
+      moveDataRootAside: async () => calls.push("move-aside"),
+      startService: async () => calls.push("start"),
+      healthCheck: async () => calls.push("health"),
+      writeAudit: async () => calls.push("audit"),
+    });
+
+    expect(result).toMatchObject({ ok: false, resetStarted: false, serviceRestarted: true });
+    expect(calls).toEqual(["preflight", "stop", "backup", "start"]);
+  });
+
+  it("restores only after verifying the backup archive", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-reinit-restore-"));
+    const dataRoot = path.join(tmpDir, "hana-home");
+    const backupPath = path.join(tmpDir, "backups", "hanaagent-backup.tar.gz");
+    const calls = [];
+    const result = await executeReinitDataRestore({
+      backupPath,
+      dataRoot,
+      serviceName: "hanaagent",
+      auditPath: `${backupPath}.restore-audit.json`,
+    }, {
+      verifyBackup: async () => calls.push("verify-backup"),
+      stopService: async () => calls.push("stop"),
+      moveDataRootAside: async () => calls.push("move-aside"),
+      restoreBackup: async () => calls.push("restore"),
+      startService: async () => calls.push("start"),
+      healthCheck: async () => calls.push("health"),
+      writeAudit: async () => calls.push("audit"),
+    });
+
+    expect(result).toMatchObject({ ok: true, restoreStarted: true });
+    expect(calls).toEqual([
+      "verify-backup",
+      "stop",
+      "move-aside",
+      "restore",
+      "start",
+      "health",
+      "audit",
+    ]);
+  });
+
+  it("keeps executable reinit-data shell operations inside an explicit command allowlist", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-reinit-shell-"));
+    const dataRoot = path.join(tmpDir, "hana-home");
+    const backupPath = path.join(tmpDir, "backups", "hanaagent-backup.tar.gz");
+    fs.mkdirSync(dataRoot, { recursive: true });
+    const dryRun = buildReinitDataDryRunPlan({
+      dataRoot,
+      planDir: path.join(tmpDir, "plans"),
+      now: new Date("2026-06-16T15:00:00.000Z"),
+      paths: { installRoot: path.join(tmpDir, "install") },
+    });
+    const confirmPlan = {
+      ...buildReinitDataConfirmPlan({
+        plan: dryRun,
+        now: new Date("2026-06-16T15:30:00.000Z"),
+        dataRoot,
+        uid: 0,
+        hasSudo: false,
+      }),
+      backup: {
+        ...dryRun.backup,
+        destination: backupPath,
+        manifest: `${backupPath}.manifest.json`,
+      },
+    };
+    const calls = [];
+    const ops = createShellReinitDataOps({
+      run: async (cmd, args) => {
+        calls.push([cmd, ...args].join(" "));
+        if (cmd === "sha256sum") return { status: 0, stdout: `${"b".repeat(64)}  ${args[0]}\n`, stderr: "" };
+        return { status: 0, stdout: "", stderr: "" };
+      },
+      now: () => "2026-06-16T15-30-00Z",
+    });
+
+    await ops.preflight(confirmPlan);
+    await ops.stopService(confirmPlan);
+    await ops.createBackup(confirmPlan);
+    await ops.verifyBackup(confirmPlan);
+    await ops.moveDataRootAside(confirmPlan);
+    await ops.startService(confirmPlan);
+    await ops.healthCheck(confirmPlan);
+
+    expect(new Set(calls.map((call) => call.split(/\s+/)[0]))).toEqual(
+      new Set(["test", "systemctl", "mkdir", "tar", "sha256sum", "mv"]),
+    );
+    expect(calls.join("\n")).not.toMatch(/rm -rf|delete data|truncate|wipe|sh -c/i);
   });
 });
