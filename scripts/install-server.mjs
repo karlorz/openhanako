@@ -383,8 +383,8 @@ export function buildReinitDataDryRunPlan({
     ],
     confirmation: {
       confirmCommand: `node scripts/install-server.mjs reinit-data --confirm ${planId}`,
-      status: "not-implemented",
-      reason: "Dry-run planning is implemented first; confirm requires backup, restore, import, and audit gates before destructive behavior is allowed.",
+      status: "requires-confirm",
+      reason: "Run this command only after reviewing the plan; confirmation creates and verifies a backup before moving the data root aside.",
     },
     audit: {
       reportPath: path.join(resolvedPaths.installRoot, "backups", `${planId}.audit.json`),
@@ -400,6 +400,429 @@ export function writeReinitDataDryRunPlan(plan) {
   fs.mkdirSync(path.dirname(plan.planFile), { recursive: true });
   fs.writeFileSync(plan.planFile, `${JSON.stringify(plan, null, 2)}\n`);
   return plan;
+}
+
+export function loadReinitDataPlan(planIdOrFile, { planDir = "/var/lib/hanaagent/reinit-plans" } = {}) {
+  const planFile = resolveReinitPlanFile(planIdOrFile, { planDir });
+  if (!fs.existsSync(planFile)) {
+    fail(`reinit-data plan not found: ${planFile}`);
+  }
+  const plan = readJson(planFile);
+  if (plan?.kind !== "install-server-reinit-data-dry-run-plan") {
+    fail(`reinit-data plan has unsupported kind: ${plan?.kind ?? "missing"}`);
+  }
+  return plan;
+}
+
+export function buildReinitDataConfirmPlan({
+  plan,
+  now = new Date(),
+  dataRoot = resolveHanaDataRoot(),
+  paths = {},
+  uid = typeof process.getuid === "function" ? process.getuid() : 0,
+  hasSudo = commandExists("sudo"),
+} = {}) {
+  if (plan?.kind !== "install-server-reinit-data-dry-run-plan") {
+    fail("reinit-data --confirm requires a dry-run plan");
+  }
+  const expiresAt = new Date(plan.expiresAt);
+  if (Number.isNaN(expiresAt.getTime())) {
+    fail(`reinit-data plan ${plan.planId ?? "(missing id)"} has invalid expiresAt`);
+  }
+  if (expiresAt.getTime() <= now.getTime()) {
+    fail(`reinit-data plan ${plan.planId} expired at ${plan.expiresAt}; run reinit-data --dry-run again`);
+  }
+  if (path.resolve(dataRoot) !== path.resolve(plan.dataRoot)) {
+    fail(`reinit-data data root mismatch: plan=${plan.dataRoot} current=${dataRoot}`);
+  }
+
+  const resolvedPaths = { ...DEFAULT_PATHS, ...(plan.paths ?? {}), ...paths };
+  const backupDestination = plan.backup?.destination
+    ?? path.join(resolvedPaths.installRoot, "backups", `${plan.planId}.tar.gz`);
+  const confirmedAt = now.toISOString();
+  const auditPath = plan.audit?.reportPath
+    ?? path.join(resolvedPaths.installRoot, "backups", `${plan.planId}.audit.json`);
+  const asidePath = `${dataRoot}.aside-${formatPlanTimestamp(now)}`;
+
+  return {
+    ...plan,
+    kind: "install-server-reinit-data-confirm-plan",
+    dryRun: false,
+    mutatesData: true,
+    confirmedAt,
+    sourcePlanFile: plan.planFile,
+    platform: "linux",
+    dataRoot,
+    paths: resolvedPaths,
+    privilege: resolvePrivilegeModel({ uid, hasSudo }),
+    backup: {
+      ...(plan.backup ?? {}),
+      destination: backupDestination,
+      manifest: plan.backup?.manifest ?? `${backupDestination}.manifest.json`,
+      restoreCommand: `node scripts/install-server.mjs reinit-data --restore ${backupDestination}`,
+    },
+    asidePath,
+    audit: {
+      ...(plan.audit ?? {}),
+      reportPath: auditPath,
+      redactSecrets: true,
+    },
+  };
+}
+
+export async function executeReinitDataPlan(plan, ops = {}) {
+  const requiredOps = [
+    "preflight",
+    "stopService",
+    "createBackup",
+    "verifyBackup",
+    "moveDataRootAside",
+    "startService",
+    "healthCheck",
+    "writeAudit",
+  ];
+  for (const op of requiredOps) {
+    if (typeof ops[op] !== "function") {
+      fail(`executeReinitDataPlan requires ops.${op}`);
+    }
+  }
+
+  let resetStarted = false;
+  let serviceStopped = false;
+  let serviceRestarted = false;
+  let startAttempted = false;
+  let backupResult = null;
+  let asideResult = null;
+  try {
+    await ops.preflight(plan);
+    await ops.stopService(plan);
+    serviceStopped = true;
+    backupResult = await ops.createBackup(plan);
+    await ops.verifyBackup(plan, backupResult);
+    resetStarted = true;
+    asideResult = await ops.moveDataRootAside(plan);
+    startAttempted = true;
+    await ops.startService(plan);
+    serviceRestarted = true;
+    await ops.healthCheck(plan);
+    const auditResult = await ops.writeAudit({
+      action: "reinit-data-confirm",
+      ok: true,
+      plan,
+      backup: backupResult,
+      asidePath: asideResult?.asidePath ?? plan.asidePath,
+    });
+    return {
+      ok: true,
+      resetStarted,
+      serviceRestarted,
+      backupPath: backupResult?.backupPath ?? plan.backup?.destination,
+      manifestPath: backupResult?.manifestPath ?? plan.backup?.manifest,
+      asidePath: asideResult?.asidePath ?? plan.asidePath,
+      auditPath: auditResult?.auditPath ?? plan.audit?.reportPath,
+      restoreCommand: plan.backup?.restoreCommand,
+    };
+  } catch (error) {
+    let restartError = null;
+    if (serviceStopped && !serviceRestarted && !startAttempted) {
+      startAttempted = true;
+      try {
+        await ops.startService(plan);
+        serviceRestarted = true;
+      } catch (serviceError) {
+        restartError = serviceError instanceof Error ? serviceError.message : String(serviceError);
+      }
+    }
+    return {
+      ok: false,
+      resetStarted,
+      serviceRestarted,
+      backupPath: backupResult?.backupPath ?? plan.backup?.destination,
+      manifestPath: backupResult?.manifestPath ?? plan.backup?.manifest,
+      restoreCommand: plan.backup?.restoreCommand,
+      error: error instanceof Error ? error.message : String(error),
+      ...(restartError ? { restartError } : {}),
+    };
+  }
+}
+
+export async function executeReinitDataRestore(options, ops = {}) {
+  const requiredOps = [
+    "verifyBackup",
+    "stopService",
+    "moveDataRootAside",
+    "restoreBackup",
+    "startService",
+    "healthCheck",
+    "writeAudit",
+  ];
+  for (const op of requiredOps) {
+    if (typeof ops[op] !== "function") {
+      fail(`executeReinitDataRestore requires ops.${op}`);
+    }
+  }
+  if (!options?.backupPath) {
+    fail("reinit-data --restore requires backupPath");
+  }
+
+  const restorePlan = {
+    kind: "install-server-reinit-data-restore-plan",
+    platform: "linux",
+    backupPath: options.backupPath,
+    dataRoot: options.dataRoot ?? resolveHanaDataRoot(),
+    service: { name: options.serviceName ?? DEFAULT_PATHS.serviceName },
+    paths: { ...DEFAULT_PATHS, ...(options.paths ?? {}) },
+    privilege: options.privilege ?? resolvePrivilegeModel({
+      uid: options.uid,
+      hasSudo: options.hasSudo,
+    }),
+    audit: {
+      reportPath: options.auditPath ?? `${options.backupPath}.restore-audit.json`,
+      redactSecrets: true,
+    },
+    asidePath: options.asidePath ?? `${options.dataRoot ?? resolveHanaDataRoot()}.pre-restore-${defaultTimestamp()}`,
+  };
+
+  let restoreStarted = false;
+  let serviceStopped = false;
+  let serviceRestarted = false;
+  let startAttempted = false;
+  let backupVerification = null;
+  let asideResult = null;
+  try {
+    backupVerification = await ops.verifyBackup(restorePlan);
+    await ops.stopService(restorePlan);
+    serviceStopped = true;
+    restoreStarted = true;
+    asideResult = await ops.moveDataRootAside(restorePlan);
+    await ops.restoreBackup(restorePlan, backupVerification);
+    startAttempted = true;
+    await ops.startService(restorePlan);
+    serviceRestarted = true;
+    await ops.healthCheck(restorePlan);
+    const auditResult = await ops.writeAudit({
+      action: "reinit-data-restore",
+      ok: true,
+      plan: restorePlan,
+      backup: backupVerification,
+      asidePath: asideResult?.asidePath ?? restorePlan.asidePath,
+    });
+    return {
+      ok: true,
+      restoreStarted,
+      serviceRestarted,
+      backupPath: restorePlan.backupPath,
+      asidePath: asideResult?.asidePath ?? restorePlan.asidePath,
+      auditPath: auditResult?.auditPath ?? restorePlan.audit.reportPath,
+    };
+  } catch (error) {
+    let restartError = null;
+    if (serviceStopped && !serviceRestarted && !startAttempted) {
+      startAttempted = true;
+      try {
+        await ops.startService(restorePlan);
+        serviceRestarted = true;
+      } catch (serviceError) {
+        restartError = serviceError instanceof Error ? serviceError.message : String(serviceError);
+      }
+    }
+    return {
+      ok: false,
+      restoreStarted,
+      serviceRestarted,
+      backupPath: restorePlan.backupPath,
+      error: error instanceof Error ? error.message : String(error),
+      ...(restartError ? { restartError } : {}),
+    };
+  }
+}
+
+export async function executeReinitDataBackup(options, ops = {}) {
+  const requiredOps = ["stopService", "createBackup", "verifyBackup", "startService"];
+  for (const op of requiredOps) {
+    if (typeof ops[op] !== "function") {
+      fail(`executeReinitDataBackup requires ops.${op}`);
+    }
+  }
+  if (!options?.outputPath) {
+    fail("backup requires --output <path>");
+  }
+  const backupPlan = {
+    kind: "install-server-reinit-data-backup-plan",
+    platform: "linux",
+    dataRoot: options.dataRoot ?? resolveHanaDataRoot(),
+    service: { name: options.serviceName ?? DEFAULT_PATHS.serviceName },
+    paths: { ...DEFAULT_PATHS, ...(options.paths ?? {}) },
+    privilege: options.privilege ?? resolvePrivilegeModel({
+      uid: options.uid,
+      hasSudo: options.hasSudo,
+    }),
+    backup: {
+      destination: options.outputPath,
+      manifest: options.manifestPath ?? `${options.outputPath}.manifest.json`,
+      restoreCommand: `node scripts/install-server.mjs reinit-data --restore ${options.outputPath}`,
+    },
+  };
+  let serviceStopped = false;
+  let serviceRestarted = false;
+  let backupResult = null;
+  try {
+    await ops.stopService(backupPlan);
+    serviceStopped = true;
+    backupResult = await ops.createBackup(backupPlan);
+    const verification = await ops.verifyBackup(backupPlan, backupResult);
+    await ops.startService(backupPlan);
+    serviceRestarted = true;
+    return {
+      ok: true,
+      serviceRestarted,
+      backupPath: backupResult.backupPath,
+      manifestPath: backupResult.manifestPath,
+      archiveSha256: verification.archiveSha256,
+      restoreCommand: backupPlan.backup.restoreCommand,
+    };
+  } catch (error) {
+    let restartError = null;
+    if (serviceStopped && !serviceRestarted) {
+      try {
+        await ops.startService(backupPlan);
+        serviceRestarted = true;
+      } catch (serviceError) {
+        restartError = serviceError instanceof Error ? serviceError.message : String(serviceError);
+      }
+    }
+    return {
+      ok: false,
+      serviceRestarted,
+      backupPath: backupResult?.backupPath ?? backupPlan.backup.destination,
+      manifestPath: backupResult?.manifestPath ?? backupPlan.backup.manifest,
+      error: error instanceof Error ? error.message : String(error),
+      ...(restartError ? { restartError } : {}),
+    };
+  }
+}
+
+const SAFE_REINIT_COMMANDS = new Set(["systemctl", "tar", "sha256sum", "mkdir", "mv", "chown", "test"]);
+
+export function createShellReinitDataOps({
+  run = runCommand,
+  now = defaultTimestamp,
+  owner = "root:root",
+} = {}) {
+  async function checked(cmd, args, options = {}) {
+    if (!SAFE_REINIT_COMMANDS.has(cmd)) {
+      fail(`Unexpected reinit-data operation command: ${cmd}`);
+    }
+    const prefix = options.privileged ? (options.plan?.privilege?.commandPrefix ?? []) : [];
+    const commandArgs = [...prefix, cmd, ...args];
+    const command = commandArgs.shift();
+    const result = await run(command, commandArgs);
+    if (result.status !== 0) {
+      fail(`${cmd} failed: ${result.stderr || result.stdout || `exit ${result.status}`}`);
+    }
+    return result;
+  }
+
+  return {
+    async preflight(plan) {
+      if ((plan.platform ?? "linux") !== "linux") {
+        fail(`reinit-data execution supports Linux only; got ${plan.platform}`);
+      }
+      await checked("test", ["-d", plan.dataRoot], { plan, privileged: true });
+      return true;
+    },
+    async stopService(plan) {
+      await checked("systemctl", ["stop", resolvePlanServiceName(plan)], { plan, privileged: true });
+      return true;
+    },
+    async createBackup(plan) {
+      const backupPath = resolvePlanBackupPath(plan);
+      const manifestPath = resolvePlanManifestPath(plan);
+      const parent = path.dirname(plan.dataRoot);
+      const basename = path.basename(plan.dataRoot);
+      await checked("mkdir", ["-p", path.dirname(backupPath)], { plan, privileged: true });
+      await checked("tar", ["-czpf", backupPath, "-C", parent, basename], { plan, privileged: true });
+      const listing = await checked("tar", ["-tzf", backupPath], { plan, privileged: true });
+      const checksum = await checked("sha256sum", [backupPath], { plan, privileged: true });
+      const archiveSha256 = parseSha256sum(checksum.stdout, backupPath);
+      writeBackupManifest(manifestPath, {
+        kind: "hanaagent-reinit-data-backup-manifest",
+        createdAt: new Date().toISOString(),
+        backupPath,
+        dataRoot: plan.dataRoot,
+        archiveSha256,
+        entries: parseTarListing(listing.stdout),
+        planId: plan.planId ?? null,
+        sourcePlanFile: plan.sourcePlanFile ?? plan.planFile ?? null,
+      });
+      return { backupPath, manifestPath, archiveSha256 };
+    },
+    async verifyBackup(plan) {
+      const backupPath = resolvePlanBackupPath(plan);
+      const manifestPath = resolvePlanManifestPath(plan);
+      const listing = await checked("tar", ["-tzf", backupPath], { plan, privileged: true });
+      const checksum = await checked("sha256sum", [backupPath], { plan, privileged: true });
+      const archiveSha256 = parseSha256sum(checksum.stdout, backupPath);
+      if (fs.existsSync(manifestPath)) {
+        const manifest = readJson(manifestPath);
+        if (manifest.archiveSha256 && manifest.archiveSha256 !== archiveSha256) {
+          fail(`backup sha256 mismatch for ${backupPath}: expected ${manifest.archiveSha256}, got ${archiveSha256}`);
+        }
+      }
+      return {
+        backupPath,
+        manifestPath,
+        archiveSha256,
+        entries: parseTarListing(listing.stdout),
+      };
+    },
+    async moveDataRootAside(plan) {
+      const asidePath = plan.asidePath ?? `${plan.dataRoot}.aside-${now()}`;
+      if (!fs.existsSync(plan.dataRoot)) {
+        return { asidePath: null, skipped: true };
+      }
+      await checked("mkdir", ["-p", path.dirname(asidePath)], { plan, privileged: true });
+      await checked("mv", [plan.dataRoot, asidePath], { plan, privileged: true });
+      return { asidePath };
+    },
+    async restoreBackup(plan) {
+      const backupPath = resolvePlanBackupPath(plan);
+      await checked("mkdir", ["-p", path.dirname(plan.dataRoot)], { plan, privileged: true });
+      await checked("tar", ["-xzpf", backupPath, "-C", path.dirname(plan.dataRoot)], { plan, privileged: true });
+      await checked("chown", ["-R", owner, plan.dataRoot], { plan, privileged: true });
+      return { dataRoot: plan.dataRoot };
+    },
+    async startService(plan) {
+      await checked("systemctl", ["start", resolvePlanServiceName(plan)], { plan, privileged: true });
+      return true;
+    },
+    async healthCheck(plan) {
+      await checked("systemctl", ["is-active", "--quiet", resolvePlanServiceName(plan)], { plan, privileged: true });
+      return true;
+    },
+    async writeAudit(event) {
+      const plan = event.plan ?? event;
+      const auditPath = plan.audit?.reportPath ?? `${resolvePlanBackupPath(plan)}.audit.json`;
+      const audit = {
+        kind: "hanaagent-reinit-data-audit",
+        action: event.action ?? "reinit-data",
+        ok: event.ok ?? true,
+        writtenAt: new Date().toISOString(),
+        planId: plan.planId ?? null,
+        dataRoot: plan.dataRoot,
+        backupPath: event.backup?.backupPath ?? plan.backupPath ?? plan.backup?.destination ?? null,
+        manifestPath: event.backup?.manifestPath ?? plan.backup?.manifest ?? null,
+        asidePath: event.asidePath ?? plan.asidePath ?? null,
+        restoreCommand: plan.backup?.restoreCommand ?? (plan.backupPath
+          ? `node scripts/install-server.mjs reinit-data --restore ${plan.backupPath}`
+          : null),
+        redacted: true,
+      };
+      fs.mkdirSync(path.dirname(auditPath), { recursive: true });
+      fs.writeFileSync(auditPath, `${JSON.stringify(audit, null, 2)}\n`);
+      return { auditPath };
+    },
+  };
 }
 
 function assertNoDestructiveDataSteps(steps) {
@@ -592,6 +1015,60 @@ function safeAssetArchiveName(plan) {
   return name;
 }
 
+function resolveReinitPlanFile(planIdOrFile, { planDir }) {
+  if (typeof planIdOrFile !== "string" || !planIdOrFile.trim()) {
+    fail("reinit-data plan id or file path is required");
+  }
+  const value = planIdOrFile.trim();
+  const looksLikePath = path.isAbsolute(value)
+    || value.endsWith(".json")
+    || value.includes("/")
+    || value.includes("\\");
+  if (looksLikePath) {
+    return value;
+  }
+  if (!/^[A-Za-z0-9._-]+$/.test(value)) {
+    fail(`reinit-data plan id contains unsupported characters: ${value}`);
+  }
+  return path.join(planDir, `${value}.json`);
+}
+
+function resolvePlanServiceName(plan) {
+  return plan.service?.name ?? plan.paths?.serviceName ?? DEFAULT_PATHS.serviceName;
+}
+
+function resolvePlanBackupPath(plan) {
+  const backupPath = plan.backupPath ?? plan.backup?.destination;
+  if (typeof backupPath !== "string" || !backupPath.trim()) {
+    fail("reinit-data operation requires a backup path");
+  }
+  return backupPath;
+}
+
+function resolvePlanManifestPath(plan) {
+  return plan.manifestPath ?? plan.backup?.manifest ?? `${resolvePlanBackupPath(plan)}.manifest.json`;
+}
+
+function parseSha256sum(stdout, backupPath) {
+  const digest = String(stdout || "").trim().split(/\s+/)[0]?.toLowerCase();
+  if (!/^[a-f0-9]{64}$/.test(digest ?? "")) {
+    fail(`sha256sum did not return a valid digest for ${backupPath}`);
+  }
+  return digest;
+}
+
+function parseTarListing(stdout) {
+  return String(stdout || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function writeBackupManifest(manifestPath, manifest) {
+  fs.mkdirSync(path.dirname(manifestPath), { recursive: true });
+  fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+}
+
 function defaultTimestamp() {
   return new Date().toISOString().replace(/[:.]/g, "-");
 }
@@ -635,15 +1112,21 @@ Usage:
   node scripts/install-server.mjs install --metadata <release.json> --platform linux --arch arm64 --dry-run
   node scripts/install-server.mjs upgrade --metadata <release.json> --current-version <version> --platform linux --arch arm64 --dry-run
   node scripts/install-server.mjs status
-  node scripts/install-server.mjs backup --output <path>
+  node scripts/install-server.mjs backup --output <path> [--data-root <path>]
   node scripts/install-server.mjs reinit-data [--dry-run] [--data-root <path>] [--plan-dir <path>]
+  node scripts/install-server.mjs reinit-data --confirm <plan-id> [--data-root <path>] [--plan-dir <path>]
+  node scripts/install-server.mjs reinit-data --restore <backup-path> [--data-root <path>]
 
 Notes:
   upgrade dry-run is safe and does not mutate host state.
-  reinit-data currently supports dry-run planning only; confirm/restore fail closed until backup and restore gates are implemented.`;
+  reinit-data --confirm requires a non-expired dry-run plan and creates a verified backup before moving data aside.
+  reinit-data --restore verifies the backup archive before replacing the current data root.`;
 }
 
 function parseArgs(argv) {
+  if (argv[0] === "--help" || argv[0] === "-h") {
+    return { help: true, dryRun: true };
+  }
   const [command, ...rest] = argv;
   const options = { command, dryRun: true };
   for (let i = 0; i < rest.length; i += 1) {
@@ -666,6 +1149,9 @@ function parseArgs(argv) {
         break;
       case "--plan-dir":
         options.planDir = rest[++i];
+        break;
+      case "--output":
+        options.outputPath = rest[++i];
         break;
       case "--confirm":
         options.confirmPlanId = rest[++i];
@@ -738,13 +1224,36 @@ function main(argv = process.argv.slice(2)) {
   }
   if (options.command === "reinit-data") {
     if (options.confirmPlanId) {
-      fail("reinit-data --confirm is not implemented yet; run reinit-data --dry-run only until backup/restore gates are wired.");
+      const dryRunPlan = loadReinitDataPlan(options.confirmPlanId, { planDir: options.planDir });
+      const confirmPlan = buildReinitDataConfirmPlan({
+        plan: dryRunPlan,
+        dataRoot: options.dataRoot || resolveHanaDataRoot(),
+      });
+      executeReinitDataPlan(confirmPlan, createShellReinitDataOps()).then((result) => {
+        console.log(JSON.stringify(result, null, 2));
+        if (!result.ok) process.exitCode = 1;
+      }).catch((error) => {
+        console.error(error instanceof Error ? error.message : String(error));
+        process.exitCode = 1;
+      });
+      return;
     }
     if (options.restorePath) {
-      fail("reinit-data --restore is not implemented yet; run reinit-data --dry-run only until backup/restore gates are wired.");
+      executeReinitDataRestore({
+        backupPath: options.restorePath,
+        dataRoot: options.dataRoot || resolveHanaDataRoot(),
+        serviceName: DEFAULT_PATHS.serviceName,
+      }, createShellReinitDataOps()).then((result) => {
+        console.log(JSON.stringify(result, null, 2));
+        if (!result.ok) process.exitCode = 1;
+      }).catch((error) => {
+        console.error(error instanceof Error ? error.message : String(error));
+        process.exitCode = 1;
+      });
+      return;
     }
     if (!options.dryRun) {
-      fail("reinit-data execution is not implemented yet; run reinit-data --dry-run only.");
+      fail("reinit-data execution requires --confirm <plan-id>; run reinit-data --dry-run first.");
     }
     const plan = buildReinitDataDryRunPlan({
       dataRoot: options.dataRoot || resolveHanaDataRoot(),
@@ -755,7 +1264,19 @@ function main(argv = process.argv.slice(2)) {
     return;
   }
   if (options.command === "backup") {
-    fail("backup command requires host integration; use upgrade planning/tests until implementation wires shell operations.");
+    if (!options.outputPath) fail("backup requires --output <path>");
+    executeReinitDataBackup({
+      outputPath: options.outputPath,
+      dataRoot: options.dataRoot || resolveHanaDataRoot(),
+      serviceName: DEFAULT_PATHS.serviceName,
+    }, createShellReinitDataOps()).then((result) => {
+      console.log(JSON.stringify(result, null, 2));
+      if (!result.ok) process.exitCode = 1;
+    }).catch((error) => {
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exitCode = 1;
+    });
+    return;
   }
   fail(`Unknown command: ${options.command}`);
 }
