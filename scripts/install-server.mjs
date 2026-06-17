@@ -125,6 +125,7 @@ export async function resolveRelease({ version, channel = "stable", repo = "karl
 export function buildUpgradePlan({
   metadata,
   currentVersion,
+  previousReleaseDir,
   platform = process.platform,
   arch = process.arch,
   uid = typeof process.getuid === "function" ? process.getuid() : 0,
@@ -132,6 +133,9 @@ export function buildUpgradePlan({
   dryRun = true,
   channel = "stable",
   paths = {},
+  serviceUser = "hanaagent",
+  serviceGroup = serviceUser,
+  serviceEnvironment = {},
 } = {}) {
   if (!metadata?.tag) {
     fail("Release metadata must include a tag");
@@ -146,7 +150,8 @@ export function buildUpgradePlan({
   const resolvedPaths = { ...DEFAULT_PATHS, ...paths };
   const normalizedArch = normalizeArch(arch);
   const targetReleaseDir = path.posix.join(resolvedPaths.releasesDir, `${metadata.tag}-linux-${normalizedArch}`);
-  const previousReleaseDir = path.posix.join(resolvedPaths.releasesDir, currentVersion);
+  const resolvedPreviousReleaseDir = previousReleaseDir
+    || path.posix.join(resolvedPaths.releasesDir, currentVersion);
   const privilege = resolvePrivilegeModel({ uid, hasSudo });
   const asset = selectServerAsset(metadata, { platform, arch: normalizedArch });
   if (asset.sha256 != null && !/^[a-fA-F0-9]{64}$/.test(asset.sha256)) {
@@ -187,6 +192,11 @@ export function buildUpgradePlan({
       command: `atomically switch ${resolvedPaths.currentLink} to ${targetReleaseDir}`,
     },
     {
+      id: "write-systemd-unit",
+      mutatesService: true,
+      command: `write ${resolvedPaths.serviceUnit} for ${resolvedPaths.serviceName}`,
+    },
+    {
       id: "restart-service",
       mutatesService: true,
       command: `systemctl restart ${resolvedPaths.serviceName}`,
@@ -210,8 +220,14 @@ export function buildUpgradePlan({
     asset,
     paths: resolvedPaths,
     privilege,
+    serviceUser,
+    serviceGroup,
+    serviceEnvironment: {
+      HANA_HOME: resolvedPaths.dataDir,
+      ...serviceEnvironment,
+    },
     targetReleaseDir,
-    previousReleaseDir,
+    previousReleaseDir: resolvedPreviousReleaseDir,
     steps,
   };
 }
@@ -900,11 +916,108 @@ function assertNoDestructiveDataSteps(steps) {
   }
 }
 
+function parseSystemdEnvironment(rawValue) {
+  const env = {};
+  for (const token of String(rawValue || "").match(/"[^"]*"|'[^']*'|\S+/g) ?? []) {
+    const unquoted = ((token.startsWith("\"") && token.endsWith("\""))
+      || (token.startsWith("'") && token.endsWith("'")))
+      ? token.slice(1, -1)
+      : token;
+    const eq = unquoted.indexOf("=");
+    if (eq <= 0) continue;
+    env[unquoted.slice(0, eq)] = unquoted.slice(eq + 1);
+  }
+  return env;
+}
+
+export function parseSystemdServiceHints(unitText = "") {
+  const hints = {
+    environment: {},
+    execStart: null,
+    workingDirectory: null,
+    user: null,
+    group: null,
+  };
+
+  for (const rawLine of String(unitText).split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+    if (line.startsWith("Environment=")) {
+      hints.environment = {
+        ...hints.environment,
+        ...parseSystemdEnvironment(line.slice("Environment=".length)),
+      };
+    } else if (line.startsWith("ExecStart=")) {
+      hints.execStart = line.slice("ExecStart=".length).trim() || null;
+    } else if (line.startsWith("WorkingDirectory=")) {
+      hints.workingDirectory = line.slice("WorkingDirectory=".length).trim() || null;
+    } else if (line.startsWith("User=")) {
+      hints.user = line.slice("User=".length).trim() || null;
+    } else if (line.startsWith("Group=")) {
+      hints.group = line.slice("Group=".length).trim() || null;
+    }
+  }
+
+  return hints;
+}
+
+function dirnameIfHanaServer(execStart) {
+  if (!execStart) return null;
+  const command = String(execStart).trim().split(/\s+/)[0];
+  return path.posix.basename(command) === "hana-server" ? path.posix.dirname(command) : null;
+}
+
+export function deriveUpgradeHostDefaults({
+  unitText = "",
+  currentLinkTarget = null,
+  paths = DEFAULT_PATHS,
+} = {}) {
+  const hints = parseSystemdServiceHints(unitText);
+  const resolvedPaths = { ...paths };
+  if (hints.environment.HANA_HOME) {
+    resolvedPaths.dataDir = hints.environment.HANA_HOME;
+  }
+
+  return {
+    paths: resolvedPaths,
+    previousReleaseDir: currentLinkTarget
+      || dirnameIfHanaServer(hints.execStart)
+      || hints.workingDirectory
+      || null,
+    serviceUser: hints.user || "hanaagent",
+    serviceGroup: hints.group || hints.user || "hanaagent",
+    serviceEnvironment: Object.fromEntries(
+      Object.entries(hints.environment).filter(([key]) => key.startsWith("HANA_")),
+    ),
+  };
+}
+
+function formatSystemdEnvironmentLine([key, value]) {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
+    fail(`Invalid systemd environment key: ${key}`);
+  }
+  const text = String(value);
+  if (/^[A-Za-z0-9_./:@%+=,-]+$/.test(text)) {
+    return `Environment=${key}=${text}`;
+  }
+  return `Environment="${key}=${text.replace(/\\/g, "\\\\").replace(/"/g, "\\\"")}"`;
+}
+
 export function createSystemdUnit({
   user = "hanaagent",
   group = "hanaagent",
   paths = DEFAULT_PATHS,
+  environment = {},
 } = {}) {
+  const serviceEnvironment = {
+    HANA_HOME: paths.dataDir,
+    ...environment,
+  };
+  const environmentLines = Object.entries(serviceEnvironment)
+    .filter(([, value]) => value != null && String(value).length > 0)
+    .map(formatSystemdEnvironmentLine)
+    .join("\n");
+
   return `[Unit]
 Description=HanaAgent Server
 After=network-online.target
@@ -914,7 +1027,7 @@ Wants=network-online.target
 Type=simple
 User=${user}
 Group=${group}
-Environment=HANA_HOME=${paths.dataDir}
+${environmentLines}
 WorkingDirectory=${paths.currentLink}
 ExecStart=${paths.currentLink}/hana-server
 Restart=on-failure
@@ -935,6 +1048,7 @@ export async function executeUpgradePlan(plan, ops = {}) {
     "download",
     "verifyChecksum",
     "extractRelease",
+    "writeSystemdUnit",
     "switchCurrent",
     "restartService",
     "healthCheck",
@@ -955,6 +1069,7 @@ export async function executeUpgradePlan(plan, ops = {}) {
     await ops.extractRelease(plan);
     switchedCurrent = true;
     await ops.switchCurrent(plan.targetReleaseDir, plan);
+    await ops.writeSystemdUnit(plan);
     await ops.restartService(plan);
     await ops.healthCheck(plan);
     return { ok: true, rolledBack: false };
@@ -970,7 +1085,7 @@ export async function executeUpgradePlan(plan, ops = {}) {
   }
 }
 
-const SAFE_UPGRADE_COMMANDS = new Set(["systemctl", "tar", "sha256sum", "curl", "mkdir", "ln"]);
+const SAFE_UPGRADE_COMMANDS = new Set(["systemctl", "tar", "sha256sum", "curl", "mkdir", "ln", "cp"]);
 
 export function createShellUpgradeOps({
   run = runCommand,
@@ -998,7 +1113,7 @@ export function createShellUpgradeOps({
   return {
     async preflight(plan) {
       if (plan.platform !== "linux") fail("install-server upgrade can only execute on Linux");
-      for (const command of ["systemctl", "tar", "sha256sum", "curl", "mkdir", "ln"]) {
+      for (const command of ["systemctl", "tar", "sha256sum", "curl", "mkdir", "ln", "cp"]) {
         await checked(command, ["--version"], { plan });
       }
       return true;
@@ -1072,6 +1187,19 @@ export function createShellUpgradeOps({
     async switchCurrent(targetReleaseDir, plan) {
       await checked("ln", ["-sfn", targetReleaseDir, plan.paths.currentLink], { plan, privileged: true });
       return true;
+    },
+    async writeSystemdUnit(plan) {
+      fs.mkdirSync(stagingDir, { recursive: true });
+      const stagedUnit = path.posix.join(stagingDir, `${plan.paths.serviceName}.service`);
+      fs.writeFileSync(stagedUnit, createSystemdUnit({
+        paths: plan.paths,
+        user: plan.serviceUser,
+        group: plan.serviceGroup,
+        environment: plan.serviceEnvironment,
+      }));
+      await checked("mkdir", ["-p", path.posix.dirname(plan.paths.serviceUnit)], { plan, privileged: true });
+      await checked("cp", [stagedUnit, plan.paths.serviceUnit], { plan, privileged: true });
+      return { serviceUnit: plan.paths.serviceUnit };
     },
     async restartService(plan) {
       await checked("systemctl", ["daemon-reload"], { plan, privileged: true });
@@ -1179,6 +1307,30 @@ function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, "utf8"));
 }
 
+function readTextIfExists(filePath) {
+  try {
+    return fs.readFileSync(filePath, "utf8");
+  } catch {
+    return "";
+  }
+}
+
+function readCurrentLinkTarget(paths = DEFAULT_PATHS) {
+  try {
+    return fs.realpathSync(paths.currentLink);
+  } catch {
+    return null;
+  }
+}
+
+function readUpgradeHostDefaults(paths = DEFAULT_PATHS) {
+  return deriveUpgradeHostDefaults({
+    unitText: readTextIfExists(paths.serviceUnit),
+    currentLinkTarget: readCurrentLinkTarget(paths),
+    paths,
+  });
+}
+
 function inspectServiceState(serviceName = DEFAULT_PATHS.serviceName) {
   const active = runCommand("systemctl", ["is-active", serviceName]);
   const enabled = runCommand("systemctl", ["is-enabled", serviceName]);
@@ -1243,6 +1395,10 @@ export async function runUpgrade(argv, {
   uid = typeof process.getuid === "function" ? process.getuid() : 0,
   hasSudo = commandExists("sudo"),
   paths = {},
+  previousReleaseDir = null,
+  serviceUser = "hanaagent",
+  serviceGroup = serviceUser,
+  serviceEnvironment = {},
 } = {}) {
   const options = parseArgs(["upgrade", ...argv]);
   let metadata = explicitMetadata;
@@ -1259,6 +1415,10 @@ export async function runUpgrade(argv, {
     dryRun: options.dryRun,
     channel: options.channel ?? "stable",
     paths,
+    previousReleaseDir,
+    serviceUser,
+    serviceGroup,
+    serviceEnvironment,
   });
   return plan;
 }
@@ -1364,6 +1524,7 @@ function main(argv = process.argv.slice(2)) {
         );
       }
       const currentVersion = options.currentVersion || readCurrentVersion();
+      const hostDefaults = readUpgradeHostDefaults();
       return buildUpgradePlan({
         metadata,
         currentVersion,
@@ -1371,6 +1532,11 @@ function main(argv = process.argv.slice(2)) {
         arch: options.arch,
         dryRun: options.dryRun,
         channel: options.channel ?? "stable",
+        paths: hostDefaults.paths,
+        previousReleaseDir: hostDefaults.previousReleaseDir,
+        serviceUser: hostDefaults.serviceUser,
+        serviceGroup: hostDefaults.serviceGroup,
+        serviceEnvironment: hostDefaults.serviceEnvironment,
       });
     })();
     planPromise.then((plan) => {
