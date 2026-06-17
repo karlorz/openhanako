@@ -150,6 +150,122 @@ ExecStart=/opt/hanaagent/server/hana-server
     expect(migratedUnit).toContain("ExecStart=/opt/hanaagent/current/hana-server");
   });
 
+  it("preserves non-managed hardening/logging directives through an upgrade", () => {
+    // Real sg01 unit carried Documentation, TimeoutStopSec, StandardOutput/Error,
+    // SyslogIdentifier, PrivateTmp, ProtectSystem, NoNewPrivileges, and a custom
+    // RestartSec. The installer owns WorkingDirectory/ExecStart/User/Group/HANA_*
+    // but must not silently drop the rest — PrivateTmp=true and SyslogIdentifier
+    // are operational/security-relevant and were lost in the .3 upgrade.
+    const unitText = `[Unit]
+Description=HanaAgent Server (headless)
+Documentation=https://github.com/liliMozi/openhanako
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/opt/hanaagent/server
+Environment=HANA_HOME=/root/.hanako
+Environment=HANA_PORT=14500
+Environment=HANA_SERVER_OWNER=standalone
+ExecStart=/opt/hanaagent/server/hana-server
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=hanaagent
+
+NoNewPrivileges=false
+PrivateTmp=true
+ProtectSystem=false
+
+[Install]
+WantedBy=multi-user.target
+`;
+
+    const defaults = deriveUpgradeHostDefaults({ unitText });
+    const plan = buildUpgradePlan({
+      metadata,
+      currentVersion: "v0.323.0",
+      platform: "linux",
+      arch: "arm64",
+      uid: 0,
+      hasSudo: false,
+      dryRun: true,
+      paths: defaults.paths,
+      previousReleaseDir: defaults.previousReleaseDir,
+      serviceUser: defaults.serviceUser,
+      serviceGroup: defaults.serviceGroup,
+      serviceEnvironment: defaults.serviceEnvironment,
+    });
+    const migratedUnit = createSystemdUnit({
+      paths: plan.paths,
+      user: plan.serviceUser,
+      group: plan.serviceGroup,
+      environment: plan.serviceEnvironment,
+      // carry through the directives the installer does not own
+      preserve: defaults.preserve,
+    });
+
+    // managed fields still migrated to the stable symlink
+    expect(migratedUnit).toContain("WorkingDirectory=/opt/hanaagent/current");
+    expect(migratedUnit).toContain("ExecStart=/opt/hanaagent/current/hana-server");
+    expect(migratedUnit).toContain("User=root");
+    expect(migratedUnit).toContain("Environment=HANA_HOME=/root/.hanako");
+    // preserved operational/security directives
+    expect(migratedUnit).toContain("Documentation=https://github.com/liliMozi/openhanako");
+    expect(migratedUnit).toContain("TimeoutStopSec=20");
+    expect(migratedUnit).toContain("StandardOutput=journal");
+    expect(migratedUnit).toContain("StandardError=journal");
+    expect(migratedUnit).toContain("SyslogIdentifier=hanaagent");
+    expect(migratedUnit).toContain("PrivateTmp=true");
+    expect(migratedUnit).toContain("ProtectSystem=false");
+    expect(migratedUnit).toContain("NoNewPrivileges=false");
+    // a custom RestartSec in the prior unit survives (not reset to the default 3)
+    expect(migratedUnit).toContain("RestartSec=5");
+  });
+
+  it("derives a preserve block from the prior unit listing carry-through directives", () => {
+    // deriveUpgradeHostDefaults must surface what to preserve so the upgrade
+    // path can hand it to createSystemdUnit without re-parsing the unit.
+    const unitText = `[Unit]
+Description=HanaAgent Server (headless)
+Documentation=https://github.com/liliMozi/openhanako
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=root
+Group=root
+ExecStart=/opt/hanaagent/server/hana-server
+RestartSec=5
+TimeoutStopSec=20
+SyslogIdentifier=hanaagent
+PrivateTmp=true
+`;
+    const defaults = deriveUpgradeHostDefaults({ unitText });
+
+    expect(defaults.preserve).toMatchObject({
+      unit: { Documentation: "https://github.com/liliMozi/openhanako" },
+    });
+    expect(defaults.preserve.service.RestartSec).toBe("5");
+    expect(defaults.preserve.service.TimeoutStopSec).toBe("20");
+    expect(defaults.preserve.service.SyslogIdentifier).toBe("hanaagent");
+    expect(defaults.preserve.service.PrivateTmp).toBe("true");
+    // managed fields excluded from preserve
+    expect(defaults.preserve.service).not.toHaveProperty("User");
+    expect(defaults.preserve.service).not.toHaveProperty("Group");
+    expect(defaults.preserve.service).not.toHaveProperty("ExecStart");
+    expect(defaults.preserve.service).not.toHaveProperty("WorkingDirectory");
+    // Description/After/Wants are managed [Unit] defaults, not preserved
+    expect(defaults.preserve.unit).not.toHaveProperty("Description");
+    expect(defaults.preserve.unit).not.toHaveProperty("After");
+    expect(defaults.preserve.unit).not.toHaveProperty("Wants");
+  });
+
   it("rolls back to the previous release when health verification fails after restart", async () => {
     const plan = buildUpgradePlan({
       metadata,
@@ -919,6 +1035,50 @@ describe("install-server runUpgrade (command resolution)", () => {
     const plan = await runUpgrade(["--metadata", "<file>"], runOpts({ httpClient: noFetch, metadata: explicit }));
     expect(plan.tag).toBe("vX");
     expect(plan.asset.sha256).toBe("a".repeat(64));
+  });
+
+  it("reads --metadata <file> from disk when no metadata object is injected", async () => {
+    // runUpgrade is the testable wrapper for the upgrade command; main() reads
+    // --metadata <file> via readJson. The helper must read it too, so argv with
+    // --metadata resolves without a separately injected metadata object.
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-runupgrade-meta-"));
+    const metaFile = path.join(tmpDir, "release.json");
+    const fileMetadata = {
+      tag: "vFromFile",
+      prerelease: false,
+      assets: [{ platform: "linux", arch: "arm64", name: "nf", url: "uf", sha256: "b".repeat(64) }],
+    };
+    fs.writeFileSync(metaFile, `${JSON.stringify(fileMetadata)}\n`);
+    const noFetch = { listReleases: async () => { throw new Error("should not fetch"); }, getRelease: async () => { throw new Error("should not fetch"); } };
+
+    const plan = await runUpgrade(["--metadata", metaFile], runOpts({ httpClient: noFetch }));
+
+    expect(plan.tag).toBe("vFromFile");
+    expect(plan.asset.name).toBe("nf");
+    expect(plan.asset.sha256).toBe("b".repeat(64));
+  });
+
+  it("injected metadata object wins over --metadata <file>", async () => {
+    // When both are present, the explicit object is authoritative (matches main(),
+    // which only reads the file when no other metadata path applies).
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-runupgrade-meta-wins-"));
+    const metaFile = path.join(tmpDir, "release.json");
+    fs.writeFileSync(metaFile, `${JSON.stringify({
+      tag: "vFromFile",
+      prerelease: false,
+      assets: [{ platform: "linux", arch: "arm64", name: "fileasset", url: "uf", sha256: "b".repeat(64) }],
+    })}\n`);
+    const injected = {
+      tag: "vInjected",
+      prerelease: false,
+      assets: [{ platform: "linux", arch: "arm64", name: "inj", url: "ui", sha256: "c".repeat(64) }],
+    };
+    const noFetch = { listReleases: async () => { throw new Error("should not fetch"); }, getRelease: async () => { throw new Error("should not fetch"); } };
+
+    const plan = await runUpgrade(["--metadata", metaFile], runOpts({ httpClient: noFetch, metadata: injected }));
+
+    expect(plan.tag).toBe("vInjected");
+    expect(plan.asset.name).toBe("inj");
   });
 
   it("zero-arg propagates resolution failure (no stable release)", async () => {

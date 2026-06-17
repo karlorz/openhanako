@@ -149,6 +149,17 @@ settings while migrating `WorkingDirectory=` and `ExecStart=` to the stable
 their existing `HANA_HOME` data root while moving the runtime to verified
 release assets.
 
+The installer also carries through non-managed directives from the prior unit
+so an operator's hardening and logging configuration is not silently dropped
+on upgrade. Preserved `[Unit]` directives include `Documentation=`; preserved
+`[Service]` directives include `TimeoutStopSec=`, `StandardOutput=`,
+`StandardError=`, `SyslogIdentifier=`, `PrivateTmp=`, `ProtectSystem=`,
+`ProtectHome=`, `NoNewPrivileges=`, capability/system-call limits, and a
+prior custom `RestartSec=` (which wins over the installer's default of `3`).
+The installer owns and rewrites `Type=`, `User=`, `Group=`, `WorkingDirectory=`,
+`ExecStart=`, `Environment=`, `Restart=`, `Description=`, `After=`, `Wants=`,
+and `WantedBy=`; everything else in the prior unit is preserved verbatim.
+
 For local/explicit metadata, the release metadata file has this shape:
 
 ```json
