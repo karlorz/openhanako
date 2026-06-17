@@ -2,11 +2,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 
 const VALID_OS = new Set(["linux", "mac", "win"]);
 const VALID_ARCH = new Set(["arm64", "x64"]);
+const TAG_RE = /^[A-Za-z0-9._-]+$/;
 
 const __filename = fileURLToPath(import.meta.url);
 
@@ -14,11 +14,24 @@ function fail(message) {
   throw new Error(message);
 }
 
+// Stream-style sha256 via `sha256sum` so large tarballs (server bundles
+// include the Node runtime + node_modules, routinely 80-150MB) are not
+// read fully into memory. Matches how install-server.mjs verifies on the
+// consume side — producer and consumer share the same algorithm.
+function sha256OfFile(filePath) {
+  const result = spawnSync("sha256sum", [filePath], { stdio: "pipe" });
+  if (result.status !== 0) {
+    fail(`packServerBundle: sha256sum failed: ${result.stderr?.toString() || `exit ${result.status}`}`);
+  }
+  return result.stdout.toString().trim().split(/\s+/)[0];
+}
+
 export function packServerBundle(distServerDir, { tag, os, arch } = {}) {
   if (!distServerDir || !fs.existsSync(distServerDir) || !fs.statSync(distServerDir).isDirectory()) {
     fail(`packServerBundle: dist-server dir not found: ${distServerDir}`);
   }
   if (!tag) fail("packServerBundle: tag is required");
+  if (!TAG_RE.test(tag)) fail(`packServerBundle: tag has unsupported characters: ${tag}`);
   if (!VALID_OS.has(os)) fail(`packServerBundle: invalid os "${os}" (expected linux|mac|win)`);
   if (!VALID_ARCH.has(arch)) fail(`packServerBundle: invalid arch "${arch}" (expected arm64|x64)`);
 
@@ -32,8 +45,7 @@ export function packServerBundle(distServerDir, { tag, os, arch } = {}) {
   if (result.status !== 0) {
     fail(`packServerBundle: tar failed: ${result.stderr?.toString() || `exit ${result.status}`}`);
   }
-  const sha256 = createHash("sha256").update(fs.readFileSync(assetPath)).digest("hex");
-  return { assetPath, name, sha256 };
+  return { assetPath, name, sha256: sha256OfFile(assetPath) };
 }
 
 if (process.argv[1] === __filename) {
