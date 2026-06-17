@@ -337,7 +337,9 @@ export function resolveHanaDataRoot({
   homeDir = os.homedir(),
 } = {}) {
   const configured = typeof env.HANA_HOME === "string" ? env.HANA_HOME.trim() : "";
-  return configured || path.join(homeDir, ".hanako");
+  // install-server is a Linux-only tool; its data root is always a POSIX path
+  // regardless of the host running the tests.
+  return configured || path.posix.join(homeDir.replace(/\\/g, "/"), ".hanako");
 }
 
 export function buildReinitDataDryRunPlan({
