@@ -136,6 +136,7 @@ export function buildUpgradePlan({
   serviceUser = "hanaagent",
   serviceGroup = serviceUser,
   serviceEnvironment = {},
+  preserve = { unit: {}, service: {} },
 } = {}) {
   if (!metadata?.tag) {
     fail("Release metadata must include a tag");
@@ -225,6 +226,10 @@ export function buildUpgradePlan({
     serviceEnvironment: {
       HANA_HOME: resolvedPaths.dataDir,
       ...serviceEnvironment,
+    },
+    preserve: {
+      unit: { ...(preserve?.unit ?? {}) },
+      service: { ...(preserve?.service ?? {}) },
     },
     targetReleaseDir,
     previousReleaseDir: resolvedPreviousReleaseDir,
@@ -937,29 +942,81 @@ export function parseSystemdServiceHints(unitText = "") {
     workingDirectory: null,
     user: null,
     group: null,
+    // Non-managed directives the installer must carry through an upgrade.
+    // Keyed by directive name without the `=` so createSystemdUnit can re-emit
+    // them verbatim; collected in first-seen order per section.
+    unitPreserve: {},
+    servicePreserve: {},
   };
 
+  let section = null;
   for (const rawLine of String(unitText).split(/\r?\n/)) {
     const line = rawLine.trim();
     if (!line || line.startsWith("#")) continue;
-    if (line.startsWith("Environment=")) {
+    if (line.startsWith("[") && line.endsWith("]")) {
+      section = line.slice(1, -1);
+      continue;
+    }
+    const eq = line.indexOf("=");
+    if (eq <= 0) continue;
+    const key = line.slice(0, eq).trim();
+    const value = line.slice(eq + 1).trim();
+    if (key.startsWith("Environment")) {
       hints.environment = {
         ...hints.environment,
-        ...parseSystemdEnvironment(line.slice("Environment=".length)),
+        ...parseSystemdEnvironment(value),
       };
-    } else if (line.startsWith("ExecStart=")) {
-      hints.execStart = line.slice("ExecStart=".length).trim() || null;
-    } else if (line.startsWith("WorkingDirectory=")) {
-      hints.workingDirectory = line.slice("WorkingDirectory=".length).trim() || null;
-    } else if (line.startsWith("User=")) {
-      hints.user = line.slice("User=".length).trim() || null;
-    } else if (line.startsWith("Group=")) {
-      hints.group = line.slice("Group=".length).trim() || null;
+    } else if (key === "ExecStart") {
+      hints.execStart = value || null;
+    } else if (key === "WorkingDirectory") {
+      hints.workingDirectory = value || null;
+    } else if (key === "User") {
+      hints.user = value || null;
+    } else if (key === "Group") {
+      hints.group = value || null;
+    } else if (PRESERVABLE_DIRECTIVES.has(key)) {
+      if (section === "Unit") {
+        if (!(key in hints.unitPreserve)) hints.unitPreserve[key] = value;
+      } else if (section === "Service") {
+        if (!(key in hints.servicePreserve)) hints.servicePreserve[key] = value;
+      }
     }
   }
 
   return hints;
 }
+
+// Directives the installer does not own but must preserve across an upgrade.
+// Managed set (always rewritten): User, Group, WorkingDirectory, ExecStart,
+// Environment*, Type, Restart, RestartSec (unless a prior RestartSec exists),
+// Description/After/Wants (the [Unit] defaults), WantedBy. Everything listed
+// here is carried through verbatim from the prior unit.
+const PRESERVABLE_DIRECTIVES = new Set([
+  "Documentation",
+  "TimeoutStopSec",
+  "StandardOutput",
+  "StandardError",
+  "StandardInput",
+  "SyslogIdentifier",
+  "SyslogLevel",
+  "PrivateTmp",
+  "ProtectSystem",
+  "ProtectHome",
+  "NoNewPrivileges",
+  "ReadWritePaths",
+  "BindReadOnlyPaths",
+  "BindPaths",
+  "CapabilityBoundingSet",
+  "AmbientCapabilities",
+  "SystemCallFilter",
+  "LimitNOFILE",
+  "LimitNPROC",
+  "OOMScoreAdjust",
+  "Nice",
+  // RestartSec is managed (template default 3) but a prior custom value wins,
+  // so an operator's tuned restart backoff survives upgrade.
+  "RestartSec",
+]);
 
 function dirnameIfHanaServer(execStart) {
   if (!execStart) return null;
@@ -978,6 +1035,8 @@ export function deriveUpgradeHostDefaults({
     resolvedPaths.dataDir = hints.environment.HANA_HOME;
   }
 
+  const servicePreserve = { ...hints.servicePreserve };
+
   return {
     paths: resolvedPaths,
     previousReleaseDir: currentLinkTarget
@@ -989,6 +1048,10 @@ export function deriveUpgradeHostDefaults({
     serviceEnvironment: Object.fromEntries(
       Object.entries(hints.environment).filter(([key]) => key.startsWith("HANA_")),
     ),
+    preserve: {
+      unit: { ...hints.unitPreserve },
+      service: servicePreserve,
+    },
   };
 }
 
@@ -1003,11 +1066,30 @@ function formatSystemdEnvironmentLine([key, value]) {
   return `Environment="${key}=${text.replace(/\\/g, "\\\\").replace(/"/g, "\\\"")}"`;
 }
 
+function formatPreservedDirective([key, value]) {
+  if (value == null || String(value).length === 0) return null;
+  const text = String(value);
+  // Values that contain whitespace, shell metacharacters, or quotes need quoting
+  // per systemd.unit(5). Keep it conservative: quote unless it's a bare token.
+  if (/^[A-Za-z0-9_./:@%+=,-]+$/.test(text)) {
+    return `${key}=${text}`;
+  }
+  return `${key}="${text.replace(/\\/g, "\\\\").replace(/"/g, "\\\"")}"`;
+}
+
+function preserveLines(preserve, section) {
+  if (!preserve?.[section]) return [];
+  return Object.entries(preserve[section])
+    .map(formatPreservedDirective)
+    .filter((line) => line != null);
+}
+
 export function createSystemdUnit({
   user = "hanaagent",
   group = "hanaagent",
   paths = DEFAULT_PATHS,
   environment = {},
+  preserve = { unit: {}, service: {} },
 } = {}) {
   const serviceEnvironment = {
     HANA_HOME: paths.dataDir,
@@ -1018,20 +1100,37 @@ export function createSystemdUnit({
     .map(formatSystemdEnvironmentLine)
     .join("\n");
 
-  return `[Unit]
-Description=HanaAgent Server
-After=network-online.target
-Wants=network-online.target
+  const unitPreserve = preserveLines(preserve, "unit");
+  const servicePreserve = preserveLines(preserve, "service");
+  // RestartSec is managed (template default 3) but a preserved custom value wins.
+  const restartSec = servicePreserve.find((line) => line.startsWith("RestartSec="))
+    ?? "RestartSec=3";
+  const extraServicePreserve = servicePreserve.filter((line) => !line.startsWith("RestartSec="));
 
-[Service]
-Type=simple
-User=${user}
-Group=${group}
-${environmentLines}
-WorkingDirectory=${paths.currentLink}
-ExecStart=${paths.currentLink}/hana-server
-Restart=on-failure
-RestartSec=3
+  const unitSection = [
+    "[Unit]",
+    "Description=HanaAgent Server",
+    "After=network-online.target",
+    "Wants=network-online.target",
+    ...unitPreserve,
+  ].join("\n");
+
+  const serviceSection = [
+    "[Service]",
+    "Type=simple",
+    `User=${user}`,
+    `Group=${group}`,
+    environmentLines,
+    `WorkingDirectory=${paths.currentLink}`,
+    `ExecStart=${paths.currentLink}/hana-server`,
+    "Restart=on-failure",
+    restartSec,
+    ...extraServicePreserve,
+  ].join("\n");
+
+  return `${unitSection}
+
+${serviceSection}
 
 [Install]
 WantedBy=multi-user.target
@@ -1196,6 +1295,7 @@ export function createShellUpgradeOps({
         user: plan.serviceUser,
         group: plan.serviceGroup,
         environment: plan.serviceEnvironment,
+        preserve: plan.preserve,
       }));
       await checked("mkdir", ["-p", path.posix.dirname(plan.paths.serviceUnit)], { plan, privileged: true });
       await checked("cp", [stagedUnit, plan.paths.serviceUnit], { plan, privileged: true });
@@ -1399,9 +1499,13 @@ export async function runUpgrade(argv, {
   serviceUser = "hanaagent",
   serviceGroup = serviceUser,
   serviceEnvironment = {},
+  preserve = { unit: {}, service: {} },
 } = {}) {
   const options = parseArgs(["upgrade", ...argv]);
   let metadata = explicitMetadata;
+  if (!metadata && options.metadataPath) {
+    metadata = readJson(options.metadataPath);
+  }
   if (!metadata && !options.metadataPath) {
     metadata = await resolveRelease({ version: options.version, channel: options.channel ?? "stable" }, httpClient);
   }
@@ -1419,6 +1523,7 @@ export async function runUpgrade(argv, {
     serviceUser,
     serviceGroup,
     serviceEnvironment,
+    preserve,
   });
   return plan;
 }
@@ -1537,6 +1642,7 @@ function main(argv = process.argv.slice(2)) {
         serviceUser: hostDefaults.serviceUser,
         serviceGroup: hostDefaults.serviceGroup,
         serviceEnvironment: hostDefaults.serviceEnvironment,
+        preserve: hostDefaults.preserve,
       });
     })();
     planPromise.then((plan) => {
