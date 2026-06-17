@@ -128,9 +128,9 @@ target from the GitHub releases API:
 # latest stable (auto-resolved from karlorz/openhanako)
 node scripts/install-server.mjs upgrade --current-version v0.323.0 --dry-run
 # pinned version (prereleases require --channel prerelease)
-node scripts/install-server.mjs upgrade --version v0.323.0-karlorz.1 --channel prerelease --current-version v0.323.0 --dry-run
+node scripts/install-server.mjs upgrade --version v0.323.0-karlorz.2 --channel prerelease --current-version v0.323.0 --dry-run
 # apply
-node scripts/install-server.mjs upgrade --version v0.323.0-karlorz.1 --channel prerelease --current-version v0.323.0 --execute
+node scripts/install-server.mjs upgrade --version v0.323.0-karlorz.2 --channel prerelease --current-version v0.323.0 --execute
 # explicit metadata still accepted (skips the GitHub fetch)
 node scripts/install-server.mjs upgrade --metadata release.json --current-version v0.323.0 --execute
 ```
@@ -141,6 +141,13 @@ release name (then it is inferred). Resolution refuses prereleases unless
 Releases does not expose asset sha256, so the download step fetches the
 `<asset>.sha256` sidecar published alongside each server bundle and verifies
 the archive against it before extraction.
+
+When upgrading a host with an existing `hanaagent.service`, the executable
+upgrade preserves the unit's `User=`, `Group=`, and `HANA_*` environment
+settings while migrating `WorkingDirectory=` and `ExecStart=` to the stable
+`/opt/hanaagent/current` symlink. This keeps older sg01-style installs on
+their existing `HANA_HOME` data root while moving the runtime to verified
+release assets.
 
 For local/explicit metadata, the release metadata file has this shape:
 
@@ -171,9 +178,10 @@ Upgrade sequence:
 5. Extract into a new release directory.
 6. Stop or restart the service only after extraction succeeds.
 7. Switch the `current` symlink atomically.
-8. Restart service and verify health.
-9. If health verification fails, switch `current` back to the previous release and restart.
-10. Keep failed release artifacts for inspection unless `--cleanup` is explicitly provided.
+8. Write or update the systemd unit to run from `current`.
+9. Restart service and verify health.
+10. If health verification fails, switch `current` back to the previous release and restart.
+11. Keep failed release artifacts for inspection unless `--cleanup` is explicitly provided.
 
 ## Backup Behavior
 

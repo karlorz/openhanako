@@ -12,6 +12,7 @@ import {
   createShellReinitDataOps,
   createShellUpgradeOps,
   createSystemdUnit,
+  deriveUpgradeHostDefaults,
   executeReinitDataPlan,
   executeReinitDataRestore,
   executeUpgradePlan,
@@ -88,6 +89,7 @@ describe("install-server upgrade planner", () => {
       "verify-checksum",
       "extract-release",
       "switch-current",
+      "write-systemd-unit",
       "restart-service",
       "health-check",
     ]);
@@ -103,6 +105,49 @@ describe("install-server upgrade planner", () => {
     expect(unit).toContain("User=hanaagent");
     expect(unit).toContain("Environment=HANA_HOME=/var/lib/hanaagent");
     expect(unit).toContain("ExecStart=/opt/hanaagent/current/hana-server");
+  });
+
+  it("preserves existing sg01 service context when deriving upgrade defaults", () => {
+    const unitText = `[Service]
+User=root
+Group=root
+WorkingDirectory=/opt/hanaagent/server
+Environment=HANA_HOME=/root/.hanako
+Environment=HANA_PORT=14500
+Environment=HANA_SERVER_OWNER=standalone
+ExecStart=/opt/hanaagent/server/hana-server
+`;
+
+    const defaults = deriveUpgradeHostDefaults({ unitText });
+    const plan = buildUpgradePlan({
+      metadata,
+      currentVersion: "v0.323.0",
+      platform: "linux",
+      arch: "arm64",
+      uid: 0,
+      hasSudo: false,
+      dryRun: true,
+      paths: defaults.paths,
+      previousReleaseDir: defaults.previousReleaseDir,
+      serviceUser: defaults.serviceUser,
+      serviceGroup: defaults.serviceGroup,
+      serviceEnvironment: defaults.serviceEnvironment,
+    });
+    const migratedUnit = createSystemdUnit({
+      paths: plan.paths,
+      user: plan.serviceUser,
+      group: plan.serviceGroup,
+      environment: plan.serviceEnvironment,
+    });
+
+    expect(plan.paths.dataDir).toBe("/root/.hanako");
+    expect(plan.previousReleaseDir).toBe("/opt/hanaagent/server");
+    expect(migratedUnit).toContain("User=root");
+    expect(migratedUnit).toContain("Group=root");
+    expect(migratedUnit).toContain("Environment=HANA_HOME=/root/.hanako");
+    expect(migratedUnit).toContain("Environment=HANA_PORT=14500");
+    expect(migratedUnit).toContain("Environment=HANA_SERVER_OWNER=standalone");
+    expect(migratedUnit).toContain("ExecStart=/opt/hanaagent/current/hana-server");
   });
 
   it("rolls back to the previous release when health verification fails after restart", async () => {
@@ -123,6 +168,7 @@ describe("install-server upgrade planner", () => {
       verifyChecksum: async () => calls.push("verify-checksum"),
       extractRelease: async () => calls.push("extract-release"),
       switchCurrent: async (target) => calls.push(`switch:${target}`),
+      writeSystemdUnit: async () => calls.push("write-unit"),
       restartService: async () => calls.push("restart"),
       healthCheck: async () => {
         calls.push("health-check");
@@ -140,6 +186,7 @@ describe("install-server upgrade planner", () => {
       "verify-checksum",
       "extract-release",
       "switch:/opt/hanaagent/releases/v0.400.0-linux-arm64",
+      "write-unit",
       "restart",
       "health-check",
       "rollback:/opt/hanaagent/releases/v0.323.0",
@@ -167,6 +214,7 @@ describe("install-server upgrade planner", () => {
         calls.push(`switch:${target}`);
         throw new Error("switch failed after link mutation");
       },
+      writeSystemdUnit: async () => calls.push("write-unit"),
       restartService: async () => calls.push("restart"),
       healthCheck: async () => calls.push("health-check"),
       rollback: async (target) => calls.push(`rollback:${target}`),
@@ -206,6 +254,7 @@ describe("install-server upgrade planner", () => {
       verifyChecksum: async () => calls.push("verify-checksum"),
       extractRelease: async () => calls.push("extract-release"),
       switchCurrent: async (target) => calls.push(`switch:${target}`),
+      writeSystemdUnit: async () => calls.push("write-unit"),
       restartService: async () => calls.push("restart"),
       healthCheck: async () => calls.push("health-check"),
       rollback: async (target) => calls.push(`rollback:${target}`),
@@ -244,13 +293,16 @@ describe("install-server upgrade planner", () => {
     await ops.verifyChecksum(plan);
     await ops.extractRelease(plan);
     await ops.switchCurrent(plan.targetReleaseDir, plan);
+    await ops.writeSystemdUnit(plan);
     await ops.restartService(plan);
 
     const backupIndex = calls.findIndex((call) => call.includes("tar -czf"));
     const switchIndex = calls.findIndex((call) => call.includes("ln -sfn"));
+    const writeUnitIndex = calls.findIndex((call) => call.includes("cp ") && call.includes("hanaagent.service"));
 
     expect(backupIndex).toBeGreaterThanOrEqual(0);
     expect(backupIndex).toBeLessThan(switchIndex);
+    expect(switchIndex).toBeLessThan(writeUnitIndex);
     expect(calls.join("\n")).not.toMatch(/rm -rf|reinit-data|delete data/i);
   });
 
@@ -380,11 +432,12 @@ describe("install-server upgrade planner", () => {
     await ops.verifyChecksum(plan);
     await ops.extractRelease(plan);
     await ops.switchCurrent(plan.targetReleaseDir, plan);
+    await ops.writeSystemdUnit(plan);
     await ops.restartService(plan);
     await ops.healthCheck(plan);
     await ops.rollback(plan.previousReleaseDir, plan);
 
-    expect(new Set(commands)).toEqual(new Set(["systemctl", "tar", "sha256sum", "curl", "mkdir", "ln"]));
+    expect(new Set(commands)).toEqual(new Set(["systemctl", "tar", "sha256sum", "curl", "mkdir", "ln", "cp"]));
   });
 
   it("install plan covers sg01 without SSH deploy, git reset, or local build commands", () => {
