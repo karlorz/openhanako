@@ -4574,9 +4574,9 @@ wrapIpcHandler("connect:probe", async (event, payload) => {
   const credential = String(payload && payload.credential || "");
   if (!baseUrl) return { ok: false, error: "baseUrl required" };
   if (!credential) return { ok: false, error: "credential required" };
-  // SSRF guard: only allow http/https URLs. A compromised renderer could call
-  // this channel directly with an arbitrary URL; net.fetch runs in main and is
-  // not bound by renderer CSP, so we must validate the scheme here.
+  // SSRF guard: a compromised renderer could call this channel directly with an
+  // arbitrary URL. Keep the scheme narrow here and reject redirects below so
+  // net.fetch cannot silently expand the probed network boundary.
   if (!/^https?:\/\//i.test(baseUrl)) {
     return { ok: false, error: "baseUrl must be http(s)" };
   }
@@ -4589,13 +4589,17 @@ wrapIpcHandler("connect:probe", async (event, payload) => {
   try {
     const loginRes = await net.fetch(`${baseUrl}/api/web-auth/login`, {
       method: "POST",
+      redirect: "manual",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ credential }),
     });
+    if (loginRes.status >= 300 && loginRes.status < 400) return { ok: false, error: "login redirect blocked" };
     if (!loginRes.ok) return { ok: false, error: `login HTTP ${loginRes.status}` };
     const idRes = await net.fetch(`${baseUrl}/api/server/identity`, {
+      redirect: "manual",
       headers: { Authorization: `Bearer ${credential}` },
     });
+    if (idRes.status >= 300 && idRes.status < 400) return { ok: false, error: "identity redirect blocked" };
     if (!idRes.ok) return { ok: false, error: `identity HTTP ${idRes.status}` };
     const identity = await idRes.json();
     return { ok: true, identity };
