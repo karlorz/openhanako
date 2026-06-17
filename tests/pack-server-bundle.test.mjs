@@ -5,7 +5,12 @@ import path from "node:path";
 import { execSync } from "node:child_process";
 import { packServerBundle } from "../scripts/pack-server-bundle.mjs";
 
-describe("packServerBundle", () => {
+// packServerBundle shells out to `tar` and `sha256sum` and asserts POSIX
+// paths — it is a Linux/macOS-only test. Skip on Windows where those
+// binaries and path conventions differ.
+const describeUnlessWindows = process.platform === "win32" ? describe.skip : describe;
+
+describeUnlessWindows("packServerBundle", () => {
   let tmp;
   beforeEach(() => { tmp = fs.mkdtempSync(path.join(os.tmpdir(), "pack-")); });
   afterEach(() => { fs.rmSync(tmp, { recursive: true, force: true }); });
