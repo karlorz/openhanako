@@ -139,6 +139,45 @@ describe("install-server upgrade planner", () => {
     ]);
   });
 
+  it("rolls back when the current-link switch fails after mutating the link", async () => {
+    const plan = buildUpgradePlan({
+      metadata,
+      currentVersion: "v0.323.0",
+      platform: "linux",
+      arch: "arm64",
+      uid: 0,
+      hasSudo: false,
+      dryRun: false,
+    });
+    const calls = [];
+    const result = await executeUpgradePlan(plan, {
+      preflight: async () => calls.push("preflight"),
+      backup: async () => calls.push("backup"),
+      download: async () => calls.push("download"),
+      verifyChecksum: async () => calls.push("verify-checksum"),
+      extractRelease: async () => calls.push("extract-release"),
+      switchCurrent: async (target) => {
+        calls.push(`switch:${target}`);
+        throw new Error("switch failed after link mutation");
+      },
+      restartService: async () => calls.push("restart"),
+      healthCheck: async () => calls.push("health-check"),
+      rollback: async (target) => calls.push(`rollback:${target}`),
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.rolledBack).toBe(true);
+    expect(calls).toEqual([
+      "preflight",
+      "backup",
+      "download",
+      "verify-checksum",
+      "extract-release",
+      "switch:/opt/hanaagent/releases/v0.400.0-linux-arm64",
+      "rollback:/opt/hanaagent/releases/v0.323.0",
+    ]);
+  });
+
   it("does not roll back or mutate service state when backup fails before release switch", async () => {
     const plan = buildUpgradePlan({
       metadata,
@@ -248,6 +287,38 @@ describe("install-server upgrade planner", () => {
       [path.posix.join("/tmp/hanaagent-upgrade-test", hostileName)],
     ]);
     expect(calls.some(([cmd, args]) => cmd === "sh" && args.includes("-c"))).toBe(false);
+  });
+
+  it("keeps executable upgrade operations inside an explicit command allowlist", async () => {
+    const plan = buildUpgradePlan({
+      metadata,
+      currentVersion: "v0.323.0",
+      platform: "linux",
+      arch: "arm64",
+      uid: 0,
+      hasSudo: false,
+      dryRun: false,
+    });
+    const commands = [];
+    const ops = createShellUpgradeOps({
+      run: async (cmd, args) => {
+        commands.push(cmd);
+        if (cmd === "sha256sum") return { status: 0, stdout: `${ARM64_SHA256}  ${args[0]}\n`, stderr: "" };
+        return { status: 0, stdout: "", stderr: "" };
+      },
+    });
+
+    await ops.preflight(plan);
+    await ops.backup(plan);
+    await ops.download(plan);
+    await ops.verifyChecksum(plan);
+    await ops.extractRelease(plan);
+    await ops.switchCurrent(plan.targetReleaseDir, plan);
+    await ops.restartService(plan);
+    await ops.healthCheck(plan);
+    await ops.rollback(plan.previousReleaseDir, plan);
+
+    expect(new Set(commands)).toEqual(new Set(["systemctl", "tar", "sha256sum", "curl", "mkdir", "ln"]));
   });
 
   it("install plan covers sg01 without SSH deploy, git reset, or local build commands", () => {
