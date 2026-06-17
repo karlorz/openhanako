@@ -19,6 +19,8 @@ import {
   resolveHanaDataRoot,
   resolveLinuxAsset,
   resolvePrivilegeModel,
+  resolveRelease,
+  selectServerAsset,
   writeReinitDataDryRunPlan,
 } from "../scripts/install-server.mjs";
 
@@ -631,5 +633,104 @@ describe("install-server upgrade planner", () => {
       new Set(["test", "systemctl", "mkdir", "tar", "sha256sum", "mv"]),
     );
     expect(calls.join("\n")).not.toMatch(/rm -rf|delete data|truncate|wipe|sh -c/i);
+  });
+});
+
+const MOCK_RELEASES = [
+  {
+    tag_name: "v0.323.0-karlorz.1",
+    prerelease: true,
+    assets: [
+      { name: "hanaagent-server-v0.323.0-karlorz.1-linux-arm64.tar.gz", browser_download_url: "https://x.test/srv-linux-arm64.tar.gz" },
+      { name: "hanaagent-server-v0.323.0-karlorz.1-linux-x64.tar.gz", browser_download_url: "https://x.test/srv-linux-x64.tar.gz" },
+    ],
+  },
+  {
+    tag_name: "v0.300.0",
+    prerelease: false,
+    assets: [
+      { name: "hanaagent-server-v0.300.0-linux-arm64.tar.gz", browser_download_url: "https://x.test/old-linux-arm64.tar.gz" },
+    ],
+  },
+];
+const mockClient = {
+  listReleases: async () => MOCK_RELEASES,
+  getRelease: async (tag) => MOCK_RELEASES.find((r) => r.tag_name === tag) ?? null,
+};
+
+describe("install-server release resolution", () => {
+  it("selectServerAsset picks the linux-arm64 asset", () => {
+    const meta = {
+      tag: "v0.300.0",
+      prerelease: false,
+      assets: [
+        { platform: "linux", arch: "x64", name: "a", url: "u1", sha256: "b".repeat(64) },
+        { platform: "linux", arch: "arm64", name: "b", url: "u2", sha256: "c".repeat(64) },
+      ],
+    };
+    expect(selectServerAsset(meta, { platform: "linux", arch: "arm64" }).name).toBe("b");
+  });
+
+  it("selectServerAsset normalizes arch aliases (amd64 -> x64)", () => {
+    const meta = {
+      tag: "v1",
+      prerelease: false,
+      assets: [{ platform: "linux", arch: "x64", name: "n", url: "u", sha256: "d".repeat(64) }],
+    };
+    expect(selectServerAsset(meta, { platform: "linux", arch: "amd64" }).name).toBe("n");
+  });
+
+  it("selectServerAsset throws when no matching asset exists", () => {
+    const meta = {
+      tag: "v1",
+      prerelease: false,
+      assets: [{ platform: "linux", arch: "x64", name: "a", url: "u", sha256: "d".repeat(64) }],
+    };
+    expect(() => selectServerAsset(meta, { platform: "linux", arch: "arm64" })).toThrow();
+  });
+
+  it("selectServerAsset refuses non-linux hosts", () => {
+    const meta = { tag: "v1", prerelease: false, assets: [{ platform: "linux", arch: "arm64", name: "a", url: "u", sha256: "d".repeat(64) }] };
+    expect(() => selectServerAsset(meta, { platform: "darwin", arch: "arm64" })).toThrow();
+  });
+
+  it("resolveRelease returns latest stable (skips prerelease) by default", async () => {
+    const meta = await resolveRelease({}, mockClient);
+    expect(meta.tag).toBe("v0.300.0");
+    expect(meta.prerelease).toBe(false);
+    expect(meta.assets[0].platform).toBe("linux");
+    expect(meta.assets[0].name).toBe("hanaagent-server-v0.300.0-linux-arm64.tar.gz");
+    expect(meta.assets[0].url).toBe("https://x.test/old-linux-arm64.tar.gz");
+  });
+
+  it("resolveRelease refuses a prerelease without --channel prerelease", async () => {
+    await expect(resolveRelease({ version: "v0.323.0-karlorz.1" }, mockClient)).rejects.toThrow(/prerelease/i);
+  });
+
+  it("resolveRelease accepts a prerelease with channel prerelease", async () => {
+    const meta = await resolveRelease({ version: "v0.323.0-karlorz.1", channel: "prerelease" }, mockClient);
+    expect(meta.tag).toBe("v0.323.0-karlorz.1");
+    expect(meta.prerelease).toBe(true);
+  });
+
+  it("resolveRelease throws on unknown version", async () => {
+    await expect(resolveRelease({ version: "v9.9.9" }, mockClient)).rejects.toThrow(/not found/i);
+  });
+
+  it("resolveRelease requires an injected httpClient", async () => {
+    await expect(resolveRelease({}, null)).rejects.toThrow(/httpClient/i);
+  });
+
+  it("resolveRelease throws when no stable release exists and no version given", async () => {
+    const onlyPre = { listReleases: async () => [MOCK_RELEASES[0]], getRelease: async () => null };
+    await expect(resolveRelease({}, onlyPre)).rejects.toThrow(/stable/i);
+  });
+
+  it("resolveRelease throws when the resolved release has no linux asset", async () => {
+    const noLinux = {
+      listReleases: async () => [{ tag_name: "v0.1.0", prerelease: false, assets: [{ name: "HanaAgent-0.1.0.dmg", browser_download_url: "u" }] }],
+      getRelease: async () => null,
+    };
+    await expect(resolveRelease({}, noLinux)).rejects.toThrow(/Linux/i);
   });
 });
