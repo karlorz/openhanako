@@ -403,6 +403,8 @@ export function writeReinitDataDryRunPlan(plan) {
 }
 
 function assertNoDestructiveDataSteps(steps) {
+  // Plan descriptions are part of the dry-run contract; executable upgrade ops
+  // are separately constrained by SAFE_UPGRADE_COMMANDS below.
   const unsafe = steps.find((step) => /rm -rf|delete data|clear data|reinit-data|wipe|truncate/i.test(step.command));
   if (unsafe) {
     fail(`Unsafe upgrade step is not allowed: ${unsafe.command}`);
@@ -462,8 +464,8 @@ export async function executeUpgradePlan(plan, ops = {}) {
     await ops.download(plan);
     await ops.verifyChecksum(plan);
     await ops.extractRelease(plan);
-    await ops.switchCurrent(plan.targetReleaseDir, plan);
     switchedCurrent = true;
+    await ops.switchCurrent(plan.targetReleaseDir, plan);
     await ops.restartService(plan);
     await ops.healthCheck(plan);
     return { ok: true, rolledBack: false };
@@ -479,6 +481,8 @@ export async function executeUpgradePlan(plan, ops = {}) {
   }
 }
 
+const SAFE_UPGRADE_COMMANDS = new Set(["systemctl", "tar", "sha256sum", "curl", "mkdir", "ln"]);
+
 export function createShellUpgradeOps({
   run = runCommand,
   now = defaultTimestamp,
@@ -489,6 +493,9 @@ export function createShellUpgradeOps({
   let backupArchive = null;
 
   async function checked(cmd, args, options = {}) {
+    if (!SAFE_UPGRADE_COMMANDS.has(cmd)) {
+      fail(`Unexpected upgrade operation command: ${cmd}`);
+    }
     const commandArgs = options.privileged ? [...options.plan.privilege.commandPrefix, cmd, ...args] : [cmd, ...args];
     const command = commandArgs.shift();
     const result = await run(command, commandArgs);
@@ -502,7 +509,7 @@ export function createShellUpgradeOps({
     async preflight(plan) {
       if (plan.platform !== "linux") fail("install-server upgrade can only execute on Linux");
       for (const command of ["systemctl", "tar", "sha256sum", "curl", "mkdir", "ln"]) {
-        await checked("sh", ["-c", `command -v ${command}`], { plan });
+        await checked(command, ["--version"], { plan });
       }
       return true;
     },
