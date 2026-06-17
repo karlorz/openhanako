@@ -124,6 +124,23 @@ describe("quality gates", () => {
     }
   });
 
+  it("standalone server bundle release jobs build client runtime assets first", () => {
+    const build = readYaml(".github/workflows/build.yml");
+    const runSteps = build.jobs["server-bundles"].steps
+      .map((step) => step.run)
+      .filter(Boolean);
+
+    const clientBuildIndex = runSteps.indexOf("npm run build:client");
+    const serverBuildIndex = runSteps.findIndex((run) => (
+      typeof run === "string"
+      && run.includes("node scripts/build-server.mjs ${{ matrix.plat }} ${{ matrix.arch }}")
+    ));
+
+    expect(clientBuildIndex).toBeGreaterThan(-1);
+    expect(serverBuildIndex).toBeGreaterThan(-1);
+    expect(clientBuildIndex).toBeLessThan(serverBuildIndex);
+  });
+
   it("verifies downloaded Node runtime archives before extraction", () => {
     const buildServer = readText("scripts/build-server.mjs");
 
