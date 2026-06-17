@@ -296,6 +296,65 @@ describe("install-server upgrade planner", () => {
     expect(calls.some(([cmd, args]) => cmd === "sh" && args.includes("-c"))).toBe(false);
   });
 
+  it("downloads and verifies against the <asset>.sha256 sidecar when metadata has no inline sha256", async () => {
+    // GitHub-resolved assets carry sha256: null; the download op must fetch
+    // <url>.sha256 and verifyChecksum must read it.
+    const sidecarSha = "f".repeat(64);
+    const sidecarMetadata = {
+      tag: "v0.400.0",
+      prerelease: false,
+      assets: [{
+        platform: "linux",
+        arch: "arm64",
+        name: "hanaagent-server-v0.400.0-linux-arm64.tar.gz",
+        url: "https://example.test/hanaagent-server-v0.400.0-linux-arm64.tar.gz",
+        sha256: null,
+      }],
+    };
+    const plan = buildUpgradePlan({
+      metadata: sidecarMetadata,
+      currentVersion: "v0.323.0",
+      platform: "linux",
+      arch: "arm64",
+      uid: 0,
+      hasSudo: false,
+      dryRun: false,
+    });
+    expect(plan.asset.sha256).toBeNull();
+
+    const staging = "/tmp/hanaagent-upgrade-sidecar-test";
+    const archivePath = path.posix.join(staging, "hanaagent-server-v0.400.0-linux-arm64.tar.gz");
+    const sidecarPath = `${archivePath}.sha256`;
+    const calls = [];
+    const ops = createShellUpgradeOps({
+      run: async (cmd, args) => {
+        calls.push([cmd, args]);
+        if (cmd === "sha256sum") return { status: 0, stdout: `${sidecarSha}  ${args[0]}\n`, stderr: "" };
+        if (cmd === "curl" && args.includes("-o") && args[args.length - 1] === sidecarPath) {
+          fs.mkdirSync(staging, { recursive: true });
+          fs.writeFileSync(sidecarPath, `${sidecarSha}  hanaagent-server-v0.400.0-linux-arm64.tar.gz\n`);
+        }
+        return { status: 0, stdout: "", stderr: "" };
+      },
+      stagingDir: staging,
+    });
+
+    await ops.download(plan);
+    // sidecar curl is emitted because sha256 is null
+    expect(calls).toContainEqual(["curl", ["-fL", `${plan.asset.url}.sha256`, "-o", sidecarPath]]);
+    await ops.verifyChecksum(plan);
+    // sha256sum ran on the archive and matched the sidecar value (no throw)
+    expect(calls).toContainEqual(["sha256sum", [archivePath]]);
+  });
+
+  it("buildUpgradePlan refuses a prerelease metadata file unless channel is prerelease", () => {
+    const preMeta = { ...metadata, prerelease: true };
+    expect(() => buildUpgradePlan({ metadata: preMeta, currentVersion: "v0.323.0", platform: "linux", arch: "arm64" }))
+      .toThrow(/prerelease/i);
+    const plan = buildUpgradePlan({ metadata: preMeta, currentVersion: "v0.323.0", platform: "linux", arch: "arm64", channel: "prerelease" });
+    expect(plan.tag).toBe("v0.400.0");
+  });
+
   it("keeps executable upgrade operations inside an explicit command allowlist", async () => {
     const plan = buildUpgradePlan({
       metadata,
