@@ -1064,6 +1064,102 @@ PrivateTmp=true
     ]);
   });
 
+  it("resolves latest-full-state to the newest operational Path B backup", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-reinit-restore-alias-"));
+    const dataRoot = path.join(tmpDir, "hana-home");
+    const backupDir = path.join(tmpDir, "install", "backups");
+    fs.mkdirSync(backupDir, { recursive: true });
+    const writeManifest = (name, manifest) => {
+      const backupPath = path.join(backupDir, `${name}.tar.gz`);
+      fs.writeFileSync(`${backupPath}.manifest.json`, JSON.stringify({
+        kind: "hanaagent-reinit-data-backup-manifest",
+        backupPath,
+        dataRoot,
+        archiveSha256: "d".repeat(64),
+        entries: [],
+        ...manifest,
+      }, null, 2));
+      return backupPath;
+    };
+    const olderFullState = writeManifest("older-operational", {
+      createdAt: "2026-06-16T15:00:00.000Z",
+      restoreClass: "full-state-before-operational-reinit",
+      preserveMode: "operational",
+    });
+    const selectedFullState = writeManifest("selected-operational", {
+      createdAt: "2026-06-16T16:00:00.000Z",
+      restoreClass: "full-state-before-operational-reinit",
+      preserveMode: "operational",
+    });
+    const manualAfterPathB = writeManifest("manual-after-path-b", {
+      createdAt: "2026-06-16T17:00:00.000Z",
+    });
+    const resetPairingAfterPathB = writeManifest("reset-pairing-after-path-b", {
+      createdAt: "2026-06-16T18:00:00.000Z",
+      preserveMode: "reset_pairing",
+    });
+
+    expect([olderFullState, manualAfterPathB, resetPairingAfterPathB]).not.toContain(selectedFullState);
+    const calls = [];
+    const result = await executeReinitDataRestore({
+      backupPath: "latest-full-state",
+      dataRoot,
+      serviceName: "hanaagent",
+      paths: { installRoot: path.join(tmpDir, "install") },
+    }, {
+      verifyBackup: async (plan) => {
+        calls.push(["verify-backup", plan.backupPath]);
+      },
+      stopService: async (plan) => calls.push(["stop", plan.backupPath]),
+      moveDataRootAside: async (plan) => calls.push(["move-aside", plan.backupPath]),
+      restoreBackup: async (plan) => calls.push(["restore", plan.backupPath]),
+      startService: async (plan) => calls.push(["start", plan.backupPath]),
+      healthCheck: async (plan) => calls.push(["health", plan.backupPath]),
+      writeAudit: async (event) => {
+        calls.push(["audit", event.plan.backupPath]);
+        return { auditPath: event.plan.audit.reportPath };
+      },
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      restoreStarted: true,
+      backupPath: selectedFullState,
+    });
+    expect(calls.map((call) => call[1])).toEqual(Array(7).fill(selectedFullState));
+  });
+
+  it("fails latest-full-state restore when no operational full-state backup exists", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-reinit-restore-alias-missing-"));
+    const dataRoot = path.join(tmpDir, "hana-home");
+    const backupDir = path.join(tmpDir, "install", "backups");
+    fs.mkdirSync(backupDir, { recursive: true });
+    const backupPath = path.join(backupDir, "manual-after-path-b.tar.gz");
+    fs.writeFileSync(`${backupPath}.manifest.json`, JSON.stringify({
+      kind: "hanaagent-reinit-data-backup-manifest",
+      createdAt: "2026-06-16T17:00:00.000Z",
+      backupPath,
+      dataRoot,
+      archiveSha256: "e".repeat(64),
+      entries: [],
+    }, null, 2));
+
+    await expect(executeReinitDataRestore({
+      backupPath: "latest-full-state",
+      dataRoot,
+      serviceName: "hanaagent",
+      paths: { installRoot: path.join(tmpDir, "install") },
+    }, {
+      verifyBackup: async () => {},
+      stopService: async () => {},
+      moveDataRootAside: async () => {},
+      restoreBackup: async () => {},
+      startService: async () => {},
+      healthCheck: async () => {},
+      writeAudit: async () => {},
+    })).rejects.toThrow(/latest-full-state|Path B|explicit backup path/i);
+  });
+
   it("keeps executable reinit-data shell operations inside an explicit command allowlist", async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-reinit-shell-"));
     const dataRoot = path.join(tmpDir, "hana-home");
@@ -1101,7 +1197,7 @@ PrivateTmp=true
 
     await ops.preflight(confirmPlan);
     await ops.stopService(confirmPlan);
-    await ops.createBackup(confirmPlan);
+    const backupResult = await ops.createBackup(confirmPlan);
     await ops.verifyBackup(confirmPlan);
     await ops.exportPreservedData(confirmPlan);
     await ops.moveDataRootAside(confirmPlan);
@@ -1113,6 +1209,10 @@ PrivateTmp=true
       new Set(["test", "systemctl", "mkdir", "tar", "sha256sum", "mv", "chown"]),
     );
     expect(calls.join("\n")).not.toMatch(/rm -rf|delete data|truncate|wipe|sh -c/i);
+    expect(JSON.parse(fs.readFileSync(backupResult.manifestPath, "utf8"))).toMatchObject({
+      restoreClass: "full-state-before-operational-reinit",
+      preserveMode: "operational",
+    });
   });
 });
 
