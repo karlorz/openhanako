@@ -325,8 +325,11 @@ export const parameters = {{
 }};
 
 export async function execute(input = {{}}, toolCtx) {{
-  if (!toolCtx.sessionPath) {{
-    throw new Error("{plugin_id}_create_note requires sessionPath");
+  const sessionRef = toolCtx.sessionRef || (toolCtx.sessionId
+    ? {{ sessionId: toolCtx.sessionId, sessionPath: toolCtx.sessionPath || null }}
+    : null);
+  if (!sessionRef?.sessionId) {{
+    throw new Error("{plugin_id}_create_note requires sessionId");
   }}
   if (!toolCtx.stageFile) {{
     throw new Error("{plugin_id}_create_note requires stageFile");
@@ -344,7 +347,8 @@ export async function execute(input = {{}}, toolCtx) {{
   fs.writeFileSync(filePath, `# ${{title}}\\n\\n${{body}}\\n`, "utf-8");
 
   const staged = toolCtx.stageFile({{
-    sessionPath: toolCtx.sessionPath,
+    sessionId: sessionRef.sessionId,
+    sessionRef,
     filePath,
     label: `${{safeName}}.md`,
   }});
@@ -374,8 +378,11 @@ const tool = defineTool({{
     }}
   }},
   async execute(input = {{}}, toolCtx) {{
-    if (!toolCtx.sessionPath) {{
-      throw new Error("{plugin_id}_create_note requires sessionPath");
+    const sessionRef = toolCtx.sessionRef || (toolCtx.sessionId
+      ? {{ sessionId: toolCtx.sessionId, sessionPath: toolCtx.sessionPath || null }}
+      : null);
+    if (!sessionRef?.sessionId) {{
+      throw new Error("{plugin_id}_create_note requires sessionId");
     }}
     if (!toolCtx.stageFile) {{
       throw new Error("{plugin_id}_create_note requires stageFile");
@@ -393,7 +400,8 @@ const tool = defineTool({{
     fs.writeFileSync(filePath, `# ${{title}}\\n\\n${{body}}\\n`, "utf-8");
 
     const staged = toolCtx.stageFile({{
-      sessionPath: toolCtx.sessionPath,
+      sessionId: sessionRef.sessionId,
+      sessionRef,
       filePath,
       label: `${{safeName}}.md`,
     }});

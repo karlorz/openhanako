@@ -1,23 +1,24 @@
 const _messageLiveVersionBySession: Record<string, number> = {};
 
-let resolveSessionKey: ((sessionPath: string) => string | null | undefined) | null = null;
-
-function keyForSession(sessionPath: string): string {
-  return resolveSessionKey?.(sessionPath) || sessionPath;
-}
+let _resolveMessageLiveSessionKey: ((sessionPath: string) => string | null | undefined) | null = null;
 
 export function configureMessageLiveVersionSessionKeyResolver(
   resolver: ((sessionPath: string) => string | null | undefined) | null,
 ): void {
-  resolveSessionKey = resolver;
+  _resolveMessageLiveSessionKey = typeof resolver === 'function' ? resolver : null;
+}
+
+function messageLiveSessionKey(sessionPath: string): string {
+  return _resolveMessageLiveSessionKey?.(sessionPath) || sessionPath;
 }
 
 export function readMessageLiveVersion(sessionPath: string): number {
-  return _messageLiveVersionBySession[keyForSession(sessionPath)] ?? _messageLiveVersionBySession[sessionPath] ?? 0;
+  const key = messageLiveSessionKey(sessionPath);
+  return _messageLiveVersionBySession[key] ?? _messageLiveVersionBySession[sessionPath] ?? 0;
 }
 
 export function bumpMessageLiveVersion(sessionPath: string): number {
-  const key = keyForSession(sessionPath);
+  const key = messageLiveSessionKey(sessionPath);
   const next = (_messageLiveVersionBySession[key] ?? _messageLiveVersionBySession[sessionPath] ?? 0) + 1;
   _messageLiveVersionBySession[key] = next;
   if (key !== sessionPath) delete _messageLiveVersionBySession[sessionPath];
@@ -31,7 +32,7 @@ export function clearMessageLiveVersion(sessionPath?: string): void {
     }
     return;
   }
-  const key = keyForSession(sessionPath);
+  const key = messageLiveSessionKey(sessionPath);
   delete _messageLiveVersionBySession[key];
-  delete _messageLiveVersionBySession[sessionPath];
+  if (key !== sessionPath) delete _messageLiveVersionBySession[sessionPath];
 }
