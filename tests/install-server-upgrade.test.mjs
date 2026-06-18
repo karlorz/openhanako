@@ -693,12 +693,15 @@ PrivateTmp=true
       "server-node.json",
       "users.json",
       "studios.json",
+      "studio-mounts.json",
       "devices.json",
       "device-credentials.json",
       "pairing-sessions.json",
       "local-user-auth.json",
+      "security/grants.json",
     ]));
     expect(saved.preserve.entries).not.toContain("server-info.json");
+    expect(saved.preserve.entries).not.toContain("security/execution-leases.json");
     expect(saved.confirmation.status).toBe("requires-confirm");
     expect(saved.confirmation.reason).not.toMatch(/not implemented/i);
     expect(saved.exportCategories.map((item) => item.id)).toEqual([
@@ -738,6 +741,8 @@ PrivateTmp=true
       "connected_remote_hana",
       "device_credentials",
       "server_network",
+      "studio_mounts",
+      "security_grants",
     ]));
   });
 
@@ -745,9 +750,12 @@ PrivateTmp=true
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-reinit-preserve-existing-"));
     const dataRoot = path.join(tmpDir, "hana-home");
     fs.mkdirSync(path.join(dataRoot, "provider-plugins"), { recursive: true });
+    fs.mkdirSync(path.join(dataRoot, "security"), { recursive: true });
     fs.mkdirSync(path.join(dataRoot, "user"), { recursive: true });
     fs.writeFileSync(path.join(dataRoot, "auth.json"), "{}\n");
     fs.writeFileSync(path.join(dataRoot, "provider-plugins", "catalog.json"), "{}\n");
+    fs.writeFileSync(path.join(dataRoot, "studio-mounts.json"), "{\"mounts\":[]}\n");
+    fs.writeFileSync(path.join(dataRoot, "security", "grants.json"), "{\"grants\":[]}\n");
     fs.writeFileSync(path.join(dataRoot, "user", "preferences.json"), "{}\n");
 
     const dryRun = buildReinitDataDryRunPlan({
@@ -770,7 +778,7 @@ PrivateTmp=true
         if (cmd === "tar" && args[0] === "-tzf") {
           return {
             status: 0,
-            stdout: "auth.json\nprovider-plugins/\nprovider-plugins/catalog.json\nuser/preferences.json\n",
+            stdout: "auth.json\nprovider-plugins/\nprovider-plugins/catalog.json\nsecurity/grants.json\nstudio-mounts.json\nuser/preferences.json\n",
             stderr: "",
           };
         }
@@ -785,6 +793,8 @@ PrivateTmp=true
     expect(createTar.args).toEqual(expect.arrayContaining([
       "auth.json",
       "provider-plugins",
+      "security/grants.json",
+      "studio-mounts.json",
       "user/preferences.json",
     ]));
     expect(createTar.args).not.toEqual(expect.arrayContaining([
@@ -792,6 +802,7 @@ PrivateTmp=true
       "server-node.json",
       "device-credentials.json",
     ]));
+    expect(createTar.args).not.toContain("security/execution-leases.json");
     const manifest = JSON.parse(fs.readFileSync(confirmPlan.preserve.manifest, "utf8"));
     expect(manifest).toMatchObject({
       kind: "hanaagent-reinit-data-preserve-manifest",
@@ -806,6 +817,8 @@ PrivateTmp=true
     expect(manifest.entries).toEqual(expect.arrayContaining([
       "auth.json",
       "provider-plugins/catalog.json",
+      "security/grants.json",
+      "studio-mounts.json",
       "user/preferences.json",
     ]));
   });
