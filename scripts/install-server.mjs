@@ -8,6 +8,9 @@ import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 
+const LATEST_FULL_STATE_BACKUP_ALIAS = "latest-full-state";
+const FULL_STATE_RESTORE_CLASS = "full-state-before-operational-reinit";
+
 const REINIT_OPERATIONAL_PRESERVE_ENTRIES = Object.freeze([
   "auth.json",
   "added-models.yaml",
@@ -714,22 +717,30 @@ export async function executeReinitDataRestore(options, ops = {}) {
     fail("reinit-data --restore requires backupPath");
   }
 
+  const dataRoot = options.dataRoot ?? resolveHanaDataRoot();
+  const resolvedPaths = { ...DEFAULT_PATHS, ...(options.paths ?? {}) };
+  const backupPath = resolveReinitRestoreBackupPath(options.backupPath, {
+    dataRoot,
+    paths: resolvedPaths,
+  });
+
   const restorePlan = {
     kind: "install-server-reinit-data-restore-plan",
     platform: "linux",
-    backupPath: options.backupPath,
-    dataRoot: options.dataRoot ?? resolveHanaDataRoot(),
+    backupPath,
+    requestedBackupPath: options.backupPath,
+    dataRoot,
     service: { name: options.serviceName ?? DEFAULT_PATHS.serviceName },
-    paths: { ...DEFAULT_PATHS, ...(options.paths ?? {}) },
+    paths: resolvedPaths,
     privilege: options.privilege ?? resolvePrivilegeModel({
       uid: options.uid,
       hasSudo: options.hasSudo,
     }),
     audit: {
-      reportPath: options.auditPath ?? `${options.backupPath}.restore-audit.json`,
+      reportPath: options.auditPath ?? `${backupPath}.restore-audit.json`,
       redactSecrets: true,
     },
-    asidePath: options.asidePath ?? `${options.dataRoot ?? resolveHanaDataRoot()}.pre-restore-${defaultTimestamp()}`,
+    asidePath: options.asidePath ?? `${dataRoot}.pre-restore-${defaultTimestamp()}`,
   };
 
   let restoreStarted = false;
@@ -902,6 +913,12 @@ export function createShellReinitDataOps({
         archiveSha256,
         entries: parseTarListing(listing.stdout),
         planId: plan.planId ?? null,
+        planKind: plan.kind ?? null,
+        preserveMode: plan.preserve?.mode ?? null,
+        ...(plan.preserve?.mode === "operational" ? {
+          restoreClass: FULL_STATE_RESTORE_CLASS,
+          restoreAlias: LATEST_FULL_STATE_BACKUP_ALIAS,
+        } : {}),
         sourcePlanFile: plan.sourcePlanFile ?? plan.planFile ?? null,
       });
       return { backupPath, manifestPath, archiveSha256 };
@@ -1489,6 +1506,40 @@ function resolvePlanBackupPath(plan) {
   return backupPath;
 }
 
+function resolveReinitRestoreBackupPath(backupPath, {
+  dataRoot,
+  paths = DEFAULT_PATHS,
+} = {}) {
+  if (backupPath !== LATEST_FULL_STATE_BACKUP_ALIAS) {
+    return backupPath;
+  }
+  const backupDir = path.join(paths.installRoot ?? DEFAULT_PATHS.installRoot, "backups");
+  const candidates = [];
+  for (const name of safeReadDir(backupDir)) {
+    if (!name.endsWith(".manifest.json")) continue;
+    const manifestPath = path.join(backupDir, name);
+    const manifest = safeReadJson(manifestPath);
+    if (!manifest || manifest.kind !== "hanaagent-reinit-data-backup-manifest") continue;
+    if (manifest.restoreClass !== FULL_STATE_RESTORE_CLASS) continue;
+    if (manifest.preserveMode !== "operational") continue;
+    if (dataRoot && manifest.dataRoot && path.resolve(manifest.dataRoot) !== path.resolve(dataRoot)) continue;
+    const resolvedBackupPath = typeof manifest.backupPath === "string" && manifest.backupPath.trim()
+      ? manifest.backupPath.trim()
+      : manifestPath.slice(0, -".manifest.json".length);
+    const createdMs = Date.parse(manifest.createdAt ?? "");
+    candidates.push({
+      backupPath: resolvedBackupPath,
+      manifestPath,
+      createdMs: Number.isFinite(createdMs) ? createdMs : 0,
+    });
+  }
+  candidates.sort((a, b) => b.createdMs - a.createdMs || b.manifestPath.localeCompare(a.manifestPath));
+  if (candidates.length === 0) {
+    fail(`No ${LATEST_FULL_STATE_BACKUP_ALIAS} backup found under ${backupDir}; run Path B first or restore an explicit backup path.`);
+  }
+  return candidates[0].backupPath;
+}
+
 function resolvePlanManifestPath(plan) {
   return plan.manifestPath ?? plan.backup?.manifest ?? `${resolvePlanBackupPath(plan)}.manifest.json`;
 }
@@ -1539,6 +1590,23 @@ function parseTarListing(stdout) {
 function writeBackupManifest(manifestPath, manifest) {
   fs.mkdirSync(path.dirname(manifestPath), { recursive: true });
   fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+}
+
+function safeReadDir(dirPath) {
+  try {
+    return fs.readdirSync(dirPath);
+  } catch (error) {
+    if (error?.code === "ENOENT") return [];
+    throw error;
+  }
+}
+
+function safeReadJson(filePath) {
+  try {
+    return readJson(filePath);
+  } catch {
+    return null;
+  }
 }
 
 function defaultTimestamp() {
@@ -1701,13 +1769,14 @@ Usage:
   node scripts/install-server.mjs backup --output <path> [--data-root <path>]
   node scripts/install-server.mjs reinit-data [--dry-run] [--reset-pairing] [--data-root <path>] [--plan-dir <path>]
   node scripts/install-server.mjs reinit-data --confirm <plan-id> [--data-root <path>] [--plan-dir <path>]
-  node scripts/install-server.mjs reinit-data --restore <backup-path> [--data-root <path>]
+  node scripts/install-server.mjs reinit-data --restore <backup-path|latest-full-state> [--data-root <path>]
 
 Notes:
   upgrade resolves latest stable by default; prereleases require --channel prerelease or an exact prerelease --version.
   upgrade --execute is host-mutating (stops service, swaps /opt/hanaagent/current); --dry-run is safe.
   reinit-data preserves provider/model and LAN device bootstrap by default; --reset-pairing requests a fully fresh root.
   reinit-data --confirm requires a non-expired dry-run plan and creates a verified backup before moving data aside.
+  reinit-data --restore latest-full-state selects the newest full backup created before a default operational reinit.
   reinit-data --restore verifies the backup archive before replacing the current data root.`;
 }
 
