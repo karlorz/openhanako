@@ -8,6 +8,24 @@ import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 
+const REINIT_OPERATIONAL_PRESERVE_ENTRIES = Object.freeze([
+  "auth.json",
+  "added-models.yaml",
+  "models.json",
+  "models-cache.json",
+  "provider-catalog.json",
+  "provider-plugins",
+  "user/preferences.json",
+  "server-network.json",
+  "server-node.json",
+  "users.json",
+  "studios.json",
+  "devices.json",
+  "device-credentials.json",
+  "pairing-sessions.json",
+  "local-user-auth.json",
+]);
+
 export const DEFAULT_PATHS = Object.freeze({
   installRoot: "/opt/hanaagent",
   installBin: "/usr/local/bin/install-server",
@@ -376,18 +394,40 @@ export function buildReinitDataDryRunPlan({
   serviceName = DEFAULT_PATHS.serviceName,
   serviceState = {},
   paths = {},
+  resetPairing = false,
 } = {}) {
   const resolvedPaths = { ...DEFAULT_PATHS, ...paths };
   const createdAt = now.toISOString();
   const expiresAt = new Date(now.getTime() + 60 * 60 * 1000).toISOString();
   const stamp = formatPlanTimestamp(now);
+  const preserveMode = resetPairing ? "reset_pairing" : "operational";
   const shortHash = createHash("sha256")
-    .update(`${createdAt}\n${dataRoot}\n${serviceName}`)
+    .update(`${createdAt}\n${dataRoot}\n${serviceName}\n${preserveMode}`)
     .digest("hex")
     .slice(0, 8);
   const planId = `reinit-${stamp}-${shortHash}`;
   const backupDestination = path.join(resolvedPaths.installRoot, "backups", `${planId}.tar.gz`);
+  const preserveArchive = path.join(resolvedPaths.installRoot, "backups", `${planId}.preserve.tar.gz`);
   const planFile = path.join(planDir, `${planId}.json`);
+  const preserve = resetPairing
+    ? {
+      schemaVersion: 1,
+      mode: "reset_pairing",
+      enabled: false,
+      entries: [],
+      archive: null,
+      manifest: null,
+      description: "Explicit full-clear mode. Provider, identity, device credentials, and LAN/network bootstrap are not preserved.",
+    }
+    : {
+      schemaVersion: 1,
+      mode: "operational",
+      enabled: true,
+      archive: preserveArchive,
+      manifest: `${preserveArchive}.manifest.json`,
+      entries: [...REINIT_OPERATIONAL_PRESERVE_ENTRIES],
+      description: "Default reset mode. Preserves provider/model setup and Connected Remote Hana bootstrap while clearing sessions, memories, uploads, and workspace state.",
+    };
 
   return {
     kind: "install-server-reinit-data-dry-run-plan",
@@ -414,16 +454,18 @@ export function buildReinitDataDryRunPlan({
       ],
       restoreCommand: `node scripts/install-server.mjs reinit-data --restore ${backupDestination}`,
     },
-    exportCategories: [
+    preserve,
+    exportCategories: resetPairing ? [] : [
       {
         id: "providers_llm",
         description: "Provider credentials, model catalog, provider catalog, and LLM preferences required for calls after reinit.",
         candidateFiles: [
           "auth.json",
+          "added-models.yaml",
           "models.json",
           "models-cache.json",
           "provider-catalog.json",
-          "provider-plugins/",
+          "provider-plugins",
           "user/preferences.json",
         ],
       },
@@ -432,13 +474,13 @@ export function buildReinitDataDryRunPlan({
         description: "Access, device, and server network settings required for a paired desktop client to reconnect.",
         candidateFiles: [
           "server-network.json",
-          "server-info.json",
           "server-node.json",
           "devices.json",
           "device-credentials.json",
           "pairing-sessions.json",
           "users.json",
           "studios.json",
+          "local-user-auth.json",
         ],
       },
     ],
@@ -453,7 +495,13 @@ export function buildReinitDataDryRunPlan({
       "plugin_state",
       "uploaded_files",
       "generated_media",
-      "general_preferences",
+      "server_runtime_info",
+      ...(resetPairing ? [
+        "providers_llm",
+        "connected_remote_hana",
+        "device_credentials",
+        "server_network",
+      ] : []),
     ],
     wouldRemoveOrReplace: [
       path.join(dataRoot, "agents"),
@@ -461,7 +509,7 @@ export function buildReinitDataDryRunPlan({
       path.join(dataRoot, "workspaces"),
       path.join(dataRoot, "uploads"),
       path.join(dataRoot, "session-files"),
-      path.join(dataRoot, "provider-plugins"),
+      ...(resetPairing ? [path.join(dataRoot, "provider-plugins")] : []),
     ],
     healthChecks: [
       `systemctl is-active ${serviceName}`,
@@ -563,6 +611,7 @@ export async function executeReinitDataPlan(plan, ops = {}) {
     "stopService",
     "createBackup",
     "verifyBackup",
+    ...(plan?.preserve?.enabled ? ["exportPreservedData", "importPreservedData"] : []),
     "moveDataRootAside",
     "startService",
     "healthCheck",
@@ -586,8 +635,14 @@ export async function executeReinitDataPlan(plan, ops = {}) {
     serviceStopped = true;
     backupResult = await ops.createBackup(plan);
     await ops.verifyBackup(plan, backupResult);
+    if (plan.preserve?.enabled) {
+      await ops.exportPreservedData(plan);
+    }
     resetStarted = true;
     asideResult = await ops.moveDataRootAside(plan);
+    if (plan.preserve?.enabled) {
+      await ops.importPreservedData(plan);
+    }
     startAttempted = true;
     await ops.startService(plan);
     serviceRestarted = true;
@@ -608,6 +663,7 @@ export async function executeReinitDataPlan(plan, ops = {}) {
       asidePath: asideResult?.asidePath ?? plan.asidePath,
       auditPath: auditResult?.auditPath ?? plan.audit?.reportPath,
       restoreCommand: plan.backup?.restoreCommand,
+      preserveMode: plan.preserve?.mode ?? null,
     };
   } catch (error) {
     let restartError = null;
@@ -863,6 +919,52 @@ export function createShellReinitDataOps({
         entries: parseTarListing(listing.stdout),
       };
     },
+    async exportPreservedData(plan) {
+      if (!plan.preserve?.enabled) return { skipped: true };
+      const archivePath = resolvePlanPreserveArchive(plan);
+      const manifestPath = resolvePlanPreserveManifest(plan);
+      const requestedEntries = resolvePlanPreserveEntries(plan);
+      const entries = requestedEntries.filter((entry) => fs.existsSync(path.join(plan.dataRoot, entry)));
+      await checked("mkdir", ["-p", path.dirname(archivePath)], { plan, privileged: true });
+      if (entries.length === 0) {
+        writeBackupManifest(manifestPath, {
+          kind: "hanaagent-reinit-data-preserve-manifest",
+          createdAt: new Date().toISOString(),
+          archivePath,
+          dataRoot: plan.dataRoot,
+          mode: plan.preserve.mode,
+          archiveSha256: null,
+          requestedEntries,
+          entries: [],
+          skipped: true,
+          skipReason: "no-preserve-entries-found",
+          planId: plan.planId ?? null,
+        });
+        return { archivePath: null, manifestPath, skipped: true };
+      }
+      await checked("tar", [
+        "-czpf",
+        archivePath,
+        "-C",
+        plan.dataRoot,
+        ...entries,
+      ], { plan, privileged: true });
+      const listing = await checked("tar", ["-tzf", archivePath], { plan, privileged: true });
+      const checksum = await checked("sha256sum", [archivePath], { plan, privileged: true });
+      const archiveSha256 = parseSha256sum(checksum.stdout, archivePath);
+      writeBackupManifest(manifestPath, {
+        kind: "hanaagent-reinit-data-preserve-manifest",
+        createdAt: new Date().toISOString(),
+        archivePath,
+        dataRoot: plan.dataRoot,
+        mode: plan.preserve.mode,
+        archiveSha256,
+        requestedEntries,
+        entries: parseTarListing(listing.stdout),
+        planId: plan.planId ?? null,
+      });
+      return { archivePath, manifestPath, archiveSha256 };
+    },
     async moveDataRootAside(plan) {
       const asidePath = plan.asidePath ?? `${plan.dataRoot}.aside-${now()}`;
       if (!fs.existsSync(plan.dataRoot)) {
@@ -871,6 +973,22 @@ export function createShellReinitDataOps({
       await checked("mkdir", ["-p", path.dirname(asidePath)], { plan, privileged: true });
       await checked("mv", [plan.dataRoot, asidePath], { plan, privileged: true });
       return { asidePath };
+    },
+    async importPreservedData(plan) {
+      if (!plan.preserve?.enabled) return { skipped: true };
+      const archivePath = resolvePlanPreserveArchive(plan);
+      const manifestPath = resolvePlanPreserveManifest(plan);
+      await checked("mkdir", ["-p", plan.dataRoot], { plan, privileged: true });
+      if (!fs.existsSync(archivePath) && fs.existsSync(manifestPath)) {
+        const manifest = readJson(manifestPath);
+        if (manifest?.skipped === true && manifest?.skipReason === "no-preserve-entries-found") {
+          await checked("chown", ["-R", owner, plan.dataRoot], { plan, privileged: true });
+          return { archivePath: null, dataRoot: plan.dataRoot, skipped: true };
+        }
+      }
+      await checked("tar", ["-xzpf", archivePath, "-C", plan.dataRoot], { plan, privileged: true });
+      await checked("chown", ["-R", owner, plan.dataRoot], { plan, privileged: true });
+      return { archivePath, dataRoot: plan.dataRoot };
     },
     async restoreBackup(plan) {
       const backupPath = resolvePlanBackupPath(plan);
@@ -903,6 +1021,12 @@ export function createShellReinitDataOps({
         restoreCommand: plan.backup?.restoreCommand ?? (plan.backupPath
           ? `node scripts/install-server.mjs reinit-data --restore ${plan.backupPath}`
           : null),
+        preserve: plan.preserve ? {
+          mode: plan.preserve.mode,
+          enabled: plan.preserve.enabled === true,
+          archive: plan.preserve.archive ?? null,
+          entries: Array.isArray(plan.preserve.entries) ? [...plan.preserve.entries] : [],
+        } : null,
         redacted: true,
       };
       fs.mkdirSync(path.dirname(auditPath), { recursive: true });
@@ -1363,6 +1487,34 @@ function resolvePlanManifestPath(plan) {
   return plan.manifestPath ?? plan.backup?.manifest ?? `${resolvePlanBackupPath(plan)}.manifest.json`;
 }
 
+function resolvePlanPreserveArchive(plan) {
+  const archivePath = plan.preserve?.archive;
+  if (typeof archivePath !== "string" || !archivePath.trim()) {
+    fail("reinit-data operational preserve requires a preserve archive path");
+  }
+  return archivePath;
+}
+
+function resolvePlanPreserveManifest(plan) {
+  return plan.preserve?.manifest ?? `${resolvePlanPreserveArchive(plan)}.manifest.json`;
+}
+
+function resolvePlanPreserveEntries(plan) {
+  const entries = Array.isArray(plan.preserve?.entries) ? plan.preserve.entries : [];
+  const normalized = entries
+    .filter((entry) => typeof entry === "string" && entry.trim())
+    .map((entry) => entry.trim().replace(/\\/g, "/").replace(/\/+$/, ""));
+  if (normalized.length === 0) {
+    fail("reinit-data operational preserve requires at least one preserve entry");
+  }
+  for (const entry of normalized) {
+    if (entry.startsWith("/") || entry === "." || entry === ".." || entry.includes("../") || entry.includes("/..")) {
+      fail(`invalid reinit-data preserve entry: ${entry}`);
+    }
+  }
+  return [...new Set(normalized)];
+}
+
 function parseSha256sum(stdout, backupPath) {
   const digest = String(stdout || "").trim().split(/\s+/)[0]?.toLowerCase();
   if (!/^[a-f0-9]{64}$/.test(digest ?? "")) {
@@ -1541,13 +1693,14 @@ Usage:
   node scripts/install-server.mjs install --metadata <release.json> --platform linux --arch arm64 --dry-run
   node scripts/install-server.mjs status
   node scripts/install-server.mjs backup --output <path> [--data-root <path>]
-  node scripts/install-server.mjs reinit-data [--dry-run] [--data-root <path>] [--plan-dir <path>]
+  node scripts/install-server.mjs reinit-data [--dry-run] [--reset-pairing] [--data-root <path>] [--plan-dir <path>]
   node scripts/install-server.mjs reinit-data --confirm <plan-id> [--data-root <path>] [--plan-dir <path>]
   node scripts/install-server.mjs reinit-data --restore <backup-path> [--data-root <path>]
 
 Notes:
   upgrade resolves latest stable by default; prereleases require --channel prerelease or an exact prerelease --version.
   upgrade --execute is host-mutating (stops service, swaps /opt/hanaagent/current); --dry-run is safe.
+  reinit-data preserves provider/model and LAN device bootstrap by default; --reset-pairing requests a fully fresh root.
   reinit-data --confirm requires a non-expired dry-run plan and creates a verified backup before moving data aside.
   reinit-data --restore verifies the backup archive before replacing the current data root.`;
 }
@@ -1593,6 +1746,9 @@ function parseArgs(argv) {
         break;
       case "--restore":
         options.restorePath = rest[++i];
+        break;
+      case "--reset-pairing":
+        options.resetPairing = true;
         break;
       case "--execute":
         options.dryRun = false;
@@ -1715,6 +1871,7 @@ function main(argv = process.argv.slice(2)) {
       dataRoot: options.dataRoot || resolveHanaDataRoot(),
       planDir: options.planDir,
       serviceState: inspectServiceState(DEFAULT_PATHS.serviceName),
+      resetPairing: options.resetPairing === true,
     });
     console.log(JSON.stringify(writeReinitDataDryRunPlan(plan), null, 2));
     return;
