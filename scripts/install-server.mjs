@@ -20,10 +20,12 @@ const REINIT_OPERATIONAL_PRESERVE_ENTRIES = Object.freeze([
   "server-node.json",
   "users.json",
   "studios.json",
+  "studio-mounts.json",
   "devices.json",
   "device-credentials.json",
   "pairing-sessions.json",
   "local-user-auth.json",
+  "security/grants.json",
 ]);
 
 export const DEFAULT_PATHS = Object.freeze({
@@ -480,7 +482,9 @@ export function buildReinitDataDryRunPlan({
           "pairing-sessions.json",
           "users.json",
           "studios.json",
+          "studio-mounts.json",
           "local-user-auth.json",
+          "security/grants.json",
         ],
       },
     ],
@@ -501,6 +505,8 @@ export function buildReinitDataDryRunPlan({
         "connected_remote_hana",
         "device_credentials",
         "server_network",
+        "studio_mounts",
+        "security_grants",
       ] : []),
     ],
     wouldRemoveOrReplace: [
