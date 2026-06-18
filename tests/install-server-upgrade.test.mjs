@@ -677,6 +677,28 @@ PrivateTmp=true
     expect(saved.planFile).toBe(path.join(planDir, `${saved.planId}.json`));
     expect(saved.backup.destination).toContain(saved.planId);
     expect(saved.backup.restoreCommand).toContain("reinit-data --restore");
+    expect(saved.preserve).toMatchObject({
+      schemaVersion: 1,
+      mode: "operational",
+      enabled: true,
+      archive: expect.stringContaining(`${saved.planId}.preserve.tar.gz`),
+    });
+    expect(saved.preserve.entries).toEqual(expect.arrayContaining([
+      "auth.json",
+      "added-models.yaml",
+      "provider-catalog.json",
+      "provider-plugins",
+      "user/preferences.json",
+      "server-network.json",
+      "server-node.json",
+      "users.json",
+      "studios.json",
+      "devices.json",
+      "device-credentials.json",
+      "pairing-sessions.json",
+      "local-user-auth.json",
+    ]));
+    expect(saved.preserve.entries).not.toContain("server-info.json");
     expect(saved.confirmation.status).toBe("requires-confirm");
     expect(saved.confirmation.reason).not.toMatch(/not implemented/i);
     expect(saved.exportCategories.map((item) => item.id)).toEqual([
@@ -692,6 +714,140 @@ PrivateTmp=true
       "uploaded_files",
     ]));
     expect(JSON.stringify(saved)).not.toMatch(/rm -rf|truncate|delete data|wipe/i);
+  });
+
+  it("can plan an explicit full-clear reinit when pairing reset is requested", () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-reinit-reset-pairing-"));
+    const dataRoot = path.join(tmpDir, "hana-home");
+    const plan = buildReinitDataDryRunPlan({
+      dataRoot,
+      planDir: path.join(tmpDir, "plans"),
+      now: new Date("2026-06-16T15:00:00.000Z"),
+      resetPairing: true,
+    });
+
+    expect(plan.preserve).toMatchObject({
+      schemaVersion: 1,
+      mode: "reset_pairing",
+      enabled: false,
+      entries: [],
+    });
+    expect(plan.exportCategories).toEqual([]);
+    expect(plan.notPreserved).toEqual(expect.arrayContaining([
+      "providers_llm",
+      "connected_remote_hana",
+      "device_credentials",
+      "server_network",
+    ]));
+  });
+
+  it("exports only existing operational preserve entries", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-reinit-preserve-existing-"));
+    const dataRoot = path.join(tmpDir, "hana-home");
+    fs.mkdirSync(path.join(dataRoot, "provider-plugins"), { recursive: true });
+    fs.mkdirSync(path.join(dataRoot, "user"), { recursive: true });
+    fs.writeFileSync(path.join(dataRoot, "auth.json"), "{}\n");
+    fs.writeFileSync(path.join(dataRoot, "provider-plugins", "catalog.json"), "{}\n");
+    fs.writeFileSync(path.join(dataRoot, "user", "preferences.json"), "{}\n");
+
+    const dryRun = buildReinitDataDryRunPlan({
+      dataRoot,
+      planDir: path.join(tmpDir, "plans"),
+      now: new Date("2026-06-16T15:00:00.000Z"),
+      paths: { installRoot: path.join(tmpDir, "install") },
+    });
+    const confirmPlan = buildReinitDataConfirmPlan({
+      plan: dryRun,
+      now: new Date("2026-06-16T15:30:00.000Z"),
+      dataRoot,
+      uid: 0,
+      hasSudo: false,
+    });
+    const calls = [];
+    const ops = createShellReinitDataOps({
+      run: async (cmd, args) => {
+        calls.push({ cmd, args });
+        if (cmd === "tar" && args[0] === "-tzf") {
+          return {
+            status: 0,
+            stdout: "auth.json\nprovider-plugins/\nprovider-plugins/catalog.json\nuser/preferences.json\n",
+            stderr: "",
+          };
+        }
+        if (cmd === "sha256sum") return { status: 0, stdout: `${"c".repeat(64)}  ${args[0]}\n`, stderr: "" };
+        return { status: 0, stdout: "", stderr: "" };
+      },
+    });
+
+    await ops.exportPreservedData(confirmPlan);
+
+    const createTar = calls.find((call) => call.cmd === "tar" && call.args.includes("-czpf"));
+    expect(createTar.args).toEqual(expect.arrayContaining([
+      "auth.json",
+      "provider-plugins",
+      "user/preferences.json",
+    ]));
+    expect(createTar.args).not.toEqual(expect.arrayContaining([
+      "added-models.yaml",
+      "server-node.json",
+      "device-credentials.json",
+    ]));
+    const manifest = JSON.parse(fs.readFileSync(confirmPlan.preserve.manifest, "utf8"));
+    expect(manifest).toMatchObject({
+      kind: "hanaagent-reinit-data-preserve-manifest",
+      archiveSha256: "c".repeat(64),
+    });
+    expect(manifest).not.toHaveProperty("skipped");
+    expect(manifest.requestedEntries).toEqual(expect.arrayContaining([
+      "added-models.yaml",
+      "server-node.json",
+      "device-credentials.json",
+    ]));
+    expect(manifest.entries).toEqual(expect.arrayContaining([
+      "auth.json",
+      "provider-plugins/catalog.json",
+      "user/preferences.json",
+    ]));
+  });
+
+  it("skips operational preserve import when no preserve entries exist", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-reinit-preserve-empty-"));
+    const dataRoot = path.join(tmpDir, "hana-home");
+    fs.mkdirSync(dataRoot, { recursive: true });
+    const dryRun = buildReinitDataDryRunPlan({
+      dataRoot,
+      planDir: path.join(tmpDir, "plans"),
+      now: new Date("2026-06-16T15:00:00.000Z"),
+      paths: { installRoot: path.join(tmpDir, "install") },
+    });
+    const confirmPlan = buildReinitDataConfirmPlan({
+      plan: dryRun,
+      now: new Date("2026-06-16T15:30:00.000Z"),
+      dataRoot,
+      uid: 0,
+      hasSudo: false,
+    });
+    const calls = [];
+    const ops = createShellReinitDataOps({
+      run: async (cmd, args) => {
+        calls.push({ cmd, args });
+        return { status: 0, stdout: "", stderr: "" };
+      },
+    });
+
+    await expect(ops.exportPreservedData(confirmPlan)).resolves.toMatchObject({ skipped: true });
+    await expect(ops.importPreservedData(confirmPlan)).resolves.toMatchObject({ skipped: true });
+
+    const manifest = JSON.parse(fs.readFileSync(confirmPlan.preserve.manifest, "utf8"));
+    expect(manifest).toMatchObject({
+      kind: "hanaagent-reinit-data-preserve-manifest",
+      archiveSha256: null,
+      entries: [],
+      skipped: true,
+      skipReason: "no-preserve-entries-found",
+    });
+    expect(calls.filter((call) => call.cmd === "tar")).toEqual([]);
+    expect(calls.map((call) => call.cmd)).toEqual(["mkdir", "mkdir", "chown"]);
   });
 
   it("loads a reinit-data plan by id and rejects missing plans", () => {
@@ -761,6 +917,52 @@ PrivateTmp=true
       stopService: async () => calls.push("stop"),
       createBackup: async () => calls.push("backup"),
       verifyBackup: async () => calls.push("verify-backup"),
+      exportPreservedData: async () => calls.push("export-preserve"),
+      moveDataRootAside: async () => calls.push("move-aside"),
+      importPreservedData: async () => calls.push("import-preserve"),
+      startService: async () => calls.push("start"),
+      healthCheck: async () => calls.push("health"),
+      writeAudit: async () => calls.push("audit"),
+    });
+
+    expect(result).toMatchObject({ ok: true, resetStarted: true });
+    expect(calls).toEqual([
+      "preflight",
+      "stop",
+      "backup",
+      "verify-backup",
+      "export-preserve",
+      "move-aside",
+      "import-preserve",
+      "start",
+      "health",
+      "audit",
+    ]);
+  });
+
+  it("skips preserve export and import for explicit reset-pairing plans", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-reinit-reset-pairing-execute-"));
+    const dataRoot = path.join(tmpDir, "hana-home");
+    const dryRun = buildReinitDataDryRunPlan({
+      dataRoot,
+      planDir: path.join(tmpDir, "plans"),
+      now: new Date("2026-06-16T15:00:00.000Z"),
+      resetPairing: true,
+      paths: { installRoot: path.join(tmpDir, "install") },
+    });
+    const confirmPlan = buildReinitDataConfirmPlan({
+      plan: dryRun,
+      now: new Date("2026-06-16T15:30:00.000Z"),
+      dataRoot,
+      uid: 0,
+      hasSudo: false,
+    });
+    const calls = [];
+    const result = await executeReinitDataPlan(confirmPlan, {
+      preflight: async () => calls.push("preflight"),
+      stopService: async () => calls.push("stop"),
+      createBackup: async () => calls.push("backup"),
+      verifyBackup: async () => calls.push("verify-backup"),
       moveDataRootAside: async () => calls.push("move-aside"),
       startService: async () => calls.push("start"),
       healthCheck: async () => calls.push("health"),
@@ -805,7 +1007,9 @@ PrivateTmp=true
         throw new Error("backup failed");
       },
       verifyBackup: async () => calls.push("verify-backup"),
+      exportPreservedData: async () => calls.push("export-preserve"),
       moveDataRootAside: async () => calls.push("move-aside"),
+      importPreservedData: async () => calls.push("import-preserve"),
       startService: async () => calls.push("start"),
       healthCheck: async () => calls.push("health"),
       writeAudit: async () => calls.push("audit"),
@@ -886,12 +1090,14 @@ PrivateTmp=true
     await ops.stopService(confirmPlan);
     await ops.createBackup(confirmPlan);
     await ops.verifyBackup(confirmPlan);
+    await ops.exportPreservedData(confirmPlan);
     await ops.moveDataRootAside(confirmPlan);
+    await ops.importPreservedData(confirmPlan);
     await ops.startService(confirmPlan);
     await ops.healthCheck(confirmPlan);
 
     expect(new Set(calls.map((call) => call.split(/\s+/)[0]))).toEqual(
-      new Set(["test", "systemctl", "mkdir", "tar", "sha256sum", "mv"]),
+      new Set(["test", "systemctl", "mkdir", "tar", "sha256sum", "mv", "chown"]),
     );
     expect(calls.join("\n")).not.toMatch(/rm -rf|delete data|truncate|wipe|sh -c/i);
   });
