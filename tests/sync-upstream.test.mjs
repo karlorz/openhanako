@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildConflictPlan,
+  buildPrBodyWithDashboard,
   changedDivergingFiles,
   ISSUE_COMMANDS,
   loadRules,
+  parseMergeTreeConflictingFiles,
   releaseChannelLabel,
+  renderPrDashboardBlock,
   selectLatestReleaseTag,
   verificationCommands,
 } from "../scripts/sync-upstream.mjs";
@@ -59,5 +63,133 @@ describe("sync-upstream rule engine", () => {
   it("supports local upstream issue review modes without a submit mode", () => {
     expect(ISSUE_COMMANDS).toEqual(["status", "search", "draft"]);
     expect(ISSUE_COMMANDS).not.toContain("submit");
+  });
+
+  it("builds a dry-run conflict plan that defaults unknown conflicts to main", () => {
+    const plan = buildConflictPlan(["README.md"], {
+      conflictRules: {
+        defaultResolution: "main",
+        dryRunDefault: true,
+        divergingFiles: [],
+        policies: {},
+      },
+    });
+
+    expect(plan).toMatchObject({
+      kind: "openhanako-fork-conflict-plan",
+      dryRun: true,
+      defaultResolution: "main",
+      conflicts: [{
+        file: "README.md",
+        strategy: "take-main",
+        source: "default",
+        plannedAction: "Would accept the origin/main version if a future resolver executes this plan.",
+      }],
+    });
+  });
+
+  it("keeps explicit fork conflict exceptions out of the default main rule", () => {
+    const rules = loadRules();
+
+    const plan = buildConflictPlan([
+      "desktop/src/react/__tests__/services/ws-message-handler.test.ts",
+      "package.json",
+      "package-lock.json",
+      "README.md",
+    ], rules);
+
+    expect(plan.defaultResolution).toBe("main");
+    expect(plan.conflicts).toEqual([
+      expect.objectContaining({
+        file: "README.md",
+        strategy: "take-main",
+        source: "default",
+      }),
+      expect.objectContaining({
+        file: "desktop/src/react/__tests__/services/ws-message-handler.test.ts",
+        strategy: "preserve-both",
+        source: "policy",
+      }),
+      expect.objectContaining({
+        file: "package-lock.json",
+        strategy: "regenerate-from-package-json",
+        source: "policy",
+      }),
+      expect.objectContaining({
+        file: "package.json",
+        strategy: "main-with-fork-install-local",
+        source: "policy",
+      }),
+    ]);
+  });
+
+  it("parses conflicted files from git merge-tree output", () => {
+    const output = [
+      "100644 abc 1\tpackage.json",
+      "100644 def 2\tpackage.json",
+      "100644 ghi 3\tpackage.json",
+      "CONFLICT (content): Merge conflict in desktop/src/react/__tests__/services/ws-message-handler.test.ts",
+      "Auto-merging server/index.ts",
+    ].join("\n");
+
+    expect(parseMergeTreeConflictingFiles(output)).toEqual([
+      "desktop/src/react/__tests__/services/ws-message-handler.test.ts",
+      "package.json",
+    ]);
+  });
+
+  it("renders and replaces only the generated PR dashboard block", () => {
+    const block = renderPrDashboardBlock({
+      generatedAt: "2026-06-20T00:00:00.000Z",
+      dryRun: true,
+      dashboardBase: {
+        upstreamMain: "upstreamsha",
+        originMainBefore: "oldmainsha",
+        originMainAfter: "newmainsha",
+        originMainReplaced: true,
+      },
+      forkHead: { originDev: "devsha" },
+      productionSync: {
+        latestStableTag: "v0.331.2",
+        lastSyncedTag: "v0.323.0",
+        stableSyncAvailable: true,
+      },
+      pr: {
+        number: 1,
+        url: "https://github.com/karlorz/openhanako/pull/1",
+        mergeable: "CONFLICTING",
+      },
+      conflicts: [{
+        file: "package.json",
+        strategy: "main-with-fork-install-local",
+        source: "policy",
+        risk: "medium",
+        plannedAction: "Would start from main and preserve install:local.",
+      }],
+      upstreamSignals: {
+        latestCommits: ["abc fix: one"],
+        riskyFilesTouched: ["package.json"],
+      },
+    });
+
+    expect(block).toContain("<!-- openhanako-conflict-dashboard:start -->");
+    expect(block).toContain("Permanent draft dashboard. Never merge.");
+    expect(block).toContain("package.json");
+
+    const original = [
+      "# Human notes",
+      "keep this",
+      "<!-- openhanako-conflict-dashboard:start -->",
+      "old generated text",
+      "<!-- openhanako-conflict-dashboard:end -->",
+      "tail note",
+    ].join("\n");
+
+    const next = buildPrBodyWithDashboard(original, block);
+
+    expect(next).toContain("# Human notes");
+    expect(next).toContain("tail note");
+    expect(next).not.toContain("old generated text");
+    expect(next).toContain("package.json");
   });
 });
