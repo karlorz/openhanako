@@ -13,10 +13,17 @@ describe("upstream issue tracker", () => {
   it("tracks every current local divergence cluster", () => {
     expect(TRACKED_FIXES.map((fix) => fix.id)).toEqual([
       "lan-csp-ws-auth",
+      "lan-query-token-network-hardening",
       "remote-attachment-preview-persistence",
+      "desktop-temp-upload-session-cache-materialization",
       "plugin-iframe-remote-credential-query-leak",
       "local-build-identity-disable-auto-update",
       "fork-sync-issue-tracking-prerelease-policy",
+      "fork-dev-loop-maintenance-runbooks",
+      "server-install-upgrade-release-safety",
+      "server-reinit-data-failsafe",
+      "server-reinit-restore-backup-verification",
+      "node-test-ci-file-mode-hygiene",
     ]);
   });
 
@@ -34,6 +41,10 @@ describe("upstream issue tracker", () => {
 
     expect(status).toContain("lan-csp-ws-auth");
     expect(status).toContain("[#1749](https://github.com/liliMozi/openhanako/issues/1749)");
+    expect(status).toContain("[#1811](https://github.com/liliMozi/openhanako/issues/1811)");
+    expect(status).toContain("desktop-temp-upload-session-cache-materialization");
+    expect(status).toContain("server-reinit-data-failsafe");
+    expect(status).toContain("server-reinit-restore-backup-verification");
     expect(status).toContain("draft/pending-approval");
     expect(status).toContain("tracked/no-upstream-issue");
   });

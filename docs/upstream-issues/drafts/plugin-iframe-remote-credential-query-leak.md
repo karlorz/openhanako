@@ -6,7 +6,7 @@ Tracked fix: `plugin-iframe-remote-credential-query-leak`
 Classification: `upstream`
 Current status: `draft/pending-approval`
 Suggested grouping: `fold into LAN query-token/auth bug fix unless reviewed separately`
-Commits: `uncommitted`
+Commits: `7370276c`
 
 Related upstream issues:
 
