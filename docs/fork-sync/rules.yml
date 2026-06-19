@@ -7,6 +7,14 @@ releaseTarget:
   prereleaseFlag: --include-prerelease
   syncLog: FORK_SYNC.md
 
+dashboard:
+  prNumber: 1
+  title: "DRAFT: permanent fork-vs-upstream review dashboard"
+  labels:
+    - permanent-dashboard
+    - never-merge
+    - fork-sync
+
 issueTracking:
   tracker: scripts/track-upstream-issues.mjs
   commands:
@@ -26,6 +34,8 @@ criticalFileClasses:
   - fork_sync_maintenance
 
 conflictRules:
+  defaultResolution: main
+  dryRunDefault: true
   divergingFiles:
     - core/server-auth.ts
     - desktop/src/react/services/server-connection.ts
@@ -48,6 +58,7 @@ conflictRules:
     - desktop/src/react/__tests__/components/InputArea.paste-and-slash.test.tsx
     - desktop/src/react/__tests__/components/InputArea.media-send.test.tsx
     - desktop/src/react/__tests__/services/resource-url.test.ts
+    - desktop/src/react/__tests__/services/ws-message-handler.test.ts
     - desktop/src/react/__tests__/stores/chat-slice.test.ts
     - desktop/src/react/__tests__/stores/selectors/file-refs.test.ts
     - desktop/src/react/__tests__/utils/user-attachment-media.test.ts
@@ -68,6 +79,24 @@ conflictRules:
       class: remote_attachment_preview
       risk: high
       resolution: HUMAN REVIEW. Preserve remote session resource URL synthesis.
+    desktop/src/react/__tests__/services/ws-message-handler.test.ts:
+      class: remote_attachment_preview
+      risk: medium
+      strategy: preserve-both
+      resolution: Start from main, then preserve fork regression coverage for replayed optimistic attachments receiving server fileId metadata.
+      plannedAction: Would keep upstream session identity and preview refresh tests, then preserve the fork replayed optimistic attachment hydration regression test.
+    package.json:
+      class: desktop_packaging
+      risk: medium
+      strategy: main-with-fork-install-local
+      resolution: Use upstream main as the package baseline, but preserve the fork install:local script that writes local build info before signing.
+      plannedAction: Would start from origin/main package.json, preserve fork install:local, and keep the upstream version baseline.
+    package-lock.json:
+      class: desktop_packaging
+      risk: medium
+      strategy: regenerate-from-package-json
+      resolution: Regenerate from the resolved package.json; do not keep stale fork prerelease root metadata.
+      plannedAction: Would regenerate package-lock.json from the resolved package.json rather than keeping stale fork prerelease metadata.
 
 verification:
   tier1Tests:
