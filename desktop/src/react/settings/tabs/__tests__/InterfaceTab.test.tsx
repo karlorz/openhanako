@@ -2,7 +2,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { InterfaceTab } from '../InterfaceTab';
@@ -139,35 +139,42 @@ describe('InterfaceTab appearance state', () => {
     expect(screen.getByTitle('settings.fonts.followReading')).toBeTruthy();
   });
 
-  it('renders document width, chat width, and body size offset controls in a reading layout section', () => {
+  it('places chat body controls in the font section and editor body controls in the editor section', () => {
     render(React.createElement(InterfaceTab));
 
-    const documentWidthSlider = screen.getByRole('slider', { name: 'settings.appearance.documentWidth' }) as HTMLInputElement;
+    const fontSection = screen.getByText('settings.appearance.font').closest('section');
+    const editorSection = screen.getByText('settings.editor.title').closest('section');
+    expect(fontSection).toBeTruthy();
+    expect(editorSection).toBeTruthy();
+
+    expect(screen.queryByText('settings.appearance.readingLayout')).toBeNull();
+
     const chatWidthSlider = screen.getByRole('slider', { name: 'settings.appearance.chatWidth' }) as HTMLInputElement;
     const bodySlider = screen.getByRole('slider', { name: 'settings.appearance.bodyFontSizeOffset' }) as HTMLInputElement;
+    const editorWidthSlider = screen.getByRole('slider', { name: 'settings.editor.markdownContentWidth' }) as HTMLInputElement;
+    const editorNumberInputs = within(editorSection!).getAllByRole('spinbutton') as HTMLInputElement[];
 
-    expect(screen.getByText('settings.appearance.readingLayout')).toBeTruthy();
-    expect(screen.getByText('settings.appearance.documentWidth')).toBeTruthy();
-    expect(documentWidthSlider.min).toBe('0');
-    expect(documentWidthSlider.max).toBe('3');
-    expect(documentWidthSlider.step).toBe('1');
-    expect(documentWidthSlider.value).toBe('1');
-
-    expect(screen.getByText('settings.appearance.chatWidth')).toBeTruthy();
+    expect(within(fontSection!).getByText('settings.appearance.chatWidth')).toBeTruthy();
+    expect(within(fontSection!).getByText('settings.appearance.bodyFontSizeOffset')).toBeTruthy();
     expect(chatWidthSlider.min).toBe('0');
     expect(chatWidthSlider.max).toBe('3');
     expect(chatWidthSlider.step).toBe('1');
     expect(chatWidthSlider.value).toBe('1');
-
-    expect(screen.getByText('settings.appearance.bodyFontSizeOffset')).toBeTruthy();
     expect(bodySlider.min).toBe('0');
     expect(bodySlider.max).toBe('4');
     expect(bodySlider.step).toBe('1');
     expect(bodySlider.value).toBe('2');
 
+    expect(within(editorSection!).getByText('settings.editor.markdownContentWidth')).toBeTruthy();
+    expect(within(editorSection!).getByText('settings.editor.markdownBodyFontSize')).toBeTruthy();
+    expect(editorWidthSlider.min).toBe('0');
+    expect(editorWidthSlider.max).toBe('3');
+    expect(editorWidthSlider.step).toBe('1');
+    expect(editorWidthSlider.value).toBe('1');
+    expect(editorNumberInputs[0].value).toBe('15');
+
     expect(screen.queryByText('720 px')).toBeNull();
-    expect(screen.queryByText('settings.editor.markdownContentWidth')).toBeNull();
-    expect(screen.queryByText('settings.editor.markdownBodyFontSize')).toBeNull();
+    expect(screen.queryByText('settings.appearance.documentWidth')).toBeNull();
   });
 
   it('keeps compact step slider ticks aligned to the slider stops without a value pill', () => {

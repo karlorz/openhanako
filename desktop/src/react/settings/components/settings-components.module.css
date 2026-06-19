@@ -64,6 +64,18 @@
     /* 左右 padding 移到 row/warning 自己上，让分隔线能贴卡片 border */
 }
 
+.sectionCard {
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-card);
+    border: var(--border-width, 1px) solid var(--border);
+    border-radius: var(--radius-card, 8px);
+}
+
+.sectionBody > .sectionCard:not(:first-child) {
+    margin-top: var(--space-md);
+}
+
 .sectionFooter {
     display: flex;
     justify-content: flex-end;

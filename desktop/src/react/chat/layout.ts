@@ -1,14 +1,19 @@
 export type ChatLayoutContentWidth = 640 | 720 | 800 | 'unlimited';
+export type ChatBodyFontSizeOffset = -2 | -1 | 0 | 1 | 2;
 
 export interface ChatLayoutPreferences {
   contentWidth: ChatLayoutContentWidth;
+  bodyFontSizeOffset: ChatBodyFontSizeOffset;
 }
 
 export const DEFAULT_CHAT_LAYOUT: ChatLayoutPreferences = Object.freeze({
   contentWidth: 720,
+  bodyFontSizeOffset: 0,
 });
 
 const CONTENT_WIDTH_PRESETS = new Set([640, 720, 800]);
+const BODY_FONT_SIZE_OFFSETS = new Set([-2, -1, 0, 1, 2]);
+const BODY_FONT_SIZE_BASE = 15;
 const UNLIMITED_CONTENT_WIDTH = 'unlimited';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -27,10 +32,16 @@ function normalizeContentWidth(value: unknown, fallback: ChatLayoutContentWidth)
   return CONTENT_WIDTH_PRESETS.has(parsed) ? parsed as ChatLayoutContentWidth : fallback;
 }
 
+function normalizeBodyFontSizeOffset(value: unknown, fallback: ChatBodyFontSizeOffset): ChatBodyFontSizeOffset {
+  const parsed = readNumber(value);
+  return BODY_FONT_SIZE_OFFSETS.has(parsed) ? parsed as ChatBodyFontSizeOffset : fallback;
+}
+
 export function normalizeChatLayout(value: unknown): ChatLayoutPreferences {
   const source = isRecord(value) ? value : {};
   return {
     contentWidth: normalizeContentWidth(source.contentWidth, DEFAULT_CHAT_LAYOUT.contentWidth),
+    bodyFontSizeOffset: normalizeBodyFontSizeOffset(source.bodyFontSizeOffset, DEFAULT_CHAT_LAYOUT.bodyFontSizeOffset),
   };
 }
 
@@ -57,6 +68,7 @@ export function applyChatLayout(
     root.style.setProperty('--chat-column-width', `${layout.contentWidth}px`);
     root.style.setProperty('--chat-input-column-width', 'calc(var(--chat-column-width) + var(--chat-input-column-extra))');
   }
+  root.style.setProperty('--chat-message-font-size', `${BODY_FONT_SIZE_BASE + layout.bodyFontSizeOffset}px`);
 
   return layout;
 }

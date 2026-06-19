@@ -106,7 +106,7 @@ describe('editor typography settings', () => {
     const style = root.style;
     expect(style.getPropertyValue('--editor-markdown-font-family')).toBe('var(--font-ui)');
     expect(style.getPropertyValue('--editor-markdown-font-size')).toBe('17px');
-    expect(style.getPropertyValue('--chat-message-font-size')).toBe('17px');
+    expect(style.getPropertyValue('--chat-message-font-size')).toBe('');
     expect(style.getPropertyValue('--editor-markdown-h1-font-size')).toBe('26px');
     expect(style.getPropertyValue('--editor-markdown-h2-font-size')).toBe('21px');
     expect(style.getPropertyValue('--editor-markdown-h3-font-size')).toBe('19px');

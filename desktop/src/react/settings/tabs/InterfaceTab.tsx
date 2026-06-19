@@ -11,6 +11,7 @@ import {
   applyChatLayout,
   mergeChatLayout,
   normalizeChatLayout,
+  type ChatBodyFontSizeOffset,
   type ChatLayoutContentWidth,
   type ChatLayoutPreferences,
 } from '../../chat/layout';
@@ -88,7 +89,6 @@ const EDITOR_FONT_SIZE_ROWS: Array<{
   { key: 'heading3FontSize', label: 'settings.editor.markdownHeading3FontSize', hint: 'settings.editor.markdownHeading3FontSizeHint', min: 14, max: 30 },
 ];
 
-const BODY_FONT_SIZE_BASE = 15;
 const BODY_FONT_SIZE_OFFSETS = [-2, -1, 0, 1, 2] as const;
 
 const CONTENT_WIDTH_STEPS: Array<{
@@ -101,11 +101,6 @@ const CONTENT_WIDTH_STEPS: Array<{
   { value: '800', width: 800 },
   { value: 'unlimited', width: 'unlimited', labelKey: 'settings.appearance.readingWidthUnlimited' },
 ];
-
-function bodyFontSizeOffsetFromValue(value: number): string {
-  const offset = Math.max(-2, Math.min(2, Math.round(value - BODY_FONT_SIZE_BASE)));
-  return String(offset);
-}
 
 function formatBodyFontSizeOffset(offset: number): string {
   return offset > 0 ? `+${offset}` : String(offset);
@@ -149,11 +144,11 @@ export function InterfaceTab() {
       valueLabel,
     };
   });
-  const bodyFontSizeOptions: Array<StepSliderOption & { size: number }> = BODY_FONT_SIZE_OFFSETS.map(offset => {
+  const bodyFontSizeOptions: Array<StepSliderOption & { offset: ChatBodyFontSizeOffset }> = BODY_FONT_SIZE_OFFSETS.map(offset => {
     const label = formatBodyFontSizeOffset(offset);
     return {
       value: String(offset),
-      size: BODY_FONT_SIZE_BASE + offset,
+      offset,
       label,
       valueLabel: label,
     };
@@ -302,54 +297,38 @@ export function InterfaceTab() {
             </button>
           ))}
         </div>
-      </SettingsSection>
-
-      <SettingsSection title={t('settings.appearance.readingLayout')}>
-        <SettingsRow
-          label={t('settings.appearance.documentWidth')}
-          hint={t('settings.appearance.documentWidthHint')}
-          control={
-            <StepSlider
-              ariaLabel={t('settings.appearance.documentWidth')}
-              options={contentWidthOptions}
-              value={String(editorTypography.markdown.contentWidth)}
-              onChange={(value) => {
-                const option = contentWidthOptions.find(item => item.value === value);
-                if (option) saveEditorTypography({ contentWidth: option.width as EditorMarkdownContentWidth });
-              }}
-            />
-          }
-        />
-        <SettingsRow
-          label={t('settings.appearance.chatWidth')}
-          hint={t('settings.appearance.chatWidthHint')}
-          control={
-            <StepSlider
-              ariaLabel={t('settings.appearance.chatWidth')}
-              options={contentWidthOptions}
-              value={String(chatLayout.contentWidth)}
-              onChange={(value) => {
-                const option = contentWidthOptions.find(item => item.value === value);
-                if (option) saveChatLayout({ contentWidth: option.width as ChatLayoutContentWidth });
-              }}
-            />
-          }
-        />
-        <SettingsRow
-          label={t('settings.appearance.bodyFontSizeOffset')}
-          hint={t('settings.appearance.bodyFontSizeOffsetHint')}
-          control={
-            <StepSlider
-              ariaLabel={t('settings.appearance.bodyFontSizeOffset')}
-              options={bodyFontSizeOptions}
-              value={bodyFontSizeOffsetFromValue(editorTypography.markdown.bodyFontSize)}
-              onChange={(value) => {
-                const option = bodyFontSizeOptions.find(item => item.value === value);
-                if (option) saveEditorTypography({ bodyFontSize: option.size });
-              }}
-            />
-          }
-        />
+        <SettingsSection.Card>
+          <SettingsRow
+            label={t('settings.appearance.bodyFontSizeOffset')}
+            hint={t('settings.appearance.bodyFontSizeOffsetHint')}
+            control={
+              <StepSlider
+                ariaLabel={t('settings.appearance.bodyFontSizeOffset')}
+                options={bodyFontSizeOptions}
+                value={String(chatLayout.bodyFontSizeOffset)}
+                onChange={(value) => {
+                  const option = bodyFontSizeOptions.find(item => item.value === value);
+                  if (option) saveChatLayout({ bodyFontSizeOffset: option.offset });
+                }}
+              />
+            }
+          />
+          <SettingsRow
+            label={t('settings.appearance.chatWidth')}
+            hint={t('settings.appearance.chatWidthHint')}
+            control={
+              <StepSlider
+                ariaLabel={t('settings.appearance.chatWidth')}
+                options={contentWidthOptions}
+                value={String(chatLayout.contentWidth)}
+                onChange={(value) => {
+                  const option = contentWidthOptions.find(item => item.value === value);
+                  if (option) saveChatLayout({ contentWidth: option.width as ChatLayoutContentWidth });
+                }}
+              />
+            }
+          />
+        </SettingsSection.Card>
       </SettingsSection>
 
       <SettingsSection title={t('settings.appearance.title')}>
@@ -418,6 +397,34 @@ export function InterfaceTab() {
                   fallback: FOLLOW_READING_FONT_ID,
                 }),
               })}
+            />
+          }
+        />
+        <SettingsRow
+          label={t('settings.editor.markdownBodyFontSize')}
+          hint={t('settings.editor.markdownBodyFontSizeHint')}
+          control={
+            <NumberInput
+              value={editorTypography.markdown.bodyFontSize}
+              onChange={(value) => saveEditorTypography({ bodyFontSize: value })}
+              unit="px"
+              min={12}
+              max={24}
+            />
+          }
+        />
+        <SettingsRow
+          label={t('settings.editor.markdownContentWidth')}
+          hint={t('settings.editor.markdownContentWidthHint')}
+          control={
+            <StepSlider
+              ariaLabel={t('settings.editor.markdownContentWidth')}
+              options={contentWidthOptions}
+              value={String(editorTypography.markdown.contentWidth)}
+              onChange={(value) => {
+                const option = contentWidthOptions.find(item => item.value === value);
+                if (option) saveEditorTypography({ contentWidth: option.width as EditorMarkdownContentWidth });
+              }}
             />
           }
         />

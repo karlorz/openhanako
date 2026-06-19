@@ -50,7 +50,7 @@ const BUILT_IN_SETTINGS_SEARCH_ENTRIES: SettingsSearchEntry[] = [
     tabId: 'interface',
     titleKey: 'settings.appearance.font',
     pathKeys: ['settings.tabs.interface'],
-    aliases: ['font', 'serif', 'sans', 'typography', 'markdown font', 'reading layout', 'reading width', 'document width', 'chat width', 'body size', '字体', '宋体', '黑体', '排版', 'Markdown 字体', '阅读布局', '阅读宽度', '文档宽度', '聊天宽度', '正文字号'],
+    aliases: ['font', 'serif', 'sans', 'typography', 'markdown font', 'reading width', 'document width', 'body width', 'chat width', 'chat body size', 'body size', '字体', '宋体', '黑体', '排版', 'Markdown 字体', '阅读宽度', '文档宽度', '正文宽度', '聊天宽度', '聊天字号', '正文字号'],
   },
   {
     id: 'interface-language',
