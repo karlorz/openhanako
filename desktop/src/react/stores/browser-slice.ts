@@ -16,7 +16,7 @@ export interface BrowserSlice {
 }
 
 export const createBrowserSlice = (
-  set: (partial: Partial<BrowserSlice>) => void
+  _set: (partial: Partial<BrowserSlice>) => void
 ): BrowserSlice => ({
   browserBySession: {},
 });
