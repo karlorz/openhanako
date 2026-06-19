@@ -31,7 +31,8 @@ Generated during the 2026-06-15 remote attachment preview fix closeout.
 - `remote_hosts`: empty for unattended loops; server install/upgrade remains manual via `scripts/install-server.mjs`
 - `interview_backend`: `grill-me`
 - `interview_trigger`: `auto`
-- External memory: none for now; do not add a `memory_layer` field to dev-loop config because v1.24.5 does not parse it.
+- External memory: none for now; do not add a `memory_layer` field to dev-loop config because v1.24.7 does not parse it.
+- PR safety: PR #1 is a permanent draft dashboard from `dev` to `main`; never merge it, never enable auto-merge for it, and never treat `main` as the dev-loop release branch.
 - `fact_check`: local repo + SkillWiki + web when available
 - `browser_verification`: enable for renderer/UI changes with Vite/Electron smoke
 - `reactive_debugging`: enable with 2 retries and captured evidence
@@ -65,11 +66,11 @@ Generated during the 2026-06-15 remote attachment preview fix closeout.
   - `scripts/sync-upstream.mjs`
   - `scripts/track-upstream-issues.mjs`
   - `docs/upstream-issues/**`
-  - `tests/sync-upstream.test.js`
-  - `tests/upstream-issue-tracker.test.js`
+  - `tests/sync-upstream.test.mjs`
+  - `tests/upstream-issue-tracker.test.mjs`
 - `install_server_maintenance`
   - `scripts/install-server.mjs`
-  - `tests/install-server-upgrade.test.js`
+  - `tests/install-server-upgrade.test.mjs`
   - `docs/server-install.md`
   - `docs/reinit-data-failsafe.md`
 
@@ -78,6 +79,8 @@ Generated during the 2026-06-15 remote attachment preview fix closeout.
 The fork policy says the working/default branch is `dev`, so `.github/workflows/ci.yml` now runs on both `main` and `dev`.
 
 Decision: **yes, add `dev` to CI triggers** because dev-loop will operate on `dev`. Branch protection remains manual until the repo owner chooses to enable it.
+
+Decision update 2026-06-20: PR #1 is protected review infrastructure, not a dev-loop merge PR. `release_branch` stays `dev`; `origin/main` may mirror `upstream/main` for the conflict dashboard only; dashboard refresh must use `node scripts/sync-upstream.mjs --conflict-plan` and must not merge, rebase, reset, stage, or write `dev`.
 
 ## Dev-Loop Cycle Audit
 
