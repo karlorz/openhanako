@@ -1160,6 +1160,168 @@ PrivateTmp=true
     })).rejects.toThrow(/latest-full-state|Path B|explicit backup path/i);
   });
 
+  it("rejects an explicit restore backup whose manifest belongs to another data root", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-reinit-restore-mismatch-"));
+    const dataRoot = path.join(tmpDir, "hana-home");
+    const backupPath = path.join(tmpDir, "backups", "hanaagent-backup.tar.gz");
+    const manifestPath = `${backupPath}.manifest.json`;
+    fs.mkdirSync(path.dirname(manifestPath), { recursive: true });
+    fs.writeFileSync(manifestPath, JSON.stringify({
+      kind: "hanaagent-reinit-data-backup-manifest",
+      createdAt: "2026-06-16T17:00:00.000Z",
+      backupPath,
+      dataRoot: path.join(tmpDir, "other-home"),
+      archiveSha256: "f".repeat(64),
+      entries: ["other-home/auth.json"],
+    }, null, 2));
+    const ops = createShellReinitDataOps({
+      run: async (cmd, args) => {
+        if (cmd === "tar" && args[0] === "-tzf") {
+          return { status: 0, stdout: "other-home/auth.json\n", stderr: "" };
+        }
+        if (cmd === "sha256sum") {
+          return { status: 0, stdout: `${"f".repeat(64)}  ${args[0]}\n`, stderr: "" };
+        }
+        return { status: 0, stdout: "", stderr: "" };
+      },
+    });
+
+    await expect(ops.verifyBackup({
+      dataRoot,
+      backup: { destination: backupPath, manifest: manifestPath },
+    })).rejects.toThrow(/data root mismatch/i);
+  });
+
+  it("rejects an explicit restore backup that omits the requested data-root directory", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-reinit-restore-root-missing-"));
+    const dataRoot = path.join(tmpDir, "hana-home");
+    const backupPath = path.join(tmpDir, "backups", "hanaagent-backup.tar.gz");
+    const manifestPath = `${backupPath}.manifest.json`;
+    fs.mkdirSync(path.dirname(manifestPath), { recursive: true });
+    fs.writeFileSync(manifestPath, JSON.stringify({
+      kind: "hanaagent-reinit-data-backup-manifest",
+      createdAt: "2026-06-16T17:00:00.000Z",
+      backupPath,
+      dataRoot,
+      archiveSha256: "e".repeat(64),
+      entries: ["wrong-root/auth.json"],
+    }, null, 2));
+    const ops = createShellReinitDataOps({
+      run: async (cmd, args) => {
+        if (cmd === "tar" && args[0] === "-tzf") {
+          return { status: 0, stdout: "wrong-root/auth.json\n", stderr: "" };
+        }
+        if (cmd === "sha256sum") {
+          return { status: 0, stdout: `${"e".repeat(64)}  ${args[0]}\n`, stderr: "" };
+        }
+        return { status: 0, stdout: "", stderr: "" };
+      },
+    });
+
+    await expect(ops.verifyBackup({
+      dataRoot,
+      backup: { destination: backupPath, manifest: manifestPath },
+    })).rejects.toThrow(/does not contain expected data root hana-home/i);
+  });
+
+  it("accepts restore backups that list the requested root with a leading dot directory", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-reinit-restore-dot-root-"));
+    const dataRoot = path.join(tmpDir, "hana-home");
+    const backupPath = path.join(tmpDir, "backups", "hanaagent-backup.tar.gz");
+    const manifestPath = `${backupPath}.manifest.json`;
+    fs.mkdirSync(path.dirname(manifestPath), { recursive: true });
+    fs.writeFileSync(manifestPath, JSON.stringify({
+      kind: "hanaagent-reinit-data-backup-manifest",
+      createdAt: "2026-06-16T17:00:00.000Z",
+      backupPath,
+      dataRoot,
+      archiveSha256: "d".repeat(64),
+      entries: ["./hana-home/auth.json"],
+    }, null, 2));
+    const ops = createShellReinitDataOps({
+      run: async (cmd, args) => {
+        if (cmd === "tar" && args[0] === "-tzf") {
+          return { status: 0, stdout: "./hana-home/auth.json\n", stderr: "" };
+        }
+        if (cmd === "sha256sum") {
+          return { status: 0, stdout: `${"d".repeat(64)}  ${args[0]}\n`, stderr: "" };
+        }
+        return { status: 0, stdout: "", stderr: "" };
+      },
+    });
+
+    await expect(ops.verifyBackup({
+      dataRoot,
+      backup: { destination: backupPath, manifest: manifestPath },
+    })).resolves.toMatchObject({
+      entries: ["hana-home/auth.json"],
+    });
+  });
+
+  it("rejects restore backups with entries outside the requested data root", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-reinit-restore-extra-root-"));
+    const dataRoot = path.join(tmpDir, "hana-home");
+    const backupPath = path.join(tmpDir, "backups", "hanaagent-backup.tar.gz");
+    const manifestPath = `${backupPath}.manifest.json`;
+    fs.mkdirSync(path.dirname(manifestPath), { recursive: true });
+    fs.writeFileSync(manifestPath, JSON.stringify({
+      kind: "hanaagent-reinit-data-backup-manifest",
+      createdAt: "2026-06-16T17:00:00.000Z",
+      backupPath,
+      dataRoot,
+      archiveSha256: "c".repeat(64),
+      entries: ["hana-home/auth.json", "other-home/auth.json"],
+    }, null, 2));
+    const ops = createShellReinitDataOps({
+      run: async (cmd, args) => {
+        if (cmd === "tar" && args[0] === "-tzf") {
+          return { status: 0, stdout: "hana-home/auth.json\nother-home/auth.json\n", stderr: "" };
+        }
+        if (cmd === "sha256sum") {
+          return { status: 0, stdout: `${"c".repeat(64)}  ${args[0]}\n`, stderr: "" };
+        }
+        return { status: 0, stdout: "", stderr: "" };
+      },
+    });
+
+    await expect(ops.verifyBackup({
+      dataRoot,
+      backup: { destination: backupPath, manifest: manifestPath },
+    })).rejects.toThrow(/entries outside expected data root hana-home/i);
+  });
+
+  it("rejects restore backups with path traversal entries", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-reinit-restore-traversal-"));
+    const dataRoot = path.join(tmpDir, "hana-home");
+    const backupPath = path.join(tmpDir, "backups", "hanaagent-backup.tar.gz");
+    const manifestPath = `${backupPath}.manifest.json`;
+    fs.mkdirSync(path.dirname(manifestPath), { recursive: true });
+    fs.writeFileSync(manifestPath, JSON.stringify({
+      kind: "hanaagent-reinit-data-backup-manifest",
+      createdAt: "2026-06-16T17:00:00.000Z",
+      backupPath,
+      dataRoot,
+      archiveSha256: "a".repeat(64),
+      entries: ["hana-home/../other-home/auth.json"],
+    }, null, 2));
+    const ops = createShellReinitDataOps({
+      run: async (cmd, args) => {
+        if (cmd === "tar" && args[0] === "-tzf") {
+          return { status: 0, stdout: "hana-home/../other-home/auth.json\n", stderr: "" };
+        }
+        if (cmd === "sha256sum") {
+          return { status: 0, stdout: `${"a".repeat(64)}  ${args[0]}\n`, stderr: "" };
+        }
+        return { status: 0, stdout: "", stderr: "" };
+      },
+    });
+
+    await expect(ops.verifyBackup({
+      dataRoot,
+      backup: { destination: backupPath, manifest: manifestPath },
+    })).rejects.toThrow(/unsafe entries/i);
+  });
+
   it("keeps executable reinit-data shell operations inside an explicit command allowlist", async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-reinit-shell-"));
     const dataRoot = path.join(tmpDir, "hana-home");
@@ -1189,6 +1351,9 @@ PrivateTmp=true
     const ops = createShellReinitDataOps({
       run: async (cmd, args) => {
         calls.push([cmd, ...args].join(" "));
+        if (cmd === "tar" && args[0] === "-tzf") {
+          return { status: 0, stdout: "hana-home/auth.json\n", stderr: "" };
+        }
         if (cmd === "sha256sum") return { status: 0, stdout: `${"b".repeat(64)}  ${args[0]}\n`, stderr: "" };
         return { status: 0, stdout: "", stderr: "" };
       },
