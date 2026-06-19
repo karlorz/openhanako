@@ -62,6 +62,8 @@ conflictRules:
     - desktop/src/react/__tests__/stores/chat-slice.test.ts
     - desktop/src/react/__tests__/stores/selectors/file-refs.test.ts
     - desktop/src/react/__tests__/utils/user-attachment-media.test.ts
+    - package.json
+    - package-lock.json
   policies:
     core/server-auth.ts:
       class: lan_connect_auth
@@ -88,15 +90,15 @@ conflictRules:
     package.json:
       class: desktop_packaging
       risk: medium
-      strategy: main-with-fork-install-local
-      resolution: Use upstream main as the package baseline, but preserve the fork install:local script that writes local build info before signing.
-      plannedAction: Would start from origin/main package.json, preserve fork install:local, and keep the upstream version baseline.
+      strategy: defer-to-stable-production-sync
+      resolution: Defer package version alignment to the attended stable production fork sync. Preserve the fork package baseline and install:local behavior during dashboard-only conflict reduction.
+      plannedAction: Report only. Do not pre-bump the package version for the dashboard; production stable fork sync owns the upstream version update and install:local preservation together.
     package-lock.json:
       class: desktop_packaging
       risk: medium
-      strategy: regenerate-from-package-json
-      resolution: Regenerate from the resolved package.json; do not keep stale fork prerelease root metadata.
-      plannedAction: Would regenerate package-lock.json from the resolved package.json rather than keeping stale fork prerelease metadata.
+      strategy: defer-to-stable-production-sync
+      resolution: Defer lockfile root metadata changes until the attended stable production fork sync resolves package.json.
+      plannedAction: Report only. Do not regenerate or pre-bump package-lock.json for the dashboard; stable production fork sync regenerates it after the package version decision.
 
 verification:
   tier1Tests:

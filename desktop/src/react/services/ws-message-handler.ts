@@ -21,7 +21,6 @@ import {
   openChannel as openChannelAction,
   upsertConversationAgentActivity as upsertConversationAgentActivityAction,
 } from '../stores/channel-actions';
-import { showError } from '../utils/ui-helpers';
 import { handleAppEvent } from './app-event-actions';
 import {
   PREVIEW_DOCUMENT_CHANGE_REFRESH_OPTIONS,
@@ -38,8 +37,6 @@ import { TODO_TOOL_NAMES, type TodoToolName } from '../utils/todo-constants';
 import { applyTodoLifecycle, migrateLegacyTodos } from '../utils/todo-compat';
 import { renderMarkdown } from '../utils/markdown';
 import { bumpMessageLiveVersion } from '../stores/message-live-version';
-
-declare function t(key: string, vars?: Record<string, string>): any;
 
 let requestContextUsage: (sessionPath: string) => void = () => {};
 
