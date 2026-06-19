@@ -929,17 +929,34 @@ export function createShellReinitDataOps({
       const listing = await checked("tar", ["-tzf", backupPath], { plan, privileged: true });
       const checksum = await checked("sha256sum", [backupPath], { plan, privileged: true });
       const archiveSha256 = parseSha256sum(checksum.stdout, backupPath);
+      const entries = parseTarListing(listing.stdout);
       if (fs.existsSync(manifestPath)) {
         const manifest = readJson(manifestPath);
         if (manifest.archiveSha256 && manifest.archiveSha256 !== archiveSha256) {
           fail(`backup sha256 mismatch for ${backupPath}: expected ${manifest.archiveSha256}, got ${archiveSha256}`);
         }
+        if (manifest.dataRoot && plan.dataRoot && path.resolve(manifest.dataRoot) !== path.resolve(plan.dataRoot)) {
+          fail(`backup data root mismatch for ${backupPath}: manifest=${manifest.dataRoot} requested=${plan.dataRoot}`);
+        }
+      }
+      const expectedRoot = path.basename(path.resolve(plan.dataRoot));
+      const rootEntries = entries.filter((entry) => tarEntryIsUnderRoot(entry, expectedRoot));
+      if (expectedRoot && rootEntries.length === 0) {
+        fail(`backup archive ${backupPath} does not contain expected data root ${expectedRoot}`);
+      }
+      const unsafeEntries = entries.filter((entry) => tarEntryIsUnsafe(entry));
+      if (unsafeEntries.length > 0) {
+        fail(`backup archive ${backupPath} contains unsafe entries: ${unsafeEntries.slice(0, 5).join(", ")}`);
+      }
+      const unexpectedEntries = entries.filter((entry) => !tarEntryIsUnderRoot(entry, expectedRoot));
+      if (unexpectedEntries.length > 0) {
+        fail(`backup archive ${backupPath} contains entries outside expected data root ${expectedRoot}: ${unexpectedEntries.slice(0, 5).join(", ")}`);
       }
       return {
         backupPath,
         manifestPath,
         archiveSha256,
-        entries: parseTarListing(listing.stdout),
+        entries,
       };
     },
     async exportPreservedData(plan) {
@@ -1583,8 +1600,16 @@ function parseSha256sum(stdout, backupPath) {
 function parseTarListing(stdout) {
   return String(stdout || "")
     .split(/\r?\n/)
-    .map((line) => line.trim())
+    .map((line) => line.trim().replace(/\\/g, "/").replace(/^\.\/+/, "").replace(/\/+$/, ""))
     .filter(Boolean);
+}
+
+function tarEntryIsUnderRoot(entry, expectedRoot) {
+  return Boolean(expectedRoot) && (entry === expectedRoot || entry.startsWith(`${expectedRoot}/`));
+}
+
+function tarEntryIsUnsafe(entry) {
+  return entry.startsWith("/") || entry.split("/").includes("..");
 }
 
 function writeBackupManifest(manifestPath, manifest) {
