@@ -1,6 +1,6 @@
 # Dev Loop - OpenHanako
 
-Compact config for dev-loop v1.24.5. The operating guide remains in
+Compact config for dev-loop v1.24.7. The operating guide remains in
 `CLAUDE.md`, `CONTEXT.md`, `FORK_SYNC.md`, and
 `docs/agents/openhanako-dev-loop-setup.md`.
 
@@ -8,6 +8,24 @@ Compact config for dev-loop v1.24.5. The operating guide remains in
 # Identity
 slug: openhanako
 release_branch: dev
+
+# Branch and PR safety. Dev-loop works from `dev`; `main` is only the
+# upstream-mirror dashboard base. PR #1 is permanent review infrastructure,
+# not a merge vehicle.
+merge_safety:
+  working_branch: dev
+  protected_dashboard_pr: 1
+  protected_dashboard_base: main
+  protected_dashboard_head: dev
+  dashboard_pr_policy: never_merge
+  dashboard_pr_refresh_command: "node scripts/sync-upstream.mjs --conflict-plan"
+  origin_main_policy: "origin/main may be replaced from upstream/main during dashboard refresh only."
+  forbidden_actions:
+    - "Do not merge PR #1."
+    - "Do not enable auto-merge for PR #1."
+    - "Do not close PR #1 as a completed merge vehicle."
+    - "Do not treat origin/main as the dev-loop release branch."
+    - "Do not merge, rebase, or reset dev from main during dashboard refresh."
 
 # PRD: use Superpowers for brainstorm -> spec -> plan -> execute -> review.
 prd_layer: superpowers
@@ -97,15 +115,18 @@ critical_paths:
       - docs/fork-sync/rules.yml
       - scripts/sync-upstream.mjs
       - scripts/track-upstream-issues.mjs
+      - package.json
+      - package-lock.json
+      - desktop/src/react/__tests__/services/ws-message-handler.test.ts
       - docs/upstream-issues/**
-      - tests/sync-upstream.test.js
-      - tests/upstream-issue-tracker.test.js
+      - tests/sync-upstream.test.mjs
+      - tests/upstream-issue-tracker.test.mjs
     vault:
       - projects/openhanako/fork-sync-policy
   install_server_maintenance:
     code:
       - scripts/install-server.mjs
-      - tests/install-server-upgrade.test.js
+      - tests/install-server-upgrade.test.mjs
       - docs/server-install.md
       - docs/reinit-data-failsafe.md
       - .claude/dev-loop.config.md
@@ -183,6 +204,8 @@ code_review:
 notes:
   github_repo: karlorz/openhanako
   upstream_repo: liliMozi/openhanako
+  permanent_dashboard_pr: "https://github.com/karlorz/openhanako/pull/1"
+  permanent_dashboard_pr_policy: "Draft forever, never merge. Use it to review dev vs mirrored upstream main conflicts."
   remote_server_url: http://100.125.173.118:14500
   gh_default_repo_hint: "Run `gh repo set-default karlorz/openhanako` if gh resolves to upstream."
 ```
