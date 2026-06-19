@@ -62,7 +62,8 @@ function runShell(command, options = {}) {
   const result = spawnSync("sh", ["-c", command], {
     cwd: ROOT,
     encoding: "utf8",
-    stdio: options.capture ? "pipe" : "inherit",
+    input: options.input,
+    stdio: options.capture || options.input ? "pipe" : "inherit",
   });
   if (result.error) {
     return { status: 1, stdout: "", stderr: result.error.message };
@@ -104,6 +105,177 @@ export function changedDivergingFiles(upstreamChangedFiles, rules = loadRules())
 export function verificationCommands(rules = loadRules()) {
   const tests = rules.verification?.tier1Tests?.map((testPath) => `npx vitest run ${testPath}`) ?? [];
   return [...tests, ...(rules.verification?.commands ?? [])];
+}
+
+export function conflictPolicyForFile(file, rules = loadRules()) {
+  const conflictRules = rules.conflictRules ?? {};
+  const policy = conflictRules.policies?.[file];
+  const defaultResolution = conflictRules.defaultResolution ?? "main";
+  if (policy?.strategy) {
+    return {
+      file,
+      strategy: policy.strategy,
+      source: "policy",
+      class: policy.class ?? null,
+      risk: policy.risk ?? null,
+      resolution: policy.resolution ?? "",
+      plannedAction: policy.plannedAction ?? policy.resolution ?? "",
+    };
+  }
+  if (policy) {
+    return {
+      file,
+      strategy: "human-review",
+      source: "policy",
+      class: policy.class ?? null,
+      risk: policy.risk ?? null,
+      resolution: policy.resolution ?? "",
+      plannedAction: policy.plannedAction ?? "Would require human review before any future resolver acts.",
+    };
+  }
+  if ((conflictRules.divergingFiles ?? []).includes(file)) {
+    return {
+      file,
+      strategy: "human-review",
+      source: "diverging-file",
+      class: null,
+      risk: "high",
+      resolution: "Diverging fork file without an explicit strategy; inspect both sides before resolving.",
+      plannedAction: "Would stop for human review because this is a known diverging fork file.",
+    };
+  }
+  return {
+    file,
+    strategy: defaultResolution === "main" ? "take-main" : `take-${defaultResolution}`,
+    source: "default",
+    class: null,
+    risk: "low",
+    resolution: `Default dry-run policy: resolve to ${defaultResolution}.`,
+    plannedAction: `Would accept the origin/${defaultResolution} version if a future resolver executes this plan.`,
+  };
+}
+
+export function buildConflictPlan(conflictingFiles, rules = loadRules(), options = {}) {
+  const files = [...new Set(conflictingFiles)].filter(Boolean).sort();
+  return {
+    kind: "openhanako-fork-conflict-plan",
+    dryRun: options.dryRun ?? rules.conflictRules?.dryRunDefault ?? true,
+    generatedAt: options.generatedAt ?? new Date().toISOString(),
+    defaultResolution: rules.conflictRules?.defaultResolution ?? "main",
+    conflicts: files.map((file) => conflictPolicyForFile(file, rules)),
+  };
+}
+
+export function parseMergeTreeConflictingFiles(output) {
+  const files = new Set();
+  for (const line of output.split("\n")) {
+    const stageMatch = line.match(/^\d{6} [0-9a-f]+ [123]\t(.+)$/);
+    if (stageMatch) {
+      files.add(stageMatch[1]);
+      continue;
+    }
+    const conflictMatch = line.match(/^CONFLICT \([^)]+\): .* in (.+)$/);
+    if (conflictMatch) {
+      files.add(conflictMatch[1]);
+    }
+  }
+  return [...files].sort();
+}
+
+const DASHBOARD_START = "<!-- openhanako-conflict-dashboard:start -->";
+const DASHBOARD_END = "<!-- openhanako-conflict-dashboard:end -->";
+
+function shortSha(sha) {
+  return sha ? sha.slice(0, 8) : "<unknown>";
+}
+
+function bulletList(items, fallback = "None") {
+  if (!items?.length) {
+    return `- ${fallback}`;
+  }
+  return items.map((item) => `- ${item}`).join("\n");
+}
+
+export function renderPrDashboardBlock(report) {
+  const conflicts = report.conflicts?.length
+    ? report.conflicts.map((item) => [
+      `- \`${item.file}\``,
+      `  - strategy: \`${item.strategy}\` (${item.source}${item.risk ? `, ${item.risk}` : ""})`,
+      `  - planned action: ${item.plannedAction}`,
+    ].join("\n")).join("\n")
+    : "- No merge-tree conflicts detected.";
+  const latestCommits = (report.upstreamSignals?.latestCommits ?? []).map((line) => `\`${line}\``);
+  const riskyFiles = (report.upstreamSignals?.riskyFilesTouched ?? []).map((file) => `\`${file}\``);
+
+  return [
+    DASHBOARD_START,
+    "## Fork Sync Dashboard",
+    "",
+    `Updated: ${report.generatedAt}`,
+    "",
+    "### Human Gate",
+    "",
+    "**Permanent draft dashboard. Never merge. Never close unless replaced by another numbered dashboard PR.**",
+    "",
+    "### Base State",
+    "",
+    `- upstream/main: \`${shortSha(report.dashboardBase?.upstreamMain)}\``,
+    `- origin/main before: \`${shortSha(report.dashboardBase?.originMainBefore)}\``,
+    `- origin/main after: \`${shortSha(report.dashboardBase?.originMainAfter)}\``,
+    `- origin/main replaced from upstream/main: \`${Boolean(report.dashboardBase?.originMainReplaced)}\``,
+    `- origin/dev: \`${shortSha(report.forkHead?.originDev)}\``,
+    "",
+    "### Production Sync",
+    "",
+    `- latest stable tag: \`${report.productionSync?.latestStableTag || "<none>"}\``,
+    `- last synced stable tag: \`${report.productionSync?.lastSyncedTag || "<none>"}\``,
+    `- stable sync available: \`${Boolean(report.productionSync?.stableSyncAvailable)}\``,
+    "",
+    "### PR State",
+    "",
+    `- PR: #${report.pr?.number ?? 1}`,
+    `- URL: ${report.pr?.url ?? "https://github.com/karlorz/openhanako/pull/1"}`,
+    `- mergeability: \`${report.pr?.mergeable ?? "UNKNOWN"}\``,
+    "",
+    "### Conflict Plan",
+    "",
+    conflicts,
+    "",
+    "### Latest Upstream Signals",
+    "",
+    "Latest commits in `origin/dev..origin/main`:",
+    "",
+    bulletList(latestCommits, "No commits ahead of dev."),
+    "",
+    "Risky fork files touched by upstream:",
+    "",
+    bulletList(riskyFiles, "No configured risky files touched."),
+    "",
+    "### Agent Drilldown",
+    "",
+    "```bash",
+    "gh pr view 1 --json mergeable,statusCheckRollup",
+    "gh pr diff 1 --name-only",
+    "git log --oneline origin/dev..origin/main",
+    "git diff --stat origin/main...origin/dev",
+    "node scripts/sync-upstream.mjs --conflict-plan --no-pr-update",
+    "node scripts/sync-upstream.mjs --conflict-plan --json --no-pr-update",
+    "```",
+    DASHBOARD_END,
+  ].join("\n");
+}
+
+export function buildPrBodyWithDashboard(existingBody, dashboardBlock) {
+  const startIndex = existingBody.indexOf(DASHBOARD_START);
+  const endIndex = existingBody.indexOf(DASHBOARD_END);
+  if (startIndex !== -1 && endIndex !== -1 && endIndex > startIndex) {
+    return [
+      existingBody.slice(0, startIndex).trimEnd(),
+      dashboardBlock,
+      existingBody.slice(endIndex + DASHBOARD_END.length).trimStart(),
+    ].filter(Boolean).join("\n\n");
+  }
+  return [existingBody.trimEnd(), dashboardBlock].filter(Boolean).join("\n\n");
 }
 
 function preflight(rules) {
@@ -280,6 +452,169 @@ function printConflictPolicy(rules) {
   print();
 }
 
+function gitRevParse(ref) {
+  const result = run("git", ["rev-parse", "--verify", ref], { capture: true });
+  return result.status === 0 ? result.stdout.trim() : "";
+}
+
+function gitLines(args) {
+  const result = run("git", args, { capture: true });
+  if (result.status !== 0) {
+    return [];
+  }
+  return result.stdout
+    .trim()
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function mergeTreeConflictingFiles(baseRef, headRef) {
+  const result = run("git", ["merge-tree", "--write-tree", baseRef, headRef], { capture: true });
+  return parseMergeTreeConflictingFiles(`${result.stdout ?? ""}${result.stderr ?? ""}`);
+}
+
+function readPr(rules, prNumber) {
+  if (!commandExists("gh")) {
+    return { number: prNumber, url: `https://github.com/karlorz/openhanako/pull/${prNumber}`, mergeable: "GH_UNAVAILABLE", body: "" };
+  }
+  const result = run("gh", ["pr", "view", String(prNumber), "--json", "number,url,mergeable,body"], { capture: true });
+  if (result.status !== 0) {
+    return { number: prNumber, url: `https://github.com/karlorz/openhanako/pull/${prNumber}`, mergeable: "UNKNOWN", body: "" };
+  }
+  try {
+    return JSON.parse(result.stdout);
+  } catch {
+    return { number: prNumber, url: `https://github.com/karlorz/openhanako/pull/${prNumber}`, mergeable: "UNKNOWN", body: "" };
+  }
+}
+
+function ensurePrLabels(labels) {
+  if (!commandExists("gh")) {
+    return;
+  }
+  for (const label of labels) {
+    run("gh", ["label", "create", label, "--force", "--color", "6f42c1", "--description", "OpenHanako fork sync dashboard"], { capture: true });
+  }
+}
+
+function updatePrDashboard(rules, dashboardBlock, options) {
+  if (options.noPrUpdate || !commandExists("gh")) {
+    return false;
+  }
+  const prNumber = options.prNumber ?? rules.dashboard?.prNumber ?? 1;
+  const pr = readPr(rules, prNumber);
+  const body = buildPrBodyWithDashboard(pr.body ?? "", dashboardBlock);
+  const title = rules.dashboard?.title ?? "DRAFT: permanent fork-vs-upstream review dashboard";
+  const labels = rules.dashboard?.labels ?? [];
+  ensurePrLabels(labels);
+  const args = ["pr", "edit", String(prNumber), "--title", title, "--body-file", "-"];
+  for (const label of labels) {
+    args.push("--add-label", label);
+  }
+  const result = runShell(`gh ${args.map((arg) => JSON.stringify(arg)).join(" ")}`, { capture: true, input: body });
+  return result.status === 0;
+}
+
+function buildConflictReport(rules, options = {}) {
+  const prNumber = options.prNumber ?? rules.dashboard?.prNumber ?? 1;
+  const upstreamMainRef = `${rules.releaseTarget.upstreamRemote}/${rules.releaseTarget.upstreamBranch}`;
+  const originMainRef = `origin/${rules.releaseTarget.upstreamBranch}`;
+  const originDevRef = `origin/${rules.releaseTarget.forkBranch}`;
+
+  if (options.fetch !== false) {
+    run("git", ["fetch", rules.releaseTarget.upstreamRemote, rules.releaseTarget.upstreamBranch, "--quiet"]);
+    run("git", ["fetch", "origin", rules.releaseTarget.upstreamBranch, rules.releaseTarget.forkBranch, "--quiet"]);
+  }
+
+  const upstreamMain = gitRevParse(upstreamMainRef);
+  const originMainBefore = gitRevParse(originMainRef);
+  if (options.syncMain !== false && upstreamMain) {
+    const lease = originMainBefore ? `--force-with-lease=${rules.releaseTarget.upstreamBranch}:${originMainBefore}` : "--force-with-lease";
+    const pushResult = run(
+      "git",
+      ["push", lease, "origin", `${upstreamMainRef}:refs/heads/${rules.releaseTarget.upstreamBranch}`],
+      { capture: true },
+    );
+    if (pushResult.status !== 0) {
+      warn(`origin/main replacement failed; continuing with fetched refs only. ${pushResult.stderr?.trim() || pushResult.stdout?.trim() || ""}`);
+    } else if (options.fetch !== false) {
+      run("git", ["fetch", "origin", rules.releaseTarget.upstreamBranch, "--quiet"]);
+    }
+  }
+
+  const originMainAfter = gitRevParse(originMainRef);
+  const originDev = gitRevParse(originDevRef);
+  const conflicts = mergeTreeConflictingFiles(originMainRef, originDevRef);
+  const conflictPlan = buildConflictPlan(conflicts, rules, { generatedAt: options.generatedAt });
+  const latestStableTag = latestUpstreamTag(rules, false);
+  const syncedTag = lastSyncedTag(rules);
+  const pr = readPr(rules, prNumber);
+  const latestCommits = gitLines(["log", "--oneline", "--max-count=10", `${originDevRef}..${originMainRef}`]);
+  const riskyFilesTouched = changedDivergingFiles(gitLines(["diff", "--name-only", `${originDevRef}..${originMainRef}`]), rules);
+  return {
+    ...conflictPlan,
+    dashboardBase: {
+      upstreamMain,
+      originMainBefore,
+      originMainAfter,
+      originMainReplaced: Boolean(upstreamMain && originMainAfter && upstreamMain === originMainAfter && originMainBefore !== originMainAfter),
+    },
+    forkHead: {
+      originDev,
+    },
+    productionSync: {
+      latestStableTag,
+      lastSyncedTag: syncedTag,
+      stableSyncAvailable: Boolean(latestStableTag && latestStableTag !== syncedTag),
+    },
+    pr: {
+      number: pr.number ?? prNumber,
+      url: pr.url ?? `https://github.com/karlorz/openhanako/pull/${prNumber}`,
+      mergeable: pr.mergeable ?? "UNKNOWN",
+    },
+    upstreamSignals: {
+      latestCommits,
+      riskyFilesTouched,
+    },
+  };
+}
+
+function renderConflictPlanText(report) {
+  const lines = [
+    `Conflict plan (${report.dryRun ? "dry-run" : "execute"}, default: ${report.defaultResolution})`,
+    `  upstream/main: ${shortSha(report.dashboardBase?.upstreamMain)}`,
+    `  origin/main:   ${shortSha(report.dashboardBase?.originMainAfter)}`,
+    `  origin/dev:    ${shortSha(report.forkHead?.originDev)}`,
+    `  PR #${report.pr?.number ?? 1}: ${report.pr?.mergeable ?? "UNKNOWN"}`,
+    "",
+  ];
+  if (!report.conflicts.length) {
+    lines.push("  ok No merge-tree conflicts detected.");
+    return lines.join("\n");
+  }
+  for (const item of report.conflicts) {
+    const risk = item.risk ? `, risk: ${item.risk}` : "";
+    lines.push(`  - ${item.file}: ${item.strategy}${risk}, source: ${item.source}`);
+    lines.push(`    ${item.plannedAction}`);
+  }
+  return lines.join("\n");
+}
+
+function doConflictPlan(rules, options) {
+  const report = buildConflictReport(rules, options);
+  const dashboardBlock = renderPrDashboardBlock(report);
+  const updatedPr = updatePrDashboard(rules, dashboardBlock, options);
+  if (options.json) {
+    print(JSON.stringify({ ...report, prUpdated: updatedPr }, null, 2));
+  } else {
+    print(renderConflictPlanText(report));
+    if (!options.noPrUpdate) {
+      print(updatedPr ? green("ok PR dashboard updated") : yellow("! PR dashboard not updated"));
+    }
+  }
+}
+
 function doSync(rules, includePrerelease) {
   preflight(rules);
 
@@ -408,21 +743,40 @@ function usage() {
 Usage:
   node scripts/sync-upstream.mjs --check
   node scripts/sync-upstream.mjs --include-prerelease --check
+  node scripts/sync-upstream.mjs --conflict-plan [--json] [--no-pr-update] [--pr <number>]
   node scripts/sync-upstream.mjs
   node scripts/sync-upstream.mjs --include-prerelease
   node scripts/sync-upstream.mjs --post-rebase
   node scripts/sync-upstream.mjs --help
 
 The default release channel is stable only. Prerelease review requires --include-prerelease.
+Conflict planning is dry-run for dev, replaces origin/main from upstream/main, and updates PR #1 unless --no-pr-update is set.
 The issue workflow supports status/search/draft only and never submits GitHub issues.`);
 }
 
 function main(argv) {
   const args = [];
   let includePrerelease = false;
-  for (const arg of argv) {
+  const conflictOptions = {
+    json: false,
+    noPrUpdate: false,
+    prNumber: undefined,
+  };
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
     if (arg === "--include-prerelease") {
       includePrerelease = true;
+    } else if (arg === "--json") {
+      conflictOptions.json = true;
+    } else if (arg === "--no-pr-update") {
+      conflictOptions.noPrUpdate = true;
+    } else if (arg === "--pr") {
+      const next = argv[index + 1];
+      if (!next || !/^\d+$/.test(next)) {
+        die("--pr requires a numeric PR number");
+      }
+      conflictOptions.prNumber = Number(next);
+      index += 1;
     } else {
       args.push(arg);
     }
@@ -436,6 +790,9 @@ function main(argv) {
     case "--check":
       preflight(rules);
       process.exit(doCheck(rules, includePrerelease));
+      break;
+    case "--conflict-plan":
+      doConflictPlan(rules, conflictOptions);
       break;
     case "--post-rebase":
       postRebaseVerify(rules);
