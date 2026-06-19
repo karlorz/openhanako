@@ -7,6 +7,7 @@ import {
   ISSUE_COMMANDS,
   loadRules,
   parseMergeTreeConflictingFiles,
+  parseSyncArgs,
   releaseChannelLabel,
   renderPrDashboardBlock,
   selectLatestReleaseTag,
@@ -65,6 +66,27 @@ describe("sync-upstream rule engine", () => {
     expect(ISSUE_COMMANDS).not.toContain("submit");
   });
 
+  it("keeps local-only conflict planning free of PR edits and origin/main sync", () => {
+    const parsed = parseSyncArgs(["--conflict-plan", "--json", "--local-only"]);
+
+    expect(parsed.args).toEqual(["--conflict-plan"]);
+    expect(parsed.conflictOptions).toMatchObject({
+      json: true,
+      noPrUpdate: true,
+      syncMain: false,
+    });
+  });
+
+  it("allows skipping origin/main sync independently from PR updates", () => {
+    const parsed = parseSyncArgs(["--conflict-plan", "--no-main-sync"]);
+
+    expect(parsed.args).toEqual(["--conflict-plan"]);
+    expect(parsed.conflictOptions).toMatchObject({
+      noPrUpdate: false,
+      syncMain: false,
+    });
+  });
+
   it("builds a dry-run conflict plan that defaults unknown conflicts to main", () => {
     const plan = buildConflictPlan(["README.md"], {
       conflictRules: {
@@ -112,12 +134,12 @@ describe("sync-upstream rule engine", () => {
       }),
       expect.objectContaining({
         file: "package-lock.json",
-        strategy: "regenerate-from-package-json",
+        strategy: "defer-to-stable-production-sync",
         source: "policy",
       }),
       expect.objectContaining({
         file: "package.json",
-        strategy: "main-with-fork-install-local",
+        strategy: "defer-to-stable-production-sync",
         source: "policy",
       }),
     ]);
@@ -161,10 +183,10 @@ describe("sync-upstream rule engine", () => {
       },
       conflicts: [{
         file: "package.json",
-        strategy: "main-with-fork-install-local",
+        strategy: "defer-to-stable-production-sync",
         source: "policy",
         risk: "medium",
-        plannedAction: "Would start from main and preserve install:local.",
+        plannedAction: "Report only. Stable production fork sync owns the package version update.",
       }],
       upstreamSignals: {
         latestCommits: ["abc fix: one"],
