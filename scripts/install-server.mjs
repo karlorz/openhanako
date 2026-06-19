@@ -862,6 +862,191 @@ export async function executeReinitDataBackup(options, ops = {}) {
   }
 }
 
+export function inspectReinitDataBackups({
+  backupDir = path.join(DEFAULT_PATHS.installRoot, "backups"),
+  dataRoot = resolveHanaDataRoot(),
+  readArchiveListing = readArchiveListingWithTar,
+  readArchiveEntry = readArchiveEntryWithTar,
+  statArchive = (archivePath) => fs.statSync(archivePath),
+} = {}) {
+  const archives = safeReadDir(backupDir)
+    .filter((name) => name.endsWith(".tar.gz") || name.endsWith(".tgz"))
+    .sort()
+    .map((name) => path.join(backupDir, name));
+  const inspectedBackups = archives.map((archivePath) => inspectReinitDataBackupArchive({
+    archivePath,
+    dataRoot,
+    readArchiveListing,
+    readArchiveEntry,
+    statArchive,
+  }));
+  const latestFullState = resolveLatestFullStateInspection(inspectedBackups, dataRoot);
+  const backups = annotateLatestFullStateInspection(inspectedBackups, latestFullState);
+
+  return {
+    kind: "install-server-reinit-data-backup-inspection",
+    backupDir,
+    dataRoot,
+    latestFullState,
+    backups,
+  };
+}
+
+function inspectReinitDataBackupArchive({
+  archivePath,
+  dataRoot,
+  readArchiveListing,
+  readArchiveEntry,
+  statArchive,
+}) {
+  const manifestPath = `${archivePath}.manifest.json`;
+  const manifest = fs.existsSync(manifestPath) ? safeReadJson(manifestPath) : null;
+  const warnings = [];
+  let entries = Array.isArray(manifest?.entries) ? normalizeTarEntries(manifest.entries) : null;
+  if (!entries) {
+    try {
+      entries = normalizeTarEntries(readArchiveListing(archivePath));
+    } catch (error) {
+      entries = [];
+      warnings.push(`archive listing failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  const counts = countReinitDataBackupEntries(entries, { archivePath, readArchiveEntry, warnings });
+  let archiveSizeBytes = null;
+  try {
+    archiveSizeBytes = statArchive(archivePath)?.size ?? null;
+  } catch (error) {
+    warnings.push(`archive stat failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  return {
+    backupPath: archivePath,
+    manifestPath,
+    manifestStatus: manifest ? "present" : "missing",
+    manifestKind: manifest?.kind ?? null,
+    createdAt: manifest?.createdAt ?? null,
+    dataRoot: manifest?.dataRoot ?? null,
+    archiveSizeBytes,
+    archiveSha256: manifest?.archiveSha256 ?? null,
+    restoreClass: manifest?.restoreClass ?? null,
+    restoreAlias: manifest?.restoreAlias ?? null,
+    preserveMode: manifest?.preserveMode ?? manifest?.mode ?? null,
+    planId: manifest?.planId ?? null,
+    rootShape: detectReinitBackupRootShape(entries, dataRoot),
+    counts,
+    hasRecoverableState: counts.sessionJsonl > 0 || counts.cronStores > 0 || counts.sessionFiles > 0,
+    isLatestFullState: false,
+    warnings,
+  };
+}
+
+function resolveLatestFullStateInspection(backups, dataRoot) {
+  const candidates = backups
+    .filter((backup) => backup.manifestKind === "hanaagent-reinit-data-backup-manifest")
+    .filter((backup) => backup.restoreClass === FULL_STATE_RESTORE_CLASS)
+    .filter((backup) => backup.preserveMode === "operational")
+    .filter((backup) => !backup.dataRoot || !dataRoot || path.resolve(backup.dataRoot) === path.resolve(dataRoot))
+    .map((backup) => ({
+      backup,
+      createdMs: Date.parse(backup.createdAt ?? ""),
+    }))
+    .sort((a, b) => {
+      const aCreated = Number.isFinite(a.createdMs) ? a.createdMs : 0;
+      const bCreated = Number.isFinite(b.createdMs) ? b.createdMs : 0;
+      return bCreated - aCreated || b.backup.manifestPath.localeCompare(a.backup.manifestPath);
+    });
+  if (candidates.length === 0) return null;
+  const selected = candidates[0].backup;
+  const warning = selected.counts.sessionJsonl === 0 && selected.counts.cronStores === 0
+    ? `${LATEST_FULL_STATE_BACKUP_ALIAS} currently points to a backup with no session JSONL files or cron stores; inspect older explicit backup paths before full-state recovery.`
+    : null;
+  return {
+    alias: LATEST_FULL_STATE_BACKUP_ALIAS,
+    backupPath: selected.backupPath,
+    manifestPath: selected.manifestPath,
+    createdAt: selected.createdAt,
+    counts: selected.counts,
+    warning,
+  };
+}
+
+function annotateLatestFullStateInspection(backups, latestFullState) {
+  if (!latestFullState) return backups;
+  return backups.map((backup) => {
+    if (backup.backupPath !== latestFullState.backupPath) return backup;
+    return {
+      ...backup,
+      isLatestFullState: true,
+      warnings: latestFullState.warning
+        ? [...backup.warnings, latestFullState.warning]
+        : backup.warnings,
+    };
+  });
+}
+
+function countReinitDataBackupEntries(entries, { archivePath, readArchiveEntry, warnings }) {
+  const sessionJsonl = entries.filter((entry) => /(^|\/)agents\/[^/]+\/sessions\/[^/]+\.jsonl$/.test(entry)).length;
+  const cronStoreEntries = entries.filter((entry) => /(^|\/)(agents|studios)\/[^/]+\/desk\/cron-jobs\.json$/.test(entry));
+  const sessionFiles = entries.filter((entry) => /(^|\/)session-files\/.+/.test(entry)).length;
+  let storedCronJobs = 0;
+  let enabledCronJobs = 0;
+  let cronStoresRead = 0;
+  for (const entry of cronStoreEntries) {
+    try {
+      const raw = readArchiveEntry(archivePath, entry);
+      if (typeof raw !== "string" || raw.length === 0) continue;
+      const parsed = JSON.parse(raw);
+      const jobs = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.jobs) ? parsed.jobs : [];
+      storedCronJobs += jobs.length;
+      enabledCronJobs += jobs.filter((job) => job?.enabled !== false).length;
+      cronStoresRead += 1;
+    } catch (error) {
+      warnings.push(`cron store ${entry} unreadable: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  return {
+    sessionJsonl,
+    cronStores: cronStoreEntries.length,
+    storedCronJobs,
+    enabledCronJobs,
+    cronStoresRead,
+    sessionFiles,
+  };
+}
+
+function detectReinitBackupRootShape(entries, dataRoot) {
+  const normalizedRoot = String(dataRoot || "").replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/+$/, "");
+  const basename = path.posix.basename(normalizedRoot || path.posix.basename(String(dataRoot || "")));
+  const rootParts = normalizedRoot.split("/").filter(Boolean);
+  const relativeRootTail = rootParts.length >= 2 ? rootParts.slice(-2).join("/") : "";
+  if (normalizedRoot && entries.some((entry) => entry === normalizedRoot || entry.startsWith(`${normalizedRoot}/`))) {
+    return "data-root-path";
+  }
+  if (relativeRootTail && entries.some((entry) => entry === relativeRootTail || entry.startsWith(`${relativeRootTail}/`))) {
+    return "data-root-path";
+  }
+  if (basename && entries.some((entry) => entry === basename || entry.startsWith(`${basename}/`))) {
+    return "data-root-basename";
+  }
+  return entries.length > 0 ? "unknown" : "empty";
+}
+
+function readArchiveListingWithTar(archivePath) {
+  const result = spawnSync("tar", ["-tzf", archivePath], { encoding: "utf8" });
+  if (result.status !== 0) {
+    fail(`tar listing failed for ${archivePath}: ${result.stderr || result.stdout || `exit ${result.status}`}`);
+  }
+  return normalizeTarEntries(result.stdout);
+}
+
+function readArchiveEntryWithTar(archivePath, entry) {
+  const result = spawnSync("tar", ["-xOzf", archivePath, "--", entry], { encoding: "utf8" });
+  if (result.status !== 0) {
+    fail(`tar read failed for ${entry} in ${archivePath}: ${result.stderr || result.stdout || `exit ${result.status}`}`);
+  }
+  return result.stdout;
+}
+
 const SAFE_REINIT_COMMANDS = new Set(["systemctl", "tar", "sha256sum", "mkdir", "mv", "chown", "test"]);
 
 export function createShellReinitDataOps({
@@ -1604,6 +1789,10 @@ function parseTarListing(stdout) {
     .filter(Boolean);
 }
 
+function normalizeTarEntries(listing) {
+  return parseTarListing(Array.isArray(listing) ? listing.join("\n") : listing);
+}
+
 function tarEntryIsUnderRoot(entry, expectedRoot) {
   return Boolean(expectedRoot) && (entry === expectedRoot || entry.startsWith(`${expectedRoot}/`));
 }
@@ -1793,6 +1982,7 @@ Usage:
   node scripts/install-server.mjs status
   node scripts/install-server.mjs backup --output <path> [--data-root <path>]
   node scripts/install-server.mjs reinit-data [--dry-run] [--reset-pairing] [--data-root <path>] [--plan-dir <path>]
+  node scripts/install-server.mjs reinit-data --list-backups [--data-root <path>] [--backup-dir <path>]
   node scripts/install-server.mjs reinit-data --confirm <plan-id> [--data-root <path>] [--plan-dir <path>]
   node scripts/install-server.mjs reinit-data --restore <backup-path|latest-full-state> [--data-root <path>]
 
@@ -1800,6 +1990,7 @@ Notes:
   upgrade resolves latest stable by default; prereleases require --channel prerelease or an exact prerelease --version.
   upgrade --execute is host-mutating (stops service, swaps /opt/hanaagent/current); --dry-run is safe.
   reinit-data preserves provider/model and LAN device bootstrap by default; --reset-pairing requests a fully fresh root.
+  reinit-data --list-backups inspects existing backup archives without mutating service or data state.
   reinit-data --confirm requires a non-expired dry-run plan and creates a verified backup before moving data aside.
   reinit-data --restore latest-full-state selects the newest full backup created before a default operational reinit.
   reinit-data --restore verifies the backup archive before replacing the current data root.`;
@@ -1838,8 +2029,14 @@ function parseArgs(argv) {
       case "--plan-dir":
         options.planDir = rest[++i];
         break;
+      case "--backup-dir":
+        options.backupDir = rest[++i];
+        break;
       case "--output":
         options.outputPath = rest[++i];
+        break;
+      case "--list-backups":
+        options.listBackups = true;
         break;
       case "--confirm":
         options.confirmPlanId = rest[++i];
@@ -1935,6 +2132,12 @@ function main(argv = process.argv.slice(2)) {
     return;
   }
   if (options.command === "reinit-data") {
+    if (options.listBackups) {
+      const dataRoot = options.dataRoot || resolveHanaDataRoot();
+      const backupDir = options.backupDir || path.join(DEFAULT_PATHS.installRoot, "backups");
+      console.log(JSON.stringify(inspectReinitDataBackups({ backupDir, dataRoot }), null, 2));
+      return;
+    }
     if (options.confirmPlanId) {
       const dryRunPlan = loadReinitDataPlan(options.confirmPlanId, { planDir: options.planDir });
       const confirmPlan = buildReinitDataConfirmPlan({
