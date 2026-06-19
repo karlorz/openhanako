@@ -4,11 +4,18 @@ This file tracks local fork fixes against upstream GitHub issues. The source of 
 
 | fix | classification | status | upstream | grouping |
 |---|---|---|---|---|
-| lan-csp-ws-auth | upstream | existing/open | [#1749](https://github.com/liliMozi/openhanako/issues/1749) | LAN query-token/auth bug fix |
+| lan-csp-ws-auth | upstream | existing/open | [#1749](https://github.com/liliMozi/openhanako/issues/1749), [#1811](https://github.com/liliMozi/openhanako/issues/1811) | LAN query-token/auth bug fix |
+| lan-query-token-network-hardening | upstream | draft/pending-approval | [#1749](https://github.com/liliMozi/openhanako/issues/1749), [#1811](https://github.com/liliMozi/openhanako/issues/1811) | fold into LAN query-token/auth bug fix unless reviewed separately |
 | remote-attachment-preview-persistence | upstream | draft/pending-approval | none | fix: preserve remote session attachment previews |
+| desktop-temp-upload-session-cache-materialization | upstream | draft/pending-approval | none | fix: materialize temp uploads to session cache before send |
 | plugin-iframe-remote-credential-query-leak | upstream | draft/pending-approval | [#1493](https://github.com/liliMozi/openhanako/issues/1493), [#1546](https://github.com/liliMozi/openhanako/issues/1546) | fold into LAN query-token/auth bug fix unless reviewed separately |
 | local-build-identity-disable-auto-update | fork-only | tracked/no-upstream-issue | none | chore: identify local fork builds and disable local auto-update |
 | fork-sync-issue-tracking-prerelease-policy | fork-only | tracked/no-upstream-issue | none | docs: add fork sync policy and upstream issue helper |
+| fork-dev-loop-maintenance-runbooks | fork-only | tracked/no-upstream-issue | none | docs/chore: dev-loop setup and retired sg01 deploy helper |
+| server-install-upgrade-release-safety | fork-only | tracked/no-upstream-issue | none | install-server: verified release assets, safe upgrade, preserved service context |
+| server-reinit-data-failsafe | fork-only | tracked/no-upstream-issue | none | install-server: backup-gated reinit-data with operational preserve and latest full-state restore |
+| server-reinit-restore-backup-verification | fork-only | tracked/no-upstream-issue | none | install-server: reject wrong-root restore backups before data-root replacement |
+| node-test-ci-file-mode-hygiene | fork-only | tracked/no-upstream-issue | none | tests/lint: .mjs node tests, LF enforcement, and eslint coverage |
 
 ## Rules
 
