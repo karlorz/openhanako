@@ -37,8 +37,11 @@ Current status:
 ## Sync cadence
 
 - **Stable release-tag sync, manual.** Pull when upstream cuts a new non-prerelease release tag. Do NOT track `main` HEAD and do NOT treat prereleases as production sync targets.
+- **Permanent PR dashboard.** PR [#1](https://github.com/karlorz/openhanako/pull/1) is a permanent draft dashboard from `dev` to `main`. It is for human review and agent drilldown only; never merge it.
+- **Dashboard base.** `origin/main` is a disposable mirror of `liliMozi/openhanako/main`. The conflict dashboard helper may replace `origin/main` from `upstream/main`, but it must never mutate `dev`, the index, or the working tree.
 - **Machine-readable rules:** `docs/fork-sync/rules.yml` is the source of truth for release-target policy, diverging-file rules, issue-tracking states, and verification commands. This runbook explains the same policy for humans.
 - **Detection:** run `node scripts/sync-upstream.mjs --check` anytime. It compares the latest stable upstream release tag against the sync log (below) and tells you if there's something to sync.
+- **Dashboard refresh:** run `node scripts/sync-upstream.mjs --conflict-plan` anytime. It refreshes `origin/main` from `upstream/main`, computes a dry-run merge-tree plan against `origin/dev`, updates the generated block in PR #1, and leaves `dev` untouched.
 - **Prerelease review:** run `node scripts/sync-upstream.mjs --include-prerelease --check` only when intentionally reviewing a prerelease candidate. This is not the normal production update path.
 - **Issue check:** as part of every sync, run `node scripts/track-upstream-issues.mjs search` and glance at [#1749](https://github.com/liliMozi/openhanako/issues/1749) plus the pending draft list. If upstream accepted equivalent fixes, the divergence shrinks.
 
@@ -94,6 +97,21 @@ Full context: [[projects/openhanako/work/2026-06-15-csp-ws-lan-connect-fix]], [[
 ## Sync workflow
 
 Run: `node scripts/sync-upstream.mjs` (see `--help` for flags). By default it syncs only stable upstream releases; use `--include-prerelease` only for explicit prerelease candidate review.
+
+For the permanent dashboard PR, use:
+
+```bash
+node scripts/sync-upstream.mjs --conflict-plan
+node scripts/sync-upstream.mjs --conflict-plan --json --no-pr-update
+```
+
+Dashboard rules:
+
+- `origin/main := upstream/main` is allowed, including replacement with lease protection.
+- `dev` is protected. The conflict planner never merges, rebases, resets, stages, or writes `dev`.
+- Unknown conflicts default to `take-main` in the dry-run plan.
+- Fork exceptions live in `docs/fork-sync/rules.yml` and include explicit `plannedAction` text.
+- PR #1 body is updated only inside the generated dashboard block.
 
 What the script does:
 
