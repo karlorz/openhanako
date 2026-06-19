@@ -16,6 +16,7 @@ import {
   executeReinitDataPlan,
   executeReinitDataRestore,
   executeUpgradePlan,
+  inspectReinitDataBackups,
   loadReinitDataPlan,
   resolveHanaDataRoot,
   resolveLinuxAsset,
@@ -1158,6 +1159,125 @@ PrivateTmp=true
       healthCheck: async () => {},
       writeAudit: async () => {},
     })).rejects.toThrow(/latest-full-state|Path B|explicit backup path/i);
+  });
+
+  it("inspects reinit-data backups and flags an empty latest-full-state alias target", () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-reinit-inspect-"));
+    const dataRoot = path.join(tmpDir, "root", ".hanako");
+    const backupDir = path.join(tmpDir, "install", "backups");
+    fs.mkdirSync(backupDir, { recursive: true });
+    const usefulBackup = path.join(backupDir, "reinit-20260618T055925Z-eb8042aa.tar.gz");
+    const emptyAliasBackup = path.join(backupDir, "reinit-20260618T063000Z-empty.tar.gz");
+    const preserveOnlyBackup = path.join(backupDir, "reinit-20260618T063000Z-empty.preserve.tar.gz");
+    const missingManifestBackup = path.join(backupDir, "manual-before-clear.tar.gz");
+    for (const file of [usefulBackup, emptyAliasBackup, preserveOnlyBackup, missingManifestBackup]) {
+      fs.writeFileSync(file, `${path.basename(file)}\n`);
+    }
+    const writeManifest = (archivePath, manifest) => {
+      fs.writeFileSync(`${archivePath}.manifest.json`, JSON.stringify({
+        kind: "hanaagent-reinit-data-backup-manifest",
+        backupPath: archivePath,
+        dataRoot,
+        archiveSha256: "a".repeat(64),
+        ...manifest,
+      }, null, 2));
+    };
+    writeManifest(usefulBackup, {
+      createdAt: "2026-06-18T05:59:25.000Z",
+      restoreClass: "full-state-before-operational-reinit",
+      preserveMode: "operational",
+      entries: [
+        "root/.hanako/agents/hana/sessions/one.jsonl",
+        "root/.hanako/agents/hana/sessions/two.jsonl",
+        "root/.hanako/agents/hana/desk/cron-jobs.json",
+        "root/.hanako/session-files/upload.bin",
+      ],
+    });
+    writeManifest(emptyAliasBackup, {
+      createdAt: "2026-06-18T06:30:00.000Z",
+      restoreClass: "full-state-before-operational-reinit",
+      preserveMode: "operational",
+      entries: ["root/.hanako/auth.json"],
+    });
+    fs.writeFileSync(`${preserveOnlyBackup}.manifest.json`, JSON.stringify({
+      kind: "hanaagent-reinit-data-preserve-manifest",
+      archivePath: preserveOnlyBackup,
+      dataRoot,
+      mode: "operational",
+      entries: ["auth.json"],
+    }, null, 2));
+    const listings = new Map([
+      [missingManifestBackup, [
+        ".hanako/agents/hana/sessions/three.jsonl",
+        ".hanako/studios/main/desk/cron-jobs.json",
+        ".hanako/session-files/preview.png",
+      ]],
+    ]);
+    const cronStores = new Map([
+      [`${usefulBackup}:root/.hanako/agents/hana/desk/cron-jobs.json`, JSON.stringify({
+        jobs: [
+          { id: "job_1", enabled: true },
+          { id: "job_2", enabled: false },
+        ],
+      })],
+      [`${missingManifestBackup}:.hanako/studios/main/desk/cron-jobs.json`, JSON.stringify({
+        jobs: [{ id: "job_3", enabled: true }],
+      })],
+    ]);
+
+    const inspection = inspectReinitDataBackups({
+      backupDir,
+      dataRoot,
+      readArchiveListing: (archivePath) => listings.get(archivePath) ?? [],
+      readArchiveEntry: (archivePath, entry) => cronStores.get(`${archivePath}:${entry}`) ?? "",
+    });
+
+    const useful = inspection.backups.find((backup) => backup.backupPath === usefulBackup);
+    const missingManifest = inspection.backups.find((backup) => backup.backupPath === missingManifestBackup);
+    const preserveOnly = inspection.backups.find((backup) => backup.backupPath === preserveOnlyBackup);
+    const alias = inspection.backups.find((backup) => backup.backupPath === emptyAliasBackup);
+
+    expect(useful).toMatchObject({
+      manifestStatus: "present",
+      rootShape: "data-root-path",
+      counts: {
+        sessionJsonl: 2,
+        cronStores: 1,
+        storedCronJobs: 2,
+        enabledCronJobs: 1,
+        sessionFiles: 1,
+      },
+      hasRecoverableState: true,
+    });
+    expect(missingManifest).toMatchObject({
+      manifestStatus: "missing",
+      rootShape: "data-root-basename",
+      counts: {
+        sessionJsonl: 1,
+        cronStores: 1,
+        storedCronJobs: 1,
+        enabledCronJobs: 1,
+        sessionFiles: 1,
+      },
+    });
+    expect(preserveOnly).toMatchObject({
+      manifestKind: "hanaagent-reinit-data-preserve-manifest",
+      preserveMode: "operational",
+      counts: {
+        sessionJsonl: 0,
+        cronStores: 0,
+      },
+    });
+    expect(alias.isLatestFullState).toBe(true);
+    expect(inspection.latestFullState).toMatchObject({
+      alias: "latest-full-state",
+      backupPath: emptyAliasBackup,
+      counts: {
+        sessionJsonl: 0,
+        cronStores: 0,
+      },
+    });
+    expect(inspection.latestFullState.warning).toMatch(/no session JSONL files or cron stores/i);
   });
 
   it("rejects an explicit restore backup whose manifest belongs to another data root", async () => {

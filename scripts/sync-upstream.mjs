@@ -258,8 +258,8 @@ export function renderPrDashboardBlock(report) {
     "gh pr diff 1 --name-only",
     "git log --oneline origin/dev..origin/main",
     "git diff --stat origin/main...origin/dev",
-    "node scripts/sync-upstream.mjs --conflict-plan --no-pr-update",
-    "node scripts/sync-upstream.mjs --conflict-plan --json --no-pr-update",
+    "node scripts/sync-upstream.mjs --conflict-plan --local-only",
+    "node scripts/sync-upstream.mjs --conflict-plan --json --local-only",
     "```",
     DASHBOARD_END,
   ].join("\n");
@@ -743,18 +743,19 @@ function usage() {
 Usage:
   node scripts/sync-upstream.mjs --check
   node scripts/sync-upstream.mjs --include-prerelease --check
-  node scripts/sync-upstream.mjs --conflict-plan [--json] [--no-pr-update] [--pr <number>]
+  node scripts/sync-upstream.mjs --conflict-plan [--json] [--no-pr-update] [--no-main-sync] [--local-only] [--pr <number>]
   node scripts/sync-upstream.mjs
   node scripts/sync-upstream.mjs --include-prerelease
   node scripts/sync-upstream.mjs --post-rebase
   node scripts/sync-upstream.mjs --help
 
 The default release channel is stable only. Prerelease review requires --include-prerelease.
-Conflict planning is dry-run for dev, replaces origin/main from upstream/main, and updates PR #1 unless --no-pr-update is set.
+Conflict planning is dry-run for dev, replaces origin/main from upstream/main unless --no-main-sync is set, and updates PR #1 unless --no-pr-update is set.
+Use --local-only as shorthand for --no-pr-update --no-main-sync.
 The issue workflow supports status/search/draft only and never submits GitHub issues.`);
 }
 
-function main(argv) {
+export function parseSyncArgs(argv) {
   const args = [];
   let includePrerelease = false;
   const conflictOptions = {
@@ -770,6 +771,11 @@ function main(argv) {
       conflictOptions.json = true;
     } else if (arg === "--no-pr-update") {
       conflictOptions.noPrUpdate = true;
+    } else if (arg === "--no-main-sync") {
+      conflictOptions.syncMain = false;
+    } else if (arg === "--local-only") {
+      conflictOptions.noPrUpdate = true;
+      conflictOptions.syncMain = false;
     } else if (arg === "--pr") {
       const next = argv[index + 1];
       if (!next || !/^\d+$/.test(next)) {
@@ -781,6 +787,11 @@ function main(argv) {
       args.push(arg);
     }
   }
+  return { args, includePrerelease, conflictOptions };
+}
+
+function main(argv) {
+  const { args, includePrerelease, conflictOptions } = parseSyncArgs(argv);
 
   const rules = loadRules();
   switch (args[0] ?? "") {

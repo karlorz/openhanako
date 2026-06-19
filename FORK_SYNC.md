@@ -42,6 +42,7 @@ Current status:
 - **Machine-readable rules:** `docs/fork-sync/rules.yml` is the source of truth for release-target policy, diverging-file rules, issue-tracking states, and verification commands. This runbook explains the same policy for humans.
 - **Detection:** run `node scripts/sync-upstream.mjs --check` anytime. It compares the latest stable upstream release tag against the sync log (below) and tells you if there's something to sync.
 - **Dashboard refresh:** run `node scripts/sync-upstream.mjs --conflict-plan` anytime. It refreshes `origin/main` from `upstream/main`, computes a dry-run merge-tree plan against `origin/dev`, updates the generated block in PR #1, and leaves `dev` untouched.
+- **Package version ownership:** package version and lockfile root metadata changes are deferred to the attended stable production fork sync. Do not pre-bump `package.json` or `package-lock.json` just to reduce dashboard conflicts.
 - **Prerelease review:** run `node scripts/sync-upstream.mjs --include-prerelease --check` only when intentionally reviewing a prerelease candidate. This is not the normal production update path.
 - **Issue check:** as part of every sync, run `node scripts/track-upstream-issues.mjs search` and glance at [#1749](https://github.com/liliMozi/openhanako/issues/1749) plus the pending draft list. If upstream accepted equivalent fixes, the divergence shrinks.
 
@@ -75,6 +76,13 @@ These files fix remote desktop attachment import and preview when the macOS desk
 | `server/routes/upload.ts` | Medium | `/api/upload-blob` must accept image/audio plus listed document attachment MIME types, enforce size limits, and register session-owned files. |
 | Affected tests under `desktop/src/react/__tests__/...`, `tests/csp-sync.test.ts`, `tests/upload-route.test.ts` | Low | Prefer ours unless upstream has equivalent coverage for remote preview persistence and client-owned blob import. |
 
+### Desktop packaging metadata
+
+| File | Risk if upstream touches | Resolution policy |
+|------|--------------------------|-------------------|
+| `package.json` | Medium | **DEFER.** Stable production fork sync owns package version alignment. Dashboard-only conflict reduction must not pre-bump the version; preserve the fork baseline and `install:local` behavior until the attended sync resolves both together. |
+| `package-lock.json` | Medium | **DEFER.** Do not regenerate or pre-bump lockfile root metadata for the dashboard. Regenerate only during the stable production fork sync after the package version decision. |
+
 ## The fixed commits / divergence clusters
 
 1. **`80ea81ae`** — Bug B: allow query token auth for LAN WebSocket connections
@@ -102,15 +110,17 @@ For the permanent dashboard PR, use:
 
 ```bash
 node scripts/sync-upstream.mjs --conflict-plan
-node scripts/sync-upstream.mjs --conflict-plan --json --no-pr-update
+node scripts/sync-upstream.mjs --conflict-plan --json --local-only
 ```
 
 Dashboard rules:
 
 - `origin/main := upstream/main` is allowed, including replacement with lease protection.
 - `dev` is protected. The conflict planner never merges, rebases, resets, stages, or writes `dev`.
+- Use `--local-only` for inspection that must not update PR #1 or replace `origin/main`.
 - Unknown conflicts default to `take-main` in the dry-run plan.
 - Fork exceptions live in `docs/fork-sync/rules.yml` and include explicit `plannedAction` text.
+- Package version and lockfile conflicts are reported as deferred; dashboard-only cleanup must not change them.
 - PR #1 body is updated only inside the generated dashboard block.
 
 What the script does:
