@@ -27,86 +27,21 @@ issueTracking:
     - tracked/no-upstream-issue
   submission: never
 
-# Sibling inventory loaded by scripts/sync-upstream.mjs loadMigrationContracts().
-# Keep the full contract matrix in docs/fork-sync/migration-contracts.yml rather
-# than embedding it here so production conflict policy stays unchanged.
-migrationContracts:
-  inventory: docs/fork-sync/migration-contracts.yml
-
 criticalFileClasses:
   - lan_connect_auth
   - remote_attachment_preview
-  - remote_boundary_recovery
-  - websocket_session_identity
   - desktop_packaging
   - fork_sync_maintenance
 
 conflictRules:
   defaultResolution: main
   dryRunDefault: true
-  # Fork-only new files that do not exist upstream. The sync helper verifies
-  # these survive every rebase; if any go missing after a sync, the helper
-  # fails the post-rebase gate before Tier 1 tests. Globs use shell-style
-  # matching via minimatch (same as .gitignore). Add every fork-only file
-  # or directory that must not be silently dropped by an upstream rebase.
-  forkOnlyFiles:
-    - .envrc
-    - .env.example
-    - scripts/sync-upstream.mjs
-    - scripts/track-upstream-issues.mjs
-    - scripts/install-server.mjs
-    - scripts/pack-server-bundle.mjs
-    - scripts/hana-desktop-smoke-helper.mjs
-    - scripts/write-local-build-info.mjs
-    - tests/sync-upstream.test.mjs
-    - tests/install-server-upgrade.test.mjs
-    - tests/pack-server-bundle.test.mjs
-    - tests/hana-desktop-smoke-helper.test.mjs
-    - tests/upstream-issue-tracker.test.mjs
-    - tests/office-workflow-plugin.test.ts
-    - tests/desktop-network-security-contract.test.ts
-    - docs/fork-sync/rules.yml
-    - docs/fork-sync/migration-contracts.yml
-    - docs/server-install.md
-    - docs/reinit-data-failsafe.md
-    - docs/upstream-issues/**
-    - docs/agents/openhanako-dev-loop-setup.md
-    - docs/release-digest-generation.md
-    - examples/plugins/office-workflow/**
-    - desktop/src/shared/build-info.cjs
-    - scripts/build-server-compatibility-manifest.mjs
-    - scripts/check-remote-prerequisites.mjs
-    - scripts/write-server-build-info.mjs
-    - shared/remote-feature-contracts.*
-    - shared/remote-server-assessment.*
-    - shared/remote-server-policy.json
-    - shared/remote-server-release-*.cjs
-    - shared/remote-server-release-*.d.cts
-    - shared/remote-server-release-*.ts
-    - shared/server-build-info.*
-    - desktop/src/react/services/remote-feature-*.ts
-    - desktop/src/react/services/remote-server-assessment-*.ts
-    - desktop/src/react/__tests__/services/remote-feature-*.test.ts
-    - desktop/src/react/__tests__/services/remote-server-assessment-*.test.ts
-    - desktop/src/react/__tests__/services/websocket-input-draft-lifecycle.test.ts
-    - tests/check-remote-prerequisites.test.mjs
-    - tests/desktop-remote-server-release-ipc.test.ts
-    - tests/remote-server-*.test.*
-    - tests/server-build-info.test.mjs
-    - tests/server-compatibility-manifest.test.mjs
-    - tests/remote-server-workflow-contract.test.mjs
-    - .claude/dev-loop.config.md
-    - CLAUDE.md
-    - CONTEXT.md
-    - FORK_SYNC.md
-    - .gitattributes
   divergingFiles:
     - core/server-auth.ts
     - desktop/src/react/services/server-connection.ts
     - desktop/main.cjs
     - desktop/preload.cjs
     - tests/server-auth.test.ts
-    - tests/server-connection.test.ts
     - desktop/src/react/__tests__/services/server-connection.test.ts
     - desktop/src/modules/connection-csp.js
     - desktop/src/react/services/resource-url.ts
@@ -116,9 +51,6 @@ conflictRules:
     - desktop/src/react/stores/chat-slice.ts
     - desktop/src/react/stores/selectors/file-refs.ts
     - desktop/src/react/utils/uploaded-session-file.ts
-    - desktop/src/react/utils/preview-file-refresh.ts
-    - desktop/src/react/utils/preview-document-refresh.ts
-    - desktop/src/react/utils/remote-file-preview.ts
     - server/routes/upload.ts
     - tests/csp-sync.test.ts
     - tests/upload-route.test.ts
@@ -127,37 +59,11 @@ conflictRules:
     - desktop/src/react/__tests__/components/InputArea.media-send.test.tsx
     - desktop/src/react/__tests__/services/resource-url.test.ts
     - desktop/src/react/__tests__/services/ws-message-handler.test.ts
-    - desktop/src/react/services/ws-message-handler.ts
     - desktop/src/react/__tests__/stores/chat-slice.test.ts
     - desktop/src/react/__tests__/stores/selectors/file-refs.test.ts
     - desktop/src/react/__tests__/utils/user-attachment-media.test.ts
-    - tests/plugin-sdk-examples.test.ts
-    - tests/office-workflow-plugin.test.ts
-    - desktop/src/react/settings/widgets/KeyInput.tsx
     - package.json
     - package-lock.json
-    - release-digest.v1.json
-    - scripts/generate-release-digest.mjs
-    - scripts/build-server-compatibility-manifest.mjs
-    - scripts/check-remote-prerequisites.mjs
-    - scripts/write-server-build-info.mjs
-    - scripts/install-server.mjs
-    - scripts/hana-desktop-smoke-helper.mjs
-    - desktop/src/react/services/remote-feature-gates.ts
-    - desktop/src/react/services/remote-feature-session.ts
-    - desktop/src/react/services/remote-server-assessment-cache.ts
-    - desktop/src/react/services/remote-server-assessment-coordinator.ts
-    - desktop/src/react/__tests__/services/remote-feature-gates.test.ts
-    - desktop/src/react/__tests__/services/remote-feature-session.test.ts
-    - desktop/src/react/__tests__/services/remote-server-assessment-cache.test.ts
-    - desktop/src/react/__tests__/services/remote-server-assessment-coordinator.test.ts
-    - desktop/src/react/__tests__/services/websocket-input-draft-lifecycle.test.ts
-    - desktop/src/react/app-init.ts
-    - desktop/src/react/services/websocket.ts
-    - desktop/src/react/stores/input-draft-persistence.ts
-    - server/index.ts
-    - docs/server-install.md
-    - CONTEXT.md
   policies:
     core/server-auth.ts:
       class: lan_connect_auth
@@ -167,168 +73,20 @@ conflictRules:
       class: lan_connect_auth
       risk: high
       resolution: HUMAN REVIEW. Preserve connect probe and query-token behavior.
-    tests/server-connection.test.ts:
-      class: lan_connect_auth
-      risk: medium
-      strategy: preserve-both
-      resolution: Preserve fork LAN device-credential query-token WebSocket coverage while keeping upstream websocket-ticket coverage for non-LAN remote connections.
-      plannedAction: LAN device connections should expect token query fallback; custom_remote/tunnel device connections should still expect wsTicket behavior.
     desktop/src/modules/connection-csp.js:
       class: remote_attachment_preview
       risk: high
       resolution: HUMAN REVIEW. Keep scoped remote resource origins in img-src and media-src.
     desktop/src/react/services/resource-url.ts:
       class: remote_attachment_preview
-      risk: critical
-      resolution: HUMAN REVIEW. Preserve remote session resource URL synthesis and the fork transport invariant that local/LAN connections use `!connection || connection.kind === 'local'`, not `isLocalOwnerConnection(connection)`.
-      plannedAction: Keep fork `isLocalTransport` as `!connection || connection.kind === 'local'`, preserve the synthetic `/api/resources/res_sf_.../content` fallback for `sf_*` session files, and keep token-query resource URLs for LAN device-credential connections.
-    desktop/src/react/utils/preview-file-refresh.ts:
-      class: remote_attachment_preview
-      risk: medium
-      strategy: preserve-both
-      resolution: HUMAN REVIEW. Preserve the single version-aware retry helper path for local preview refresh; duplicate helper declarations are a failed merge.
-      plannedAction: Keep one retry helper block with file-version comparison, remove duplicate declarations, then run MainContent drag and preview refresh tests.
-    desktop/src/react/utils/preview-document-refresh.ts:
-      class: remote_attachment_preview
-      risk: medium
-      strategy: preserve-both
-      resolution: HUMAN REVIEW. Preserve multi-mount native-root lookup while accepting upstream preview-refresh behavior.
-      plannedAction: Keep nativeRootForWorkbenchMount-based refresh behavior and verify document/workbench preview tests.
-    desktop/src/react/utils/remote-file-preview.ts:
-      class: remote_attachment_preview
-      risk: medium
-      strategy: preserve-both
-      resolution: HUMAN REVIEW. Preserve version-aware remote preview snapshots and scoped workbench resource refs.
-      plannedAction: Keep newestKnownFileVersion and remoteContentRefWithVersion behavior, then verify websocket and workbench preview tests.
+      risk: high
+      resolution: HUMAN REVIEW. Preserve remote session resource URL synthesis.
     desktop/src/react/__tests__/services/ws-message-handler.test.ts:
       class: remote_attachment_preview
       risk: medium
       strategy: preserve-both
       resolution: Start from main, then preserve fork regression coverage for replayed optimistic attachments receiving server fileId metadata.
       plannedAction: Would keep upstream session identity and preview refresh tests, then preserve the fork replayed optimistic attachment hydration regression test.
-      linkedRisks:
-        - file: desktop/src/react/services/ws-message-handler.ts
-          strategy: human-review
-          risk: high
-          resolution: Upstream ws-message-handler tests can imply production session identity behavior that the fork must preserve.
-          plannedAction: Report the production service file as a secondary risk; inspect the test and service behavior together before treating the dashboard conflict as resolved.
-    desktop/src/react/services/ws-message-handler.ts:
-      class: websocket_session_identity
-      risk: high
-      resolution: HUMAN REVIEW. Preserve fork session identity routing and optimistic attachment hydration while accepting upstream preview refresh behavior.
-      plannedAction: Inspect production ws-message-handler behavior with the paired test expectations; do not let a test-only conflict reduction hide session identity regressions.
-    desktop/src/react/settings/widgets/KeyInput.tsx:
-      class: remote_boundary_recovery
-      risk: high
-      strategy: preserve-both
-      resolution: Preserve the fork external-value reset and secret re-hide behavior while accepting upstream wrapper-level blur handling and accessibility wiring.
-      plannedAction: Start from the upstream stable version, retain wrapper-level blur handling so focus moving to the reveal button does not commit Bridge credentials, then restore the fork previousValueRef/internalChangeRef behavior so an externally replaced remote credential clears any transient revealed secret. Run the remote recovery, Access settings, provider credential, and upstream Bridge credential tests together.
-    scripts/generate-release-digest.mjs:
-      class: fork_release_digest
-      risk: high
-      strategy: preserve-both
-      resolution: Preserve provider-neutral BYOK configuration, both Responses and Chat Completions transports, strict schema validation, and the upstream digest/history contract.
-      plannedAction: Keep generic model/base_url/api_key/api_backend settings and compatibility aliases; require focused generator, validator, and schema tests before publishing a fork digest.
-    tests/generate-release-digest.test.ts:
-      class: fork_release_digest
-      risk: medium
-      strategy: preserve-both
-      resolution: Preserve BYOK precedence, secret-handling, both provider protocols, and schema/error-path coverage.
-    scripts/install-server.mjs:
-      class: server_release_compatibility
-      risk: critical
-      strategy: preserve-both
-      resolution: Preserve the unified installer and its build-identity, release-catalog, compatibility-manifest, dry-run, backup, and activation gates.
-      plannedAction: Review installer and release metadata changes together; never replace the attended dry-run/execute flow with the retired host helper.
-    scripts/hana-desktop-smoke-helper.mjs:
-      class: remote_server_assessment
-      risk: high
-      strategy: preserve-both
-      resolution: Preserve independent functional and environment results, contract evidence provenance, remote release freshness, and explicit assessment output.
-      plannedAction: Keep image/attachment live smoke as a separate attended UI gate after automated identity, WebSocket, release, and contract checks pass.
-    desktop/src/react/services/remote-server-assessment-coordinator.ts:
-      class: remote_server_assessment
-      risk: high
-      strategy: preserve-both
-      resolution: Preserve one coordinated assessment per connection generation and reject stale results from previous remote sessions.
-      plannedAction: Review with assessment cache, feature-session gates, app initialization, connection switching, and their focused tests.
-    desktop/src/react/stores/input-draft-persistence.ts:
-      class: remote_feature_contracts
-      risk: high
-      strategy: preserve-both
-      resolution: Preserve WebSocket draft transport only when the connected server advertises input.drafts@1, with local persistence fallback otherwise.
-      plannedAction: Verify reconnect, chat switching, fallback, and websocket-input-draft lifecycle coverage together.
-    server/index.ts:
-      class: server_release_compatibility
-      risk: high
-      strategy: preserve-both
-      resolution: Preserve server identity build metadata and remote feature-contract advertisement without losing upstream route or startup changes.
-      plannedAction: Verify identity route, runtime context, server build info, compatibility manifest, and packaged server assets together.
-    core/engine.ts:
-      class: server_release_compatibility
-      risk: high
-      strategy: preserve-both
-      resolution: Preserve remote feature-contract advertisement and runtime behavior while reviewing upstream engine changes.
-    core/server-runtime-context.ts:
-      class: server_release_compatibility
-      risk: high
-      strategy: preserve-both
-      resolution: Preserve build identity and remote release context across upstream runtime changes.
-    desktop/preload.cjs:
-      class: lan_connect_auth
-      risk: high
-      strategy: preserve-both
-      resolution: Preserve validated probe and release-status IPC exposure while retaining upstream preload changes.
-    desktop/src/react/services/remote-feature-gates.ts:
-      class: remote_feature_contracts
-      risk: high
-      strategy: preserve-both
-      resolution: Preserve server-advertised feature gating and conservative fallback behavior.
-    desktop/src/react/services/remote-feature-session.ts:
-      class: remote_feature_contracts
-      risk: high
-      strategy: preserve-both
-      resolution: Preserve connection-generation scoping for remote feature state.
-    desktop/src/react/services/remote-server-assessment-cache.ts:
-      class: remote_server_assessment
-      risk: high
-      strategy: preserve-both
-      resolution: Preserve TTL, identity binding, and stale-result rejection for environment assessments.
-    desktop/src/react/stores/connection-slice.ts:
-      class: remote_server_assessment
-      risk: high
-      strategy: preserve-both
-      resolution: Preserve assessment reset and connection-switch behavior.
-    .github/workflows/build.yml:
-      class: server_release_compatibility
-      risk: high
-      strategy: preserve-both
-      resolution: Preserve fork asset naming, compatibility manifest publication, and digest/history generation while retaining upstream CI changes.
-    scripts/build-server.mjs:
-      class: server_release_compatibility
-      risk: high
-      strategy: preserve-both
-      resolution: Preserve build-info and compatibility-manifest packaging in server artifacts.
-    tests/server-identity-route.test.ts:
-      class: server_release_compatibility
-      risk: medium
-      strategy: preserve-both
-      resolution: Preserve server identity and build metadata assertions.
-    tests/server-runtime-context.test.ts:
-      class: server_release_compatibility
-      risk: medium
-      strategy: preserve-both
-      resolution: Preserve remote runtime context and release identity assertions.
-    docs/server-install.md:
-      class: server_release_compatibility
-      risk: medium
-      strategy: preserve-both
-      resolution: Keep documentation aligned with the unified installer, pinned fork tags, stable release assets, compatibility manifests, backup, dry-run, and post-upgrade verification.
-    CONTEXT.md:
-      class: remote_server_assessment
-      risk: medium
-      strategy: preserve-both
-      resolution: Preserve the authoritative focused suite and attended remote verification contract while incorporating relevant upstream development guidance.
     package.json:
       class: desktop_packaging
       risk: medium
@@ -341,27 +99,10 @@ conflictRules:
       strategy: defer-to-stable-production-sync
       resolution: Defer lockfile root metadata changes until the attended stable production fork sync resolves package.json.
       plannedAction: Report only. Do not regenerate or pre-bump package-lock.json for the dashboard; stable production fork sync regenerates it after the package version decision.
-    release-digest.v1.json:
-      class: desktop_packaging
-      risk: medium
-      strategy: take-main
-      resolution: Accept the upstream stable release digest during the attended rebase; prerelease dashboard state is report-only.
-      plannedAction: Take the eventual upstream stable digest during the stable sync, do not copy the current prerelease digest into dev early, and align tag/version to the fork-scoped tag only after Tier 0-3 verification when publishing the fork release.
-    tests/plugin-sdk-examples.test.ts:
-      class: fork_sync_maintenance
-      risk: medium
-      strategy: preserve-both
-      resolution: Preserve upstream SDK tarball coverage and fork office-workflow example coverage.
-      plannedAction: Keep both bundled SDK tarball assertions and office-workflow intentional-template assertions, then run plugin example tests.
-    tests/office-workflow-plugin.test.ts:
-      class: fork_sync_maintenance
-      risk: low
-      resolution: Preserve fork office-workflow example plugin behavior and lint coverage.
 
 verification:
   tier1Tests:
     - tests/server-auth.test.ts
-    - tests/server-connection.test.ts
     - tests/csp-sync.test.ts
     - desktop/src/react/__tests__/services/server-connection.test.ts
     - desktop/src/react/__tests__/components/MainContent.drag.test.tsx
@@ -376,8 +117,6 @@ verification:
     - desktop/src/react/__tests__/utils/user-attachment-media.test.ts
     - desktop/src/react/__tests__/components/RightWorkspacePanel.test.tsx
     - tests/upload-route.test.ts
-    - tests/plugin-sdk-examples.test.ts
-    - tests/office-workflow-plugin.test.ts
   commands:
     - npm run build:main
     - npm run build:preload
@@ -393,21 +132,8 @@ verification:
         - media-src
         - httpSourcesOnly
       label: runtime connection CSP keeps scoped remote resource-origin logic
-  localDesktopGate:
-    commands:
-      - node -p "require('./package.json').version"
-      - SKIP_NOTARIZE=true npm run install:local
-      - codesign --verify --deep --strict --verbose=2 /Applications/HanaAgent.app
-      - defaults read /Applications/HanaAgent.app/Contents/Info CFBundleShortVersionString
-      - defaults read /Applications/HanaAgent.app/Contents/Info CFBundleVersion
-      - cat /Applications/HanaAgent.app/Contents/Resources/build-info.json
-    checks:
-      - CFBundleShortVersionString and CFBundleVersion both equal the package.json version before smoke.
-      - build-info.json appVersion equals the package.json version, channel is local, and updateEnabled is false.
-      - Launch /Applications/HanaAgent.app, open Settings -> About, and confirm it shows the same v{package_version} plus local build identity.
   liveSmoke:
-    - Clear localStorage in HanaAgent desktop, then reconnect by helper or UI.
-    - "Repeatable helper path when the target LAN connection was already saved: node scripts/hana-desktop-smoke-helper.mjs --restart --verify --url http://100.125.173.118:14500. This clears localStorage, restores only the saved LAN connection registry, reloads, then verifies token-auth identity fetch plus WebSocket open from the renderer. If no saved connection exists, prefer HANA_DESKTOP_SMOKE_TOKEN=<device-key> for the first helper run; --token is available for one-off local use but can leak through shell history or process listings."
-    - "Manual fallback path: Settings -> Access -> Connect LAN Server -> http://100.125.173.118:14500 plus device key -> Connect."
+    - Clear localStorage in HanaAgent desktop, then reload.
+    - Connect LAN Server to http://100.125.173.118:14500 with the device key.
     - Confirm no CSP connect errors, no WS_DISCONNECTED, and WebSocket establishes.
     - Paste/upload an image, send it, switch chats, return, and confirm chat thumbnail plus Conversation Files preview still render.

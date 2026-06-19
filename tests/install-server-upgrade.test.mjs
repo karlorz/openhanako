@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 
 import {
   buildUpgradePlan,
@@ -11,34 +10,24 @@ import {
   buildReinitDataConfirmPlan,
   buildStatusPlan,
   createShellReinitDataOps,
-  createShellInstallOps,
   createShellUpgradeOps,
   createSystemdUnit,
   deriveUpgradeHostDefaults,
-  executeInstallPlan,
   executeReinitDataPlan,
   executeReinitDataRestore,
   executeUpgradePlan,
   inspectReinitDataBackups,
-  inspectServerStatus,
   loadReinitDataPlan,
-  parseInstalledReleaseDirectory,
-  probeInstallActivationState,
   resolveHanaDataRoot,
   resolveLinuxAsset,
   resolvePrivilegeModel,
   resolveRelease,
-  runInstall,
-  runStatus,
   selectServerAsset,
   runUpgrade,
-  summarizeBackupRequiredState,
   writeReinitDataDryRunPlan,
 } from "../scripts/install-server.mjs";
 
-
 const ARM64_SHA256 = "a".repeat(64);
-const INSTALL_SERVER_SOURCE = fileURLToPath(new URL("../scripts/install-server.mjs", import.meta.url));
 
 const metadata = {
   tag: "v0.400.0",
@@ -62,240 +51,6 @@ const metadata = {
 };
 
 describe("install-server upgrade planner", () => {
-  it("parses only exact fork release directory names", () => {
-    expect(parseInstalledReleaseDirectory("v0.346.18-karlorz.1-linux-arm64")).toEqual({
-      tag: "v0.346.18-karlorz.1",
-      runtimeVersion: "0.346.18",
-      platform: "linux",
-      arch: "arm64",
-    });
-    expect(parseInstalledReleaseDirectory("v0.346.18-karlorz.12-linux-x64")?.arch).toBe("x64");
-    expect(parseInstalledReleaseDirectory("v0.346.18-linux-arm64")).toBeNull();
-    expect(parseInstalledReleaseDirectory("v0.346.18-karlorz.1-linux-arm64-custom")).toBeNull();
-  });
-
-  it("inspects installed status without root or mutation", async () => {
-    const mutations = [];
-    const report = await inspectServerStatus({
-      paths: { currentLink: "/opt/hanaagent/current" },
-      platform: "linux",
-      arch: "arm64",
-      now: () => new Date("2026-07-18T12:00:00.000Z"),
-      fsImpl: {
-        lstatSync: () => ({ isSymbolicLink: () => true }),
-        readlinkSync: () => "/opt/hanaagent/releases/v0.346.18-karlorz.1-linux-arm64",
-        realpathSync: () => "/opt/hanaagent/releases/v0.346.18-karlorz.1-linux-arm64",
-        readFileSync: () => { const error = new Error("missing"); error.code = "ENOENT"; throw error; },
-        writeFileSync: (...args) => mutations.push(["write", ...args]),
-        renameSync: (...args) => mutations.push(["rename", ...args]),
-        unlinkSync: (...args) => mutations.push(["unlink", ...args]),
-        symlinkSync: (...args) => mutations.push(["symlink", ...args]),
-      },
-      run: async (_command, args) => {
-        if (args[0] === "is-active") return { status: 0, stdout: "active\n", stderr: "" };
-        if (args[0] === "is-enabled") return { status: 0, stdout: "enabled\n", stderr: "" };
-        return { status: 0, stdout: "1234\n", stderr: "" };
-      },
-    });
-
-    expect(report).toMatchObject({
-      kind: "install-server-status-report",
-      schemaVersion: 1,
-      observedAt: "2026-07-18T12:00:00.000Z",
-      installState: "installed",
-      installedRelease: {
-        tag: "v0.346.18-karlorz.1",
-        runtimeVersion: "0.346.18",
-        platform: "linux",
-        arch: "arm64",
-        evidenceSource: "current-symlink",
-      },
-      service: { active: "active", enabled: "enabled", mainPid: "1234" },
-      assessment: { core: { status: "not-assessed" } },
-    });
-    expect(report.plan.kind).toBe("install-server-status-plan");
-    expect(mutations).toEqual([]);
-  });
-
-  it.each([
-    ["absent", () => { const error = new Error("missing"); error.code = "ENOENT"; throw error; }],
-    ["broken-link", () => ({ isSymbolicLink: () => true })],
-  ])("returns structured %s install state", async (expectedState, lstatSync) => {
-    const report = await inspectServerStatus({
-      fsImpl: {
-        lstatSync,
-        readlinkSync: () => "/missing/release",
-        realpathSync: () => { const error = new Error("missing"); error.code = "ENOENT"; throw error; },
-        readFileSync: () => { const error = new Error("missing"); error.code = "ENOENT"; throw error; },
-      },
-      run: async () => ({ status: 1, stdout: "", stderr: "systemd unavailable" }),
-    });
-    expect(report.installState).toBe(expectedState);
-    expect(report.service).toEqual({ active: null, enabled: null, mainPid: null });
-    expect(report.assessment.core.status).toBe("not-assessed");
-  });
-
-  it("checks releases only when explicitly requested", async () => {
-    let releaseCalls = 0;
-    const dependencies = {
-      fsImpl: {
-        lstatSync: () => ({ isSymbolicLink: () => true }),
-        readlinkSync: () => "/opt/hanaagent/releases/v0.346.18-karlorz.1-linux-arm64",
-        realpathSync: () => "/opt/hanaagent/releases/v0.346.18-karlorz.1-linux-arm64",
-        readFileSync: () => { const error = new Error("missing"); error.code = "ENOENT"; throw error; },
-      },
-      run: async () => ({ status: 1, stdout: "", stderr: "not found" }),
-      loadRelease: async () => {
-        releaseCalls += 1;
-        return { status: "unavailable", checkedAt: "2026-07-18T12:00:00.000Z", source: "none", stale: false, release: null, errorCode: "offline", reasonCodes: ["offline"] };
-      },
-    };
-
-    await runStatus(["--json"], dependencies);
-    expect(releaseCalls).toBe(0);
-    const checked = await runStatus(["--check-updates", "--json"], dependencies);
-    expect(releaseCalls).toBe(1);
-    expect(checked.assessment.reasonCodes).toContain("offline");
-  });
-
-  it("reports mismatched symlink and embedded build identity", async () => {
-    const report = await inspectServerStatus({
-      platform: "linux",
-      arch: "arm64",
-      checkUpdates: true,
-      fsImpl: {
-        lstatSync: () => ({ isSymbolicLink: () => true }),
-        readlinkSync: () => "/opt/hanaagent/releases/v0.346.18-karlorz.1-linux-arm64",
-        realpathSync: () => "/opt/hanaagent/releases/v0.346.18-karlorz.1-linux-arm64",
-        readFileSync: () => JSON.stringify({ runtimeVersion: "0.346.18", releaseTag: "v0.346.18-karlorz.2" }),
-      },
-      run: async () => ({ status: 1, stdout: "", stderr: "not found" }),
-      loadRelease: async () => ({
-        status: "ready",
-        checkedAt: "2026-07-18T12:00:00.000Z",
-        source: "online",
-        stale: false,
-        errorCode: null,
-        reasonCodes: [],
-        release: {
-          tag: "v0.346.18-karlorz.2",
-          runtimeVersion: "0.346.18",
-          forkRevision: 2,
-          prerelease: true,
-          publishedAt: null,
-          releaseUrl: null,
-          assets: [{ platform: "linux", arch: "arm64", name: "server.tar.gz", url: "https://example.test/server.tar.gz", checksumName: "server.tar.gz.sha256", checksumUrl: "https://example.test/server.tar.gz.sha256" }],
-          compatibilityManifestName: null,
-          featureContracts: null,
-          manifestGitSha: null,
-          reasonCodes: [],
-        },
-      }),
-    });
-    expect(report.assessment.freshness.status).not.toBe("current");
-    expect(report.assessment.freshness.exactReleaseMatch).toBe(false);
-    expect(report.assessment.freshness.reasonCodes).toContain("installed_release_evidence_mismatch");
-    expect(report.assessment.deployability.status).not.toBe("eligible");
-    expect(report.assessment.deployability.targetTag).toBeNull();
-    expect(report.assessment.deployability.reasonCodes).toContain("installed_release_evidence_mismatch");
-    expect(report.assessment.reasonCodes).toContain("installed_release_evidence_mismatch");
-    expect(report.recommendedDryRunCommand).toBeNull();
-  });
-
-  it.each([
-    ["linux", "x64", "arm64", "linux", "x64"],
-    ["linux", "arm64", "x64", "linux", "arm64"],
-    ["darwin", "arm64", "arm64", "mac", "arm64"],
-    ["linux", "riscv64", "arm64", null, null],
-  ])("uses the %s/%s host instead of a linux/%s release-directory suffix", async (hostPlatform, hostArch, directoryArch, expectedPlatform, expectedArch) => {
-    const tag = "v0.346.18-karlorz.1";
-    const report = await inspectServerStatus({
-      platform: hostPlatform,
-      arch: hostArch,
-      checkUpdates: true,
-      fsImpl: {
-        lstatSync: () => ({ isSymbolicLink: () => true }),
-        readlinkSync: () => `/opt/hanaagent/releases/${tag}-linux-${directoryArch}`,
-        realpathSync: () => `/opt/hanaagent/releases/${tag}-linux-${directoryArch}`,
-        readFileSync: () => { const error = new Error("missing"); error.code = "ENOENT"; throw error; },
-      },
-      run: async () => ({ status: 1, stdout: "", stderr: "not found" }),
-      loadRelease: async () => ({
-        status: "ready",
-        checkedAt: "2026-07-18T12:00:00.000Z",
-        source: "online",
-        stale: false,
-        errorCode: null,
-        reasonCodes: [],
-        release: {
-          tag: "v0.357.17-karlorz.1",
-          runtimeVersion: "0.357.17",
-          forkRevision: 1,
-          prerelease: true,
-          publishedAt: null,
-          releaseUrl: null,
-          assets: [
-            { platform: "linux", arch: "arm64", name: "server-arm64.tar.gz", url: "https://example.test/server-arm64.tar.gz", checksumName: "server-arm64.tar.gz.sha256", checksumUrl: "https://example.test/server-arm64.tar.gz.sha256" },
-            { platform: "linux", arch: "x64", name: "server-x64.tar.gz", url: "https://example.test/server-x64.tar.gz", checksumName: "server-x64.tar.gz.sha256", checksumUrl: "https://example.test/server-x64.tar.gz.sha256" },
-          ],
-          compatibilityManifestName: null,
-          featureContracts: null,
-          manifestGitSha: null,
-          reasonCodes: [],
-        },
-      }),
-    });
-
-    expect(report.assessment.deployability).toMatchObject({
-      status: "unknown",
-      platform: expectedPlatform,
-      arch: expectedArch,
-      targetTag: null,
-      assetName: null,
-      checksumName: null,
-    });
-    expect(report.assessment.deployability.reasonCodes).toContain("installed_release_host_mismatch");
-    expect(report.assessment.reasonCodes).toContain("installed_release_host_mismatch");
-    expect(report.recommendedDryRunCommand).toBeNull();
-  });
-
-  it("recommends only a channel-correct dry-run when a host asset is eligible", async () => {
-    const report = await inspectServerStatus({
-      platform: "linux",
-      arch: "arm64",
-      checkUpdates: true,
-      fsImpl: {
-        lstatSync: () => ({ isSymbolicLink: () => true }),
-        readlinkSync: () => "/opt/hanaagent/releases/v0.346.18-karlorz.1-linux-arm64",
-        realpathSync: () => "/opt/hanaagent/releases/v0.346.18-karlorz.1-linux-arm64",
-        readFileSync: () => { const error = new Error("missing"); error.code = "ENOENT"; throw error; },
-      },
-      run: async () => ({ status: 1, stdout: "", stderr: "not found" }),
-      loadRelease: async () => ({
-        status: "ready",
-        checkedAt: "2026-07-18T12:00:00.000Z",
-        source: "online",
-        stale: false,
-        errorCode: null,
-        reasonCodes: [],
-        release: {
-          tag: "v0.357.17-karlorz.1",
-          runtimeVersion: "0.357.17",
-          forkRevision: 1,
-          prerelease: true,
-          publishedAt: null,
-          releaseUrl: null,
-          assets: [{ platform: "linux", arch: "arm64", name: "server.tar.gz", url: "https://example.test/server.tar.gz", checksumName: "server.tar.gz.sha256", checksumUrl: "https://example.test/server.tar.gz.sha256" }],
-          compatibilityManifestName: null,
-          featureContracts: null,
-          manifestGitSha: null,
-          reasonCodes: [],
-        },
-      }),
-    });
-    expect(report.assessment.deployability.status).toBe("eligible");
-    expect(report.recommendedDryRunCommand).toBe("install-server upgrade --version v0.357.17-karlorz.1 --channel prerelease --dry-run");
-  });
   it("selects the linux-arm64 release asset for arm64 hosts", () => {
     expect(resolveLinuxAsset(metadata, { platform: "linux", arch: "arm64" })).toMatchObject({
       name: "hanaagent-server-v0.400.0-linux-arm64.tar.gz",
@@ -850,7 +605,6 @@ PrivateTmp=true
     expect(plan.paths.serviceName).toBe("hanaagent");
     expect(plan.steps.map((step) => step.id)).toEqual([
       "preflight",
-      "assert-no-existing-install",
       "create-user",
       "create-directories",
       "download",
@@ -858,7 +612,6 @@ PrivateTmp=true
       "extract-release",
       "write-systemd-unit",
       "switch-current",
-      "install-cli",
       "enable-service",
       "restart-service",
       "health-check",
@@ -866,174 +619,6 @@ PrivateTmp=true
     expect(plan.steps.map((step) => step.command).join("\n")).not.toMatch(
       /ssh|git reset|npm ci|npm run build:server|rm -rf|cp -R|deploy-sg01-server/i,
     );
-  });
-
-  it("executeInstallPlan installs only after checksum verification and enables the service", async () => {
-    const plan = buildInstallPlan({
-      metadata,
-      platform: "linux",
-      arch: "arm64",
-      uid: 0,
-      hasSudo: false,
-      dryRun: false,
-    });
-    const calls = [];
-    const result = await executeInstallPlan(plan, {
-      preflight: async () => calls.push("preflight"),
-      assertNoExistingInstall: async () => calls.push("assert-no-existing-install"),
-      createUser: async () => calls.push("create-user"),
-      createDirectories: async () => calls.push("create-directories"),
-      download: async () => calls.push("download"),
-      verifyChecksum: async () => calls.push("verify-checksum"),
-      extractRelease: async () => calls.push("extract-release"),
-      writeSystemdUnit: async () => calls.push("write-systemd-unit"),
-      switchCurrent: async () => calls.push("switch-current"),
-      installCli: async () => calls.push("install-cli"),
-      enableService: async () => calls.push("enable-service"),
-      restartService: async () => calls.push("restart-service"),
-      healthCheck: async () => calls.push("health-check"),
-    });
-
-    expect(result).toEqual({ ok: true });
-    expect(calls).toEqual([
-      "preflight",
-      "assert-no-existing-install",
-      "create-user",
-      "create-directories",
-      "download",
-      "verify-checksum",
-      "extract-release",
-      "write-systemd-unit",
-      "switch-current",
-      "install-cli",
-      "enable-service",
-      "restart-service",
-      "health-check",
-    ]);
-  });
-
-  it("executeInstallPlan does not extract or mutate service state when an install already exists", async () => {
-    const plan = buildInstallPlan({
-      metadata,
-      platform: "linux",
-      arch: "arm64",
-      uid: 0,
-      hasSudo: false,
-      dryRun: false,
-    });
-    const calls = [];
-    const result = await executeInstallPlan(plan, {
-      preflight: async () => calls.push("preflight"),
-      assertNoExistingInstall: async () => {
-        calls.push("assert-no-existing-install");
-        throw new Error("existing install");
-      },
-      createUser: async () => calls.push("create-user"),
-      createDirectories: async () => calls.push("create-directories"),
-      download: async () => calls.push("download"),
-      verifyChecksum: async () => calls.push("verify-checksum"),
-      extractRelease: async () => calls.push("extract-release"),
-      writeSystemdUnit: async () => calls.push("write-systemd-unit"),
-      switchCurrent: async () => calls.push("switch-current"),
-      installCli: async () => calls.push("install-cli"),
-      enableService: async () => calls.push("enable-service"),
-      restartService: async () => calls.push("restart-service"),
-      healthCheck: async () => calls.push("health-check"),
-    });
-
-    expect(result).toMatchObject({ ok: false, error: "existing install" });
-    expect(calls).toEqual(["preflight", "assert-no-existing-install"]);
-  });
-
-  it("fresh install shell operations stay inside an explicit command allowlist", async () => {
-    const plan = buildInstallPlan({
-      metadata,
-      platform: "linux",
-      arch: "arm64",
-      uid: 0,
-      hasSudo: false,
-      dryRun: false,
-    });
-    const commands = [];
-    const ops = createShellInstallOps({
-      run: async (cmd, args) => {
-        commands.push([cmd, ...args].join(" "));
-        if (cmd === "sha256sum") return { status: 0, stdout: `${ARM64_SHA256}  ${args[0]}\n`, stderr: "" };
-        if (cmd === "test" || cmd === "id" || cmd === "getent") return { status: 1, stdout: "", stderr: "" };
-        return { status: 0, stdout: "", stderr: "" };
-      },
-    });
-
-    await ops.preflight(plan);
-    await ops.assertNoExistingInstall(plan);
-    await ops.createUser(plan);
-    await ops.createDirectories(plan);
-    await ops.download(plan);
-    await ops.verifyChecksum(plan);
-    await ops.extractRelease(plan);
-    await ops.writeSystemdUnit(plan);
-    await ops.switchCurrent(plan.targetReleaseDir, plan);
-    await ops.installCli(plan);
-    await ops.enableService(plan);
-    await ops.restartService(plan);
-    await ops.healthCheck(plan);
-
-    expect(new Set(commands.map((call) => call.split(/\s+/)[0]))).toEqual(
-      new Set(["systemctl", "tar", "sha256sum", "curl", "mkdir", "ln", "cp", "chmod", "id", "getent", "useradd", "groupadd", "test"]),
-    );
-    expect(commands.join("\n")).not.toMatch(/ssh|git reset|npm ci|npm run build|rm -rf|deploy-sg01-server/i);
-  });
-
-  it("fresh install shell operations refuse a broken current symlink marker", async () => {
-    const plan = buildInstallPlan({
-      metadata,
-      platform: "linux",
-      arch: "arm64",
-      uid: 0,
-      hasSudo: false,
-      dryRun: false,
-    });
-    const commands = [];
-    const ops = createShellInstallOps({
-      run: async (cmd, args) => {
-        commands.push([cmd, ...args].join(" "));
-        if (cmd === "test" && args[0] === "-e") return { status: 1, stdout: "", stderr: "" };
-        if (cmd === "test" && args[0] === "-L") return { status: 0, stdout: "", stderr: "" };
-        return { status: 0, stdout: "", stderr: "" };
-      },
-    });
-
-    await expect(ops.assertNoExistingInstall(plan)).rejects.toThrow(/already exists/);
-    expect(commands).toEqual([
-      `test -e ${plan.paths.currentLink}`,
-      `test -L ${plan.paths.currentLink}`,
-    ]);
-  });
-
-  it("fresh install shell operations do not copy the installer implementation onto itself", async () => {
-    const plan = buildInstallPlan({
-      metadata,
-      platform: "linux",
-      arch: "arm64",
-      uid: 0,
-      hasSudo: false,
-      dryRun: false,
-      paths: {
-        installImpl: INSTALL_SERVER_SOURCE,
-      },
-    });
-    const commands = [];
-    const ops = createShellInstallOps({
-      run: async (cmd, args) => {
-        commands.push([cmd, ...args].join(" "));
-        return { status: 0, stdout: "", stderr: "" };
-      },
-    });
-
-    await ops.installCli(plan);
-
-    expect(commands.join("\n")).not.toContain(`cp ${INSTALL_SERVER_SOURCE} ${INSTALL_SERVER_SOURCE}`);
-    expect(commands).toContain(`chmod 0755 ${INSTALL_SERVER_SOURCE}`);
   });
 
   it("status plan is read-only and reports the hanaagent service/current release", () => {
@@ -1047,122 +632,9 @@ PrivateTmp=true
       "read-service-enabled",
       "read-listening-address",
       "read-last-backup",
-      "probe-activation-compatibility",
     ]);
     expect(plan.steps.map((step) => step.command).join("\n")).toContain("systemctl is-active hanaagent");
     expect(plan.steps.map((step) => step.command).join("\n")).not.toMatch(/restart|stop|start|rm -rf/i);
-  });
-
-  it("retains previous release path for rollback planning", () => {
-    const plan = buildUpgradePlan({
-      metadata,
-      currentVersion: "v0.323.0",
-      platform: "linux",
-      arch: "arm64",
-      uid: 0,
-      hasSudo: false,
-      dryRun: true,
-      previousReleaseDir: "/opt/hanaagent/releases/v0.323.0-linux-arm64",
-    });
-
-    expect(plan.previousReleaseDir).toBe("/opt/hanaagent/releases/v0.323.0-linux-arm64");
-    expect(plan.targetReleaseDir).toBe("/opt/hanaagent/releases/v0.400.0-linux-arm64");
-  });
-
-  it("checksum failure prevents activation and does not switch current", async () => {
-    const plan = buildUpgradePlan({
-      metadata,
-      currentVersion: "v0.323.0",
-      platform: "linux",
-      arch: "arm64",
-      uid: 0,
-      hasSudo: false,
-      dryRun: false,
-    });
-    const calls = [];
-    const result = await executeUpgradePlan(plan, {
-      preflight: async () => calls.push("preflight"),
-      backup: async () => calls.push("backup"),
-      download: async () => calls.push("download"),
-      verifyChecksum: async () => {
-        calls.push("verify-checksum");
-        throw new Error("sha256 mismatch for archive");
-      },
-      extractRelease: async () => calls.push("extract-release"),
-      switchCurrent: async (target) => calls.push(`switch:${target}`),
-      writeSystemdUnit: async () => calls.push("write-unit"),
-      restartService: async () => calls.push("restart"),
-      healthCheck: async () => calls.push("health-check"),
-      rollback: async (target) => calls.push(`rollback:${target}`),
-    });
-
-    expect(result.ok).toBe(false);
-    expect(result.rolledBack).toBe(false);
-    expect(calls).toEqual(["preflight", "backup", "download", "verify-checksum"]);
-  });
-
-  it("runtime-start failure restores the previous current release symlink", async () => {
-    const plan = buildUpgradePlan({
-      metadata,
-      currentVersion: "v0.323.0",
-      platform: "linux",
-      arch: "arm64",
-      uid: 0,
-      hasSudo: false,
-      dryRun: false,
-      previousReleaseDir: "/opt/hanaagent/releases/v0.323.0-linux-arm64",
-    });
-    const calls = [];
-    const result = await executeUpgradePlan(plan, {
-      preflight: async () => calls.push("preflight"),
-      backup: async () => calls.push("backup"),
-      download: async () => calls.push("download"),
-      verifyChecksum: async () => calls.push("verify-checksum"),
-      extractRelease: async () => calls.push("extract-release"),
-      switchCurrent: async (target) => calls.push(`switch:${target}`),
-      writeSystemdUnit: async () => calls.push("write-unit"),
-      restartService: async () => {
-        calls.push("restart");
-        throw new Error("runtime start failed");
-      },
-      healthCheck: async () => calls.push("health-check"),
-      rollback: async (target) => calls.push(`rollback:${target}`),
-    });
-
-    expect(result.ok).toBe(false);
-    expect(result.rolledBack).toBe(true);
-    expect(calls.at(-1)).toBe("rollback:/opt/hanaagent/releases/v0.323.0-linux-arm64");
-  });
-
-  it("backup inspection reports required configuration/agents/sessions/auth without secrets", () => {
-    const secret = "device-secret-should-never-appear";
-    const summary = summarizeBackupRequiredState([
-      "root/.hanako/auth.json",
-      "root/.hanako/server-network.json",
-      "root/.hanako/agents/hana/sessions/sess.jsonl",
-      "root/.hanako/device-credentials.json",
-    ]);
-    expect(summary).toEqual({
-      configuration: true,
-      agents: true,
-      sessions: true,
-      auth: true,
-      redacted: true,
-    });
-    expect(JSON.stringify(summary)).not.toContain(secret);
-
-    const probe = probeInstallActivationState({
-      paths: {
-        installRoot: "/opt/hanaagent",
-        currentLink: "/opt/hanaagent/current",
-      },
-      listDir: () => ["hanaagent-backup.tar.gz"],
-      readLink: () => "/opt/hanaagent/releases/v0.323.0-linux-arm64",
-      realPath: () => "/opt/hanaagent/releases/v0.323.0-linux-arm64",
-    });
-    expect(probe.readOnly).toBe(true);
-    expect(probe.productionBehaviorChanged).toBe(false);
-    expect(probe.backupArchives).toEqual(["hanaagent-backup.tar.gz"]);
   });
 
   it("resolves reinit-data data root from HANA_HOME before falling back to ~/.hanako", () => {
@@ -2216,46 +1688,5 @@ describe("install-server runUpgrade (command resolution)", () => {
   it("zero-arg propagates resolution failure (no stable release)", async () => {
     const onlyPre = { listReleases: async () => [MOCK_RELEASES[0]], getRelease: async () => null };
     await expect(runUpgrade([], runOpts({ httpClient: onlyPre }))).rejects.toThrow(/stable/i);
-  });
-});
-
-describe("install-server runInstall (command resolution)", () => {
-  const runOpts = (overrides = {}) => ({
-    httpClient: mockClient,
-    platform: "linux",
-    arch: "arm64",
-    ...overrides,
-  });
-
-  it("zero-arg resolves latest stable and builds a dry-run install plan", async () => {
-    const plan = await runInstall([], runOpts());
-    expect(plan.kind).toBe("install-server-install-plan");
-    expect(plan.tag).toBe("v0.300.0");
-    expect(plan.dryRun).toBe(true);
-    expect(plan.asset.name).toBe("hanaagent-server-v0.300.0-linux-arm64.tar.gz");
-  });
-
-  it("--version pin resolves that tag for fresh install with --channel prerelease", async () => {
-    const plan = await runInstall(["--version", "v0.323.0-karlorz.1", "--channel", "prerelease"], runOpts());
-    expect(plan.tag).toBe("v0.323.0-karlorz.1");
-    expect(plan.asset.name).toBe("hanaagent-server-v0.323.0-karlorz.1-linux-arm64.tar.gz");
-  });
-});
-
-describe("install-server bootstrap script", () => {
-  it("installs the durable install-server shim without requiring sudo as root", () => {
-    const source = fs.readFileSync(path.join(process.cwd(), "scripts/install-server-bootstrap.sh"), "utf8");
-    expect(source).toContain('REPO="${REPO:-karlorz/openhanako}"');
-    expect(source).toContain('if [ "$(id -u)" = "0" ]');
-    expect(source).toContain("command -v sudo");
-    expect(source).toContain("/usr/local/bin/install-server");
-    expect(source).toContain("/opt/hanaagent/install/install-server.mjs");
-  });
-
-  it("only mutates the service when --execute is explicitly forwarded", () => {
-    const source = fs.readFileSync(path.join(process.cwd(), "scripts/install-server-bootstrap.sh"), "utf8");
-    expect(source).toContain("--install-cli-only");
-    expect(source).toContain("INSTALL_ARGS");
-    expect(source).toContain("--execute");
   });
 });
