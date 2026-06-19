@@ -1221,6 +1221,30 @@ describe('ws-message-handler turn_end side effects', () => {
     expect(useStore.getState().browserBySession['/session/a-renamed.jsonl']).toBeUndefined();
   });
 
+  it('coalesces rapid turn_end session refreshes into one list request', async () => {
+    vi.useFakeTimers();
+    const requestContextUsage = vi.fn();
+    configureWsMessageHandler({ requestContextUsage });
+
+    handleServerMessage({
+      type: 'turn_end',
+      sessionPath: '/session/a.jsonl',
+    });
+    handleServerMessage({
+      type: 'turn_end',
+      sessionPath: '/session/a.jsonl',
+    });
+
+    expect(loadSessions).not.toHaveBeenCalled();
+    expect(requestContextUsage).toHaveBeenCalledTimes(2);
+
+    await vi.advanceTimersByTimeAsync(300);
+
+    expect(loadSessions).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('ws-message-handler replay hydration', () => {
   it('hydrates replayed optimistic user attachments when the server adds fileId metadata', () => {
     useStore.setState({
       currentSessionPath: '/session/a.jsonl',
@@ -1275,27 +1299,5 @@ describe('ws-message-handler turn_end side effects', () => {
       path: '/root/.hanako/session-files/hash/pasted.png',
     });
     expect(item.data.sendStatus).toBeUndefined();
-  });
-
-  it('coalesces rapid turn_end session refreshes into one list request', async () => {
-    vi.useFakeTimers();
-    const requestContextUsage = vi.fn();
-    configureWsMessageHandler({ requestContextUsage });
-
-    handleServerMessage({
-      type: 'turn_end',
-      sessionPath: '/session/a.jsonl',
-    });
-    handleServerMessage({
-      type: 'turn_end',
-      sessionPath: '/session/a.jsonl',
-    });
-
-    expect(loadSessions).not.toHaveBeenCalled();
-    expect(requestContextUsage).toHaveBeenCalledTimes(2);
-
-    await vi.advanceTimersByTimeAsync(300);
-
-    expect(loadSessions).toHaveBeenCalledTimes(1);
   });
 });
