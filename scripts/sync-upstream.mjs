@@ -155,14 +155,49 @@ export function conflictPolicyForFile(file, rules = loadRules()) {
   };
 }
 
+function linkedRiskPolicyForFile(triggerFile, linkedRisk, rules = loadRules()) {
+  const linkedConfig = typeof linkedRisk === "string" ? { file: linkedRisk } : linkedRisk ?? {};
+  const linkedFile = linkedConfig.file;
+  if (!linkedFile) {
+    return null;
+  }
+  const policy = rules.conflictRules?.policies?.[linkedFile] ?? {};
+  return {
+    file: linkedFile,
+    strategy: linkedConfig.strategy ?? policy.strategy ?? "human-review",
+    source: linkedConfig.source ?? "linked-risk",
+    class: linkedConfig.class ?? policy.class ?? null,
+    risk: linkedConfig.risk ?? policy.risk ?? "high",
+    resolution: linkedConfig.resolution ?? policy.resolution ?? "",
+    plannedAction: linkedConfig.plannedAction ?? policy.plannedAction ?? linkedConfig.resolution ?? policy.resolution ?? "",
+    triggeredBy: triggerFile,
+  };
+}
+
 export function buildConflictPlan(conflictingFiles, rules = loadRules(), options = {}) {
   const files = [...new Set(conflictingFiles)].filter(Boolean).sort();
+  const directFiles = new Set(files);
+  const seen = new Set();
+  const conflicts = [];
+  for (const file of files) {
+    conflicts.push(conflictPolicyForFile(file, rules));
+    seen.add(file);
+    const linkedRisks = rules.conflictRules?.policies?.[file]?.linkedRisks ?? [];
+    for (const linkedRisk of linkedRisks) {
+      const linkedPolicy = linkedRiskPolicyForFile(file, linkedRisk, rules);
+      if (!linkedPolicy || directFiles.has(linkedPolicy.file) || seen.has(linkedPolicy.file)) {
+        continue;
+      }
+      conflicts.push(linkedPolicy);
+      seen.add(linkedPolicy.file);
+    }
+  }
   return {
     kind: "openhanako-fork-conflict-plan",
     dryRun: options.dryRun ?? rules.conflictRules?.dryRunDefault ?? true,
     generatedAt: options.generatedAt ?? new Date().toISOString(),
     defaultResolution: rules.conflictRules?.defaultResolution ?? "main",
-    conflicts: files.map((file) => conflictPolicyForFile(file, rules)),
+    conflicts,
   };
 }
 
