@@ -93,7 +93,7 @@ describe('PreviewPanel markdown editor status', () => {
 
     render(<PreviewPanel />);
 
-    expect(document.getElementById('previewBody')).toHaveClass('jian-card');
+    expect(document.getElementById('previewBody')).toHaveClass('universal-card');
     expect(shellBlock).toMatch(/margin:\s*var\(--panel-edge-gap\);/);
     expect(bodyBlock).toMatch(/background:\s*var\(--panel-card-bg\);/);
     expect(bodyBlock).toMatch(/border-radius:\s*var\(--panel-card-radius\);/);

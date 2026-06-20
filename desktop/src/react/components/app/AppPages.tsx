@@ -55,7 +55,7 @@ function ChannelInspectorPanel() {
     return (
       <ChannelInspectorShell>
         <div className="channel-info-stack">
-          <div className="jian-card">
+          <div className="universal-card">
             <div className="channel-info-section">
               <div className="channel-info-label">{tr('channel.dmLabel')}</div>
               <div className="channel-members-list">
@@ -73,7 +73,7 @@ function ChannelInspectorPanel() {
   return (
     <ChannelInspectorShell>
       <div className="channel-info-stack">
-        <div className="jian-card">
+        <div className="universal-card">
           <div className="channel-info-section">
             <div className="channel-info-label">{tr('channel.info')}</div>
             <div className="channel-info-name">{channelInfoName}</div>

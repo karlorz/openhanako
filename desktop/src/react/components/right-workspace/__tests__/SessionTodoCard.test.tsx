@@ -49,7 +49,7 @@ describe('SessionTodoCard', () => {
 
   it('无 todo 返回 null', () => {
     const { container } = render(<SessionTodoCard />);
-    expect(container.querySelector('.jian-card')).toBeNull();
+    expect(container.querySelector('.universal-card')).toBeNull();
   });
 
   it('渲染三态 + 完成计数，in_progress 用 activeForm', () => {
@@ -80,7 +80,7 @@ describe('SessionTodoCard', () => {
     mockState.currentSessionPath = null;
     mockState.todosBySession['/s/a.jsonl'] = [{ content: 'x', activeForm: 'x', status: 'pending' }];
     const { container } = render(<SessionTodoCard />);
-    expect(container.querySelector('.jian-card')).toBeNull();
+    expect(container.querySelector('.universal-card')).toBeNull();
   });
 
   it('从右侧面板触发全部标记为已完成', async () => {

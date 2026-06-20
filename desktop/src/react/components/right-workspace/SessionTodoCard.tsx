@@ -72,7 +72,7 @@ export function SessionTodoCard() {
   }
 
   return (
-    <section className={`jian-card ${styles.card}`} aria-label={t('rightWorkspace.todo.title')}>
+    <section className={`universal-card ${styles.card}`} aria-label={t('rightWorkspace.todo.title')}>
       <div className={styles.header}>
         <span className={styles.title}>{t('rightWorkspace.todo.title')}</span>
         <span className={styles.count}>{done}/{todos.length}</span>

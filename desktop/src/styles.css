@@ -119,6 +119,7 @@ body.paper-texture .sidebar {
 }
 
 /* ② Card 层：bg-card 元素用 lighten 混合，纹理暗部被背景色提亮 */
+body.paper-texture .universal-card,
 body.paper-texture .jian-card,
 body.paper-texture .msg-card,
 body.paper-texture .input-wrapper,
@@ -2210,7 +2211,8 @@ html[data-platform="linux"] .tb-toggle-right {
     box-shadow: -8px 0 24px rgba(0, 0, 0, 0.06);
 }
 
-/* ── 卡片容器 ── */
+/* ── Universal Card: 主页面 / Workbench / Dock 的全局卡片皮肤 ── */
+.universal-card,
 .jian-card {
     background: var(--panel-card-bg);
     border-radius: var(--panel-card-radius);

@@ -684,7 +684,7 @@ export function ChannelAgentActivityPanel() {
   const resolve = (id: string) => resolveChannelMember(id, userName, userAvatarUrl, agents, isDM ? dmOwnerId : currentAgentId, agentMap);
 
   return (
-    <div className="jian-card">
+    <div className="universal-card">
       <div className="channel-info-section">
         <div className={styles.agentActivityHeader}>
           <div className="channel-info-label">{t('channel.agentActivity')}</div>
@@ -869,7 +869,7 @@ export function ChannelAgentSettingsPanel() {
   const hasMultipleProviders = providerKeys.length > 1 || (providerKeys.length === 1 && providerKeys[0] !== '');
 
   return (
-    <div className={`jian-card ${styles.agentSettingsCard}`}>
+    <div className={`universal-card ${styles.agentSettingsCard}`}>
       <div className="channel-info-section">
         <div className={styles.agentSettingsHeader}>
           <div className="channel-info-label">{t('channel.agentSettings')}</div>

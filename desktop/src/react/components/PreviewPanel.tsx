@@ -445,7 +445,7 @@ export function PreviewPanel() {
               onToggleMarkdownPreview={handleToggleMarkdownPreview}
             />
           )}
-          <div ref={previewBodyRef} className={`jian-card ${previewStyles.previewPanelBody}`} id="previewBody" data-preview-panel-body="" onMouseUp={handleMouseUp}>
+          <div ref={previewBodyRef} className={`universal-card ${previewStyles.previewPanelBody}`} id="previewBody" data-preview-panel-body="" onMouseUp={handleMouseUp}>
             {previewOpen && previewItem && !editable && (
               <PreviewRenderer previewItem={previewItem} />
             )}

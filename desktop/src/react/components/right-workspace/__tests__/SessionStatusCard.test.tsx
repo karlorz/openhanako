@@ -58,14 +58,14 @@ describe('SessionStatusCard', () => {
   it('无当前对话返回 null（welcome 态不显示）', () => {
     mockState.currentSessionPath = null;
     const { container } = render(<SessionStatusCard />);
-    expect(container.querySelector('.jian-card')).toBeNull();
+    expect(container.querySelector('.universal-card')).toBeNull();
   });
 
   it('有对话时渲染工作目录 / 模型 / 文件数', () => {
     mockState.currentSessionPath = '/s/a.jsonl';
     mockState.sessionRegistryFilesByPath = { '/s/a.jsonl': [{}, {}, {}] };
     const { container } = render(<SessionStatusCard />);
-    expect(container.querySelector('.jian-card')).toBeTruthy();
+    expect(container.querySelector('.universal-card')).toBeTruthy();
     expect(container.textContent).toContain('gpt-x'); // 模型 id
     expect(container.textContent).toContain('3');      // 文件数
   });

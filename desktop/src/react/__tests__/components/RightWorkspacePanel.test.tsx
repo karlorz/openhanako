@@ -162,7 +162,7 @@ describe('RightWorkspacePanel', () => {
     const { container } = render(<RightWorkspacePanel />);
 
     const tabList = screen.getByRole('tablist', { name: 'rightWorkspace.tabs.label' });
-    expect(tabList.closest('.jian-card')).toBe(container.querySelector('.jian-card'));
+    expect(tabList.closest('.universal-card')).toBe(container.querySelector('.universal-card'));
     expect(within(tabList).getByRole('tab', { name: '对话文件' })).toBeInTheDocument();
     expect(within(tabList).getByRole('tab', { name: '工作台' })).toHaveAttribute('aria-selected', 'true');
     expect(container.querySelector('[data-right-workspace-tab-slider]')).toBeInTheDocument();
@@ -217,7 +217,7 @@ describe('RightWorkspacePanel', () => {
     const jianInnerBlock = globalCss.match(/\.jian-sidebar-inner\s*\{[\s\S]*?\}/)?.[0] ?? '';
     const floatRightBlock = globalCss.match(/\.float-sidebar\[data-side="right"\]\s*\{[\s\S]*?\}/)?.[0] ?? '';
     const rootBlock = globalCss.match(/:root\s*\{[\s\S]*?\}/)?.[0] ?? '';
-    const jianCardBlock = globalCss.match(/\.jian-card\s*\{[\s\S]*?\}/)?.[0] ?? '';
+    const universalCardBlock = globalCss.match(/\.universal-card,\s*\.jian-card\s*\{[\s\S]*?\}/)?.[0] ?? '';
 
     expect(rootBlock).toMatch(/--panel-edge-gap:\s*var\(--space-sm\);/);
     expect(rootBlock).toMatch(/--panel-card-bg:\s*var\(--bg-card,\s*var\(--bg\)\);/);
@@ -229,10 +229,10 @@ describe('RightWorkspacePanel', () => {
     expect(panelCss).toMatch(/--right-workspace-jian-bottom:\s*var\(--panel-edge-gap\);/);
     expect(jianInnerBlock).toMatch(/padding:\s*0 var\(--panel-edge-gap\) 0 0;/);
     expect(floatRightBlock).toMatch(/padding:\s*0 var\(--panel-edge-gap\);/);
-    expect(jianCardBlock).toMatch(/background(?:-color)?:\s*var\(--panel-card-bg\);/);
-    expect(jianCardBlock).toMatch(/border-radius:\s*var\(--panel-card-radius\);/);
-    expect(jianCardBlock).toMatch(/border:\s*var\(--panel-card-border\);/);
-    expect(jianCardBlock).toMatch(/box-shadow:\s*var\(--panel-card-shadow\);/);
+    expect(universalCardBlock).toMatch(/background(?:-color)?:\s*var\(--panel-card-bg\);/);
+    expect(universalCardBlock).toMatch(/border-radius:\s*var\(--panel-card-radius\);/);
+    expect(universalCardBlock).toMatch(/border:\s*var\(--panel-card-border\);/);
+    expect(universalCardBlock).toMatch(/box-shadow:\s*var\(--panel-card-shadow\);/);
   });
 
   it('places the preview toggle before the open-folder icon in the workspace toolbar', () => {

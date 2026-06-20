@@ -42,7 +42,7 @@ describe('AgentActivityCard', () => {
     mockState.currentSessionPath = '/s/a.jsonl';
     mockState.agentActivitiesBySession = {};
     const { container } = render(<AgentActivityCard />);
-    expect(container.querySelector('.jian-card')).toBeNull();
+    expect(container.querySelector('.universal-card')).toBeNull();
   });
 
   it('只渲染当前 session 的 subagent，running 优先排序', () => {
@@ -107,7 +107,7 @@ describe('AgentActivityCard', () => {
     mockState.currentSessionPath = null;
     mockState.agentActivitiesBySession = { '/s/a.jsonl': [mk({ id: 'x' })] };
     const { container } = render(<AgentActivityCard />);
-    expect(container.querySelector('.jian-card')).toBeNull();
+    expect(container.querySelector('.universal-card')).toBeNull();
     mockState.currentSessionPath = '/s/a.jsonl'; // 复位
   });
 });
