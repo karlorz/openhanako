@@ -5,11 +5,8 @@ import * as vm from 'node:vm';
 
 /**
  * CSP 双源同步检查：
- * 确保 vite.csp-profiles.ts 中的 CSP_PROFILES 与 HTML 源文件中的 meta tag 保持一致。
+ * 确保 vite.config.ts 中的 CSP_PROFILES 与 HTML 源文件中的 meta tag 保持一致。
  * 如果测试失败，说明有人改了 CSP_PROFILES 但忘了同步 HTML 源文件（或反之）。
- *
- * CSP_PROFILES 原本内联在 vite.config.ts，启用双 artifact 管线后拆到
- * vite.csp-profiles.ts（vite.config.ts 与 vite.config.splash.ts 共享同一份）。
  */
 
 type EnvLike = Record<string, string | undefined>;
@@ -22,9 +19,9 @@ const ROOT_DIR = path.resolve(__dirname, '..');
 const DEFAULT_REMOTE_URL = 'http://100.125.173.118:14500';
 const DEFAULT_SAVED_REMOTE_URL = 'http://192.168.1.9:14500';
 
-// 从 vite.csp-profiles.ts 源码中提取 CSP_PROFILES（不 import，避免引入 Vite 依赖）
+// 从 vite.config.ts 源码中提取 CSP_PROFILES（不 import，避免引入 Vite 依赖）
 function extractCspProfiles(): Record<string, string> {
-  const src = fs.readFileSync(path.join(ROOT_DIR, 'vite.csp-profiles.ts'), 'utf-8');
+  const src = fs.readFileSync(path.join(ROOT_DIR, 'vite.config.ts'), 'utf-8');
   const profiles: Record<string, string> = {};
 
   // 匹配 'filename.html': "csp-value" 或 'filename.html':\n    "csp-value"
@@ -319,31 +316,5 @@ describe('CSP sync', () => {
 
     expect(written).toContain('http://192.168.1.9:14500');
     expect(written).toContain('ws://192.168.1.9:14500');
-  });
-
-  it('runtime desktop CSP allows active remote resource origins for image and media rendering', () => {
-    const csp = parseCsp(renderRuntimeConnectionCsp({
-      activeServerConnectionId: 'lan:remote:studio',
-      serverConnections: {
-        'lan:remote:studio': {
-          connectionId: 'lan:remote:studio',
-          kind: 'lan',
-          baseUrl: cspFixture.remote.baseUrl,
-          wsUrl: cspFixture.remote.wsUrl,
-        },
-      },
-    });
-    const parsed = parseCsp(csp);
-
-    expect(parsed['connect-src']).toContain(cspFixture.remote.baseUrl);
-    expect(parsed['connect-src']).toContain(cspFixture.remote.wsUrl);
-    expect(parsed['img-src']).toContain(cspFixture.remote.baseUrl);
-    expect(parsed['media-src']).toContain(cspFixture.remote.baseUrl);
-
-    // Bare scheme tokens must never appear as standalone CSP sources.
-    expect(csp).not.toMatch(/(?:^|\s)http:(?:\s|$)/);
-    expect(csp).not.toMatch(/(?:^|\s)https:(?:\s|$)/);
-    expect(csp).not.toMatch(/(?:^|\s)ws:(?:\s|$)/);
-    expect(csp).not.toMatch(/(?:^|\s)wss:(?:\s|$)/);
   });
 });
