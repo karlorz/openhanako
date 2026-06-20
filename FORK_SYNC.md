@@ -76,6 +76,12 @@ These files fix remote desktop attachment import and preview when the macOS desk
 | `server/routes/upload.ts` | Medium | `/api/upload-blob` must accept image/audio plus listed document attachment MIME types, enforce size limits, and register session-owned files. |
 | Affected tests under `desktop/src/react/__tests__/...`, `tests/csp-sync.test.ts`, `tests/upload-route.test.ts` | Low | Prefer ours unless upstream has equivalent coverage for remote preview persistence and client-owned blob import. |
 
+### WebSocket session identity conflict planning
+
+| File | Risk if upstream touches | Resolution policy |
+|------|--------------------------|-------------------|
+| `desktop/src/react/services/ws-message-handler.ts` | **HIGH** — session-scoped browser status, preview refresh, and optimistic attachment hydration can interact across production code and test fixtures | **HUMAN REVIEW.** If upstream changes `desktop/src/react/__tests__/services/ws-message-handler.test.ts`, inspect the production service file too. A test-only dashboard conflict reduction must not hide regressions in fork session identity routing or replayed optimistic attachment hydration. |
+
 ### Desktop packaging metadata
 
 | File | Risk if upstream touches | Resolution policy |
