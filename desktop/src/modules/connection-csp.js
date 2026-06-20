@@ -1,5 +1,12 @@
 (function installConnectionCsp() {
   var STORAGE_KEY = "hana-server-connections-v1";
+
+  function httpSourcesOnly(sources) {
+    return Object.keys(sources).filter(function (source) {
+      return /^(http|https):\/\//.test(source);
+    });
+  }
+
   var BASE_CSP = {
     "default-src": ["'self'"],
     "connect-src": ["'self'", "ws://127.0.0.1:*", "http://127.0.0.1:*"],
@@ -51,12 +58,6 @@
       out["ws://" + host] = true;
       BASE_CSP["script-src"].push("'unsafe-inline'");
     } catch {}
-  }
-
-  function httpSourcesOnly(sources) {
-    return Object.keys(sources).filter(function (source) {
-      return /^(http|https):\/\//.test(source);
-    });
   }
 
   var scopedSources = readPersistedConnectionSources();
