@@ -30,6 +30,7 @@ issueTracking:
 criticalFileClasses:
   - lan_connect_auth
   - remote_attachment_preview
+  - websocket_session_identity
   - desktop_packaging
   - fork_sync_maintenance
 
@@ -59,6 +60,7 @@ conflictRules:
     - desktop/src/react/__tests__/components/InputArea.media-send.test.tsx
     - desktop/src/react/__tests__/services/resource-url.test.ts
     - desktop/src/react/__tests__/services/ws-message-handler.test.ts
+    - desktop/src/react/services/ws-message-handler.ts
     - desktop/src/react/__tests__/stores/chat-slice.test.ts
     - desktop/src/react/__tests__/stores/selectors/file-refs.test.ts
     - desktop/src/react/__tests__/utils/user-attachment-media.test.ts
@@ -87,6 +89,17 @@ conflictRules:
       strategy: preserve-both
       resolution: Start from main, then preserve fork regression coverage for replayed optimistic attachments receiving server fileId metadata.
       plannedAction: Would keep upstream session identity and preview refresh tests, then preserve the fork replayed optimistic attachment hydration regression test.
+      linkedRisks:
+        - file: desktop/src/react/services/ws-message-handler.ts
+          strategy: human-review
+          risk: high
+          resolution: Upstream ws-message-handler tests can imply production session identity behavior that the fork must preserve.
+          plannedAction: Report the production service file as a secondary risk; inspect the test and service behavior together before treating the dashboard conflict as resolved.
+    desktop/src/react/services/ws-message-handler.ts:
+      class: websocket_session_identity
+      risk: high
+      resolution: HUMAN REVIEW. Preserve fork session identity routing and optimistic attachment hydration while accepting upstream preview refresh behavior.
+      plannedAction: Inspect production ws-message-handler behavior with the paired test expectations; do not let a test-only conflict reduction hide session identity regressions.
     package.json:
       class: desktop_packaging
       risk: medium
