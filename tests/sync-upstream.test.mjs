@@ -133,6 +133,12 @@ describe("sync-upstream rule engine", () => {
         source: "policy",
       }),
       expect.objectContaining({
+        file: "desktop/src/react/services/ws-message-handler.ts",
+        strategy: "human-review",
+        source: "linked-risk",
+        triggeredBy: "desktop/src/react/__tests__/services/ws-message-handler.test.ts",
+      }),
+      expect.objectContaining({
         file: "package-lock.json",
         strategy: "defer-to-stable-production-sync",
         source: "policy",
@@ -141,6 +147,29 @@ describe("sync-upstream rule engine", () => {
         file: "package.json",
         strategy: "defer-to-stable-production-sync",
         source: "policy",
+      }),
+    ]);
+  });
+
+  it("links ws-message-handler test conflicts to the production session identity risk", () => {
+    const rules = loadRules();
+
+    const plan = buildConflictPlan([
+      "desktop/src/react/__tests__/services/ws-message-handler.test.ts",
+    ], rules);
+
+    expect(plan.conflicts).toEqual([
+      expect.objectContaining({
+        file: "desktop/src/react/__tests__/services/ws-message-handler.test.ts",
+        strategy: "preserve-both",
+        source: "policy",
+      }),
+      expect.objectContaining({
+        file: "desktop/src/react/services/ws-message-handler.ts",
+        strategy: "human-review",
+        source: "linked-risk",
+        risk: "high",
+        triggeredBy: "desktop/src/react/__tests__/services/ws-message-handler.test.ts",
       }),
     ]);
   });
