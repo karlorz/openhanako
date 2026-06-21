@@ -188,8 +188,21 @@ verification:
         - media-src
         - httpSourcesOnly
       label: runtime connection CSP keeps scoped remote resource-origin logic
+  localDesktopGate:
+    commands:
+      - node -p "require('./package.json').version"
+      - SKIP_NOTARIZE=true npm run install:local
+      - codesign --verify --deep --strict --verbose=2 /Applications/HanaAgent.app
+      - defaults read /Applications/HanaAgent.app/Contents/Info CFBundleShortVersionString
+      - defaults read /Applications/HanaAgent.app/Contents/Info CFBundleVersion
+      - cat /Applications/HanaAgent.app/Contents/Resources/build-info.json
+    checks:
+      - CFBundleShortVersionString and CFBundleVersion both equal the package.json version before smoke.
+      - build-info.json appVersion equals the package.json version, channel is local, and updateEnabled is false.
+      - Launch /Applications/HanaAgent.app, open Settings -> About, and confirm it shows the same v{package_version} plus local build identity.
   liveSmoke:
-    - Clear localStorage in HanaAgent desktop, then reload.
-    - Connect LAN Server to http://100.125.173.118:14500 with the device key.
+    - Clear localStorage in HanaAgent desktop, then reconnect by helper or UI.
+    - "Repeatable helper path when the target LAN connection was already saved: node scripts/hana-desktop-smoke-helper.mjs --restart --verify --url http://100.125.173.118:14500. This clears localStorage, restores only the saved LAN connection registry, reloads, then verifies token-auth identity fetch plus WebSocket open from the renderer. If no saved connection exists, prefer HANA_DESKTOP_SMOKE_TOKEN=<device-key> for the first helper run; --token is available for one-off local use but can leak through shell history or process listings."
+    - "Manual fallback path: Settings -> Access -> Connect LAN Server -> http://100.125.173.118:14500 plus device key -> Connect."
     - Confirm no CSP connect errors, no WS_DISCONNECTED, and WebSocket establishes.
     - Paste/upload an image, send it, switch chats, return, and confirm chat thumbnail plus Conversation Files preview still render.
