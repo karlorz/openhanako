@@ -69,44 +69,6 @@ async function readFileForPreviewTypeWithRetry(
   }
 }
 
-function delay(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, Math.max(0, ms)));
-}
-
-function fileVersionsEqual(a: PreviewItem['fileVersion'], b: PreviewItem['fileVersion']): boolean {
-  if (!a || !b) return a === b;
-  return a.mtimeMs === b.mtimeMs
-    && a.size === b.size
-    && a.sha256 === b.sha256;
-}
-
-function readMatchesCurrentItem(item: PreviewItem, read: PreviewReadResult): boolean {
-  if (item.fileVersion && read.fileVersion) return fileVersionsEqual(item.fileVersion, read.fileVersion);
-  const sourceUrl = read.sourceUrl ?? item.sourceUrl;
-  return read.content === item.content && sourceUrl === item.sourceUrl;
-}
-
-async function readFileForPreviewTypeWithRetry(
-  filePath: string,
-  item: PreviewItem,
-  generation: number,
-  options: PreviewFileRefreshOptions,
-): Promise<PreviewReadResult | null | undefined> {
-  const retryDelaysMs = options.retryDelaysMs ?? DEFAULT_RETRY_DELAYS_MS;
-  for (let attempt = 0; ; attempt += 1) {
-    const read = await readFileForPreviewType(filePath, item.type);
-    if (!isLatestRefresh(filePath, generation)) return undefined;
-
-    const canRetry = attempt < retryDelaysMs.length;
-    const shouldRetryMissing = !read && options.retryMissing;
-    const shouldRetryUnchanged = !!read && options.retryUnchanged && readMatchesCurrentItem(item, read);
-    if (!canRetry || (!shouldRetryMissing && !shouldRetryUnchanged)) return read;
-
-    await delay(retryDelaysMs[attempt] ?? 0);
-    if (!isLatestRefresh(filePath, generation)) return undefined;
-  }
-}
-
 export function __resetPreviewFileRefreshStateForTests(): void {
   refreshGenerations.clear();
 }
