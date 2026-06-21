@@ -8,7 +8,7 @@ Generated during the 2026-06-15 remote attachment preview fix closeout. Last rev
 - Upstream: `liliMozi/openhanako`
 - Current branch: `dev`
 - GitHub CLI default repo: `karlorz/openhanako`
-- App version: `0.333.6` after the stable sync rebase; Tier 3 desktop smoke is still required before marking the sync complete.
+- App version: `0.333.6` after the stable sync rebase; Tier 3A local desktop install/version verification and Tier 3B desktop smoke are still required before marking the sync complete.
 - SkillWiki vault: resolved by `skillwiki path`; project wiki path `projects/openhanako`
 - SkillWiki doctor: 32 pass, 6 info, 0 warn, 0 errors
 - Dev-loop dependency probe: usable; required dependencies present
@@ -17,6 +17,8 @@ Generated during the 2026-06-15 remote attachment preview fix closeout. Last rev
 - Release workflow: `.github/workflows/build.yml`, tag-triggered `v*`
 - Upstream sync workflow: `node scripts/sync-upstream.mjs --check` checks stable upstream releases by default; prerelease candidate review requires `--include-prerelease`
 - Fork sync rules: `docs/fork-sync/rules.yml` is the machine-readable policy used by `scripts/sync-upstream.mjs`.
+- Post-rebase fork sync verification: `node scripts/sync-upstream.mjs --post-rebase` prints Tier 3A local desktop install/version verification before Tier 3B sg01 live smoke. The installed `/Applications/HanaAgent.app` bundle metadata, `build-info.json`, and Settings → About must match `package.json` before the live smoke counts.
+- Tier 3B helper: `node scripts/hana-desktop-smoke-helper.mjs --restart --verify --url http://100.125.173.118:14500` restarts HanaAgent with Chromium remote debugging, clears renderer `localStorage`, restores only the saved LAN connection registry, reloads, then verifies token-auth identity fetch plus WebSocket open from the renderer. If no saved connection exists, prefer `HANA_DESKTOP_SMOKE_TOKEN=<device-key>` for the first helper run; `--token` is available for one-off local use but can leak through shell history or process listings. The helper must not print device tokens.
 - Web framework: Vite + React + Electron
 - Browser verification capability: `playwright-cli` plugin present
 - Deep research capability: `deep-research` plugin present
@@ -63,9 +65,11 @@ Generated during the 2026-06-15 remote attachment preview fix closeout. Last rev
 - `fork_sync_maintenance`
   - `FORK_SYNC.md`
   - `docs/fork-sync/rules.yml`
+  - `scripts/hana-desktop-smoke-helper.mjs`
   - `scripts/sync-upstream.mjs`
   - `scripts/track-upstream-issues.mjs`
   - `docs/upstream-issues/**`
+  - `tests/hana-desktop-smoke-helper.test.mjs`
   - `tests/sync-upstream.test.mjs`
   - `tests/upstream-issue-tracker.test.mjs`
 - `install_server_maintenance`
@@ -94,7 +98,7 @@ Ran a manual core `/dev-loop` cycle audit on 2026-06-15 after the remote preview
 - Doctor caveat: `skillwiki doctor` reports `32 pass`, `1 warn`, `0 errors`, but exits non-zero with the warning. Treat the JSON summary as authoritative for blocking decisions, not the exit code alone.
 - GitHub CLI caveat: plain `gh repo view` initially resolved to upstream `liliMozi/openhanako`. Ran `gh repo set-default karlorz/openhanako`; future CI/PR checks should still prefer explicit `--repo karlorz/openhanako` when scripted.
 - CI health: no recent GitHub Actions runs exist on `dev` yet after adding the branch trigger, so the workflow is configured but not proven by a post-change run.
-- Upstream release check: the 2026-06-21 stable sync rebased local `dev` from the `v0.323.0` baseline onto upstream `v0.333.6`. `node scripts/sync-upstream.mjs --post-rebase` passed Tier 1 and Tier 2; Tier 3 sg01 desktop live smoke remains the completion gate. `--include-prerelease --check` is still only for explicit prerelease candidate review.
+- Upstream release check: the 2026-06-21 stable sync rebased local `dev` from the `v0.323.0` baseline onto upstream `v0.333.6`. `node scripts/sync-upstream.mjs --post-rebase` passed Tier 1 and Tier 2; Tier 3A local desktop install/version verification and Tier 3B sg01 desktop live smoke remain the completion gates. `--include-prerelease --check` is still only for explicit prerelease candidate review.
 - Codex cache caveat: dev-loop's cached skill copy references `skills/dev-loop/scripts/preflight-inventory.js`, but the Codex plugin package currently stores that helper at plugin root `scripts/preflight-inventory.js`. Use the plugin-root script as the fallback until the packaging layout is repaired upstream.
 
 ## Claude Review Follow-Up
