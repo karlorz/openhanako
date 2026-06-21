@@ -1639,11 +1639,11 @@ describe("sessions route", () => {
     });
   });
 
-  it("restores consumed turn input presentations as durable interludes before their assistant reply", async () => {
+  it("restores consumed turn input ledger records as durable interludes before their assistant reply", async () => {
     const { createSessionsRoute } = await import("../server/routes/sessions.ts");
     const msgUtils = await import("../core/message-utils.ts");
     const app = new Hono();
-    const sessionPath = "/tmp/agents/hana/sessions/turn-input-presentation.jsonl";
+    const sessionPath = "/tmp/agents/hana/sessions/turn-input-consumption.jsonl";
 
     vi.mocked(msgUtils.extractTextContent)
       .mockReturnValueOnce({ text: "before delivery", images: [], thinking: "", toolUses: [] })
@@ -1652,16 +1652,26 @@ describe("sessions route", () => {
       { role: "assistant", content: "before delivery" },
       {
         role: "custom",
-        customType: "turn_input_presentation",
+        id: "custom-task-a",
+        customType: "hana-background-result",
+        content: "<hana-background-result task-id=\"task-a\" status=\"success\" type=\"subagent\">\ndone\n</hana-background-result>",
+        display: false,
+        details: { deliveryId: "delivery-consumed" },
+      },
+      {
+        role: "custom",
+        customType: "turn_input_consumption",
         data: {
           schemaVersion: 1,
           deliveryId: "delivery-consumed",
-          presentation: {
-            kind: "pre_reply_interlude",
+          input: {
+            entryId: "custom-task-a",
+            customType: "hana-background-result",
             taskId: "task-a",
-            status: "success",
-            resultType: "subagent",
-            deliveryMode: "followUp",
+            deliveryId: "delivery-consumed",
+          },
+          assistant: {
+            entryId: "assistant-task-a",
           },
           block: {
             type: "interlude",
@@ -1678,14 +1688,7 @@ describe("sessions route", () => {
         },
         display: false,
       },
-      {
-        role: "custom",
-        customType: "hana-background-result",
-        content: "<hana-background-result task-id=\"task-a\" status=\"success\" type=\"subagent\">\ndone\n</hana-background-result>",
-        display: false,
-        details: { deliveryId: "delivery-consumed" },
-      },
-      { role: "assistant", content: "收到 task-a" },
+      { role: "assistant", id: "assistant-task-a", content: "收到 task-a" },
     ]);
 
     const engine = {
@@ -1718,7 +1721,7 @@ describe("sessions route", () => {
     expect(interludes).toHaveLength(1);
     expect(interludes[0]).toMatchObject({
       afterIndex: 0,
-      sourceIndex: 1,
+      sourceIndex: 2,
       deliveryId: "delivery-consumed",
       taskId: "task-a",
       text: "Hana 收到了来自 Hanako · queued-task 的回复",

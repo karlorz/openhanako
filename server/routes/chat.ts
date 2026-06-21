@@ -34,9 +34,12 @@ import { AppError } from "../../shared/errors.ts";
 import { errorBus } from "../../shared/error-bus.ts";
 import { createRequestContext } from "../http/boundary.ts";
 import { buildDeferredResultInterludeBlock, resolveDeferredReceiverName } from "../deferred-result-interlude.ts";
+import { DEFERRED_RESULT_MESSAGE_TYPE } from "../../lib/deferred-result-notification.ts";
 import {
+  TURN_INPUT_CONSUMPTION_EVENT_TYPE,
   TURN_INPUT_PRESENTATION_EVENT_TYPE,
-  buildTurnInputPresentationRecord,
+  buildTurnInputConsumptionRecord,
+  buildTurnInputPresentationEvent,
 } from "../../lib/turn-input-presentation.ts";
 import { buildAutomationSuggestionBlock } from "../suggestion-blocks.ts";
 import { isAllowedChatImageMime, isChatImageBase64WithinLimit } from "../../shared/image-mime.ts";
@@ -304,7 +307,8 @@ export function createChatRoute(engine: any, hub: any, { upgradeWebSocket }: any
         titleRequested: false,
         titlePreview: "",
         pendingDeferredContentEvents: [],
-        pendingTurnInputPresentations: [],
+        pendingTurnInputConsumptions: [],
+        flushedTurnInputConsumptionKeys: new Set(),
         pendingTurnCompletionNotification: null,
         pendingPhaseTextByIndex: new Map(),
         turnStallTimer: null,
@@ -503,12 +507,24 @@ export function createChatRoute(engine: any, hub: any, { upgradeWebSocket }: any
     return statusStreamId;
   }
 
-  function turnInputPresentationAlreadyQueued(items, item) {
+  function textOrNull(value) {
+    return typeof value === "string" && value.trim() ? value.trim() : null;
+  }
+
+  function turnInputConsumptionKey(item) {
+    const entryId = item?.input?.entryId || null;
+    if (entryId) return `entry:${entryId}`;
     const deliveryId = item?.deliveryId || item?.block?.deliveryId || null;
-    if (!deliveryId) return false;
-    return items.some((queued) => (
-      queued?.deliveryId === deliveryId ||
-      queued?.block?.deliveryId === deliveryId
+    if (deliveryId) return `delivery:${deliveryId}`;
+    return item?.block?.id ? `block:${item.block.id}` : null;
+  }
+
+  function turnInputConsumptionAlreadyQueued(ss, item) {
+    const key = turnInputConsumptionKey(item);
+    if (!key) return false;
+    if (ss.flushedTurnInputConsumptionKeys?.has?.(key)) return true;
+    return (ss.pendingTurnInputConsumptions || []).some((queued) => (
+      turnInputConsumptionKey(queued) === key
     ));
   }
 
@@ -539,85 +555,112 @@ export function createChatRoute(engine: any, hub: any, { upgradeWebSocket }: any
     });
   }
 
-  function emitTurnInputPresentation(sessionPath, ss, item) {
-    const block = item?.block;
-    if (!block) return;
-    emitStreamEvent(sessionPath, ss, { type: "content_block", block });
+  function isUiOnlyMediaTurnInput(presentation) {
+    const resultType = presentation?.resultType || "";
+    return presentation?.status === "success" && (
+      resultType === "image-generation" ||
+      resultType === "video-generation"
+    );
   }
 
-  function persistTurnInputPresentation(sessionPath, item) {
-    if (!sessionPath || typeof engine.recordCustomEntry !== "function") return;
-    const record = buildTurnInputPresentationRecord(item?.presentation, item?.block);
-    if (!record) return;
-    try {
-      engine.recordCustomEntry(sessionPath, TURN_INPUT_PRESENTATION_EVENT_TYPE, record);
-    } catch (err) {
-      log.warn(`turn input presentation persistence failed: ${err.message}`);
-    }
-  }
-
-  function buildTurnInputPresentationQueueItem(sessionPath, presentation) {
-    const deliveryId = typeof presentation?.deliveryId === "string" && presentation.deliveryId.trim()
-      ? presentation.deliveryId.trim()
-      : `turn-input:${crypto.randomUUID()}`;
-    const normalizedPresentation = { ...presentation, deliveryId };
+  function buildTurnInputConsumptionItem(sessionPath, message) {
+    if (message?.role !== "custom") return null;
+    if (message.display !== false) return null;
+    if (message.customType !== DEFERRED_RESULT_MESSAGE_TYPE) return null;
+    const event = buildTurnInputPresentationEvent(message, { deliveryMode: "consumed" });
+    const presentation = event?.presentation;
+    if (!presentation || isUiOnlyMediaTurnInput(presentation)) return null;
+    const details = message.details && typeof message.details === "object" ? message.details : null;
+    const entryId = textOrNull(message.id);
+    const deliveryId =
+      textOrNull(presentation.deliveryId) ||
+      textOrNull(details?.deliveryId) ||
+      (entryId ? `turn-input:${entryId}` : `turn-input:${crypto.randomUUID()}`);
+    const normalizedPresentation = {
+      ...presentation,
+      deliveryId,
+      deliveryMode: "consumed",
+    };
     const block = buildPreReplyInterludeBlock(sessionPath, normalizedPresentation);
     if (!block) return null;
     return {
       kind: normalizedPresentation.kind,
       deliveryId,
-      deliveryMode: normalizedPresentation.deliveryMode || null,
       presentation: normalizedPresentation,
+      input: {
+        ...(entryId ? { entryId } : {}),
+        customType: message.customType,
+        deliveryId,
+        taskId: normalizedPresentation.taskId,
+        status: normalizedPresentation.status,
+        resultType: normalizedPresentation.resultType,
+        ...(textOrNull(message.timestamp) ? { timestamp: textOrNull(message.timestamp) } : {}),
+      },
       block,
     };
   }
 
-  function resolveFollowUpMode(sessionPath) {
+  function queueConsumedTurnInput(sessionPath, ss, message) {
+    const item = buildTurnInputConsumptionItem(sessionPath, message);
+    if (!item || turnInputConsumptionAlreadyQueued(ss, item)) return;
+    ss.pendingTurnInputConsumptions = [...(ss.pendingTurnInputConsumptions || []), item];
+  }
+
+  function emitTurnInputConsumption(sessionPath, ss, item) {
+    const block = item?.block;
+    if (!block) return;
+    emitStreamEvent(sessionPath, ss, { type: "content_block", block });
+  }
+
+  function persistTurnInputConsumption(sessionPath, item, assistantMessage = null) {
+    if (!sessionPath || typeof engine.recordCustomEntry !== "function") return;
+    const record = buildTurnInputConsumptionRecord({
+      input: item?.input,
+      assistant: assistantMessage && typeof assistantMessage === "object"
+        ? {
+            ...(textOrNull(assistantMessage.id) ? { entryId: textOrNull(assistantMessage.id) } : {}),
+            ...(textOrNull(assistantMessage.parentId) ? { parentId: textOrNull(assistantMessage.parentId) } : {}),
+            ...(textOrNull(assistantMessage.timestamp) ? { timestamp: textOrNull(assistantMessage.timestamp) } : {}),
+          }
+        : null,
+      presentation: item?.presentation,
+      block: item?.block,
+    });
+    if (!record) return;
     try {
-      return engine.getSessionByPath?.(sessionPath)?.followUpMode === "all" ? "all" : "one-at-a-time";
-    } catch {
-      return "one-at-a-time";
+      engine.recordCustomEntry(sessionPath, TURN_INPUT_CONSUMPTION_EVENT_TYPE, record);
+    } catch (err) {
+      log.warn(`turn input consumption persistence failed: ${err.message}`);
     }
   }
 
-  function drainTurnInputPresentationItemsForNextTurn(sessionPath, ss) {
-    const pending = ss.pendingTurnInputPresentations || [];
-    if (!pending.length) return [];
-    const first = pending[0];
-    const drainCount = first.deliveryMode === "followUp" && resolveFollowUpMode(sessionPath) === "all"
-      ? pending.findIndex((item) => item.deliveryMode !== "followUp")
-      : 1;
-    const count = drainCount === -1 ? pending.length : Math.max(1, drainCount);
-    const items = pending.slice(0, count);
-    ss.pendingTurnInputPresentations = pending.slice(count);
-    return items;
+  function takePendingTurnInputConsumptionsForAssistant(ss, assistantMessage = null) {
+    const pending = ss.pendingTurnInputConsumptions || [];
+    if (!pending.length) return { items: [], remaining: [] };
+    const parentId = textOrNull(assistantMessage?.parentId);
+    if (!parentId) return { items: pending, remaining: [] };
+    const matchIndex = pending.findIndex((item) => item?.input?.entryId === parentId);
+    if (matchIndex < 0) return { items: [], remaining: pending };
+    return {
+      items: pending.slice(0, matchIndex + 1),
+      remaining: pending.slice(matchIndex + 1),
+    };
   }
 
-  function queueOrEmitTurnInputPresentation(sessionPath, ss, presentation) {
-    const item = buildTurnInputPresentationQueueItem(sessionPath, presentation);
-    if (!item) return;
-    const canEmitIntoStartingTriggeredTurn =
-      presentation.deliveryMode === "triggerTurn" &&
-      ss.turnActive === true &&
-      !ss.hasOutput &&
-      !ss.hasToolCall &&
-      !ss.hasThinking;
-    if (canEmitIntoStartingTriggeredTurn) {
-      persistTurnInputPresentation(sessionPath, item);
-      emitTurnInputPresentation(sessionPath, ss, item);
-      return;
+  function flushPendingTurnInputConsumptions(sessionPath, ss, assistantMessage = null) {
+    const { items, remaining } = takePendingTurnInputConsumptionsForAssistant(ss, assistantMessage);
+    if (!items.length) return [];
+    ss.pendingTurnInputConsumptions = remaining;
+    if (!(ss.flushedTurnInputConsumptionKeys instanceof Set)) {
+      ss.flushedTurnInputConsumptionKeys = new Set();
     }
-    const pending = ss.pendingTurnInputPresentations || [];
-    if (turnInputPresentationAlreadyQueued(pending, item)) return;
-    ss.pendingTurnInputPresentations = [...pending, item];
-  }
-
-  function flushPendingTurnInputPresentations(sessionPath, ss) {
-    const items = drainTurnInputPresentationItemsForNextTurn(sessionPath, ss);
     for (const item of items) {
-      persistTurnInputPresentation(sessionPath, item);
-      emitTurnInputPresentation(sessionPath, ss, item);
+      persistTurnInputConsumption(sessionPath, item, assistantMessage);
+      emitTurnInputConsumption(sessionPath, ss, item);
+      const key = turnInputConsumptionKey(item);
+      if (key) ss.flushedTurnInputConsumptionKeys.add(key);
     }
+    return items;
   }
 
   function finishStreamingState(ss, sessionPath = null) {
@@ -925,6 +968,7 @@ export function createChatRoute(engine: any, hub: any, { upgradeWebSocket }: any
     const emitVisibleTextDelta = (delta) => {
       const text = typeof delta === "string" ? delta : "";
       if (!text) return;
+      flushPendingTurnInputConsumptions(sessionPath, ss, event.message);
       ss.hasOutput = true;
       if (ss.isThinking) {
         ss.isThinking = false;
@@ -976,6 +1020,7 @@ export function createChatRoute(engine: any, hub: any, { upgradeWebSocket }: any
         if (getAssistantTextPhase(block) === "commentary") return;
         emitVisibleTextDelta(buffered ?? subEvent.content ?? block?.text ?? "");
       } else if (sub === "thinking_delta") {
+        flushPendingTurnInputConsumptions(sessionPath, ss, event.message);
         ss.hasThinking = true;
         if (!ss.isThinking) {
           ss.isThinking = true;
@@ -993,6 +1038,7 @@ export function createChatRoute(engine: any, hub: any, { upgradeWebSocket }: any
       }
     } else if (event.type === "tool_execution_start") {
       if (!ss) return;
+      flushPendingTurnInputConsumptions(sessionPath, ss, event.message);
       ss.hasToolCall = true;
       if (ss.isThinking) {
         ss.isThinking = false;
@@ -1119,8 +1165,8 @@ export function createChatRoute(engine: any, hub: any, { upgradeWebSocket }: any
         sessionPath,
       });
     } else if (event.type === TURN_INPUT_PRESENTATION_EVENT_TYPE) {
-      if (!ss) return;
-      queueOrEmitTurnInputPresentation(sessionPath, ss, event.presentation);
+      // Delivery notifications are advisory only. The timeline UI is bound to the
+      // actual hidden custom_message once the SDK consumes it for an assistant turn.
     } else if (event.type === "turn_start") {
       if (!ss) return;
       if (!ss.turnActive) {
@@ -1131,7 +1177,6 @@ export function createChatRoute(engine: any, hub: any, { upgradeWebSocket }: any
           sessionPath,
           streamId: statusStreamId,
         });
-        flushPendingTurnInputPresentations(sessionPath, ss);
       }
     } else if (event.type === "todo_update") {
       broadcast({
@@ -1264,6 +1309,9 @@ export function createChatRoute(engine: any, hub: any, { upgradeWebSocket }: any
     } else if (event.type === "message_end") {
       // Provider 级别错误（超时、连接断开等）通过 message_end 传递，不经过 message_update
       if (!ss) return;
+      if (event.message?.role === "custom" && event.message.display === false) {
+        queueConsumedTurnInput(sessionPath, ss, event.message);
+      }
       if (event.message?.role === "custom" && event.message.display !== false) {
         const blocks = enrichSessionFileBlocks(
           extractBlocks(event.message.customType, event.message.details, event.message),
@@ -1333,6 +1381,7 @@ export function createChatRoute(engine: any, hub: any, { upgradeWebSocket }: any
       ss.hasThinking = false;
       ss.hasError = false;
       ss.isAborted = false;
+      ss.pendingTurnInputConsumptions = [];
       ss.thinkTagParser.reset();
       ss.moodParser.reset();
       ss.cardParser.reset();

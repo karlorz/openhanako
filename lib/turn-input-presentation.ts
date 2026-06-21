@@ -1,6 +1,7 @@
 import { parseDeferredResultNotification } from "./deferred-result-notification.ts";
 
 export const TURN_INPUT_PRESENTATION_EVENT_TYPE = "turn_input_presentation";
+export const TURN_INPUT_CONSUMPTION_EVENT_TYPE = "turn_input_consumption";
 
 function textOrNull(value) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
@@ -48,6 +49,54 @@ export function parseTurnInputPresentationRecord(data) {
   if (block?.type !== "interlude") return null;
   return {
     deliveryId: textOrNull(data.deliveryId) || textOrNull(block.deliveryId),
+    presentation: data.presentation && typeof data.presentation === "object" && !Array.isArray(data.presentation)
+      ? data.presentation
+      : null,
+    block,
+  };
+}
+
+export function buildTurnInputConsumptionRecord({ input, assistant = null, presentation = null, block }) {
+  if (!input || !block || block.type !== "interlude") return null;
+  const deliveryId = textOrNull(input.deliveryId) || textOrNull(block.deliveryId);
+  return {
+    schemaVersion: 1,
+    ...(deliveryId ? { deliveryId } : {}),
+    input: {
+      ...(textOrNull(input.entryId) ? { entryId: textOrNull(input.entryId) } : {}),
+      ...(textOrNull(input.customType) ? { customType: textOrNull(input.customType) } : {}),
+      ...(textOrNull(input.deliveryId) ? { deliveryId: textOrNull(input.deliveryId) } : {}),
+      ...(textOrNull(input.taskId) ? { taskId: textOrNull(input.taskId) } : {}),
+      ...(textOrNull(input.status) ? { status: textOrNull(input.status) } : {}),
+      ...(textOrNull(input.resultType) ? { resultType: textOrNull(input.resultType) } : {}),
+      ...(textOrNull(input.timestamp) ? { timestamp: textOrNull(input.timestamp) } : {}),
+    },
+    ...(assistant && typeof assistant === "object" ? {
+      assistant: {
+        ...(textOrNull(assistant.entryId) ? { entryId: textOrNull(assistant.entryId) } : {}),
+        ...(textOrNull(assistant.parentId) ? { parentId: textOrNull(assistant.parentId) } : {}),
+        ...(textOrNull(assistant.timestamp) ? { timestamp: textOrNull(assistant.timestamp) } : {}),
+      },
+    } : {}),
+    ...(presentation && typeof presentation === "object" ? { presentation } : {}),
+    block,
+  };
+}
+
+export function parseTurnInputConsumptionRecord(data) {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return null;
+  const block = data.block && typeof data.block === "object" && !Array.isArray(data.block)
+    ? data.block
+    : null;
+  if (block?.type !== "interlude") return null;
+  return {
+    deliveryId: textOrNull(data.deliveryId) || textOrNull(data.input?.deliveryId) || textOrNull(block.deliveryId),
+    input: data.input && typeof data.input === "object" && !Array.isArray(data.input)
+      ? data.input
+      : null,
+    assistant: data.assistant && typeof data.assistant === "object" && !Array.isArray(data.assistant)
+      ? data.assistant
+      : null,
     presentation: data.presentation && typeof data.presentation === "object" && !Array.isArray(data.presentation)
       ? data.presentation
       : null,

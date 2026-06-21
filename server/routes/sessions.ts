@@ -19,7 +19,9 @@ import {
   parseDeferredResultRecord,
 } from "../../lib/deferred-result-notification.ts";
 import {
+  TURN_INPUT_CONSUMPTION_EVENT_TYPE,
   TURN_INPUT_PRESENTATION_EVENT_TYPE,
+  parseTurnInputConsumptionRecord,
   parseTurnInputPresentationRecord,
 } from "../../lib/turn-input-presentation.ts";
 import {
@@ -928,8 +930,22 @@ export function createSessionsRoute(engine, hub = null) {
       const mediaGenerationResults = new Map();
       const standaloneMediaGenerationResults = [];
       const deferredInterludeDeliveryIds = new Set();
+      const turnInputConsumptionDeliveryIds = new Set();
+      const turnInputConsumptionEntryIds = new Set();
       const deferredStore = engine.deferredResults;
       const receiverName = resolveDeferredReceiverName(engine, resolvedSessionPath);
+      for (const message of sourceMessages) {
+        if (message?.role !== "custom" || message.customType !== TURN_INPUT_CONSUMPTION_EVENT_TYPE) continue;
+        const parsed = parseTurnInputConsumptionRecord(message.data);
+        const deliveryId = typeof parsed?.deliveryId === "string" && parsed.deliveryId.trim()
+          ? parsed.deliveryId.trim()
+          : null;
+        const entryId = typeof parsed?.input?.entryId === "string" && parsed.input.entryId.trim()
+          ? parsed.input.entryId.trim()
+          : null;
+        if (deliveryId) turnInputConsumptionDeliveryIds.add(deliveryId);
+        if (entryId) turnInputConsumptionEntryIds.add(entryId);
+      }
       const recordMediaGenerationResult = (parsed, afterIndex, sourceIndex = null) => {
         if (!parsed?.taskId || !isMediaGenerationDeferredResult(parsed)) return;
         mediaGenerationResults.set(parsed.taskId, parsed);
@@ -940,6 +956,23 @@ export function createSessionsRoute(engine, hub = null) {
             ...(Number.isInteger(sourceIndex) ? { sourceIndex } : {}),
           });
         }
+      };
+      const recordTurnInputConsumptionInterlude = (message, afterIndex, sourceIndex = null) => {
+        if (!Number.isInteger(afterIndex) || afterIndex < 0) return;
+        const parsed = parseTurnInputConsumptionRecord(message?.data);
+        const block = parsed?.block;
+        if (!block || block.type !== "interlude") return;
+        const normalizedDeliveryId = typeof parsed.deliveryId === "string" && parsed.deliveryId.trim()
+          ? parsed.deliveryId.trim()
+          : null;
+        if (normalizedDeliveryId && deferredInterludeDeliveryIds.has(normalizedDeliveryId)) return;
+        blocks.push({
+          ...block,
+          ...(normalizedDeliveryId ? { deliveryId: normalizedDeliveryId } : {}),
+          afterIndex,
+          ...(Number.isInteger(sourceIndex) ? { sourceIndex } : {}),
+        });
+        if (normalizedDeliveryId) deferredInterludeDeliveryIds.add(normalizedDeliveryId);
       };
       const recordTurnInputPresentationInterlude = (message, afterIndex, sourceIndex = null) => {
         if (!Number.isInteger(afterIndex) || afterIndex < 0) return;
@@ -961,6 +994,12 @@ export function createSessionsRoute(engine, hub = null) {
       const recordDeferredInterlude = (parsed, afterIndex, deliveryId = null, sourceIndex = null) => {
         if (!parsed?.taskId || !Number.isInteger(afterIndex) || afterIndex < 0) return;
         const normalizedDeliveryId = typeof deliveryId === "string" && deliveryId.trim() ? deliveryId.trim() : null;
+        const sourceMessage = Number.isInteger(sourceIndex) ? sourceMessages[sourceIndex] : null;
+        const sourceEntryId = typeof sourceMessage?.id === "string" && sourceMessage.id.trim()
+          ? sourceMessage.id.trim()
+          : null;
+        if (normalizedDeliveryId && turnInputConsumptionDeliveryIds.has(normalizedDeliveryId)) return;
+        if (sourceEntryId && turnInputConsumptionEntryIds.has(sourceEntryId)) return;
         if (normalizedDeliveryId && deferredInterludeDeliveryIds.has(normalizedDeliveryId)) return;
         const task = deferredStore?.query?.(parsed.taskId) || null;
         const run = engine.subagentRuns?.query?.(parsed.taskId) || null;
@@ -1044,6 +1083,9 @@ export function createSessionsRoute(engine, hub = null) {
           }
           const parsed = parseHistoryDeferredResult(m);
           recordMediaGenerationResult(parsed, afterIndex, sourceIndex);
+          if (m.customType === TURN_INPUT_CONSUMPTION_EVENT_TYPE) {
+            recordTurnInputConsumptionInterlude(m, afterIndex, sourceIndex);
+          }
           if (m.customType === TURN_INPUT_PRESENTATION_EVENT_TYPE) {
             recordTurnInputPresentationInterlude(m, afterIndex, sourceIndex);
           }

@@ -4,6 +4,7 @@ import {
   createChatRoute,
   resolveDisconnectAbortGraceMs,
 } from "../server/routes/chat.ts";
+import { TURN_INPUT_CONSUMPTION_EVENT_TYPE } from "../lib/turn-input-presentation.ts";
 
 describe("chat route model switch guard", () => {
   it("uses a minute-scale default WS disconnect abort grace and allows disabling it", () => {
@@ -632,7 +633,7 @@ describe("chat route model switch guard", () => {
     handlers.onClose({}, ws);
   });
 
-  it("renders deferred interludes from turn input presentation at the next SDK turn start", () => {
+  it("renders deferred interludes only when the actual hidden custom message is consumed", () => {
     let createHandlers;
     let subscriber;
     const upgradeWebSocket = vi.fn((factory) => {
@@ -664,6 +665,7 @@ describe("chat route model switch guard", () => {
       getSessionByPath: vi.fn(() => ({ entries: [] })),
       isSessionStreaming: vi.fn(() => false),
       isSessionSwitching: vi.fn(() => false),
+      recordCustomEntry: vi.fn(),
       steerSession: vi.fn(() => false),
       slashDispatcher: null,
     };
@@ -696,6 +698,7 @@ describe("chat route model switch guard", () => {
       type: "turn_input_presentation",
       presentation: {
         kind: "pre_reply_interlude",
+        deliveryId: "delivery-subagent-fast",
         taskId: "subagent-fast",
         status: "success",
         resultType: "subagent",
@@ -718,32 +721,134 @@ describe("chat route model switch guard", () => {
     subscriber?.({ type: "turn_start" }, "/tmp/interlude-session.jsonl");
     subscriber?.({
       type: "message_update",
+      assistantMessageEvent: { type: "text_delta", delta: "这不是后台结果回复。\n" },
+    }, "/tmp/interlude-session.jsonl");
+
+    payloads = ws.send.mock.calls.map(([raw]) => JSON.parse(raw));
+    expect(payloads.some((payload) => payload.type === "content_block" && payload.block?.type === "interlude")).toBe(false);
+    expect(engine.recordCustomEntry).not.toHaveBeenCalled();
+
+    subscriber?.({ type: "turn_end" }, "/tmp/interlude-session.jsonl");
+    subscriber?.({ type: "turn_start" }, "/tmp/interlude-session.jsonl");
+    subscriber?.({
+      type: "message_end",
+      message: {
+        id: "custom-subagent-fast",
+        role: "custom",
+        customType: "hana-background-result",
+        display: false,
+        content: "<hana-background-result task-id=\"subagent-fast\" status=\"success\" type=\"subagent\">\n回来了。\n</hana-background-result>",
+        details: { deliveryId: "delivery-subagent-fast" },
+      },
+    }, "/tmp/interlude-session.jsonl");
+    subscriber?.({
+      type: "message_update",
+      message: { id: "assistant-subagent-fast", parentId: "custom-subagent-fast", role: "assistant" },
       assistantMessageEvent: { type: "text_delta", delta: "收到，正在处理。\n" },
     }, "/tmp/interlude-session.jsonl");
 
     payloads = ws.send.mock.calls.map(([raw]) => JSON.parse(raw));
-    let nextStatusIndex = -1;
-    for (let i = payloads.length - 1; i >= 0; i -= 1) {
-      if (payloads[i].type === "status" && payloads[i].isStreaming === true) {
-        nextStatusIndex = i;
-        break;
-      }
-    }
     const interludeIndex = payloads.findIndex((payload) => payload.type === "content_block" && payload.block?.type === "interlude");
     const nextTextIndex = payloads.findIndex((payload) => payload.type === "text_delta" && payload.delta === "收到，正在处理。\n");
-    expect(nextStatusIndex).toBeGreaterThan(turnEndIndex);
-    expect(interludeIndex).toBeGreaterThan(nextStatusIndex);
+    expect(interludeIndex).toBeGreaterThan(turnEndIndex);
     expect(interludeIndex).toBeLessThan(nextTextIndex);
     expect(payloads[interludeIndex].block).toMatchObject({
       type: "interlude",
       taskId: "subagent-fast",
+      deliveryId: "delivery-subagent-fast",
       sourceLabel: "Hanako · 凌晨诗行",
     });
+    expect(engine.recordCustomEntry).toHaveBeenCalledWith(
+      "/tmp/interlude-session.jsonl",
+      TURN_INPUT_CONSUMPTION_EVENT_TYPE,
+      expect.objectContaining({
+        schemaVersion: 1,
+        input: expect.objectContaining({
+          entryId: "custom-subagent-fast",
+          customType: "hana-background-result",
+          deliveryId: "delivery-subagent-fast",
+          taskId: "subagent-fast",
+        }),
+        assistant: expect.objectContaining({
+          entryId: "assistant-subagent-fast",
+          parentId: "custom-subagent-fast",
+        }),
+        block: expect.objectContaining({
+          type: "interlude",
+          deliveryId: "delivery-subagent-fast",
+          taskId: "subagent-fast",
+        }),
+      }),
+    );
 
     handlers.onClose({}, ws);
   });
 
-  it("drains one follow-up turn input presentation per SDK turn by default", () => {
+  it("does not render successful media-generation custom inputs as deferred interludes", () => {
+    let createHandlers;
+    let subscriber;
+    const sessionPath = "/tmp/media-custom-input-session.jsonl";
+    const upgradeWebSocket = vi.fn((factory) => {
+      createHandlers = factory;
+      return () => new Response(null);
+    });
+    const hub = {
+      subscribe: vi.fn((fn) => {
+        subscriber = fn;
+      }),
+      send: vi.fn(async () => {}),
+    };
+    const engine = {
+      agentName: "Hanako",
+      abortAllStreaming: vi.fn(async () => {}),
+      deferredResults: {
+        query: vi.fn(() => ({
+          status: "resolved",
+          result: { sessionFiles: [{ filePath: "/tmp/generated/abc.png" }] },
+          meta: { type: "image-generation" },
+        })),
+      },
+      getSessionByPath: vi.fn(() => ({ entries: [] })),
+      isSessionStreaming: vi.fn(() => true),
+      isSessionSwitching: vi.fn(() => false),
+      recordCustomEntry: vi.fn(),
+      steerSession: vi.fn(() => false),
+      slashDispatcher: null,
+    };
+
+    createChatRoute(engine, hub, { upgradeWebSocket });
+    const handlers = createHandlers({});
+    const ws = { readyState: 1, send: vi.fn() };
+    handlers.onOpen({}, ws);
+
+    subscriber?.({ type: "session_status", isStreaming: true }, sessionPath);
+    subscriber?.({ type: "turn_start" }, sessionPath);
+    subscriber?.({
+      type: "message_end",
+      message: {
+        id: "custom-image-success",
+        role: "custom",
+        customType: "hana-background-result",
+        display: false,
+        content: "<hana-background-result task-id=\"task-img\" status=\"success\" type=\"image-generation\">\n{\"sessionFiles\":[{\"filePath\":\"/tmp/generated/abc.png\"}]}\n</hana-background-result>",
+        details: { deliveryId: "delivery-image-success" },
+      },
+    }, sessionPath);
+    subscriber?.({
+      type: "message_update",
+      message: { id: "assistant-after-image", parentId: "custom-image-success", role: "assistant" },
+      assistantMessageEvent: { type: "text_delta", delta: "图片生成完成。" },
+    }, sessionPath);
+
+    const payloads = ws.send.mock.calls.map(([raw]) => JSON.parse(raw));
+    expect(payloads.some((payload) => payload.type === "content_block" && payload.block?.type === "interlude")).toBe(false);
+    expect(payloads.some((payload) => payload.type === "text_delta" && payload.delta === "图片生成完成。")).toBe(true);
+    expect(engine.recordCustomEntry).not.toHaveBeenCalled();
+
+    handlers.onClose({}, ws);
+  });
+
+  it("orders deferred interludes by actual custom-message consumption order", () => {
     let createHandlers;
     let subscriber;
     const sessionPath = "/tmp/interlude-followup-one-by-one.jsonl";
@@ -791,11 +896,12 @@ describe("chat route model switch guard", () => {
 
     subscriber?.({ type: "session_status", isStreaming: true }, sessionPath);
     subscriber?.({ type: "turn_start" }, sessionPath);
-    for (const taskId of ["task-a", "task-b"]) {
+    for (const taskId of ["task-b", "task-a"]) {
       subscriber?.({
         type: "turn_input_presentation",
         presentation: {
           kind: "pre_reply_interlude",
+          deliveryId: `delivery-${taskId}`,
           taskId,
           status: "success",
           resultType: "subagent",
@@ -808,13 +914,37 @@ describe("chat route model switch guard", () => {
     subscriber?.({ type: "turn_end" }, sessionPath);
     subscriber?.({ type: "turn_start" }, sessionPath);
     subscriber?.({
+      type: "message_end",
+      message: {
+        id: "custom-task-a",
+        role: "custom",
+        customType: "hana-background-result",
+        display: false,
+        content: "<hana-background-result task-id=\"task-a\" status=\"success\" type=\"subagent\">\ntask-a done\n</hana-background-result>",
+        details: { deliveryId: "delivery-task-a" },
+      },
+    }, sessionPath);
+    subscriber?.({
       type: "message_update",
+      message: { id: "assistant-task-a", parentId: "custom-task-a", role: "assistant" },
       assistantMessageEvent: { type: "text_delta", delta: "first follow-up reply" },
     }, sessionPath);
     subscriber?.({ type: "turn_end" }, sessionPath);
     subscriber?.({ type: "turn_start" }, sessionPath);
     subscriber?.({
+      type: "message_end",
+      message: {
+        id: "custom-task-b",
+        role: "custom",
+        customType: "hana-background-result",
+        display: false,
+        content: "<hana-background-result task-id=\"task-b\" status=\"success\" type=\"subagent\">\ntask-b done\n</hana-background-result>",
+        details: { deliveryId: "delivery-task-b" },
+      },
+    }, sessionPath);
+    subscriber?.({
       type: "message_update",
+      message: { id: "assistant-task-b", parentId: "custom-task-b", role: "assistant" },
       assistantMessageEvent: { type: "text_delta", delta: "second follow-up reply" },
     }, sessionPath);
 
@@ -835,7 +965,7 @@ describe("chat route model switch guard", () => {
     handlers.onClose({}, ws);
   });
 
-  it("keeps repeated deliveries for the same task as distinct turn input presentations", () => {
+  it("keeps repeated consumed custom messages for the same task as distinct interludes", () => {
     let createHandlers;
     let subscriber;
     const sessionPath = "/tmp/interlude-repeated-task.jsonl";
@@ -884,6 +1014,7 @@ describe("chat route model switch guard", () => {
         type: "turn_input_presentation",
         presentation: {
           kind: "pre_reply_interlude",
+          deliveryId: `delivery-task-a-${i}`,
           taskId: "task-a",
           status: "success",
           resultType: "subagent",
@@ -896,13 +1027,37 @@ describe("chat route model switch guard", () => {
     subscriber?.({ type: "turn_end" }, sessionPath);
     subscriber?.({ type: "turn_start" }, sessionPath);
     subscriber?.({
+      type: "message_end",
+      message: {
+        id: "custom-task-a-0",
+        role: "custom",
+        customType: "hana-background-result",
+        display: false,
+        content: "<hana-background-result task-id=\"task-a\" status=\"success\" type=\"subagent\">\nsame task result\n</hana-background-result>",
+        details: { deliveryId: "delivery-task-a-0" },
+      },
+    }, sessionPath);
+    subscriber?.({
       type: "message_update",
+      message: { id: "assistant-task-a-0", parentId: "custom-task-a-0", role: "assistant" },
       assistantMessageEvent: { type: "text_delta", delta: "first repeated delivery reply" },
     }, sessionPath);
     subscriber?.({ type: "turn_end" }, sessionPath);
     subscriber?.({ type: "turn_start" }, sessionPath);
     subscriber?.({
+      type: "message_end",
+      message: {
+        id: "custom-task-a-1",
+        role: "custom",
+        customType: "hana-background-result",
+        display: false,
+        content: "<hana-background-result task-id=\"task-a\" status=\"success\" type=\"subagent\">\nsame task result\n</hana-background-result>",
+        details: { deliveryId: "delivery-task-a-1" },
+      },
+    }, sessionPath);
+    subscriber?.({
       type: "message_update",
+      message: { id: "assistant-task-a-1", parentId: "custom-task-a-1", role: "assistant" },
       assistantMessageEvent: { type: "text_delta", delta: "second repeated delivery reply" },
     }, sessionPath);
 
@@ -923,7 +1078,7 @@ describe("chat route model switch guard", () => {
     handlers.onClose({}, ws);
   });
 
-  it("persists a turn input presentation only when the queued input is consumed for the next assistant turn", () => {
+  it("persists a turn input consumption record only when the consumed custom input receives an assistant reply", () => {
     let createHandlers;
     let subscriber;
     const sessionPath = "/tmp/interlude-persist-on-consume.jsonl";
@@ -988,20 +1143,48 @@ describe("chat route model switch guard", () => {
     subscriber?.({ type: "turn_start" }, sessionPath);
     subscriber?.({
       type: "message_update",
+      message: { id: "assistant-unrelated", role: "assistant" },
+      assistantMessageEvent: { type: "text_delta", delta: "unrelated reply" },
+    }, sessionPath);
+    expect(engine.recordCustomEntry).not.toHaveBeenCalled();
+
+    subscriber?.({ type: "turn_end" }, sessionPath);
+    subscriber?.({ type: "turn_start" }, sessionPath);
+    subscriber?.({
+      type: "message_end",
+      message: {
+        id: "custom-consumed-later",
+        role: "custom",
+        customType: "hana-background-result",
+        display: false,
+        content: "<hana-background-result task-id=\"task-a\" status=\"success\" type=\"subagent\">\ndone\n</hana-background-result>",
+        details: { deliveryId: "delivery-consumed-later" },
+      },
+    }, sessionPath);
+    expect(engine.recordCustomEntry).not.toHaveBeenCalled();
+
+    subscriber?.({
+      type: "message_update",
+      message: { id: "assistant-consumes-task-a", parentId: "custom-consumed-later", role: "assistant" },
       assistantMessageEvent: { type: "text_delta", delta: "收到 task-a" },
     }, sessionPath);
 
     expect(engine.recordCustomEntry).toHaveBeenCalledTimes(1);
     expect(engine.recordCustomEntry).toHaveBeenCalledWith(
       sessionPath,
-      "turn_input_presentation",
+      TURN_INPUT_CONSUMPTION_EVENT_TYPE,
       expect.objectContaining({
         schemaVersion: 1,
         deliveryId: "delivery-consumed-later",
-        presentation: expect.objectContaining({
-          kind: "pre_reply_interlude",
+        input: expect.objectContaining({
+          entryId: "custom-consumed-later",
+          customType: "hana-background-result",
           taskId: "task-a",
-          deliveryMode: "followUp",
+          deliveryId: "delivery-consumed-later",
+        }),
+        assistant: expect.objectContaining({
+          entryId: "assistant-consumes-task-a",
+          parentId: "custom-consumed-later",
         }),
         block: expect.objectContaining({
           type: "interlude",
@@ -1014,7 +1197,7 @@ describe("chat route model switch guard", () => {
     handlers.onClose({}, ws);
   });
 
-  it("drains all follow-up turn input presentations in one SDK turn when followUpMode is all", () => {
+  it("renders consecutive consumed custom messages before the assistant reply that consumes them", () => {
     let createHandlers;
     let subscriber;
     const sessionPath = "/tmp/interlude-followup-all.jsonl";
@@ -1063,6 +1246,7 @@ describe("chat route model switch guard", () => {
         type: "turn_input_presentation",
         presentation: {
           kind: "pre_reply_interlude",
+          deliveryId: `delivery-${taskId}`,
           taskId,
           status: "success",
           resultType: "subagent",
@@ -1074,8 +1258,22 @@ describe("chat route model switch guard", () => {
 
     subscriber?.({ type: "turn_end" }, sessionPath);
     subscriber?.({ type: "turn_start" }, sessionPath);
+    for (const taskId of ["task-a", "task-b"]) {
+      subscriber?.({
+        type: "message_end",
+        message: {
+          id: `custom-${taskId}`,
+          role: "custom",
+          customType: "hana-background-result",
+          display: false,
+          content: `<hana-background-result task-id="${taskId}" status="success" type="subagent">\n${taskId} done\n</hana-background-result>`,
+          details: { deliveryId: `delivery-${taskId}` },
+        },
+      }, sessionPath);
+    }
     subscriber?.({
       type: "message_update",
+      message: { id: "assistant-combined", parentId: "custom-task-b", role: "assistant" },
       assistantMessageEvent: { type: "text_delta", delta: "combined follow-up reply" },
     }, sessionPath);
 

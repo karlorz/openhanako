@@ -9,7 +9,10 @@ import { isToolCallBlock, getToolArgs } from "./llm-utils.ts";
 import { SessionManager } from "../lib/pi-sdk/index.ts";
 import { isSessionJsonlFilename } from "../lib/session-jsonl.ts";
 import { DEFERRED_RESULT_RECORD_TYPE } from "../lib/deferred-result-notification.ts";
-import { TURN_INPUT_PRESENTATION_EVENT_TYPE } from "../lib/turn-input-presentation.ts";
+import {
+  TURN_INPUT_CONSUMPTION_EVENT_TYPE,
+  TURN_INPUT_PRESENTATION_EVENT_TYPE,
+} from "../lib/turn-input-presentation.ts";
 import { repairOversizedSessionEntriesInFile } from "./session-jsonl-file.ts";
 import { isAssistantCommentaryTextBlock } from "../shared/text-signature.ts";
 
@@ -168,7 +171,11 @@ function historyMessageFromEntry(entry) {
   }
   if (
     entry?.type === "custom" &&
-    (entry.customType === DEFERRED_RESULT_RECORD_TYPE || entry.customType === TURN_INPUT_PRESENTATION_EVENT_TYPE)
+    (
+      entry.customType === DEFERRED_RESULT_RECORD_TYPE
+      || entry.customType === TURN_INPUT_PRESENTATION_EVENT_TYPE
+      || entry.customType === TURN_INPUT_CONSUMPTION_EVENT_TYPE
+    )
   ) {
     const message: Record<string, any> = {
       role: "custom",
