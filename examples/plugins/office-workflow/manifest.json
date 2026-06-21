@@ -1,0 +1,19 @@
+{
+  "manifestVersion": 1,
+  "id": "office-workflow",
+  "name": "Office Workflow",
+  "version": "0.1.0",
+  "description": "Generic example plugin demonstrating an office request/quotation workflow with audit history and email draft generation.",
+  "minAppVersion": "0.158.0",
+  "trust": "full-access",
+  "ui": {
+    "hostCapabilities": ["clipboard.writeText"]
+  },
+  "contributes": {
+    "page": {
+      "title": "Office Workflow",
+      "route": "/page",
+      "icon": "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"><path d=\"M4 5h16v10H4z\"/><path d=\"M2 19h20M8 15v4M16 15v4\"/></svg>"
+    }
+  }
+}
