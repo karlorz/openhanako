@@ -143,12 +143,27 @@ What the script does:
 5. **Rebase** — `git rebase <latest-tag>` on `dev`. If clean → proceed. If conflict → **STOP**, drop to shell, print the per-file policy for the conflicting files, wait for manual resolution, resume on your signal.
 6. **Tier 1 — Unit tests:** run the LAN auth/connect tests plus the remote attachment/resource suite. **STOP if any fail.** Do not deploy.
 7. **Tier 2 — Bundle grep:** after rebuilding bundles, verify `grep -c "connect:probe" desktop/main.bundle.cjs` ≥ 1, `grep -c "probeConnection" desktop/preload.bundle.cjs` ≥ 1, and the packaged `connection-csp.js` still contains `media-src` plus remote resource-origin logic. **STOP if missing.**
-8. **Tier 3 — Live smoke (manual):** print a checklist, refuse "complete" until you confirm:
-   - Clear `localStorage` in the desktop app, reload
-   - Settings → Access → Connect LAN Server → URL + key → Connect (should succeed with NO console hack)
+8. **Tier 3A — Local desktop install/version gate (manual, print-only):** before any live smoke, rebuild and replace the installed macOS app:
+   ```bash
+   node -p "require('./package.json').version"
+   SKIP_NOTARIZE=true npm run install:local
+   codesign --verify --deep --strict --verbose=2 /Applications/HanaAgent.app
+   defaults read /Applications/HanaAgent.app/Contents/Info CFBundleShortVersionString
+   defaults read /Applications/HanaAgent.app/Contents/Info CFBundleVersion
+   cat /Applications/HanaAgent.app/Contents/Resources/build-info.json
+   ```
+   Confirm `CFBundleShortVersionString`, `CFBundleVersion`, and `build-info.json.appVersion` all match the `package.json` version; `build-info.json.channel` is `local`; `updateEnabled` is `false`; and Settings → About shows the same `v{package_version}` plus local build identity. A smoke run against an old `/Applications/HanaAgent.app` is invalid.
+9. **Tier 3B — Live smoke (manual):** print a checklist, refuse "complete" until you confirm:
+   - Clear `localStorage` in the desktop app, then reconnect by either helper or UI:
+     - Repeatable helper path, when the target LAN connection was already saved:
+       ```bash
+       node scripts/hana-desktop-smoke-helper.mjs --restart --verify --url http://100.125.173.118:14500
+       ```
+       The helper restarts HanaAgent with Chromium remote debugging, reads the saved LAN connection from the renderer or Electron local storage history, clears `localStorage`, restores only `hana-server-connections-v1`, reloads, then verifies token-auth identity fetch plus WebSocket open from the renderer. If no saved connection exists, prefer `HANA_DESKTOP_SMOKE_TOKEN=<device-key>` for the first helper run; `--token` is available for one-off local use but can leak through shell history or process listings. It must not print stored device tokens.
+     - Manual fallback path: Settings → Access → Connect LAN Server → URL + key → Connect (should succeed with NO console hack)
    - DevTools Console: no `Refused to connect ... CSP` errors; WS establishes (no `[WS_DISCONNECTED]`)
    - Paste/upload an image, send it, switch to another chat, switch back, and confirm the chat thumbnail and Conversation Files preview still render
-9. **Log** — append to the sync log below with: date, tag synced, conflicts encountered + resolution, test result.
+10. **Log** — append to the sync log below with: date, tag synced, conflicts encountered + resolution, test result.
 
 ## Verification contract (what "the fix still works" means)
 
@@ -157,6 +172,7 @@ After every sync, ALL of these must hold:
 - **Unit tests pass:** LAN auth/connect tests and remote attachment/resource preview tests exit 0
 - **Bundles contain the fix:** `connect:probe` in `main.bundle.cjs`, `probeConnection` in `preload.bundle.cjs`
 - **Runtime CSP contains resource allowances:** active remote HTTP(S) origin is scoped into `img-src` and `media-src` without widening to bare `http:`/`https:`
+- **Installed desktop app matches the sync target:** `/Applications/HanaAgent.app` has been rebuilt with `SKIP_NOTARIZE=true npm run install:local`; codesign verifies; `CFBundleShortVersionString`, `CFBundleVersion`, `build-info.json.appVersion`, and Settings → About all match the `package.json` version
 - **Live connect works:** desktop connects to sg01 (`http://100.125.173.118:14500`) with no localStorage hack, no CSP violation, WS establishes
 - **Live upload/preview works:** pasted or uploaded images preview immediately, survive chat switching, and old session attachments continue previewing
 
@@ -200,10 +216,13 @@ The server on sg01 and the desktop app stay on the last-known-good bundles until
 - Post-rebase Tier 1 and Tier 2 gates passed with `node scripts/sync-upstream.mjs --post-rebase`, including bundle checks for `connect:probe`, `probeConnection`, and scoped runtime CSP remote resource-origin logic.
 - Conflict resolutions preserved the fork LAN/remote preview behavior, accepted upstream stable package metadata, skipped obsolete `0.323.0-karlorz.*` release bump commits, kept both upstream SDK tarball and fork office-workflow plugin example tests, kept upstream WebSocket-ticket coverage for `custom_remote` while preserving fork LAN query-token WebSocket behavior, and removed a duplicated helper block in `desktop/src/react/utils/preview-file-refresh.ts`.
 - Issue tracking on 2026-06-21: [#1749](https://github.com/liliMozi/openhanako/issues/1749) remains OPEN, [#1811](https://github.com/liliMozi/openhanako/issues/1811) is CLOSED, and no exact new upstream issues were found for the pending remote attachment, temp upload, or plugin iframe draft fixes.
-- Tier 3 live sg01 smoke is still pending. Do not append `v0.333.6` to the completed sync log, deploy, or call the stable sync complete until the manual desktop smoke verifies LAN connect, image paste/upload, send, chat switch/return, chat thumbnails, and Conversation Files previews.
+- Tier 3A local desktop install/version verification passed on 2026-06-22: `/Applications/HanaAgent.app` was rebuilt with `SKIP_NOTARIZE=true npm run install:local`, codesign verified, `CFBundleShortVersionString`, `CFBundleVersion`, `build-info.json.appVersion`, and Settings → About all reported `0.333.6`; the local build identity showed `channel: local`, updates disabled, and ad-hoc signing.
+- Tier 3B live sg01 smoke passed on 2026-06-22: the desktop helper restart/verify path returned redacted success with identity HTTP 200 and WebSocket open; image paste/upload, send, chat switch/return, returned-chat thumbnail rendering, and both new plus historical Conversation Files previews rendered with no observed CSP, WebSocket, or fetch-error matches.
+- `v0.333.6` stable sync is closed out in the sync log below. PR #1 remains the permanent draft dashboard and was not merged, auto-merged, or closed.
 
 ## Sync log
 
 | Date | Upstream tag | Conflicts | Resolution | Tests | Live smoke | Notes |
 |------|--------------|-----------|------------|-------|------------|-------|
 | 2026-06-15 | `v0.323.0` (baseline) | — | — | — | — | Fork established from upstream `v0.323.0`. `dev` at `434c3e30`. No later upstream sync performed yet. |
+| 2026-06-22 | `v0.333.6` | LAN/remote preview behavior, package metadata, SDK tarball vs office-workflow tests, `custom_remote` wsTicket coverage vs LAN query-token WebSocket behavior, and duplicated preview-refresh helper block. | Preserved fork LAN/remote attachment preview behavior, accepted upstream `0.333.6` package metadata, skipped obsolete `0.323.0-karlorz.*` release bump commits, kept both SDK tarball and office-workflow coverage, retained upstream `custom_remote` wsTicket tests while preserving LAN query-token WS behavior, and removed the duplicate preview-refresh helper block. | Post-rebase Tier 1/Tier 2 passed via `node scripts/sync-upstream.mjs --post-rebase`; final focused helper/sync vitest passed with 28 tests; `npm run typecheck`, `git diff --check`, and conflict-plan local-only passed. | Tier 3A installed/codesigned local HanaAgent `0.333.6`; Tier 3B helper restart/verify returned identity 200 and WS open; image paste/upload, send, switch/return, returned thumbnail, and new plus historical Conversation Files previews rendered with no observed CSP/WS/fetch errors. | PR #1 remains the permanent draft dashboard; it was not merged, auto-merged, or closed. |
