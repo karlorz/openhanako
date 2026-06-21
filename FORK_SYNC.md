@@ -28,7 +28,7 @@ Current status:
 
 | Fix | Status | Upstream issue state | Action |
 |-----|--------|----------------------|--------|
-| LAN/Tailscale CSP + WebSocket auth | `existing/open` | [#1749](https://github.com/liliMozi/openhanako/issues/1749) | Check during every sync; close or shrink divergence only if upstream accepts equivalent behavior. |
+| LAN/Tailscale CSP + WebSocket auth | `existing/open` | [#1749](https://github.com/liliMozi/openhanako/issues/1749) OPEN; [#1811](https://github.com/liliMozi/openhanako/issues/1811) CLOSED | Check during every sync; close or shrink divergence only if upstream accepts equivalent behavior. |
 | Remote plugin iframe credential query leak | `draft/pending-approval` | No exact issue found; related [#1493](https://github.com/liliMozi/openhanako/issues/1493), [#1546](https://github.com/liliMozi/openhanako/issues/1546) | Review `docs/upstream-issues/drafts/plugin-iframe-remote-credential-query-leak.md`; submit only after owner approval. |
 | Remote attachment preview persistence | `draft/pending-approval` | No exact issue found | Review `docs/upstream-issues/drafts/remote-attachment-preview-persistence.md`; submit only after owner approval. |
 | Local fork build identity + disabled local auto-update | `tracked/no-upstream-issue` | Fork-only | Keep local; no upstream issue unless this becomes a general local-build-channel feature request. |
@@ -57,6 +57,7 @@ Current status:
 | `desktop/main.cjs` | `ae7fd31c` | **MEDIUM** — IPC handlers added occasionally | **Usually auto-mergeable.** Our change adds `net` to the electron import line + a new `wrapIpcHandler("connect:probe", ...)` block. Verify the `net` import survives any upstream rewrite of line 11. |
 | `desktop/preload.cjs` | `ae7fd31c` | **MEDIUM** — new channels exposed occasionally | **Usually auto-mergeable.** Our change adds one line (`probeConnection`) inside the existing `contextBridge.exposeInMainWorld` block. |
 | `tests/server-auth.test.ts` | `80ea81ae` | Medium | **Prefer ours**, but if upstream restructures the test file heavily, review. |
+| `tests/server-connection.test.ts` | stable `v0.333.6` inherited test + fork B1 behavior | Medium | **Preserve both.** LAN device-credential WebSockets must keep token query fallback; non-LAN `custom_remote` device connections should keep upstream `wsTicket` behavior. |
 | `desktop/src/react/__tests__/services/server-connection.test.ts` | `80ea81ae` + `ae7fd31c` | Low | **Prefer ours** (they test our fixes). |
 
 ### Remote upload/resource preview fixes
@@ -73,8 +74,12 @@ These files fix remote desktop attachment import and preview when the macOS desk
 | `desktop/src/react/stores/chat-slice.ts` | Medium | Preserve optimistic inline bytes when replacing a pending user message with the server echo. |
 | `desktop/src/react/stores/selectors/file-refs.ts` | Medium | Duplicate session-registry/message attachments should merge instead of discarding inline preview/resource metadata. |
 | `desktop/src/react/utils/uploaded-session-file.ts` | Low | Shared utility for registering uploaded session files; keep it small and store-focused. |
+| `desktop/src/react/utils/preview-file-refresh.ts` | Medium | Preserve the single version-aware retry helper path. Duplicate `delay` / `fileVersionsEqual` / `readFileForPreviewTypeWithRetry` declarations are a failed merge, not an intentional fork behavior. |
+| `desktop/src/react/utils/preview-document-refresh.ts` | Medium | Preserve multi-mount native-root lookup via `nativeRootForWorkbenchMount` while accepting upstream preview-refresh behavior. |
+| `desktop/src/react/utils/remote-file-preview.ts` | Medium | Preserve version-aware `PreviewContentSnapshot`, `newestKnownFileVersion`, and `remoteContentRefWithVersion` behavior for remote workbench previews. |
 | `server/routes/upload.ts` | Medium | `/api/upload-blob` must accept image/audio plus listed document attachment MIME types, enforce size limits, and register session-owned files. |
 | Affected tests under `desktop/src/react/__tests__/...`, `tests/csp-sync.test.ts`, `tests/upload-route.test.ts` | Low | Prefer ours unless upstream has equivalent coverage for remote preview persistence and client-owned blob import. |
+| `tests/plugin-sdk-examples.test.ts`, `tests/office-workflow-plugin.test.ts` | Low | Preserve both upstream SDK tarball assertions and fork office-workflow template coverage. |
 
 ### WebSocket session identity conflict planning
 
@@ -188,6 +193,14 @@ git reset --hard <pre-rebase-sha>
 ```
 
 The server on sg01 and the desktop app stay on the last-known-good bundles until we explicitly redeploy.
+
+## Active sync attempt
+
+- 2026-06-21: `dev` was rebased from the `v0.323.0` baseline onto upstream stable `v0.333.6`; package metadata is aligned to `0.333.6`.
+- Post-rebase Tier 1 and Tier 2 gates passed with `node scripts/sync-upstream.mjs --post-rebase`, including bundle checks for `connect:probe`, `probeConnection`, and scoped runtime CSP remote resource-origin logic.
+- Conflict resolutions preserved the fork LAN/remote preview behavior, accepted upstream stable package metadata, skipped obsolete `0.323.0-karlorz.*` release bump commits, kept both upstream SDK tarball and fork office-workflow plugin example tests, kept upstream WebSocket-ticket coverage for `custom_remote` while preserving fork LAN query-token WebSocket behavior, and removed a duplicated helper block in `desktop/src/react/utils/preview-file-refresh.ts`.
+- Issue tracking on 2026-06-21: [#1749](https://github.com/liliMozi/openhanako/issues/1749) remains OPEN, [#1811](https://github.com/liliMozi/openhanako/issues/1811) is CLOSED, and no exact new upstream issues were found for the pending remote attachment, temp upload, or plugin iframe draft fixes.
+- Tier 3 live sg01 smoke is still pending. Do not append `v0.333.6` to the completed sync log, deploy, or call the stable sync complete until the manual desktop smoke verifies LAN connect, image paste/upload, send, chat switch/return, chat thumbnails, and Conversation Files previews.
 
 ## Sync log
 

@@ -12,8 +12,8 @@ describe("server connection websocket URLs", () => {
     expect(buildConnectionWsUrl(local!, "/ws")).toBe("ws://127.0.0.1:14500/ws?token=local-token");
   });
 
-  it("uses short-lived websocket tickets for remote device connections instead of device credentials", () => {
-    const remote = createDeviceServerConnection({
+  it("uses query tokens for LAN device websockets and websocket tickets for tunnel devices", () => {
+    const lan = createDeviceServerConnection({
       baseUrl: "http://192.168.1.9:14500",
       credential: "hana_dev_secret",
       identity: {
@@ -27,9 +27,28 @@ describe("server connection websocket URLs", () => {
       },
     });
 
-    expect(buildConnectionWsUrl(remote, "/ws")).toBe("ws://192.168.1.9:14500/ws");
-    expect(buildConnectionWsUrl(remote, "/ws", { wsTicket: "hana_ws_ticket" })).toBe(
+    expect(buildConnectionWsUrl(lan, "/ws")).toBe("ws://192.168.1.9:14500/ws?token=hana_dev_secret");
+    expect(buildConnectionWsUrl(lan, "/ws", { wsTicket: "hana_ws_ticket" })).toBe(
       "ws://192.168.1.9:14500/ws?wsTicket=hana_ws_ticket",
+    );
+
+    const tunnel = createDeviceServerConnection({
+      baseUrl: "http://remote.example:14500",
+      credential: "hana_dev_secret",
+      identity: {
+        serverId: "server_remote",
+        serverNodeId: "node_remote",
+        userId: "user_1",
+        studioId: "studio_1",
+        label: "Remote Studio",
+        connectionKind: "custom_remote",
+        capabilities: ["chat"],
+      },
+    });
+
+    expect(buildConnectionWsUrl(tunnel, "/ws")).toBe("ws://remote.example:14500/ws");
+    expect(buildConnectionWsUrl(tunnel, "/ws", { wsTicket: "hana_ws_ticket" })).toBe(
+      "ws://remote.example:14500/ws?wsTicket=hana_ws_ticket",
     );
   });
 });
