@@ -27,7 +27,7 @@ export const TRACKED_FIXES = [
       {
         number: 1811,
         url: "https://github.com/liliMozi/openhanako/issues/1811",
-        state: "OPEN",
+        state: "CLOSED",
         relation: "newer LAN WebSocket auth and CSP reconnect report",
       },
     ],
@@ -65,7 +65,7 @@ export const TRACKED_FIXES = [
       {
         number: 1811,
         url: "https://github.com/liliMozi/openhanako/issues/1811",
-        state: "OPEN",
+        state: "CLOSED",
         relation: "newer LAN WebSocket auth and CSP reconnect report",
       },
     ],
@@ -306,6 +306,19 @@ export const TRACKED_FIXES = [
     ],
   },
   {
+    id: "office-workflow-example-plugin",
+    title: "Office workflow example plugin template",
+    classification: "fork-only",
+    status: "tracked/no-upstream-issue",
+    commits: ["f14eba54", "4abb9e47"],
+    grouping: "examples/plugins: office-workflow template and lint hygiene",
+    searches: [],
+    notes: [
+      "Fork example plugin template and lint cleanup, not an upstream bug.",
+      "Keep covered by the plugin SDK example and office-workflow plugin tests during stable syncs.",
+    ],
+  },
+  {
     id: "server-install-upgrade-release-safety",
     title: "Fork server install and upgrade release safety",
     classification: "fork-only",
@@ -389,7 +402,9 @@ export function markdownTable(rows) {
       ...(fix.relatedIssues ?? []),
     ];
     const upstream = upstreamIssues.length
-      ? upstreamIssues.map((issue) => `[#${issue.number}](${issue.url})`).join(", ")
+      ? upstreamIssues
+        .map((issue) => `[#${issue.number}](${issue.url})${issue.state ? ` ${issue.state}` : ""}`)
+        .join(", ")
       : "none";
     lines.push(
       `| ${escapeCell(fix.id)} | ${escapeCell(fix.classification)} | ${escapeCell(fix.status)} | ${upstream} | ${escapeCell(fix.grouping)} |`,
