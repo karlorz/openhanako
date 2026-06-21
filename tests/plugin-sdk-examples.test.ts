@@ -195,6 +195,25 @@ describe("plugin SDK examples and docs", () => {
     }
   });
 
+  it("recognizes the office-workflow example plugin as an intentional template", () => {
+    const officeDir = path.join(root, "examples", "plugins", "office-workflow");
+    const manifest = JSON.parse(fs.readFileSync(path.join(officeDir, "manifest.json"), "utf-8"));
+    const readme = fs.readFileSync(path.join(officeDir, "README.md"), "utf-8");
+    const panel = fs.readFileSync(path.join(officeDir, "ui", "Panel.tsx"), "utf-8");
+
+    expect(manifest).toMatchObject({
+      manifestVersion: 1,
+      id: "office-workflow",
+      trust: "full-access",
+      contributes: { page: { route: "/page" } },
+    });
+    expect(manifest.id).not.toBe("office");
+    expect(readme).toContain("generic");
+    expect(readme).toContain("does not send real email");
+    expect(panel).toContain("@hana/plugin-sdk");
+    expect(panel).toContain("@hana/plugin-components");
+  });
+
   it("scaffolds provider contribution plugins with explicit media capabilities", () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-provider-scaffold-"));
     try {
