@@ -1,7 +1,8 @@
 import { hanaFetch } from '../hooks/use-hana-fetch';
 
-type ResourceRef =
-  | { kind: 'local-file'; path: string };
+export type ResourceRef =
+  | { kind: 'local-file'; path: string }
+  | { kind: 'mount'; mountId: string; path: string };
 
 type WatchEntry = {
   refCount: number;
@@ -13,16 +14,29 @@ type WatchEntry = {
 
 const watches = new Map<string, WatchEntry>();
 
-function resourceKey(ref: ResourceRef): string {
+function normalizeResourceRef(ref: ResourceRef): ResourceRef {
   if (ref.kind === 'local-file') {
-    const slashed = ref.path.replace(/\\/g, '/').replace(/\/+$/g, '');
+    return { kind: 'local-file', path: ref.path };
+  }
+  return {
+    kind: 'mount',
+    mountId: ref.mountId,
+    path: String(ref.path || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, ''),
+  };
+}
+
+export function resourceWatchKey(ref: ResourceRef): string {
+  const normalized = normalizeResourceRef(ref);
+  if (normalized.kind === 'local-file') {
+    const slashed = normalized.path.replace(/\\/g, '/').replace(/\/+$/g, '');
     return `local-file:${/^[A-Za-z]:/.test(slashed) ? slashed.toLowerCase() : slashed}`;
   }
-  return JSON.stringify(ref);
+  return `mount:${normalized.mountId}:${normalized.path}`;
 }
 
 export function retainResourceWatch(ref: ResourceRef): () => void {
-  const key = resourceKey(ref);
+  const normalizedRef = normalizeResourceRef(ref);
+  const key = resourceWatchKey(normalizedRef);
   const existing = watches.get(key);
   if (existing) {
     existing.refCount += 1;
@@ -39,7 +53,7 @@ export function retainResourceWatch(ref: ResourceRef): () => void {
   entry.ready = hanaFetch('/api/resource-io/subscribe', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ purpose: 'resource-watch', resources: [ref] }),
+    body: JSON.stringify({ purpose: 'resource-watch', resources: [normalizedRef] }),
     throwOnHttpError: false,
   })
     .then(res => res.json())

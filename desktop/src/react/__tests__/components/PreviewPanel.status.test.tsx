@@ -13,15 +13,22 @@ import type { PlatformApi } from '../../types';
 
 const resourceEventMocks = vi.hoisted(() => ({
   retainLocalFileResourceWatch: vi.fn(() => vi.fn()),
+  retainResourceWatch: vi.fn(() => vi.fn()),
+  resourceWatchKey: (ref: any) => ref.kind === 'mount'
+    ? `mount:${ref.mountId}:${String(ref.path || '').replace(/^\/+|\/+$/g, '')}`
+    : `local-file:${ref.path}`,
 }));
 
 vi.mock('../../services/resource-events', () => ({
   retainLocalFileResourceWatch: resourceEventMocks.retainLocalFileResourceWatch,
+  retainResourceWatch: resourceEventMocks.retainResourceWatch,
+  resourceWatchKey: resourceEventMocks.resourceWatchKey,
 }));
 
 describe('PreviewPanel markdown editor status', () => {
   beforeEach(() => {
     resourceEventMocks.retainLocalFileResourceWatch.mockClear();
+    resourceEventMocks.retainResourceWatch.mockClear();
     window.t = ((key: string) => key) as typeof window.t;
     Range.prototype.getClientRects = vi.fn(() => [] as unknown as DOMRectList);
     Range.prototype.getBoundingClientRect = vi.fn(() => ({
@@ -256,7 +263,7 @@ describe('PreviewPanel markdown editor status', () => {
     render(<PreviewPanel />);
 
     await waitFor(() => {
-      expect(resourceEventMocks.retainLocalFileResourceWatch).toHaveBeenCalledWith('/workspace/src/app.ts');
+      expect(resourceEventMocks.retainResourceWatch).toHaveBeenCalledWith({ kind: 'local-file', path: '/workspace/src/app.ts' });
     });
     await Promise.resolve();
     warnSpy.mockRestore();
@@ -298,18 +305,18 @@ describe('PreviewPanel markdown editor status', () => {
     render(<PreviewPanel />);
 
     await waitFor(() => {
-      expect(resourceEventMocks.retainLocalFileResourceWatch).toHaveBeenCalledWith('/tmp/hana-note.md');
-      expect(resourceEventMocks.retainLocalFileResourceWatch).toHaveBeenCalledWith('/tmp/inactive.ts');
+      expect(resourceEventMocks.retainResourceWatch).toHaveBeenCalledWith({ kind: 'local-file', path: '/tmp/hana-note.md' });
+      expect(resourceEventMocks.retainResourceWatch).toHaveBeenCalledWith({ kind: 'local-file', path: '/tmp/inactive.ts' });
     });
 
     useStore.setState({ openTabs: ['note', 'inactive', 'extra'] } as Partial<StoreState>);
 
     await waitFor(() => {
-      expect(resourceEventMocks.retainLocalFileResourceWatch).toHaveBeenCalledWith('/tmp/extra.md');
+      expect(resourceEventMocks.retainResourceWatch).toHaveBeenCalledWith({ kind: 'local-file', path: '/tmp/extra.md' });
     });
-    const releaseNote = resourceEventMocks.retainLocalFileResourceWatch.mock.results[0]?.value;
-    const releaseInactive = resourceEventMocks.retainLocalFileResourceWatch.mock.results[1]?.value;
-    const releaseExtra = resourceEventMocks.retainLocalFileResourceWatch.mock.results[2]?.value;
+    const releaseNote = resourceEventMocks.retainResourceWatch.mock.results[0]?.value;
+    const releaseInactive = resourceEventMocks.retainResourceWatch.mock.results[1]?.value;
+    const releaseExtra = resourceEventMocks.retainResourceWatch.mock.results[2]?.value;
     expect(releaseNote).not.toHaveBeenCalled();
     expect(releaseInactive).not.toHaveBeenCalled();
 

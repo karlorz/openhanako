@@ -11,12 +11,17 @@ import {
   normalizeWorkbenchContentRef,
   refreshPreviewItemsFromRemoteWorkbenchTarget,
 } from './remote-file-preview';
+import type { ResourceRef } from '../services/resource-events';
 
 export type PreviewDocumentTarget =
   | { kind: 'local-file'; filePath: string }
   | { kind: 'workbench-file'; target: RemoteWorkbenchContentRef };
 
 export type PreviewDocumentRefreshOptions = PreviewFileRefreshOptions;
+export type PreviewDocumentWatchResource = {
+  ref: ResourceRef;
+  target: PreviewDocumentTarget;
+};
 
 export type ResourceChangeEvent = {
   filePath?: unknown;
@@ -65,6 +70,12 @@ function joinWorkspaceFilePath(basePath: string, subdir: string | undefined | nu
     .join('/');
   if (!parts) return basePath;
   return `${basePath.replace(/[\\/]+$/g, '')}${separator}${parts.replace(/\//g, separator)}`;
+}
+
+function joinResourcePath(subdir: string | undefined | null, name: string): string {
+  return [normalizeSubdir(subdir), name.replace(/^[/\\]+/g, '')]
+    .filter(Boolean)
+    .join('/');
 }
 
 function previewDocumentTargetKey(target: PreviewDocumentTarget): string {
@@ -140,6 +151,31 @@ export function filePathForPreviewDocumentTarget(target: PreviewDocumentTarget, 
   return joinWorkspaceFilePath(basePath, normalized.subdir || '', normalized.name);
 }
 
+function resourceRefForPreviewDocumentTarget(
+  target: PreviewDocumentTarget,
+  state: ReturnType<typeof useStore.getState>,
+): ResourceRef | null {
+  if (target.kind === 'local-file') return { kind: 'local-file', path: target.filePath };
+
+  const normalized = normalizeWorkbenchContentRef(target.target);
+  const mountId = normalized.mountId || normalized.rootId || 'default';
+  if (mountId && mountId !== 'default') {
+    return {
+      kind: 'mount',
+      mountId,
+      path: joinResourcePath(normalized.subdir || '', normalized.name),
+    };
+  }
+
+  const filePath = filePathForPreviewDocumentTarget(target, state);
+  return filePath ? { kind: 'local-file', path: filePath } : null;
+}
+
+function resourceRefKey(ref: ResourceRef): string {
+  if (ref.kind === 'local-file') return `local:${normalizeComparablePath(ref.path)}`;
+  return `mount:${ref.mountId}:${normalizeSubdir(ref.path)}`;
+}
+
 function nativeRootForWorkbenchMount(state: ReturnType<typeof useStore.getState>, mountId: string): string {
   const workspaces = Array.isArray((state as any).studioWorkspaces)
     ? (state as any).studioWorkspaces
@@ -165,6 +201,24 @@ export function openPreviewDocumentWatchFilePaths(): string[] {
   }
 
   return filePaths.sort((a, b) => normalizeComparablePath(a).localeCompare(normalizeComparablePath(b)));
+}
+
+export function openPreviewDocumentWatchResources(): PreviewDocumentWatchResource[] {
+  const state = useStore.getState();
+  const targets = openPreviewDocumentTargets();
+  const resources: PreviewDocumentWatchResource[] = [];
+  const seen = new Set<string>();
+
+  for (const target of targets) {
+    const ref = resourceRefForPreviewDocumentTarget(target, state);
+    if (!ref) continue;
+    const key = resourceRefKey(ref);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    resources.push({ ref, target });
+  }
+
+  return resources.sort((a, b) => resourceRefKey(a.ref).localeCompare(resourceRefKey(b.ref)));
 }
 
 function openPreviewDocumentTargetsForFilePath(filePath: string): PreviewDocumentTarget[] {

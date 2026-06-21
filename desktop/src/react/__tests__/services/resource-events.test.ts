@@ -43,4 +43,24 @@ describe('resource-events', () => {
       method: 'DELETE',
     }));
   });
+
+  it('dedupes mount ResourceRefs without materializing native paths in the renderer', async () => {
+    const { retainResourceWatch } = await import('../../services/resource-events');
+
+    const releaseFirst = retainResourceWatch({ kind: 'mount', mountId: 'mount_docs', path: 'notes' });
+    const releaseSecond = retainResourceWatch({ kind: 'mount', mountId: 'mount_docs', path: 'notes/' });
+    await Promise.resolve();
+
+    expect(hanaFetch).toHaveBeenCalledTimes(1);
+    expect(hanaFetch).toHaveBeenCalledWith('/api/resource-io/subscribe', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({
+        purpose: 'resource-watch',
+        resources: [{ kind: 'mount', mountId: 'mount_docs', path: 'notes' }],
+      }),
+    }));
+
+    releaseFirst();
+    releaseSecond();
+  });
 });

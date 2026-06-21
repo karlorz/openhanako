@@ -245,11 +245,13 @@ describe('preview document refresh', () => {
     } as Partial<StoreState>);
     const {
       PREVIEW_DOCUMENT_CHANGE_REFRESH_OPTIONS,
-      openPreviewDocumentWatchFilePaths,
+      openPreviewDocumentWatchResources,
       refreshOpenPreviewDocumentsForFilePath,
     } = await import('../../utils/preview-document-refresh');
 
-    expect(openPreviewDocumentWatchFilePaths()).toEqual(['/Users/me/Documents/notes/note.md']);
+    expect(openPreviewDocumentWatchResources().map(item => item.ref)).toEqual([
+      { kind: 'mount', mountId: 'mount_docs', path: 'notes/note.md' },
+    ]);
 
     await refreshOpenPreviewDocumentsForFilePath('/Users/me/Documents/notes/note.md');
 

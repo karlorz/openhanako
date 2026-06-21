@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { useStore } from '../../stores';
-import { retainLocalFileResourceWatch } from '../../services/resource-events';
+import { resourceWatchKey, retainResourceWatch, type ResourceRef } from '../../services/resource-events';
 
 function normalizeSubdir(value: string): string {
   return value.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
@@ -13,14 +13,26 @@ function joinWorkspaceRoot(basePath: string, subdir: string): string {
   return `${basePath.replace(/[\\/]+$/, '')}${separator}${normalizedSubdir.replace(/\//g, separator)}`;
 }
 
-function workspaceWatchRoots(basePath: string, expandedPaths: string[]): string[] {
+function workspaceWatchRefs(basePath: string, mountId: string, expandedPaths: string[]): ResourceRef[] {
+  const roots = new Map<string, ResourceRef>();
+  const add = (ref: ResourceRef) => roots.set(resourceWatchKey(ref), ref);
+
+  if (mountId) {
+    add({ kind: 'mount', mountId, path: '' });
+    for (const subdir of expandedPaths) {
+      const normalized = normalizeSubdir(subdir);
+      if (normalized) add({ kind: 'mount', mountId, path: normalized });
+    }
+    return [...roots.values()];
+  }
+
   if (!basePath) return [];
-  const roots = new Set<string>([basePath]);
+  add({ kind: 'local-file', path: basePath });
   for (const subdir of expandedPaths) {
     const normalized = normalizeSubdir(subdir);
-    if (normalized) roots.add(joinWorkspaceRoot(basePath, normalized));
+    if (normalized) add({ kind: 'local-file', path: joinWorkspaceRoot(basePath, normalized) });
   }
-  return [...roots];
+  return [...roots.values()];
 }
 
 export function WorkspaceFileChangeBridge() {
@@ -29,24 +41,25 @@ export function WorkspaceFileChangeBridge() {
   const deskWorkspaceNativeRoot = useStore(s => s.deskWorkspaceNativeRoot);
   const deskExpandedPaths = useStore(s => s.deskExpandedPaths);
   const subscriptionsRef = useRef<Map<string, () => void>>(new Map());
-  const watchedRoots = useMemo(
-    () => workspaceWatchRoots(deskWorkspaceMountId ? (deskWorkspaceNativeRoot || '') : deskBasePath, deskExpandedPaths),
+  const watchedRefs = useMemo(
+    () => workspaceWatchRefs(deskWorkspaceMountId ? '' : deskBasePath, deskWorkspaceMountId || '', deskExpandedPaths),
     [deskBasePath, deskExpandedPaths, deskWorkspaceMountId, deskWorkspaceNativeRoot],
   );
-  const watchedRootsKey = watchedRoots.join('\n');
+  const watchedRefsKey = watchedRefs.map(resourceWatchKey).join('\n');
 
   useEffect(() => {
-    const nextRoots = new Set(watchedRoots);
-    for (const [root, unsubscribe] of subscriptionsRef.current) {
-      if (nextRoots.has(root)) continue;
+    const nextKeys = new Set(watchedRefs.map(resourceWatchKey));
+    for (const [key, unsubscribe] of subscriptionsRef.current) {
+      if (nextKeys.has(key)) continue;
       unsubscribe();
-      subscriptionsRef.current.delete(root);
+      subscriptionsRef.current.delete(key);
     }
-    for (const root of watchedRoots) {
-      if (subscriptionsRef.current.has(root)) continue;
-      subscriptionsRef.current.set(root, retainLocalFileResourceWatch(root));
+    for (const ref of watchedRefs) {
+      const key = resourceWatchKey(ref);
+      if (subscriptionsRef.current.has(key)) continue;
+      subscriptionsRef.current.set(key, retainResourceWatch(ref));
     }
-  }, [watchedRootsKey]); // eslint-disable-line react-hooks/exhaustive-deps -- watchedRootsKey is the reconciled subscription identity.
+  }, [watchedRefsKey]); // eslint-disable-line react-hooks/exhaustive-deps -- watchedRefsKey is the reconciled subscription identity.
 
   useEffect(() => () => {
     for (const unsubscribe of subscriptionsRef.current.values()) unsubscribe();

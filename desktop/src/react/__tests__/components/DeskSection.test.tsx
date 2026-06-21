@@ -19,6 +19,10 @@ const mocks = vi.hoisted(() => ({
     searchDeskFiles: vi.fn(async (): Promise<DeskSearchResult[]> => []),
   jumpToDeskSearchResult: vi.fn(async () => {}),
   retainLocalFileResourceWatch: vi.fn(() => vi.fn()),
+  retainResourceWatch: vi.fn(() => vi.fn()),
+  resourceWatchKey: (ref: any) => ref.kind === 'mount'
+    ? `mount:${ref.mountId}:${String(ref.path || '').replace(/^\/+|\/+$/g, '')}`
+    : `local-file:${ref.path}`,
 }));
 
 function pendingCreateInput(): HTMLInputElement {
@@ -45,6 +49,8 @@ vi.mock('../../stores/desk-actions', async (importOriginal) => {
 
 vi.mock('../../services/resource-events', () => ({
   retainLocalFileResourceWatch: mocks.retainLocalFileResourceWatch,
+  retainResourceWatch: mocks.retainResourceWatch,
+  resourceWatchKey: mocks.resourceWatchKey,
 }));
 
 describe('DeskSection workspace watching', () => {
@@ -138,8 +144,8 @@ describe('DeskSection workspace watching', () => {
       </>,
     );
 
-    expect(mocks.retainLocalFileResourceWatch).toHaveBeenCalledWith('/tmp/hana-desk');
-    expect(mocks.retainLocalFileResourceWatch).toHaveBeenCalledWith('/tmp/hana-desk/notes');
+    expect(mocks.retainResourceWatch).toHaveBeenCalledWith({ kind: 'local-file', path: '/tmp/hana-desk' });
+    expect(mocks.retainResourceWatch).toHaveBeenCalledWith({ kind: 'local-file', path: '/tmp/hana-desk/notes' });
     mocks.loadDeskTreeFiles.mockClear();
 
     await act(async () => {
@@ -154,25 +160,25 @@ describe('DeskSection workspace watching', () => {
 
     render(<WorkspaceFileWatchBridge />);
 
-    expect(mocks.retainLocalFileResourceWatch).toHaveBeenCalledWith('/tmp/hana-desk');
-    expect(mocks.retainLocalFileResourceWatch).toHaveBeenCalledWith('/tmp/hana-desk/notes');
+    expect(mocks.retainResourceWatch).toHaveBeenCalledWith({ kind: 'local-file', path: '/tmp/hana-desk' });
+    expect(mocks.retainResourceWatch).toHaveBeenCalledWith({ kind: 'local-file', path: '/tmp/hana-desk/notes' });
 
     await act(async () => {
       useStore.setState({ deskExpandedPaths: [] } as never);
     });
 
-    const releaseNotes = mocks.retainLocalFileResourceWatch.mock.results[1]?.value;
+    const releaseNotes = mocks.retainResourceWatch.mock.results[1]?.value;
     expect(releaseNotes).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       useStore.setState({ deskBasePath: '' } as never);
     });
 
-    const releaseRoot = mocks.retainLocalFileResourceWatch.mock.results[0]?.value;
+    const releaseRoot = mocks.retainResourceWatch.mock.results[0]?.value;
     expect(releaseRoot).toHaveBeenCalledTimes(1);
   });
 
-  it('watches mounted workbench native roots through the ResourceIO bridge', async () => {
+  it('watches mounted workbench resources through the ResourceIO bridge', async () => {
     const { WorkspaceFileWatchBridge } = await import('../../components/right-workspace/WorkspaceFileWatchBridge');
 
     useStore.setState({
@@ -184,9 +190,9 @@ describe('DeskSection workspace watching', () => {
 
     render(<WorkspaceFileWatchBridge />);
 
-    expect(mocks.retainLocalFileResourceWatch).toHaveBeenCalledWith('/Users/me/Documents');
-    expect(mocks.retainLocalFileResourceWatch).toHaveBeenCalledWith('/Users/me/Documents/notes');
-    expect(mocks.retainLocalFileResourceWatch).not.toHaveBeenCalledWith('studio:mount_docs');
+    expect(mocks.retainResourceWatch).toHaveBeenCalledWith({ kind: 'mount', mountId: 'mount_docs', path: '' });
+    expect(mocks.retainResourceWatch).toHaveBeenCalledWith({ kind: 'mount', mountId: 'mount_docs', path: 'notes' });
+    expect(mocks.retainLocalFileResourceWatch).not.toHaveBeenCalledWith('/Users/me/Documents');
   });
 
   it('flushes dirty expanded tree paths when the workspace tree mounts', async () => {
