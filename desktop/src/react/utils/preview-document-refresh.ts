@@ -27,6 +27,18 @@ export type ResourceChangeEvent = {
     path?: unknown;
     filePath?: unknown;
   } | null;
+  oldResource?: {
+    kind?: unknown;
+    provider?: unknown;
+    path?: unknown;
+    filePath?: unknown;
+  } | null;
+  newResource?: {
+    kind?: unknown;
+    provider?: unknown;
+    path?: unknown;
+    filePath?: unknown;
+  } | null;
 };
 
 interface PreviewDocumentRefreshControl {
@@ -209,13 +221,8 @@ export async function refreshOpenPreviewDocumentsForFilePath(
   )));
 }
 
-export function filePathFromResourceChange(event: ResourceChangeEvent | null | undefined): string | null {
-  if (!event || typeof event !== 'object') return null;
-  if (typeof event.filePath === 'string' && event.filePath.trim()) return event.filePath;
-  if (typeof event.path === 'string' && event.path.trim()) return event.path;
-
-  const resource = event.resource && typeof event.resource === 'object' ? event.resource : null;
-  if (!resource) return null;
+function filePathFromResourceDescriptor(resource: ResourceChangeEvent['resource']): string | null {
+  if (!resource || typeof resource !== 'object') return null;
   const provider = typeof resource.provider === 'string' ? resource.provider : '';
   const kind = typeof resource.kind === 'string' ? resource.kind : '';
   const isLocal = provider === 'local_fs'
@@ -226,6 +233,29 @@ export function filePathFromResourceChange(event: ResourceChangeEvent | null | u
   if (typeof resource.path === 'string' && resource.path.trim()) return resource.path;
   if (typeof resource.filePath === 'string' && resource.filePath.trim()) return resource.filePath;
   return null;
+}
+
+export function filePathsFromResourceChange(event: ResourceChangeEvent | null | undefined): string[] {
+  if (!event || typeof event !== 'object') return [];
+  const paths: string[] = [];
+  const push = (value: string | null) => {
+    if (!value) return;
+    const key = normalizeComparablePath(value);
+    if (!key || paths.some(existing => normalizeComparablePath(existing) === key)) return;
+    paths.push(value);
+  };
+
+  if (typeof event.filePath === 'string' && event.filePath.trim()) return [event.filePath];
+  if (typeof event.path === 'string' && event.path.trim()) return [event.path];
+
+  push(filePathFromResourceDescriptor(event.resource));
+  push(filePathFromResourceDescriptor(event.oldResource));
+  push(filePathFromResourceDescriptor(event.newResource));
+  return paths;
+}
+
+export function filePathFromResourceChange(event: ResourceChangeEvent | null | undefined): string | null {
+  return filePathsFromResourceChange(event)[0] || null;
 }
 
 function parentSubdirForWorkspaceFile(basePath: string, filePath: string): string | null {
@@ -240,21 +270,23 @@ function parentSubdirForWorkspaceFile(basePath: string, filePath: string): strin
 }
 
 export function markDeskTreeDirtyForResourceChange(event: ResourceChangeEvent | null | undefined): void {
-  const filePath = filePathFromResourceChange(event);
-  if (!filePath) return;
+  const filePaths = filePathsFromResourceChange(event);
+  if (filePaths.length === 0) return;
   const state = useStore.getState();
   if (state.deskWorkspaceMountId) return;
   const basePath = typeof state.deskBasePath === 'string' ? state.deskBasePath : '';
-  const subdir = parentSubdirForWorkspaceFile(basePath, filePath);
-  if (subdir == null) return;
-  state.markDeskTreeDirty(subdir);
+  for (const filePath of filePaths) {
+    const subdir = parentSubdirForWorkspaceFile(basePath, filePath);
+    if (subdir == null) continue;
+    state.markDeskTreeDirty(subdir);
+  }
 }
 
 export async function refreshOpenPreviewDocumentsForResourceChange(
   event: ResourceChangeEvent | null | undefined,
   options: PreviewDocumentRefreshOptions = PREVIEW_DOCUMENT_CHANGE_REFRESH_OPTIONS,
 ): Promise<void> {
-  const filePath = filePathFromResourceChange(event);
-  if (!filePath) return;
-  await refreshOpenPreviewDocumentsForFilePath(filePath, options);
+  const filePaths = filePathsFromResourceChange(event);
+  if (filePaths.length === 0) return;
+  await Promise.all(filePaths.map(filePath => refreshOpenPreviewDocumentsForFilePath(filePath, options)));
 }

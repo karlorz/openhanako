@@ -489,6 +489,15 @@ export function handleServerMessage(msg: any): void {
       );
       break;
     }
+    case 'resource.deleted':
+    case 'resource.renamed': {
+      markDeskTreeDirtyForResourceChange(msg);
+      void refreshOpenPreviewDocumentsForResourceChange(
+        msg,
+        PREVIEW_DOCUMENT_CHANGE_REFRESH_OPTIONS,
+      );
+      break;
+    }
     case 'session_branch_reset': {
       const sp = msg.sessionPath;
       const targetId = msg.clientMessageId || msg.messageId;

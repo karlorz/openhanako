@@ -256,4 +256,56 @@ describe('preview document refresh', () => {
       PREVIEW_DOCUMENT_CHANGE_REFRESH_OPTIONS,
     );
   });
+
+  it('refreshes matching open documents from ResourceIO deleted and renamed events', async () => {
+    useStore.setState({
+      previewItems: [
+        localItem('deleted-local', '/workspace/notes/deleted.md'),
+        localItem('old-local', '/workspace/notes/old.md'),
+        localItem('new-local', '/workspace/notes/new.md'),
+      ],
+      openTabs: ['deleted-local', 'old-local', 'new-local'],
+    } as Partial<StoreState>);
+    const {
+      PREVIEW_DOCUMENT_CHANGE_REFRESH_OPTIONS,
+      refreshOpenPreviewDocumentsForResourceChange,
+    } = await import('../../utils/preview-document-refresh');
+
+    await refreshOpenPreviewDocumentsForResourceChange({
+      type: 'resource.deleted',
+      resource: {
+        kind: 'local-file',
+        provider: 'local_fs',
+        path: '/workspace/notes/deleted.md',
+      },
+    } as any);
+
+    await refreshOpenPreviewDocumentsForResourceChange({
+      type: 'resource.renamed',
+      oldResource: {
+        kind: 'local-file',
+        provider: 'local_fs',
+        path: '/workspace/notes/old.md',
+      },
+      newResource: {
+        kind: 'local-file',
+        provider: 'local_fs',
+        path: '/workspace/notes/new.md',
+      },
+    } as any);
+
+    expect(mocks.refreshPreviewItemsFromFile).toHaveBeenCalledTimes(3);
+    expect(mocks.refreshPreviewItemsFromFile).toHaveBeenCalledWith(
+      '/workspace/notes/deleted.md',
+      PREVIEW_DOCUMENT_CHANGE_REFRESH_OPTIONS,
+    );
+    expect(mocks.refreshPreviewItemsFromFile).toHaveBeenCalledWith(
+      '/workspace/notes/old.md',
+      PREVIEW_DOCUMENT_CHANGE_REFRESH_OPTIONS,
+    );
+    expect(mocks.refreshPreviewItemsFromFile).toHaveBeenCalledWith(
+      '/workspace/notes/new.md',
+      PREVIEW_DOCUMENT_CHANGE_REFRESH_OPTIONS,
+    );
+  });
 });

@@ -933,6 +933,32 @@ describe('ws-message-handler app events', () => {
       previewRefreshMocks.changeOptions,
     );
   });
+
+  it('resource.deleted 和 resource.renamed 消息也走同一条刷新路径', () => {
+    const deletedMsg = {
+      type: 'resource.deleted',
+      resource: { kind: 'local-file', provider: 'local_fs', path: '/workspace/notes/deleted.md' },
+    };
+    const renamedMsg = {
+      type: 'resource.renamed',
+      oldResource: { kind: 'local-file', provider: 'local_fs', path: '/workspace/notes/old.md' },
+      newResource: { kind: 'local-file', provider: 'local_fs', path: '/workspace/notes/new.md' },
+    };
+
+    handleServerMessage(deletedMsg);
+    handleServerMessage(renamedMsg);
+
+    expect(previewRefreshMocks.markDeskTreeDirtyForResourceChange).toHaveBeenCalledWith(deletedMsg);
+    expect(previewRefreshMocks.markDeskTreeDirtyForResourceChange).toHaveBeenCalledWith(renamedMsg);
+    expect(previewRefreshMocks.refreshOpenPreviewDocumentsForResourceChange).toHaveBeenCalledWith(
+      deletedMsg,
+      previewRefreshMocks.changeOptions,
+    );
+    expect(previewRefreshMocks.refreshOpenPreviewDocumentsForResourceChange).toHaveBeenCalledWith(
+      renamedMsg,
+      previewRefreshMocks.changeOptions,
+    );
+  });
 });
 
 describe('ws-message-handler turn_end side effects', () => {
