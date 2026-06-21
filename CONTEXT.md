@@ -77,11 +77,13 @@ npx vitest run \
   --exclude "**/node_modules/**"
 ```
 
-Also run `npm run typecheck` and `git diff --check`. For user-facing desktop fixes, build/install with `SKIP_NOTARIZE=true npm run install:local`, verify codesign, and launch `/Applications/HanaAgent.app`.
+Also run `npm run typecheck` and `git diff --check`. For user-facing desktop fixes, build/install with `SKIP_NOTARIZE=true npm run install:local`, verify codesign, then confirm `/Applications/HanaAgent.app` bundle metadata, `Contents/Resources/build-info.json`, and Settings → About all match the `package.json` version before manual smoke.
 
 Manual smoke for the remote server:
 
 1. Connect to `http://100.125.173.118:14500`.
+   - To clear `localStorage` and reconnect without retyping a previously saved key, run `node scripts/hana-desktop-smoke-helper.mjs --restart --verify --url http://100.125.173.118:14500`.
+   - If the LAN connection has never been saved in this app profile, prefer `HANA_DESKTOP_SMOKE_TOKEN=<device-key>` over `--token` for the first helper run.
 2. Paste/upload an image.
 3. Send it.
 4. Switch chats and return.
