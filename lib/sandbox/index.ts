@@ -283,7 +283,14 @@ function wrapFileTouchTool(tool, cwd, {
       const normalizedParams = normalizeFileTouchToolParams(params);
       const absolutePath = resolveToolPath(fileTouchToolPathParam(normalizedParams), cwd);
       const operation = absolutePath ? operationForPath?.(absolutePath) : null;
-      const result = await tool.execute(toolCallId, normalizedParams, ...rest);
+      let result;
+      try {
+        result = await tool.execute(toolCallId, normalizedParams, ...rest);
+      } catch (err) {
+        return {
+          content: [{ type: "text", text: err?.message || String(err) }],
+        };
+      }
       const sessionPath = getSessionPath?.() || null;
       if (!absolutePath || !sessionPath || typeof recordFileOperation !== "function") {
         return result;

@@ -125,6 +125,8 @@ import {
 import { debugLog, createModuleLogger } from "../lib/debug-log.ts";
 import { createSandboxedTools } from "../lib/sandbox/index.ts";
 import { createSandboxResourceIO } from "../lib/resource-io/sandbox-resource-io.ts";
+import { ResourceEventBus } from "../lib/resource-io/resource-event-bus.ts";
+import { resourceKeyForRef } from "../lib/resource-io/resource-refs.ts";
 import { ResourceWatchRegistry } from "../lib/resource-io/resource-watch-registry.ts";
 import { externalReadPathsFromSessionFiles } from "../lib/sandbox/win32-policy.ts";
 import { Win32LegacySandboxCleanupQueue } from "../lib/sandbox/win32-legacy-migration.ts";
@@ -214,6 +216,7 @@ export class HanaEngine {
   declare _pluginManager: any;
   declare _prefs: any;
   declare _resourceAccess: any;
+  declare _resourceEventBus: any;
   declare _resourceLoader: any;
   declare _resourceIO: any;
   declare _resourceWatchRegistry: any;
@@ -261,6 +264,7 @@ export class HanaEngine {
     this._resources = null;
     this._resourceAccess = null;
     this._resourceIO = null;
+    this._resourceEventBus = null;
     this.agentsDir = path.join(hanakoHome, "agents");
     this.userDir = path.join(hanakoHome, "user");
     this.channelsDir = path.join(hanakoHome, "channels");
@@ -655,10 +659,18 @@ export class HanaEngine {
   }
   recordSessionFileOperation(entry) {
     const file = this.registerSessionFile(entry);
-    this._emitSessionFileUpdatedEvent(file, entry);
+    this._emitResourceChangedForSessionFileOperation(file, entry);
     return file;
   }
-  _emitSessionFileUpdatedEvent(file, entry: any = {}) {
+  _resourceEvents() {
+    if (!this._resourceEventBus) {
+      this._resourceEventBus = new ResourceEventBus({
+        emit: (event, sessionPath) => this._emitEvent(event, sessionPath),
+      });
+    }
+    return this._resourceEventBus;
+  }
+  _emitResourceChangedForSessionFileOperation(file, entry: any = {}) {
     const origin = typeof file?.origin === "string" ? file.origin : entry?.origin;
     if (origin !== "agent_write" && origin !== "agent_edit") return;
 
@@ -670,15 +682,60 @@ export class HanaEngine {
     const operation = entry?.operation || file?.operation || (
       Array.isArray(file?.operations) ? file.operations[file.operations.length - 1] : null
     );
+    this._resourceEvents().changed({
+      changeType: operation === "created" ? "created" : "modified",
+      resourceKey: resourceKeyForRef({ kind: "local-file", path: filePath }),
+      resource: {
+        kind: "local-file",
+        provider: "local_fs",
+        path: filePath,
+        filePath,
+      },
+      version: {
+        ...(file?.mtimeMs !== undefined ? { mtimeMs: file.mtimeMs } : {}),
+        ...(file?.size !== undefined ? { size: file.size } : {}),
+        ...(file?.version ? { sequence: file.version } : {}),
+      },
+      source: "agent_tool",
+      reason: origin,
+      sessionPath,
+      fileId,
+      origin,
+      operation,
+      sessionFile: file,
+    } as any);
+  }
+  _projectLegacySessionFileUpdated(event) {
+    if (event?.type !== "resource.changed") return;
+    if (event.source !== "agent_tool") return;
+    const fileId = event.fileId || event.sessionFile?.id || event.sessionFile?.fileId || null;
+    if (!fileId && !event.sessionFile) return;
+
+    const origin = typeof event.origin === "string"
+      ? event.origin
+      : typeof event.reason === "string"
+        ? event.reason
+        : event.sessionFile?.origin;
+    if (origin !== "agent_write" && origin !== "agent_edit") return;
+
+    const sessionPath = event.sessionPath || event.sessionFile?.sessionPath || null;
+    const filePath = event.resource?.filePath || event.filePath || event.sessionFile?.filePath || null;
+    if (!sessionPath || !filePath) return;
+
+    const operation = event.operation || event.sessionFile?.operation || (
+      Array.isArray(event.sessionFile?.operations)
+        ? event.sessionFile.operations[event.sessionFile.operations.length - 1]
+        : null
+    );
     this._emitAppEvent("session-file-updated", {
       sessionPath,
       filePath,
       ...(fileId ? { fileId } : {}),
       origin,
       ...(operation ? { operation } : {}),
-      ...(file?.mtimeMs !== undefined ? { mtimeMs: file.mtimeMs } : {}),
-      ...(file?.size !== undefined ? { size: file.size } : {}),
-      ...(file?.version ? { version: file.version } : {}),
+      ...(event.version?.mtimeMs !== undefined ? { mtimeMs: event.version.mtimeMs } : {}),
+      ...(event.version?.size !== undefined ? { size: event.version.size } : {}),
+      ...(event.sessionFile ? { sessionFile: event.sessionFile } : {}),
     });
   }
   _sessionFileOptionsWithLocator(options: any = {}) {
@@ -2371,6 +2428,7 @@ export class HanaEngine {
         try { fn(event, sessionPath); } catch (err) { moduleLog.warn(`event listener threw for ${event?.type}: ${err?.message}`); }
       }
     }
+    this._projectLegacySessionFileUpdated(event);
   }
 
   emitEvent(event, sessionPath) { this._emitEvent(event, sessionPath); }

@@ -517,31 +517,29 @@ describe("HanaEngine.buildTools", () => {
       origin: "agent_edit",
     });
     expect(engine._emitEvent).toHaveBeenCalledWith(expect.objectContaining({
-      type: "app_event",
-      event: expect.objectContaining({
-        type: "session-file-updated",
-        payload: expect.objectContaining({
-          sessionPath,
-          filePath: path.join(workspace, "draft.md"),
-          fileId: "sf_created",
-          origin: "agent_write",
-          operation: "created",
-        }),
+      type: "resource.changed",
+      source: "agent_tool",
+      reason: "agent_write",
+      sessionPath,
+      fileId: "sf_created",
+      origin: "agent_write",
+      operation: "created",
+      resource: expect.objectContaining({
+        filePath: path.join(workspace, "draft.md"),
       }),
-    }), null);
+    }), sessionPath);
     expect(engine._emitEvent).toHaveBeenCalledWith(expect.objectContaining({
-      type: "app_event",
-      event: expect.objectContaining({
-        type: "session-file-updated",
-        payload: expect.objectContaining({
-          sessionPath,
-          filePath: path.join(workspace, "draft.md"),
-          fileId: "sf_modified",
-          origin: "agent_edit",
-          operation: "modified",
-        }),
+      type: "resource.changed",
+      source: "agent_tool",
+      reason: "agent_edit",
+      sessionPath,
+      fileId: "sf_modified",
+      origin: "agent_edit",
+      operation: "modified",
+      resource: expect.objectContaining({
+        filePath: path.join(workspace, "draft.md"),
       }),
-    }), null);
+    }), sessionPath);
   });
 
   it("registers write and edit session files when Pi SDK uses the file_path alias", async () => {
