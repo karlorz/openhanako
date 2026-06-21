@@ -114,12 +114,14 @@ critical_paths:
       - FORK_SYNC.md
       - docs/fork-sync/rules.yml
       - scripts/sync-upstream.mjs
+      - scripts/hana-desktop-smoke-helper.mjs
       - scripts/track-upstream-issues.mjs
       - package.json
       - package-lock.json
       - desktop/src/react/__tests__/services/ws-message-handler.test.ts
       - docs/upstream-issues/**
       - tests/sync-upstream.test.mjs
+      - tests/hana-desktop-smoke-helper.test.mjs
       - tests/upstream-issue-tracker.test.mjs
     vault:
       - projects/openhanako/fork-sync-policy
@@ -206,6 +208,7 @@ notes:
   upstream_repo: liliMozi/openhanako
   permanent_dashboard_pr: "https://github.com/karlorz/openhanako/pull/1"
   permanent_dashboard_pr_policy: "Draft forever, never merge. Use it to review dev vs mirrored upstream main conflicts."
+  fork_sync_post_rebase_gate: "Run `node scripts/sync-upstream.mjs --post-rebase`; Tier 3A local desktop install/version verification must pass before Tier 3B sg01 live smoke. A smoke run against a stale /Applications/HanaAgent.app is invalid."
   remote_server_url: http://100.125.173.118:14500
   gh_default_repo_hint: "Run `gh repo set-default karlorz/openhanako` if gh resolves to upstream."
 ```

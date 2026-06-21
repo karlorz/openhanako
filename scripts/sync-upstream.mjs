@@ -313,6 +313,43 @@ export function buildPrBodyWithDashboard(existingBody, dashboardBlock) {
   return [existingBody.trimEnd(), dashboardBlock].filter(Boolean).join("\n\n");
 }
 
+function numberedManualSteps(steps = []) {
+  return steps.map((step, index) => `  ${index + 1}. ${step}`);
+}
+
+export function renderPostRebaseManualGateReport(rules = loadRules()) {
+  const verification = rules.verification ?? {};
+  const localDesktopGate = verification.localDesktopGate ?? {};
+  const commands = localDesktopGate.commands ?? [];
+  const checks = localDesktopGate.checks ?? [];
+  const liveSmoke = verification.liveSmoke ?? [];
+
+  return [
+    "Tier 3A - Local desktop install/version gate (MANUAL)",
+    "Run before any sg01 smoke. A smoke run is invalid if /Applications/HanaAgent.app still reports the previous version.",
+    ...(commands.length ? [
+      "",
+      "Commands:",
+      "```bash",
+      ...commands,
+      "```",
+    ] : []),
+    ...(checks.length ? [
+      "",
+      "Checks:",
+      ...numberedManualSteps(checks),
+    ] : []),
+    "",
+    "Tier 3B - Live sg01 smoke checklist (MANUAL)",
+    ...numberedManualSteps(liveSmoke),
+    "",
+    `Do NOT mark sync complete in ${rules.releaseTarget.syncLog} until Tier 3A and Tier 3B both pass.`,
+    "",
+    "After manual verification:",
+    `  - Append a row to the sync log in ${rules.releaseTarget.syncLog}`,
+  ];
+}
+
 function preflight(rules) {
   for (const command of ["git", "node", "npx"]) {
     if (!commandExists(command)) {
@@ -757,19 +794,11 @@ function postRebaseVerify(rules) {
   }
 
   print();
-  print(bold("Tier 3 - Live smoke checklist (MANUAL)"));
-  for (const [index, step] of rules.verification.liveSmoke.entries()) {
-    print(`  ${index + 1}. ${step}`);
+  for (const line of renderPostRebaseManualGateReport(rules)) {
+    print(line);
   }
   print();
-  warn(`Do NOT mark sync complete in ${rules.releaseTarget.syncLog} until all live smoke steps pass.`);
-  print();
-  print(bold("After manual verification:"));
-  print("  - Rebuild server through the unified install/upgrade flow when that design is implemented");
-  print("  - Rebuild desktop package and replace /Applications/HanaAgent.app");
-  print(`  - Append a row to the sync log in ${rules.releaseTarget.syncLog}`);
-  print();
-  ok("sync-upstream.mjs complete - awaiting manual Tier 3 + deploy");
+  ok("sync-upstream.mjs complete - awaiting manual Tier 3A desktop gate + Tier 3B live smoke");
 }
 
 function usage() {
