@@ -10,6 +10,7 @@ import {
   parseSyncArgs,
   releaseChannelLabel,
   renderPrDashboardBlock,
+  renderPostRebaseManualGateReport,
   selectLatestReleaseTag,
   verificationCommands,
 } from "../scripts/sync-upstream.mjs";
@@ -59,6 +60,24 @@ describe("sync-upstream rule engine", () => {
 
   it("loads verification commands from the rule file", () => {
     expect(verificationCommands(loadRules())).toContain("npm run build:preload");
+  });
+
+  it("prints the local desktop version gate before the live smoke checklist", () => {
+    const rules = loadRules();
+    const report = renderPostRebaseManualGateReport(rules).join("\n");
+    const desktopGateIndex = report.indexOf("Tier 3A - Local desktop install/version gate");
+    const liveSmokeIndex = report.indexOf("Tier 3B - Live sg01 smoke checklist");
+
+    expect(desktopGateIndex).toBeGreaterThanOrEqual(0);
+    expect(liveSmokeIndex).toBeGreaterThan(desktopGateIndex);
+    expect(rules.verification.localDesktopGate.commands).toContain("SKIP_NOTARIZE=true npm run install:local");
+    expect(report).toContain("node -p \"require('./package.json').version\"");
+    expect(report).toContain("CFBundleShortVersionString");
+    expect(report).toContain("/Applications/HanaAgent.app/Contents/Resources/build-info.json");
+    expect(report).toContain("Settings -> About");
+    expect(report).toContain("node scripts/hana-desktop-smoke-helper.mjs --restart --verify --url http://100.125.173.118:14500");
+    expect(report).toContain("HANA_DESKTOP_SMOKE_TOKEN=<device-key>");
+    expect(report).toContain("Manual fallback path: Settings -> Access -> Connect LAN Server");
   });
 
   it("supports local upstream issue review modes without a submit mode", () => {
