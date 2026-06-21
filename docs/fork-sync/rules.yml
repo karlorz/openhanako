@@ -43,6 +43,7 @@ conflictRules:
     - desktop/main.cjs
     - desktop/preload.cjs
     - tests/server-auth.test.ts
+    - tests/server-connection.test.ts
     - desktop/src/react/__tests__/services/server-connection.test.ts
     - desktop/src/modules/connection-csp.js
     - desktop/src/react/services/resource-url.ts
@@ -52,6 +53,9 @@ conflictRules:
     - desktop/src/react/stores/chat-slice.ts
     - desktop/src/react/stores/selectors/file-refs.ts
     - desktop/src/react/utils/uploaded-session-file.ts
+    - desktop/src/react/utils/preview-file-refresh.ts
+    - desktop/src/react/utils/preview-document-refresh.ts
+    - desktop/src/react/utils/remote-file-preview.ts
     - server/routes/upload.ts
     - tests/csp-sync.test.ts
     - tests/upload-route.test.ts
@@ -64,6 +68,8 @@ conflictRules:
     - desktop/src/react/__tests__/stores/chat-slice.test.ts
     - desktop/src/react/__tests__/stores/selectors/file-refs.test.ts
     - desktop/src/react/__tests__/utils/user-attachment-media.test.ts
+    - tests/plugin-sdk-examples.test.ts
+    - tests/office-workflow-plugin.test.ts
     - package.json
     - package-lock.json
   policies:
@@ -75,6 +81,12 @@ conflictRules:
       class: lan_connect_auth
       risk: high
       resolution: HUMAN REVIEW. Preserve connect probe and query-token behavior.
+    tests/server-connection.test.ts:
+      class: lan_connect_auth
+      risk: medium
+      strategy: preserve-both
+      resolution: Preserve fork LAN device-credential query-token WebSocket coverage while keeping upstream websocket-ticket coverage for non-LAN remote connections.
+      plannedAction: LAN device connections should expect token query fallback; custom_remote/tunnel device connections should still expect wsTicket behavior.
     desktop/src/modules/connection-csp.js:
       class: remote_attachment_preview
       risk: high
@@ -83,6 +95,24 @@ conflictRules:
       class: remote_attachment_preview
       risk: high
       resolution: HUMAN REVIEW. Preserve remote session resource URL synthesis.
+    desktop/src/react/utils/preview-file-refresh.ts:
+      class: remote_attachment_preview
+      risk: medium
+      strategy: preserve-both
+      resolution: HUMAN REVIEW. Preserve the single version-aware retry helper path for local preview refresh; duplicate helper declarations are a failed merge.
+      plannedAction: Keep one retry helper block with file-version comparison, remove duplicate declarations, then run MainContent drag and preview refresh tests.
+    desktop/src/react/utils/preview-document-refresh.ts:
+      class: remote_attachment_preview
+      risk: medium
+      strategy: preserve-both
+      resolution: HUMAN REVIEW. Preserve multi-mount native-root lookup while accepting upstream preview-refresh behavior.
+      plannedAction: Keep nativeRootForWorkbenchMount-based refresh behavior and verify document/workbench preview tests.
+    desktop/src/react/utils/remote-file-preview.ts:
+      class: remote_attachment_preview
+      risk: medium
+      strategy: preserve-both
+      resolution: HUMAN REVIEW. Preserve version-aware remote preview snapshots and scoped workbench resource refs.
+      plannedAction: Keep newestKnownFileVersion and remoteContentRefWithVersion behavior, then verify websocket and workbench preview tests.
     desktop/src/react/__tests__/services/ws-message-handler.test.ts:
       class: remote_attachment_preview
       risk: medium
@@ -112,10 +142,21 @@ conflictRules:
       strategy: defer-to-stable-production-sync
       resolution: Defer lockfile root metadata changes until the attended stable production fork sync resolves package.json.
       plannedAction: Report only. Do not regenerate or pre-bump package-lock.json for the dashboard; stable production fork sync regenerates it after the package version decision.
+    tests/plugin-sdk-examples.test.ts:
+      class: fork_sync_maintenance
+      risk: medium
+      strategy: preserve-both
+      resolution: Preserve upstream SDK tarball coverage and fork office-workflow example coverage.
+      plannedAction: Keep both bundled SDK tarball assertions and office-workflow intentional-template assertions, then run plugin example tests.
+    tests/office-workflow-plugin.test.ts:
+      class: fork_sync_maintenance
+      risk: low
+      resolution: Preserve fork office-workflow example plugin behavior and lint coverage.
 
 verification:
   tier1Tests:
     - tests/server-auth.test.ts
+    - tests/server-connection.test.ts
     - tests/csp-sync.test.ts
     - desktop/src/react/__tests__/services/server-connection.test.ts
     - desktop/src/react/__tests__/components/MainContent.drag.test.tsx
@@ -130,6 +171,8 @@ verification:
     - desktop/src/react/__tests__/utils/user-attachment-media.test.ts
     - desktop/src/react/__tests__/components/RightWorkspacePanel.test.tsx
     - tests/upload-route.test.ts
+    - tests/plugin-sdk-examples.test.ts
+    - tests/office-workflow-plugin.test.ts
   commands:
     - npm run build:main
     - npm run build:preload

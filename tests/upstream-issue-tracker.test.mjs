@@ -20,6 +20,7 @@ describe("upstream issue tracker", () => {
       "local-build-identity-disable-auto-update",
       "fork-sync-issue-tracking-prerelease-policy",
       "fork-dev-loop-maintenance-runbooks",
+      "office-workflow-example-plugin",
       "server-install-upgrade-release-safety",
       "server-reinit-data-failsafe",
       "server-reinit-restore-backup-verification",
@@ -42,7 +43,9 @@ describe("upstream issue tracker", () => {
     expect(status).toContain("lan-csp-ws-auth");
     expect(status).toContain("[#1749](https://github.com/liliMozi/openhanako/issues/1749)");
     expect(status).toContain("[#1811](https://github.com/liliMozi/openhanako/issues/1811)");
+    expect(status).toContain("[#1811](https://github.com/liliMozi/openhanako/issues/1811) CLOSED");
     expect(status).toContain("desktop-temp-upload-session-cache-materialization");
+    expect(status).toContain("office-workflow-example-plugin");
     expect(status).toContain("server-reinit-data-failsafe");
     expect(status).toContain("server-reinit-restore-backup-verification");
     expect(status).toContain("draft/pending-approval");
