@@ -1,4 +1,5 @@
 // tests/workflow-tool.test.js
+import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createWorkflowTool } from "../lib/tools/workflow-tool.ts";
 
@@ -94,7 +95,7 @@ describe("workflow tool", () => {
     const res = await tool.execute("c1", { script: META + `return await agent('x')` }, undefined, undefined, makeCtx()) as any;
     await flush();
 
-    expect(seenPersistDirs[0]).toBe(`/agents/hanako/workflow-sessions/${res.details.taskId}`);
+    expect(seenPersistDirs[0]).toBe(path.join("/agents/hanako/workflow-sessions", res.details.taskId));
     expect(seenPersistDirs[0]).not.toContain(".ephemeral");
   });
 
