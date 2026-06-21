@@ -234,14 +234,15 @@ function filePathFromResourceDescriptor(resource: ResourceChangeEvent['resource'
   if (!resource || typeof resource !== 'object') return null;
   const provider = typeof resource.provider === 'string' ? resource.provider : '';
   const kind = typeof resource.kind === 'string' ? resource.kind : '';
+  const projectedFilePath = typeof resource.filePath === 'string' && resource.filePath.trim()
+    ? resource.filePath
+    : null;
   const isLocal = provider === 'local_fs'
     || kind === 'local-file'
     || kind === 'local_path'
     || kind === 'local-path';
-  if (!isLocal) return null;
-  if (typeof resource.path === 'string' && resource.path.trim()) return resource.path;
-  if (typeof resource.filePath === 'string' && resource.filePath.trim()) return resource.filePath;
-  return null;
+  if (isLocal && typeof resource.path === 'string' && resource.path.trim()) return resource.path;
+  return projectedFilePath;
 }
 
 export function filePathsFromResourceChange(event: ResourceChangeEvent | null | undefined): string[] {
@@ -282,8 +283,10 @@ export function markDeskTreeDirtyForResourceChange(event: ResourceChangeEvent | 
   const filePaths = filePathsFromResourceChange(event);
   if (filePaths.length === 0) return;
   const state = useStore.getState();
-  if (state.deskWorkspaceMountId) return;
-  const basePath = typeof state.deskBasePath === 'string' ? state.deskBasePath : '';
+  const basePath = state.deskWorkspaceMountId
+    ? (typeof state.deskWorkspaceNativeRoot === 'string' ? state.deskWorkspaceNativeRoot : '')
+    : (typeof state.deskBasePath === 'string' ? state.deskBasePath : '');
+  if (!basePath) return;
   for (const filePath of filePaths) {
     const subdir = parentSubdirForWorkspaceFile(basePath, filePath);
     if (subdir == null) continue;

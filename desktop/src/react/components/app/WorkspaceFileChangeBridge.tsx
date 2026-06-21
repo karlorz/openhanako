@@ -26,11 +26,12 @@ function workspaceWatchRoots(basePath: string, expandedPaths: string[]): string[
 export function WorkspaceFileChangeBridge() {
   const deskBasePath = useStore(s => s.deskBasePath);
   const deskWorkspaceMountId = useStore(s => s.deskWorkspaceMountId);
+  const deskWorkspaceNativeRoot = useStore(s => s.deskWorkspaceNativeRoot);
   const deskExpandedPaths = useStore(s => s.deskExpandedPaths);
   const subscriptionsRef = useRef<Map<string, () => void>>(new Map());
   const watchedRoots = useMemo(
-    () => (deskWorkspaceMountId ? [] : workspaceWatchRoots(deskBasePath, deskExpandedPaths)),
-    [deskBasePath, deskExpandedPaths, deskWorkspaceMountId],
+    () => workspaceWatchRoots(deskWorkspaceMountId ? (deskWorkspaceNativeRoot || '') : deskBasePath, deskExpandedPaths),
+    [deskBasePath, deskExpandedPaths, deskWorkspaceMountId, deskWorkspaceNativeRoot],
   );
   const watchedRootsKey = watchedRoots.join('\n');
 
