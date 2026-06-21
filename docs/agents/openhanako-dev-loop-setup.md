@@ -1,6 +1,6 @@
 # OpenHanako Dev-Loop Setup Notes
 
-Generated during the 2026-06-15 remote attachment preview fix closeout.
+Generated during the 2026-06-15 remote attachment preview fix closeout. Last revised during the 2026-06-21 stable sync to upstream `v0.333.6`.
 
 ## Discovery
 
@@ -8,9 +8,9 @@ Generated during the 2026-06-15 remote attachment preview fix closeout.
 - Upstream: `liliMozi/openhanako`
 - Current branch: `dev`
 - GitHub CLI default repo: `karlorz/openhanako`
-- App version: `0.323.0`
+- App version: `0.333.6` after the stable sync rebase; Tier 3 desktop smoke is still required before marking the sync complete.
 - SkillWiki vault: resolved by `skillwiki path`; project wiki path `projects/openhanako`
-- SkillWiki doctor: 32 pass, 1 warn, 0 errors
+- SkillWiki doctor: 32 pass, 6 info, 0 warn, 0 errors
 - Dev-loop dependency probe: usable; required dependencies present
 - Missing optional dependency: `claude-mem` only
 - Existing CI: `.github/workflows/ci.yml`, targets `main` and `dev`
@@ -94,7 +94,7 @@ Ran a manual core `/dev-loop` cycle audit on 2026-06-15 after the remote preview
 - Doctor caveat: `skillwiki doctor` reports `32 pass`, `1 warn`, `0 errors`, but exits non-zero with the warning. Treat the JSON summary as authoritative for blocking decisions, not the exit code alone.
 - GitHub CLI caveat: plain `gh repo view` initially resolved to upstream `liliMozi/openhanako`. Ran `gh repo set-default karlorz/openhanako`; future CI/PR checks should still prefer explicit `--repo karlorz/openhanako` when scripted.
 - CI health: no recent GitHub Actions runs exist on `dev` yet after adding the branch trigger, so the workflow is configured but not proven by a post-change run.
-- Upstream release check: `v0.324.0` is a GitHub prerelease. The sync helper ignores prereleases by default and reports the fork up to date at the `v0.323.0` stable baseline; `--include-prerelease --check` is the explicit prerelease review path.
+- Upstream release check: the 2026-06-21 stable sync rebased local `dev` from the `v0.323.0` baseline onto upstream `v0.333.6`. `node scripts/sync-upstream.mjs --post-rebase` passed Tier 1 and Tier 2; Tier 3 sg01 desktop live smoke remains the completion gate. `--include-prerelease --check` is still only for explicit prerelease candidate review.
 - Codex cache caveat: dev-loop's cached skill copy references `skills/dev-loop/scripts/preflight-inventory.js`, but the Codex plugin package currently stores that helper at plugin root `scripts/preflight-inventory.js`. Use the plugin-root script as the fallback until the packaging layout is repaired upstream.
 
 ## Claude Review Follow-Up
