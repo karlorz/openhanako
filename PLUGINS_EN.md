@@ -213,6 +213,8 @@ export async function execute(input, ctx) {
 
 `resource.read` covers `stat`, `read`, and `list`; `resource.search` covers search, including filename search through provider options; `resource.write` covers `write`, `writeExpectedVersion`, `edit`, `mkdir`, `delete`, `copy`, `rename`, `move`, and `trash`; `resource.materialize` is for turning a resource into a concrete local path; `resource.watch` resolves watch targets. URL resources stay read-only. Plugin-generated artifacts may still be written under `ctx.dataDir` and returned with `stageFile()`, but user resource reads and writes should not use raw local paths or `fs.writeFileSync`.
 
+ResourceIO is the only authority path for user resources. `local-file`, `mount`, `session-file`, `resource`, and `url` refs are resource identities, not guarantees that the plugin can see a host-local path. `stageFile()` is only for plugin-generated artifacts entering the `SessionFile` delivery flow. `ctx.dataDir` and packaged `assets/` are plugin-owned storage where raw `fs` is acceptable; workspace, mount, URL, and SessionFile inputs are not covered by that exception. If a third-party library needs a concrete local path, call `ctx.resources.materialize(ref)` and keep any write-back as an explicit ResourceIO operation instead of mutating the materialized file as the source.
+
 #### Media Delivery
 
 When a tool needs to deliver files, first stage the local file as a `SessionFile` for the current session, then return the staged media item through `details.media.items`:

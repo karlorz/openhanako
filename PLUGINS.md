@@ -255,6 +255,8 @@ export async function execute(input, ctx) {
 
 `resource.read` 覆盖 `stat`、`read`、`list`；`resource.search` 覆盖搜索，包括 provider 选项里的文件名搜索；`resource.write` 覆盖 `write`、`writeExpectedVersion`、`edit`、`mkdir`、`delete`、`copy`、`rename`、`move`、`trash`；`resource.materialize` 用于把资源实体化成本机路径；`resource.watch` 用于解析监听目标。URL resource 保持只读。插件自己生成的文件仍然可以写到 `ctx.dataDir`，再通过 `stageFile()` 返回；用户资源读写不要直接用本地路径和 `fs.writeFileSync`。
 
+ResourceIO 是用户资源的唯一权限入口。`local-file`、`mount`、`session-file`、`resource`、`url` 都是资源身份，不等于插件能拿到宿主本机路径。`stageFile()` 只用于插件生成物进入 `SessionFile` 交付链路，不用于修改用户源文件。`ctx.dataDir` 和插件包内 `assets/` 是插件自有存储，可以使用 raw `fs`；工作区、挂载、URL、SessionFile 输入不能套用这个例外。第三方库必须吃本机路径时，用 `ctx.resources.materialize(ref)`，写回仍然要显式走 ResourceIO，而不是把 materialized 文件当源文件直接改。
+
 #### 媒体交付
 
 工具需要交付文件时，使用 `toolCtx.stageFile()` 把本地文件登记成当前 session 的 `SessionFile`，并直接复用它返回的 `mediaItem`：

@@ -154,6 +154,13 @@ so ResourceIO audit logs can identify the source. Plugin-generated artifacts can
 still be written under `ctx.dataDir` and returned with `stageFile()`, but user
 resource edits should go through `ctx.resources`.
 
+Resource refs are identity objects. A `mount`, `session-file`, `resource`, or
+`url` input should not be converted to a guessed local path by plugin code.
+`stageFile()` is for generated output delivery, while `ctx.resources` is for
+reading, writing, searching, watching, or materializing user resources. When
+`materialize()` is needed for a parser or CLI, treat the returned path as an
+execution boundary and perform any source mutation through ResourceIO.
+
 ## Tool session permissions
 
 Declare `sessionPermission` on Agent-callable tools so Hana can apply the current

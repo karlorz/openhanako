@@ -1167,6 +1167,13 @@ def create_readme(
     lines.extend([
         "",
         "Install by dragging this folder into Hana Settings > Plugins, or place it under the user plugin directory reported by `/api/plugins/settings`.",
+        "",
+        "## File and resource rules",
+        "",
+        "- The sample note tool writes plugin-owned output under `ctx.dataDir`, then returns it through `stageFile()` as SessionFile media.",
+        "- If you add a feature that reads or edits user files, use `ctx.resources` with ResourceRef inputs and declare the matching `resource.read`, `resource.search`, `resource.write`, `resource.materialize`, or `resource.watch` capability.",
+        "- Browser iframe code may open, pick, or request access to resources through `hana.resources.*`, but real file reads and writes belong in server-side plugin tools, routes, or lifecycle code.",
+        "- Do not treat `SessionFile`, mount, URL, or future remote resources as host-local paths. Use `ctx.resources.materialize(ref)` only for libraries that require a concrete execution path, and write back through ResourceIO explicitly.",
     ])
     if include_ui:
         lines.append("This plugin requires full-access because Hana page and widget contributions are route-backed iframe UI.")

@@ -71,6 +71,10 @@ pick, or request access to a resource, but they do not expose direct filesystem
 read or write APIs inside the iframe. Runtime code that actually reads or edits
 user resources should use `ctx.resources` from `@hana/plugin-runtime`.
 
+Do not mirror runtime ResourceIO operations into iframe code. The browser SDK is
+for presentation and host-mediated actions; server-side plugin tools, routes, or
+lifecycle code own the actual resource read/write path.
+
 ## Theme
 
 Use `hana.theme.getSnapshot()` for initial theme data and `hana.theme.subscribe(callback)` for host theme updates. The host also passes `hana-theme` and `hana-css` query parameters for compatibility with simple iframe pages.
