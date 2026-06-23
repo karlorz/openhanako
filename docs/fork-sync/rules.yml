@@ -37,6 +37,37 @@ criticalFileClasses:
 conflictRules:
   defaultResolution: main
   dryRunDefault: true
+  # Fork-only new files that do not exist upstream. The sync helper verifies
+  # these survive every rebase; if any go missing after a sync, the helper
+  # fails the post-rebase gate before Tier 1 tests. Globs use shell-style
+  # matching via minimatch (same as .gitignore). Add every fork-only file
+  # or directory that must not be silently dropped by an upstream rebase.
+  forkOnlyFiles:
+    - scripts/sync-upstream.mjs
+    - scripts/track-upstream-issues.mjs
+    - scripts/install-server.mjs
+    - scripts/pack-server-bundle.mjs
+    - scripts/hana-desktop-smoke-helper.mjs
+    - scripts/write-local-build-info.mjs
+    - tests/sync-upstream.test.mjs
+    - tests/install-server-upgrade.test.mjs
+    - tests/pack-server-bundle.test.mjs
+    - tests/hana-desktop-smoke-helper.test.mjs
+    - tests/upstream-issue-tracker.test.mjs
+    - tests/office-workflow-plugin.test.ts
+    - tests/desktop-network-security-contract.test.ts
+    - docs/fork-sync/rules.yml
+    - docs/server-install.md
+    - docs/reinit-data-failsafe.md
+    - docs/upstream-issues/**
+    - docs/agents/openhanako-dev-loop-setup.md
+    - examples/plugins/office-workflow/**
+    - desktop/src/shared/build-info.cjs
+    - .claude/dev-loop.config.md
+    - CLAUDE.md
+    - CONTEXT.md
+    - FORK_SYNC.md
+    - .gitattributes
   divergingFiles:
     - core/server-auth.ts
     - desktop/src/react/services/server-connection.ts
