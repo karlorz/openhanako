@@ -121,7 +121,7 @@ function makeDepsWithTools(agent, options: { toolNames?: string[]; customToolNam
 }
 
 function bridgeLiveToolSnapshot(names) {
-  const denied = new Set(["computer", "hana_card_guide", "show_card"]);
+  const denied = new Set(["computer", "browser", "hana_card_guide", "show_card"]);
   return names.filter((name) => !denied.has(name));
 }
 
@@ -514,6 +514,7 @@ describe("BridgeSessionManager teardown", () => {
       "media_generate-image",
       "media_generate-video",
       "computer",
+      "browser",
       "hana_card_guide",
       "show_card",
     ];
@@ -552,10 +553,18 @@ describe("BridgeSessionManager teardown", () => {
 
     const expected = bridgeLiveToolSnapshot(liveToolNames);
     expect(setActiveToolsByName).toHaveBeenCalledWith(expected);
+    const createArgs = createAgentSessionMock.mock.calls.at(-1)[0];
+    const exposedToolNames = [
+      ...createArgs.tools.map((tool) => tool.name),
+      ...createArgs.customTools.map((tool) => tool.name),
+    ];
+    expect(exposedToolNames).not.toContain("computer");
+    expect(exposedToolNames).not.toContain("browser");
     expect(setActiveToolsByName.mock.calls[0][0]).not.toContain("retired_tool");
     expect(setActiveToolsByName.mock.calls[0][0]).toContain("media_generate-image");
     expect(setActiveToolsByName.mock.calls[0][0]).toContain("media_generate-video");
     expect(setActiveToolsByName.mock.calls[0][0]).not.toContain("computer");
+    expect(setActiveToolsByName.mock.calls[0][0]).not.toContain("browser");
     expect(setActiveToolsByName.mock.calls[0][0]).not.toContain("hana_card_guide");
     expect(setActiveToolsByName.mock.calls[0][0]).not.toContain("show_card");
     expect(manager.readIndex(agent)["tg_dm_restore_tools@agent-a"].toolNames)
@@ -569,6 +578,7 @@ describe("BridgeSessionManager teardown", () => {
       "todo_write",
       "media_generate-image",
       "computer",
+      "browser",
       "show_card",
     ];
     const manager = new BridgeSessionManager(makeDepsWithTools(agent, {
@@ -608,6 +618,8 @@ describe("BridgeSessionManager teardown", () => {
 
     const expected = bridgeLiveToolSnapshot(liveToolNames);
     expect(setActiveToolsByName).toHaveBeenCalledWith(expected);
+    const createArgs = createAgentSessionMock.mock.calls.at(-1)[0];
+    expect(createArgs.tools.map((tool) => tool.name)).not.toContain("browser");
     const indexEntry = manager.readIndex(agent)["tg_dm_compact_tools@agent-a"];
     expect(indexEntry.toolNames).toEqual(expected);
   });
