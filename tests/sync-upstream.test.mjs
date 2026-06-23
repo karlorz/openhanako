@@ -4,8 +4,11 @@ import {
   buildConflictPlan,
   buildPrBodyWithDashboard,
   changedDivergingFiles,
+  forkOnlyFilePatterns,
   ISSUE_COMMANDS,
   loadRules,
+  minimatch,
+  missingForkOnlyFiles,
   parseMergeTreeConflictingFiles,
   parseSyncArgs,
   releaseChannelLabel,
@@ -56,6 +59,55 @@ describe("sync-upstream rule engine", () => {
         rules,
       ),
     ).toEqual(["core/server-auth.ts", "desktop/src/react/services/resource-url.ts"]);
+  });
+
+  it("loads fork-only file patterns for the post-rebase presence gate", () => {
+    const patterns = forkOnlyFilePatterns(loadRules());
+
+    expect(patterns).toContain("scripts/sync-upstream.mjs");
+    expect(patterns).toContain("FORK_SYNC.md");
+    expect(patterns).toContain("docs/upstream-issues/**");
+    expect(patterns.some((p) => p.startsWith("examples/plugins/office-workflow"))).toBe(true);
+  });
+
+  it("matches glob patterns with the built-in minimatch helper", () => {
+    expect(minimatch("docs/upstream-issues/README.md", "docs/upstream-issues/**")).toBe(true);
+    expect(minimatch("docs/upstream-issues/drafts/foo.md", "docs/upstream-issues/**")).toBe(true);
+    expect(minimatch("docs/server-install.md", "docs/upstream-issues/**")).toBe(false);
+    expect(minimatch("examples/plugins/office-workflow/README.md", "examples/plugins/office-workflow/**")).toBe(true);
+    expect(minimatch("examples/plugins/office-workflow/lib/x.js", "examples/plugins/office-workflow/**")).toBe(true);
+    expect(minimatch("examples/plugins/other/x.js", "examples/plugins/office-workflow/**")).toBe(false);
+    expect(minimatch("scripts/sync-upstream.mjs", "scripts/sync-upstream.mjs")).toBe(true);
+    expect(minimatch("scripts/other.mjs", "scripts/sync-upstream.mjs")).toBe(false);
+  });
+
+  it("reports fork-only patterns that match zero tracked files after a sync", () => {
+    const rules = {
+      conflictRules: {
+        forkOnlyFiles: [
+          "scripts/sync-upstream.mjs",
+          "docs/upstream-issues/**",
+          "examples/plugins/office-workflow/**",
+          "scripts/missing-fork-feature.mjs",
+        ],
+      },
+    };
+    const trackedFiles = [
+      "scripts/sync-upstream.mjs",
+      "docs/upstream-issues/README.md",
+      "docs/upstream-issues/drafts/foo.md",
+      "examples/plugins/office-workflow/index.js",
+      "README.md",
+    ];
+
+    expect(missingForkOnlyFiles(rules, trackedFiles)).toEqual([
+      "scripts/missing-fork-feature.mjs",
+    ]);
+  });
+
+  it("returns an empty list when no fork-only patterns are configured", () => {
+    expect(missingForkOnlyFiles({ conflictRules: {} }, ["README.md"])).toEqual([]);
+    expect(missingForkOnlyFiles({ conflictRules: { forkOnlyFiles: [] } }, [])).toEqual([]);
   });
 
   it("loads verification commands from the rule file", () => {
