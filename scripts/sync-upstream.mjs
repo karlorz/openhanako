@@ -102,6 +102,82 @@ export function changedDivergingFiles(upstreamChangedFiles, rules = loadRules())
   return upstreamChangedFiles.filter((file) => diverging.has(file));
 }
 
+// Fork-only new files that do not exist upstream. Tracked separately from
+// divergingFiles (which are files where the fork modified upstream's version).
+// forkOnlyFiles are files the fork added; an upstream rebase must not silently
+// drop them. Entries may be glob patterns (shell-style, minimatch-compatible).
+export function forkOnlyFilePatterns(rules = loadRules()) {
+  return rules.conflictRules?.forkOnlyFiles ?? [];
+}
+
+// Expand forkOnlyFiles patterns against the current `git ls-files` output and
+// return the patterns that matched zero tracked files — i.e., files the fork
+// claims but that are missing from the working tree after a sync/rebase.
+// `trackedFiles` is optional; when omitted, the helper shells out to git.
+export function missingForkOnlyFiles(rules = loadRules(), trackedFiles = null) {
+  const patterns = forkOnlyFilePatterns(rules);
+  if (patterns.length === 0) {
+    return [];
+  }
+  const tracked = Array.isArray(trackedFiles)
+    ? trackedFiles
+    : gitLines(["ls-files"]);
+  if (tracked.length === 0) {
+    return [];
+  }
+  const matched = new Set();
+  for (const pattern of patterns) {
+    if (pattern.includes("*")) {
+      for (const file of tracked) {
+        if (minimatch(file, pattern)) {
+          matched.add(pattern);
+        }
+      }
+    } else if (tracked.includes(pattern)) {
+      matched.add(pattern);
+    }
+  }
+  return patterns.filter((pattern) => !matched.has(pattern));
+}
+
+// Minimal minimatch-compatible glob matcher (shell-style * and ** with /).
+// Supports the subset used by forkOnlyFiles patterns: literal paths, `dir/**`,
+// `dir/*`, and `**` segments. No brace expansion. Returns true if `path`
+// matches `pattern`.
+export function minimatch(path, pattern) {
+  if (!pattern.includes("*")) {
+    return path === pattern;
+  }
+  const regex = globToRegex(pattern);
+  return regex.test(path);
+}
+
+function globToRegex(pattern) {
+  // Normalize ** to a placeholder, escape regex specials, then expand.
+  const segments = pattern.split("/");
+  let re = "";
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
+    if (seg === "**") {
+      // ** matches zero or more path segments
+      if (i === segments.length - 1) {
+        re += "(?:.*/)?[^/]*";
+      } else {
+        re += "(?:.*/)?";
+      }
+    } else if (seg === "*") {
+      re += "[^/]*";
+    } else {
+      // Escape regex specials in the literal segment
+      re += seg.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, "[^/]*");
+    }
+    if (i < segments.length - 1) {
+      re += "/";
+    }
+  }
+  return new RegExp(`^${re}$`);
+}
+
 export function verificationCommands(rules = loadRules()) {
   const tests = rules.verification?.tier1Tests?.map((testPath) => `npx vitest run ${testPath}`) ?? [];
   return [...tests, ...(rules.verification?.commands ?? [])];
@@ -508,6 +584,17 @@ function doCheck(rules, includePrerelease) {
   }
 
   print();
+  const missing = missingForkOnlyFiles(rules);
+  print(bold("Fork-only new files (tracked for post-rebase presence gate):"));
+  if (missing.length === 0) {
+    print(green(`  ok all ${forkOnlyFilePatterns(rules).length} fork-only file pattern(s) present in working tree.`));
+  } else {
+    for (const pattern of missing) {
+      print(red(`  x ${pattern} - MISSING from working tree (fork feature at risk)`));
+    }
+  }
+
+  print();
   print(bold("Next step:"));
   print(`  Run ${bold("node scripts/sync-upstream.mjs")} (no --check) to sync.`);
   print(`  Use ${bold("node scripts/sync-upstream.mjs --include-prerelease --check")} only for prerelease candidate review.`);
@@ -739,6 +826,31 @@ function doSync(rules, includePrerelease) {
   postRebaseVerify(rules);
 }
 
+// Tier 0 gate: verify every forkOnlyFile pattern still matches at least one
+// tracked file after the rebase. Catches accidental loss of fork-only new
+// files (features, scripts, docs) that an upstream rebase could silently drop
+// when upstream adds a colliding path or a merge tool picks the wrong side.
+function verifyForkOnlyFilesPresent(rules) {
+  print();
+  print(bold("Tier 0 - Fork-only file presence gate"));
+  const missing = missingForkOnlyFiles(rules);
+  if (missing.length === 0) {
+    ok("all fork-only files present after rebase");
+    return;
+  }
+  print(red(`x ${missing.length} fork-only file pattern(s) missing after rebase:`));
+  for (const pattern of missing) {
+    print(red(`  - ${pattern}`));
+  }
+  print();
+  die(
+    "Fork-only files missing after rebase. An upstream rebase likely dropped a fork feature.\n" +
+    "Recover with: git rebase --abort (then re-apply the fork file from the pre-rebase HEAD)\n" +
+    "or add the file back from git history: git checkout ORIG_HEAD -- <path>\n" +
+    "Do NOT proceed to Tier 1 with missing fork files.",
+  );
+}
+
 function grepCheck(check) {
   const filePath = path.join(ROOT, check.file);
   if (!fs.existsSync(filePath)) {
@@ -750,6 +862,7 @@ function grepCheck(check) {
 }
 
 function postRebaseVerify(rules) {
+  verifyForkOnlyFilesPresent(rules);
   print();
   print(bold("Tier 1 - Unit tests"));
   let testFail = false;
