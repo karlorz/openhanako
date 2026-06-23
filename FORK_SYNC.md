@@ -39,8 +39,9 @@ Current status:
 - **Stable release-tag sync, manual.** Pull when upstream cuts a new non-prerelease release tag. Do NOT track `main` HEAD and do NOT treat prereleases as production sync targets.
 - **Permanent PR dashboard.** PR [#1](https://github.com/karlorz/openhanako/pull/1) is a permanent draft dashboard from `dev` to `main`. It is for human review and agent drilldown only; never merge it.
 - **Dashboard base.** `origin/main` is a disposable mirror of `liliMozi/openhanako/main`. The conflict dashboard helper may replace `origin/main` from `upstream/main`, but it must never mutate `dev`, the index, or the working tree.
-- **Machine-readable rules:** `docs/fork-sync/rules.yml` is the source of truth for release-target policy, diverging-file rules, issue-tracking states, and verification commands. This runbook explains the same policy for humans.
-- **Detection:** run `node scripts/sync-upstream.mjs --check` anytime. It compares the latest stable upstream release tag against the sync log (below) and tells you if there's something to sync.
+- **Machine-readable rules:** `docs/fork-sync/rules.yml` is the source of truth for release-target policy, diverging-file rules, fork-only-file rules, issue-tracking states, and verification commands. This runbook explains the same policy for humans.
+- **Detection:** run `node scripts/sync-upstream.mjs --check` anytime. It compares the latest stable upstream release tag against the sync log (below), reports diverging files upstream touched, and verifies all `forkOnlyFiles` patterns still match tracked files in the working tree.
+- **Fork-only file protection:** `docs/fork-sync/rules.yml` `conflictRules.forkOnlyFiles` lists fork-only new files (scripts, tests, docs, examples, config) that do not exist upstream. After every rebase, the sync helper runs a Tier 0 gate that verifies each pattern still matches at least one tracked file. If any go missing, the sync fails before Tier 1 tests — an upstream rebase that silently drops a fork feature is caught here, not by indirect test breakage.
 - **Dashboard refresh:** run `node scripts/sync-upstream.mjs --conflict-plan` anytime. It refreshes `origin/main` from `upstream/main`, computes a dry-run merge-tree plan against `origin/dev`, updates the generated block in PR #1, and leaves `dev` untouched.
 - **Package version ownership:** package version and lockfile root metadata changes are deferred to the attended stable production fork sync. Do not pre-bump `package.json` or `package-lock.json` just to reduce dashboard conflicts.
 - **Prerelease review:** run `node scripts/sync-upstream.mjs --include-prerelease --check` only when intentionally reviewing a prerelease candidate. This is not the normal production update path.
@@ -141,9 +142,10 @@ What the script does:
 3. **Detect** — compare latest upstream tag vs the sync log (below). Exit with "up to date" if no new tag.
 4. **Preflight report** — list which diverging files upstream touched since the last sync. Cat this doc's per-file policy tables.
 5. **Rebase** — `git rebase <latest-tag>` on `dev`. If clean → proceed. If conflict → **STOP**, drop to shell, print the per-file policy for the conflicting files, wait for manual resolution, resume on your signal.
-6. **Tier 1 — Unit tests:** run the LAN auth/connect tests plus the remote attachment/resource suite. **STOP if any fail.** Do not deploy.
-7. **Tier 2 — Bundle grep:** after rebuilding bundles, verify `grep -c "connect:probe" desktop/main.bundle.cjs` ≥ 1, `grep -c "probeConnection" desktop/preload.bundle.cjs` ≥ 1, and the packaged `connection-csp.js` still contains `media-src` plus remote resource-origin logic. **STOP if missing.**
-8. **Tier 3A — Local desktop install/version gate (manual, print-only):** before any live smoke, rebuild and replace the installed macOS app:
+6. **Tier 0 — Fork-only file presence gate:** verify every `conflictRules.forkOnlyFiles` pattern in `docs/fork-sync/rules.yml` still matches at least one tracked file in the working tree. If any are missing, **STOP** — an upstream rebase likely dropped a fork feature. Recover with `git rebase --abort` or re-add the file from `ORIG_HEAD`. Do not proceed to Tier 1 with missing fork files.
+7. **Tier 1 — Unit tests:** run the LAN auth/connect tests plus the remote attachment/resource suite. **STOP if any fail.** Do not deploy.
+8. **Tier 2 — Bundle grep:** after rebuilding bundles, verify `grep -c "connect:probe" desktop/main.bundle.cjs` ≥ 1, `grep -c "probeConnection" desktop/preload.bundle.cjs` ≥ 1, and the packaged `connection-csp.js` still contains `media-src` plus remote resource-origin logic. **STOP if missing.**
+9. **Tier 3A — Local desktop install/version gate (manual, print-only):** before any live smoke, rebuild and replace the installed macOS app:
    ```bash
    node -p "require('./package.json').version"
    SKIP_NOTARIZE=true npm run install:local
@@ -153,7 +155,7 @@ What the script does:
    cat /Applications/HanaAgent.app/Contents/Resources/build-info.json
    ```
    Confirm `CFBundleShortVersionString`, `CFBundleVersion`, and `build-info.json.appVersion` all match the `package.json` version; `build-info.json.channel` is `local`; `updateEnabled` is `false`; and Settings → About shows the same `v{package_version}` plus local build identity. A smoke run against an old `/Applications/HanaAgent.app` is invalid.
-9. **Tier 3B — Live smoke (manual):** print a checklist, refuse "complete" until you confirm:
+10. **Tier 3B — Live smoke (manual):** print a checklist, refuse "complete" until you confirm:
    - Clear `localStorage` in the desktop app, then reconnect by either helper or UI:
      - Repeatable helper path, when the target LAN connection was already saved:
        ```bash
@@ -163,7 +165,7 @@ What the script does:
      - Manual fallback path: Settings → Access → Connect LAN Server → URL + key → Connect (should succeed with NO console hack)
    - DevTools Console: no `Refused to connect ... CSP` errors; WS establishes (no `[WS_DISCONNECTED]`)
    - Paste/upload an image, send it, switch to another chat, switch back, and confirm the chat thumbnail and Conversation Files preview still render
-10. **Log** — append to the sync log below with: date, tag synced, conflicts encountered + resolution, test result.
+11. **Log** — append to the sync log below with: date, tag synced, conflicts encountered + resolution, test result.
 
 ## Verification contract (what "the fix still works" means)
 
