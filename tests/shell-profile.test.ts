@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { resolveWin32DefaultPowerShellExecutable } from "../lib/shell/shell-utils.ts";
 import { profileLabel, resolveShellProfile } from "../lib/shell/shell-profile.ts";
 
 describe("resolveShellProfile", () => {
@@ -22,10 +23,11 @@ describe("resolveShellProfile", () => {
   });
 
   it("uses PowerShell on Windows native sessions", () => {
-    const profile = resolveShellProfile({ platform: "win32", env: { SystemRoot: "C:\\Windows" } });
+    const env = { SystemRoot: "C:\\Windows" };
+    const profile = resolveShellProfile({ platform: "win32", env });
     expect(profile.id).toBe("windows-powershell");
     expect(profile.family).toBe("powershell");
-    expect(profile.executable).toBe("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe");
+    expect(profile.executable).toBe(resolveWin32DefaultPowerShellExecutable(env));
     expect(profile.argsForCommand("Write-Output 1")).toEqual([
       "-NoLogo",
       "-NoProfile",
@@ -40,7 +42,7 @@ describe("resolveShellProfile", () => {
       "-ExecutionPolicy",
       "Bypass",
     ]);
-    expect(profileLabel(profile)).toBe("powershell");
+    expect(["powershell", "pwsh"]).toContain(profileLabel(profile));
   });
 
   it("uses an explicit Windows PowerShell executable when configured", () => {

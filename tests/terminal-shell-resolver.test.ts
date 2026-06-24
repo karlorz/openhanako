@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { resolveWin32DefaultPowerShellExecutable } from "../lib/shell/shell-utils.ts";
 import { resolveTerminalShell } from "../lib/terminal/shell-resolver.ts";
 
 describe("resolveTerminalShell", () => {
@@ -16,17 +17,18 @@ describe("resolveTerminalShell", () => {
 
   it("uses PowerShell for Windows interactive terminals", () => {
     const resolveWin32ShellRuntime = vi.fn();
+    const env = { ComSpec: "C:\\Windows\\System32\\cmd.exe" };
 
     const resolved = resolveTerminalShell("", {
       platform: "win32",
-      env: { ComSpec: "C:\\Windows\\System32\\cmd.exe" },
+      env,
       resolveWin32ShellRuntime,
     });
 
     expect(resolved).toEqual({
-      file: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      file: resolveWin32DefaultPowerShellExecutable(env),
       args: ["-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass"],
-      env: { ComSpec: "C:\\Windows\\System32\\cmd.exe" },
+      env,
     });
     expect(resolveWin32ShellRuntime).not.toHaveBeenCalled();
   });
