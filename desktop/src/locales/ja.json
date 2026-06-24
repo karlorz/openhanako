@@ -981,6 +981,9 @@
       "system": "システム",
       "hardwareAcceleration": "ハードウェアアクセラレーション",
       "hardwareAccelerationHint": "GPU でウィンドウを描画します。オフにすると次回起動からソフトウェア描画を使い、Windows の GPU ドライバー起因の起動クラッシュ復旧に役立ちます。",
+      "sidebar": "サイドバー",
+      "sessionListSingleLine": "セッション一覧を 1 行表示",
+      "sessionListSingleLineHint": "オンにすると各セッションを 1 行で表示します。ホバー時に右側の操作が現れ、タイトルは省略記号で短くなります。",
       "shortcuts": "ショートカット",
       "voiceRecordingShortcut": "音声録音/送信",
       "voiceRecordingShortcutHint": "メインチャット画面にフォーカスがあるとき、1 回押すと録音開始、もう 1 回押すと終了して送信します。"

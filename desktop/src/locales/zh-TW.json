@@ -981,6 +981,9 @@
       "system": "系統",
       "hardwareAcceleration": "硬體加速",
       "hardwareAccelerationHint": "使用顯示卡繪製視窗內容。關閉後會在下次啟動使用軟體渲染，可用於恢復 Windows 顯示卡驅動導致的啟動閃退。",
+      "sidebar": "側邊欄",
+      "sessionListSingleLine": "會話列表單行顯示",
+      "sessionListSingleLineHint": "開啟後，每條會話只佔一行；滑鼠懸停時右側按鈕出現，標題自動縮短並顯示省略號。",
       "shortcuts": "快捷鍵",
       "voiceRecordingShortcut": "語音錄製/傳送",
       "voiceRecordingShortcutHint": "主聊天頁面聚焦時，按一次開始錄音，再按一次結束並傳送。"

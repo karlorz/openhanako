@@ -981,6 +981,9 @@
       "system": "시스템",
       "hardwareAcceleration": "하드웨어 가속",
       "hardwareAccelerationHint": "GPU로 앱 창을 렌더링합니다. 끄면 다음 실행부터 소프트웨어 렌더링을 사용해 Windows GPU 드라이버로 인한 시작 충돌 복구에 도움이 됩니다.",
+      "sidebar": "사이드바",
+      "sessionListSingleLine": "세션 목록 한 줄 표시",
+      "sessionListSingleLineHint": "켜면 각 세션이 한 줄만 사용해요. 마우스를 올리면 오른쪽 작업 버튼이 나타나고 제목은 말줄임표로 줄어들어요.",
       "shortcuts": "단축키",
       "voiceRecordingShortcut": "음성 녹음/전송",
       "voiceRecordingShortcutHint": "메인 채팅 화면에 포커스가 있을 때 한 번 누르면 녹음을 시작하고, 다시 누르면 종료 후 전송합니다."
