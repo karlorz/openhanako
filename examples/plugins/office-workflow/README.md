@@ -19,6 +19,28 @@ product or vendor (no Heimatec, no Product Intel, no real email sending).
 - Manual send tracking (`sent` is a workflow state with audit metadata;
   this plugin does not deliver email).
 
+## Storage and Resource Boundary
+
+This template stores workflow records and audit history in plugin-private
+JSON files under `ctx.dataDir`. That is the right place for internal state
+owned by the plugin: record status, requester metadata, generated email
+drafts, and append-only audit events.
+
+User-owned files belong to OpenHanako resources, not plugin-private paths.
+When a workflow needs to read or update files a user can see in chat,
+Conversation Files, a workspace, or another plugin, use ResourceIO through
+`ctx.resources`. Keep the resource reference (`SessionFile`, resource ID,
+or URL) in the workflow record and read or write the resource through
+`ctx.resources` with version-aware operations such as `writeExpectedVersion`
+when modifying user-visible content. Do not write user resources directly
+with `fs` paths under `ctx.dataDir`.
+
+This example does not currently expose agent-callable tools. If a future
+version adds tools, each tool must declare explicit `sessionPermission`
+metadata, for example `readOnly`, `plugin_output`, or
+`external_side_effect`, so the host can apply the right session permission
+policy before an agent invokes it.
+
 ## Status Model
 
 | Transition | Allowed from | Result |
