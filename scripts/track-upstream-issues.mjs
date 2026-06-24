@@ -319,6 +319,19 @@ export const TRACKED_FIXES = [
     ],
   },
   {
+    id: "office-workflow-resourceio-session-permission",
+    title: "Office workflow example documents ResourceIO and sessionPermission boundaries",
+    classification: "fork-only",
+    status: "tracked/no-upstream-issue",
+    commits: ["v0.341.19-sync"],
+    grouping: "examples/plugins: document ResourceIO and sessionPermission boundary",
+    searches: [],
+    notes: [
+      "Fork example documentation follow-up for upstream v0.341.19 SDK contract drift.",
+      "Documents when workflow state belongs in ctx.dataDir versus ctx.resources, and requires explicit sessionPermission metadata if the example later adds agent-callable tools.",
+    ],
+  },
+  {
     id: "server-install-upgrade-release-safety",
     title: "Fork server install and upgrade release safety",
     classification: "fork-only",

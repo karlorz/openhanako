@@ -13,6 +13,7 @@ This file tracks local fork fixes against upstream GitHub issues. The source of 
 | fork-sync-issue-tracking-prerelease-policy | fork-only | tracked/no-upstream-issue | none | docs: add fork sync policy and upstream issue helper |
 | fork-dev-loop-maintenance-runbooks | fork-only | tracked/no-upstream-issue | none | docs/chore: dev-loop setup and retired sg01 deploy helper |
 | office-workflow-example-plugin | fork-only | tracked/no-upstream-issue | none | examples/plugins: office-workflow template and lint hygiene |
+| office-workflow-resourceio-session-permission | fork-only | tracked/no-upstream-issue | none | examples/plugins: document ResourceIO and sessionPermission boundary |
 | server-install-upgrade-release-safety | fork-only | tracked/no-upstream-issue | none | install-server: verified release assets, safe upgrade, preserved service context |
 | server-reinit-data-failsafe | fork-only | tracked/no-upstream-issue | none | install-server: backup-gated reinit-data with operational preserve and latest full-state restore |
 | server-reinit-restore-backup-verification | fork-only | tracked/no-upstream-issue | none | install-server: reject wrong-root restore backups before data-root replacement |

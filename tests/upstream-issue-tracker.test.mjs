@@ -21,6 +21,7 @@ describe("upstream issue tracker", () => {
       "fork-sync-issue-tracking-prerelease-policy",
       "fork-dev-loop-maintenance-runbooks",
       "office-workflow-example-plugin",
+      "office-workflow-resourceio-session-permission",
       "server-install-upgrade-release-safety",
       "server-reinit-data-failsafe",
       "server-reinit-restore-backup-verification",
@@ -46,6 +47,7 @@ describe("upstream issue tracker", () => {
     expect(status).toContain("[#1811](https://github.com/liliMozi/openhanako/issues/1811) CLOSED");
     expect(status).toContain("desktop-temp-upload-session-cache-materialization");
     expect(status).toContain("office-workflow-example-plugin");
+    expect(status).toContain("office-workflow-resourceio-session-permission");
     expect(status).toContain("server-reinit-data-failsafe");
     expect(status).toContain("server-reinit-restore-backup-verification");
     expect(status).toContain("draft/pending-approval");
