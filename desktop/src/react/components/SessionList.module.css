@@ -179,9 +179,21 @@
 }
 
 .sessionItemSingleLine {
-    min-height: 31px;
-    padding-top: 4px;
-    padding-bottom: 4px;
+    --session-single-line-track-height: 20px;
+
+    min-height: 30px;
+    padding-top: 5px;
+    padding-bottom: 5px;
+}
+
+.sessionItemSingleLine .sessionItemHeader {
+    height: var(--session-single-line-track-height);
+}
+
+.sessionItemSingleLine .sessionItemTitle,
+.sessionItemSingleLine .sessionRenameInput {
+    height: var(--session-single-line-track-height);
+    line-height: var(--session-single-line-track-height);
 }
 
 @media (any-hover: hover) and (any-pointer: fine) {
