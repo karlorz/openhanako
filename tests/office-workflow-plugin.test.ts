@@ -46,6 +46,18 @@ describe("office-workflow plugin: manifest, docs, and source shape", () => {
     expect(readme).not.toContain("heimatec-automation");
   });
 
+  it("documents the ctx.dataDir, ResourceIO, and sessionPermission boundary", () => {
+    const readme = fs.readFileSync(path.join(pluginDir, "README.md"), "utf-8");
+
+    expect(readme).toContain("ctx.dataDir");
+    expect(readme).toContain("ctx.resources");
+    expect(readme).toContain("SessionFile");
+    expect(readme).toContain("writeExpectedVersion");
+    expect(readme).toContain("sessionPermission");
+    expect(readme).toContain("does not currently expose agent-callable tools");
+    expect(readme).toContain("Do not write user resources directly");
+  });
+
   it("exposes the workflow store, email draft, routes, and UI source", () => {
     expect(fs.existsSync(path.join(pluginDir, "lib", "workflow-store.js"))).toBe(true);
     expect(fs.existsSync(path.join(pluginDir, "lib", "email-draft.js"))).toBe(true);
