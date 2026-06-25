@@ -2,7 +2,7 @@
     flex: 0 0 auto;
     display: flex;
     flex-direction: column;
-    padding: var(--space-sm) var(--space-md);
+    padding: var(--space-8) var(--space-16);
     gap: 4px;
     transition: gap 0.25s var(--ease-out);
 }

@@ -13,7 +13,7 @@
     display: flex;
     align-items: center;
     justify-content: flex-start;
-    padding: var(--space-xl) var(--space-lg);
+    padding: var(--space-40) var(--space-24);
     pointer-events: none;
     transition: left var(--duration-slow) var(--ease-out);
 }
@@ -50,7 +50,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: var(--space-md) var(--space-lg);
+    padding: var(--space-16) var(--space-24);
     border-bottom: 1px solid var(--overlay-light);
     flex-shrink: 0;
 }
@@ -82,7 +82,7 @@
 .floatingPanelBody {
     flex: 1;
     overflow-y: auto;
-    padding: var(--space-md) var(--space-lg);
+    padding: var(--space-16) var(--space-24);
     scroll-behavior: smooth;
 }
 
@@ -170,7 +170,7 @@
 
 /* 详情视图里的消息 */
 .activityDetailMsg {
-    margin-bottom: var(--space-md);
+    margin-bottom: var(--space-16);
 }
 
 .activityDetailMsgUser {
@@ -208,7 +208,7 @@
     align-items: center;
     gap: 6px;
     margin-left: auto;
-    margin-right: var(--space-sm);
+    margin-right: var(--space-8);
 }
 
 .actPromoteBtn {
@@ -223,7 +223,7 @@
     border-radius: var(--radius-sm);
     cursor: default;
     margin-left: auto;
-    margin-right: var(--space-sm);
+    margin-right: var(--space-8);
     transition: color var(--duration-fast), border-color var(--duration-fast), background var(--duration-fast);
     white-space: nowrap;
 }
@@ -237,7 +237,7 @@
 .activityCards {
     display: flex;
     flex-direction: column;
-    gap: var(--space-sm);
+    gap: var(--space-8);
 }
 
 /* Sidebar 计数 badge */
@@ -255,7 +255,7 @@
 .automationList {
     display: flex;
     flex-direction: column;
-    gap: var(--space-xs);
+    gap: var(--space-4);
 }
 
 .autoItem {
@@ -471,7 +471,7 @@
     font-size: var(--fs-caption);
     color: var(--text-muted);
     text-align: center;
-    padding: var(--space-xl) 0;
+    padding: var(--space-40) 0;
     line-height: 1.6;
 }
 
@@ -533,7 +533,7 @@
     max-height: 18rem;
     overflow-y: auto;
     overscroll-behavior: contain;
-    padding: var(--space-md);
+    padding: var(--space-16);
     border: var(--panel-card-border);
     border-top: 0;
     border-bottom-right-radius: var(--radius-chat-card);
@@ -552,7 +552,7 @@
 .actCard {
     border: 1px solid var(--overlay-light);
     border-radius: var(--radius-md);
-    padding: var(--space-md);
+    padding: var(--space-16);
     transition: border-color var(--duration-fast), box-shadow var(--duration-fast);
     background: var(--bg-card, var(--bg));
 }
@@ -565,8 +565,8 @@
 .actCardHead {
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
-    margin-bottom: var(--space-xs);
+    gap: var(--space-8);
+    margin-bottom: var(--space-4);
 }
 
 .actCardAvatar {
@@ -602,13 +602,13 @@
     font-size: var(--fs-ui);
     color: var(--text);
     line-height: 1.6;
-    margin-bottom: var(--space-xs);
+    margin-bottom: var(--space-4);
 }
 
 .actCardMeta {
     display: flex;
     align-items: center;
-    gap: var(--space-md);
+    gap: var(--space-16);
     font-size: var(--fs-hint);
     color: var(--text-muted);
 }
@@ -641,7 +641,7 @@
 
 .activityEmpty {
     text-align: center;
-    padding: var(--space-xl) var(--space-sm);
+    padding: var(--space-40) var(--space-8);
     color: var(--text-muted);
     font-size: var(--fs-ui);
 }
@@ -651,7 +651,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: var(--space-sm) var(--space-md);
+    padding: var(--space-8) var(--space-16);
     background: var(--overlay-light);
     border-bottom: 1px solid var(--overlay-medium);
     font-size: var(--fs-caption);
@@ -662,7 +662,7 @@
 .readonlyBannerInfo {
     display: flex;
     align-items: center;
-    gap: var(--space-md);
+    gap: var(--space-16);
 }
 
 .readonlyBannerTime {
@@ -835,11 +835,11 @@
 }
 
 .bridgeContactList {
-    padding: var(--space-sm) 0;
+    padding: var(--space-8) 0;
 }
 
 .bridgeContactEmpty {
-    padding: var(--space-lg) var(--space-md);
+    padding: var(--space-24) var(--space-16);
     text-align: center;
     font-size: var(--fs-caption);
     color: var(--text-muted);
@@ -848,7 +848,7 @@
 .bridgeContactItem {
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
+    gap: var(--space-8);
     padding: 8px 12px;
     cursor: default;
     transition: background var(--duration-instant);
@@ -913,7 +913,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 6px var(--space-md);
+    padding: 6px var(--space-16);
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
 }
@@ -956,7 +956,7 @@
 .bridgeChatMessages {
     flex: 1;
     overflow-y: auto;
-    padding: var(--space-lg) var(--space-md) var(--space-md);
+    padding: var(--space-24) var(--space-16) var(--space-16);
     scroll-behavior: smooth;
 }
 
@@ -964,18 +964,18 @@
     text-align: center;
     color: var(--text-muted);
     font-size: var(--fs-caption);
-    padding: var(--space-xl) 0;
+    padding: var(--space-40) 0;
 }
 
 .bridgeBubbleRow {
     display: flex;
-    margin-bottom: var(--space-sm);
+    margin-bottom: var(--space-8);
 }
 
 .bridgeBubbleWrap {
     display: flex;
     flex-direction: column;
-    margin-bottom: var(--space-sm);
+    margin-bottom: var(--space-8);
 }
 
 .bridgeBubbleIn {
@@ -988,7 +988,7 @@
 
 .bridgeBubble {
     max-width: 92%;
-    padding: var(--space-sm) var(--space-md);
+    padding: var(--space-8) var(--space-16);
     border-radius: var(--radius-md);
     font-size: var(--fs-title);
     line-height: 1.75;
@@ -1018,7 +1018,7 @@
     font-size: var(--fs-hint);
     color: var(--text-muted);
     margin-top: 2px;
-    padding: 0 var(--space-xs);
+    padding: 0 var(--space-4);
 }
 
 /* 未配置蒙版 */

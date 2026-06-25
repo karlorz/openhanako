@@ -48,7 +48,7 @@
   width: 14px;
   height: 14px;
   color: var(--text-muted);
-  margin-left: var(--space-sm);
+  margin-left: var(--space-8);
   transition: transform var(--duration-fast) var(--ease-out);
 }
 

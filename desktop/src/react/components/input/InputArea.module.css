@@ -8,7 +8,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: var(--space-sm);
+    gap: var(--space-8);
     flex-wrap: nowrap;
 }
 
@@ -297,10 +297,10 @@
 .context-ring-menu {
     display: inline-flex;
     flex-direction: column;
-    gap: var(--space-xs);
+    gap: var(--space-4);
     width: max-content;
     min-width: 0;
-    padding: var(--space-xs);
+    padding: var(--space-4);
     background: var(--panel-card-bg);
     border: var(--panel-card-border);
     border-radius: var(--radius-sm);
@@ -314,7 +314,7 @@
     justify-content: flex-start;
     width: 100%;
     height: 28px;
-    padding: 0 var(--space-xs);
+    padding: 0 var(--space-4);
     border: none;
     border-radius: var(--radius-sm);
     background: transparent;
@@ -606,8 +606,8 @@
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
-    padding: var(--space-xs);
-    margin-bottom: var(--space-xs);
+    padding: var(--space-4);
+    margin-bottom: var(--space-4);
     min-width: 180px;
     max-height: 360px;
     overflow-y: auto;
@@ -1172,7 +1172,7 @@
     position: fixed;
     z-index: 10000;
     min-width: 8.5rem;
-    padding: var(--space-xs);
+    padding: var(--space-4);
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
@@ -1215,7 +1215,7 @@
 @media (max-width: 640px) {
     .session-confirmation-prompt {
         flex-direction: column;
-        gap: var(--space-sm);
+        gap: var(--space-8);
     }
 
     .session-confirmation-actions {
@@ -1229,11 +1229,11 @@
     z-index: 1;
     display: flex;
     flex-direction: column;
-    gap: var(--space-sm);
+    gap: var(--space-8);
     background: var(--bg-card);
     border: 1px solid rgba(0, 0, 0, 0.08);
     border-radius: var(--radius-chat-surface, 16px);
-    padding: var(--space-md) var(--space-md) var(--space-sm);
+    padding: var(--space-16) var(--space-16) var(--space-8);
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
     transition: border-color 0.3s var(--ease-out),
                 box-shadow 0.3s var(--ease-out);
@@ -1256,14 +1256,14 @@
 
 .audio-recording-card {
     position: absolute;
-    right: var(--space-md);
+    right: var(--space-16);
     bottom: 42px;
     z-index: 4;
     display: flex;
     align-items: center;
     gap: 0.55rem;
     min-width: 132px;
-    max-width: min(260px, calc(100% - 2 * var(--space-md)));
+    max-width: min(260px, calc(100% - 2 * var(--space-16)));
     padding: 0.5rem 0.65rem;
     color: var(--text);
     background: color-mix(in srgb, var(--bg-card) 94%, var(--accent) 6%);
@@ -1339,7 +1339,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: var(--space-sm);
+    padding: var(--space-8);
     border-radius: inherit;
     background: color-mix(in srgb, var(--bg-card) 72%, transparent);
     backdrop-filter: blur(5px) saturate(0.72);
@@ -1352,7 +1352,7 @@
     align-items: center;
     width: min(360px, 100%);
     gap: 0.45rem;
-    padding: 0.35rem var(--space-sm);
+    padding: 0.35rem var(--space-8);
     text-align: center;
 }
 
@@ -1538,7 +1538,7 @@
     display: flex;
     flex-wrap: nowrap;
     align-items: flex-end;
-    padding: var(--space-sm) 0 var(--space-xs);
+    padding: var(--space-8) 0 var(--space-4);
 }
 
 /* 左侧附件/引用区域 — 文件与文字引用同一横向流 */

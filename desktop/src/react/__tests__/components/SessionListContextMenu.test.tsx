@@ -341,7 +341,7 @@ describe('SessionList context menu', () => {
       'utf-8',
     );
 
-    expect(css).toMatch(/\.sessionSummaryBody\s*\{[\s\S]*font-size:\s*0\.66rem/);
+    expect(css).toMatch(/\.sessionSummaryBody\s*\{[\s\S]*font-size:\s*var\(--fs-hint\)/);
     expect(css).not.toMatch(/\.sessionContextMenu/);
     expect(css).not.toMatch(/sessionItemSummaryEmpty/);
   });
@@ -355,7 +355,7 @@ describe('SessionList context menu', () => {
     expect(css).not.toMatch(/@media\s*\(hover:\s*hover\)\s*and\s*\(pointer:\s*fine\)/);
     expect(css).toMatch(/@media\s*\(any-hover:\s*hover\)\s*and\s*\(any-pointer:\s*fine\)\s*\{[\s\S]*\.sessionItem:hover\s*\{/);
     expect(css).toMatch(/@media\s*\(any-hover:\s*hover\)\s*and\s*\(any-pointer:\s*fine\)\s*\{[\s\S]*\.sessionItem:not\(\.sessionItemSingleLine\):hover \.sessionArchiveBtn/);
-    expect(css).toMatch(/@media\s*\(any-hover:\s*hover\)\s*and\s*\(any-pointer:\s*fine\)\s*\{[\s\S]*\.sessionItemSingleLine:hover \.sessionItemActions\s*\{[\s\S]*width:\s*calc\(40px \+ var\(--space-xs\)\)/);
+    expect(css).toMatch(/@media\s*\(any-hover:\s*hover\)\s*and\s*\(any-pointer:\s*fine\)\s*\{[\s\S]*\.sessionItemSingleLine:hover \.sessionItemActions\s*\{[\s\S]*width:\s*calc\(40px \+ var\(--space-4\)\)/);
     expect(css).toMatch(/@media\s*\(any-hover:\s*hover\)\s*and\s*\(any-pointer:\s*fine\)\s*\{[\s\S]*\.sessionListScroller:hover \.sectionTitleActions/);
   });
 
@@ -1050,7 +1050,7 @@ describe('SessionList context menu', () => {
 
     const baseTitleRule = css.match(/\.sessionSectionTitle\s*\{[^}]*\}/)?.[0] || '';
     const pinnedTitleRule = css.match(/\.pinnedSection \.sessionSectionTitle\s*\{[^}]*\}/)?.[0] || '';
-    expect(baseTitleRule).toContain('font-size: 0.82rem');
+    expect(baseTitleRule).toContain('font-size: var(--fs-ui)');
     expect(pinnedTitleRule).not.toContain('font-size:');
   });
 });

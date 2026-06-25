@@ -255,7 +255,7 @@ export function MediaProviderDetail({ providerId, provider, capability = 'imageG
       </div>
 
       {/* Credential status */}
-      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: 'var(--space-md)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: 'var(--space-16)', display: 'flex', alignItems: 'center', gap: '6px' }}>
         <span style={{
           width: 6, height: 6, borderRadius: '50%',
           background: provider.hasCredentials ? 'var(--success)' : 'var(--text-muted)',
@@ -357,7 +357,7 @@ export function MediaProviderDetail({ providerId, provider, capability = 'imageG
 
       {/* Provider-specific defaults */}
       {provider.models.length > 0 && (
-        <div style={{ marginTop: 'var(--space-md)', paddingTop: 'var(--space-md)', borderTop: '1px solid var(--overlay-light)' }}>
+        <div style={{ marginTop: 'var(--space-16)', paddingTop: 'var(--space-16)', borderTop: '1px solid var(--overlay-light)' }}>
           <div style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '10px' }}>
             {t('settings.media.providerDefaults')}
           </div>

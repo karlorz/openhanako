@@ -6,7 +6,7 @@
     position: fixed;
     z-index: 2147483001;
     max-width: min(18rem, calc(100vw - 16px));
-    padding: var(--space-xs) var(--space-sm);
+    padding: var(--space-4) var(--space-8);
     color: var(--tooltip-text, var(--bg));
     background: var(--tooltip-bg, var(--text));
     border: 1px solid var(--tooltip-border, transparent);
@@ -24,7 +24,7 @@
     max-width: min(34rem, calc(100vw - 16px));
     max-height: min(22rem, calc(100vh - 16px));
     overflow: auto;
-    padding: var(--space-sm) var(--space-md);
+    padding: var(--space-8) var(--space-16);
     font-size: var(--fs-caption);
     line-height: 1.45;
     white-space: pre-wrap;

@@ -167,7 +167,7 @@ export function SkillBundleTree({
             {t('settings.skills.createBundleBtn')}
           </button>
         ) : null}
-        <p className={styles['agent-skill-empty']} style={{ padding: 'var(--space-md)', margin: 0 }}>
+        <p className={styles['agent-skill-empty']} style={{ padding: 'var(--space-16)', margin: 0 }}>
           {emptyText}
         </p>
       </div>

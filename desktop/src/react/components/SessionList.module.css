@@ -5,7 +5,7 @@
 .sessionList {
     flex: 1;
     overflow-y: auto;
-    padding: 0 var(--space-sm);
+    padding: 0 var(--space-8);
     -webkit-app-region: no-drag;
 }
 
@@ -24,7 +24,7 @@
     align-items: center;
     gap: 8px;
     height: 30px;
-    margin: 15px var(--space-sm) 6px;
+    margin: 15px var(--space-8) 6px;
     padding: 0 8px;
     background: color-mix(in srgb, var(--sidebar-bg, var(--bg)) 97%, var(--text) 3%);
     border: none;
@@ -104,7 +104,7 @@
     font-weight: 600;
     color: var(--text-muted);
     letter-spacing: 0;
-    padding: var(--space-sm) var(--space-sm) 2px;
+    padding: var(--space-8) var(--space-8) 2px;
     opacity: 0.72;
     user-select: none;
 }
@@ -112,7 +112,7 @@
 .sessionSearchItem {
     display: flex;
     flex-direction: column;
-    padding: 6px var(--space-sm);
+    padding: 6px var(--space-8);
     margin-bottom: 1px;
     border-radius: var(--radius-sm);
     cursor: default;
@@ -154,7 +154,7 @@
 
 .sessionSearchStatus,
 .sessionSearchEmpty {
-    padding: 10px var(--space-sm);
+    padding: 10px var(--space-8);
     color: var(--text-muted);
     font-size: var(--fs-hint);
     line-height: 1.5;
@@ -163,7 +163,7 @@
 .sessionItem {
     display: flex;
     flex-direction: column;
-    padding: 6px var(--space-sm);
+    padding: 6px var(--space-8);
     margin-bottom: 1px;
     border-radius: var(--radius-sm);
     cursor: default;
@@ -280,7 +280,7 @@
     align-items: center;
     justify-content: flex-end;
     flex-shrink: 0;
-    gap: var(--space-xs);
+    gap: var(--space-4);
     z-index: 1;
 }
 
@@ -332,7 +332,7 @@
     }
 
     .sessionItemSingleLine:hover .sessionItemActions {
-        width: calc(40px + var(--space-xs));
+        width: calc(40px + var(--space-4));
         opacity: 1;
         pointer-events: auto;
     }
@@ -358,7 +358,7 @@
 }
 
 .sessionItemSingleLine:focus-within .sessionItemActions {
-    width: calc(40px + var(--space-xs));
+    width: calc(40px + var(--space-4));
     opacity: 1;
     pointer-events: auto;
 }
@@ -495,7 +495,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: flex-end;
-    gap: var(--space-sm);
+    gap: var(--space-8);
     min-width: max-content;
     flex-shrink: 0;
 }
@@ -505,13 +505,13 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: var(--space-sm);
+    gap: var(--space-8);
     min-height: 28px;
     font-size: var(--fs-ui);
     font-weight: 600;
     color: var(--text-muted);
     letter-spacing: 0;
-    padding: var(--space-sm) var(--space-sm) 3px;
+    padding: var(--space-8) var(--space-8) 3px;
     opacity: 0.72;
     user-select: none;
 }
@@ -520,13 +520,13 @@
     display: inline-flex;
     align-items: center;
     min-width: 0;
-    gap: var(--space-xs);
+    gap: var(--space-4);
 }
 
 .sectionTitleActions {
     display: inline-flex;
     align-items: center;
-    gap: var(--space-xs);
+    gap: var(--space-4);
     flex-shrink: 0;
     opacity: 0;
     transition: opacity var(--duration-fast);
@@ -566,7 +566,7 @@
 }
 
 .sessionSectionTitle:first-child {
-    padding-top: var(--space-xs);
+    padding-top: var(--space-4);
 }
 
 .pinnedSection {
@@ -575,7 +575,7 @@
 }
 
 .pinnedSection .sessionSectionTitle {
-    padding: var(--space-xs) var(--space-sm) 2px;
+    padding: var(--space-4) var(--space-8) 2px;
 }
 
 .pinnedSectionTitle {
@@ -594,9 +594,9 @@
 .projectRow {
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
+    gap: var(--space-8);
     min-height: 31px;
-    padding: 4px var(--space-sm);
+    padding: 4px var(--space-8);
     border-radius: var(--radius-sm);
     color: var(--text-muted);
     font-size: var(--fs-ui);
@@ -695,7 +695,7 @@
     align-items: center;
     width: 100%;
     min-height: 30px;
-    padding: 4px var(--space-sm);
+    padding: 4px var(--space-8);
     border: none;
     border-radius: var(--radius-sm);
     background: transparent;
@@ -765,7 +765,7 @@
 .projectNameDialogActions {
     display: flex;
     justify-content: flex-end;
-    gap: var(--space-xs);
+    gap: var(--space-4);
     margin-top: 10px;
 }
 
@@ -858,7 +858,7 @@
 /* 空状态 */
 .sessionEmpty {
     text-align: center;
-    padding: var(--space-lg) var(--space-sm);
+    padding: var(--space-24) var(--space-8);
     color: var(--text-muted);
     font-size: var(--fs-caption);
 }

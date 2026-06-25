@@ -46,7 +46,7 @@
 }
 
 .previewPanelBody {
-    --preview-markdown-bottom-space: calc(var(--space-xl) + var(--space-xl) + var(--space-lg) + var(--space-lg));
+    --preview-markdown-bottom-space: calc(var(--space-40) + var(--space-40) + var(--space-24) + var(--space-24));
     height: 100%;
     overflow: auto;
     position: relative;
@@ -67,9 +67,9 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: var(--space-xs);
+    gap: var(--space-4);
     min-height: 100%;
-    padding: var(--space-lg);
+    padding: var(--space-24);
     color: var(--text-muted);
     text-align: center;
 }
@@ -106,7 +106,7 @@
     max-width: none;
     margin-left: 0;
     margin-right: 0;
-    padding: var(--space-lg) var(--editor-markdown-content-padding-x) var(--space-md);
+    padding: var(--space-24) var(--editor-markdown-content-padding-x) var(--space-16);
     font-size: var(--editor-markdown-font-size);
     font-weight: 400;
     line-height: var(--editor-markdown-line-height);
@@ -128,7 +128,7 @@
 }
 
 .previewPanelBody :global(.markdown-cover-drop-host .preview-markdown) {
-    padding-top: calc(var(--space-xl) + var(--space-lg));
+    padding-top: calc(var(--space-40) + var(--space-24));
 }
 
 .previewPanelBody :global(.markdown-cover) {
@@ -216,8 +216,8 @@
 .previewPanelBody :global(.markdown-cover-drop-rail::before) {
     content: "";
     position: absolute;
-    left: var(--space-lg);
-    right: var(--space-lg);
+    left: var(--space-24);
+    right: var(--space-24);
     top: 10px;
     height: 2px;
     border-radius: 999px;
@@ -311,7 +311,7 @@
 
 /* 代码预览 */
 .previewPanelBody :global(.preview-code) {
-    padding: var(--space-md);
+    padding: var(--space-16);
     font-family: var(--font-mono);
     font-size: var(--fs-ui);
     line-height: 1.6;
@@ -323,7 +323,7 @@
 
 /* docx 预览 */
 .previewPanelBody :global(.preview-docx) {
-    padding: var(--space-md) var(--space-lg);
+    padding: var(--space-16) var(--space-24);
     line-height: 1.8;
     overflow-y: auto;
 }
@@ -361,7 +361,7 @@
 
 /* CSV 表格预览 */
 .previewPanelBody :global(.preview-csv) {
-    padding: var(--space-sm);
+    padding: var(--space-8);
     overflow: auto;
     height: 100%;
 }
@@ -403,8 +403,8 @@
     align-items: center;
     justify-content: center;
     height: 100%;
-    gap: var(--space-md);
-    padding: var(--space-xl);
+    gap: var(--space-16);
+    padding: var(--space-40);
     text-align: center;
 }
 
@@ -435,7 +435,7 @@
 }
 
 .previewPanelBody :global(.preview-file-open-btn) {
-    margin-top: var(--space-sm);
+    margin-top: var(--space-8);
     padding: 0.5rem 1.5rem;
     border: none;
     border-radius: var(--radius-md);
@@ -458,7 +458,7 @@
 }
 
 :global(.preview-editor.mode-markdown) {
-    --preview-markdown-editor-bottom-space: var(--preview-markdown-bottom-space, calc(var(--space-xl) + var(--space-xl) + var(--space-lg) + var(--space-lg)));
+    --preview-markdown-editor-bottom-space: var(--preview-markdown-bottom-space, calc(var(--space-40) + var(--space-40) + var(--space-24) + var(--space-24)));
 }
 
 :global(.preview-editor .cm-editor) {
@@ -476,7 +476,7 @@
     position: absolute;
     left: var(--editor-markdown-content-padding-x);
     right: var(--editor-markdown-content-padding-x);
-    top: var(--space-sm);
+    top: var(--space-8);
     height: 2px;
     z-index: 12;
     border-radius: 999px;
@@ -596,7 +596,7 @@
     float: right;
     display: inline-flex;
     align-items: center;
-    gap: var(--space-xs);
+    gap: var(--space-4);
     margin-right: 0;
     font-family: var(--font-ui);
     user-select: none;
@@ -615,7 +615,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: var(--space-xs);
+    gap: var(--space-4);
     position: relative;
     width: 2rem;
     min-height: 24px;
@@ -650,7 +650,7 @@
 :global(.cm-codeblock-copy-label) {
     position: absolute;
     top: 50%;
-    right: calc(100% + var(--space-xs));
+    right: calc(100% + var(--space-4));
     transform: translateY(-50%);
     padding: 0.1rem 0.35rem;
     border-radius: var(--radius-sm);
@@ -670,7 +670,7 @@
 :global(.cm-image-widget) {
     display: block;
     max-width: 100%;
-    margin: var(--space-xs) 0;
+    margin: var(--space-4) 0;
 }
 
 :global(.cm-image-widget img) {
@@ -693,7 +693,7 @@
 
 :global(.cm-table-widget) {
     max-width: 100%;
-    margin: var(--space-xs) 0;
+    margin: var(--space-4) 0;
     overflow-x: auto;
     overflow-y: hidden;
 }
@@ -733,8 +733,8 @@
 
 :global(.cm-mermaid-widget) {
     display: block;
-    margin: var(--space-xs) 0;
-    padding: var(--space-sm);
+    margin: var(--space-4) 0;
+    padding: var(--space-8);
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     background: var(--overlay-subtle);
@@ -763,7 +763,7 @@
 }
 
 :global(.cm-mermaid-widget.is-error .mermaid-rendered) {
-    margin-bottom: var(--space-xs);
+    margin-bottom: var(--space-4);
     color: var(--coral);
     font-size: 0.82em;
 }

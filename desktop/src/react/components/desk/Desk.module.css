@@ -17,11 +17,11 @@
 }
 
 .sectionTitle {
-    padding: var(--space-xs) var(--space-sm) var(--space-xs);
+    padding: var(--space-4) var(--space-8) var(--space-4);
     flex: 0 0 auto;
     font-family: "Songti SC", "Noto Serif CJK SC", serif;
     justify-content: flex-start;
-    padding-left: var(--space-md);
+    padding-left: var(--space-16);
 }
 
 /* 工作台未设置 overlay */
@@ -33,7 +33,7 @@
     flex-direction: column;
     align-items: center;
     justify-content: flex-start;
-    padding: var(--space-lg);
+    padding: var(--space-24);
     padding-top: 45%;
     background: var(--bg-card);
 }
@@ -79,7 +79,7 @@
 
 .headerCwdBtn {
     position: absolute;
-    right: var(--space-sm);
+    right: var(--space-8);
     top: 50%;
     transform: translateY(-50%);
     z-index: 1;
@@ -91,7 +91,7 @@
     align-items: center;
     justify-content: center;
     gap: 5px;
-    margin: 2px var(--space-sm) var(--space-xs);
+    margin: 2px var(--space-8) var(--space-4);
     padding: 5px 0;
     background: none;
     border: 1px solid var(--overlay-light);
@@ -192,7 +192,7 @@
     z-index: 1;
     height: var(--right-workspace-list-toolbar-height);
     min-height: 0;
-    margin: 0 var(--space-sm);
+    margin: 0 var(--space-8);
 }
 
 .rightWorkspaceSection .tree {
@@ -285,7 +285,7 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 5px var(--space-sm);
+    padding: 5px var(--space-8);
     cursor: default;
     font-size: var(--fs-hint);
     line-height: 1.5;
@@ -343,7 +343,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin: 3px var(--space-sm) 2px;
+    margin: 3px var(--space-8) 2px;
     flex-shrink: 0;
     min-height: 20px;
 }
@@ -419,7 +419,7 @@
 .searchWrap {
     position: relative;
     flex: 0 0 auto;
-    margin: 2px var(--space-sm) 0;
+    margin: 2px var(--space-8) 0;
 }
 
 .searchInput {
@@ -548,7 +548,7 @@
 .cwdPanelWrap {
     position: relative;
     z-index: 20;
-    margin: 0 var(--space-sm);
+    margin: 0 var(--space-8);
 }
 
 .cwdPanel {
@@ -776,7 +776,7 @@
     align-items: center;
     justify-content: center;
     gap: 0.6em;
-    padding: var(--space-sm) var(--space-sm);
+    padding: var(--space-8) var(--space-8);
     border-bottom: 1px solid var(--jian-note-border, rgba(200, 160, 110, 0.2));
     flex-shrink: 0;
 }
@@ -799,7 +799,7 @@
 
 .editorStatus {
     position: absolute;
-    right: var(--space-sm);
+    right: var(--space-8);
     top: 50%;
     transform: translateY(-50%);
     font-size: 0.58rem;
@@ -815,7 +815,7 @@
 .editorInput {
     flex: 1;
     width: 100%;
-    padding: var(--space-sm) var(--space-md);
+    padding: var(--space-8) var(--space-16);
     font-size: var(--fs-hint);
     line-height: 1.55;
     color: var(--text);

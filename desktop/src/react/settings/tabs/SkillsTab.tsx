@@ -586,11 +586,11 @@ export function SkillsTab() {
         }
       >
         {skillsLoading ? (
-          <p className={styles['agent-skill-empty']} style={{ padding: 'var(--space-md)', margin: 0 }}>
+          <p className={styles['agent-skill-empty']} style={{ padding: 'var(--space-16)', margin: 0 }}>
             {t('status.loading')}
           </p>
         ) : userSkills.length === 0 && skillBundles.length === 0 ? (
-          <p className={styles['agent-skill-empty']} style={{ padding: 'var(--space-md)', margin: 0 }}>
+          <p className={styles['agent-skill-empty']} style={{ padding: 'var(--space-16)', margin: 0 }}>
             {t('settings.skills.noUser')}
           </p>
         ) : (
@@ -613,7 +613,7 @@ export function SkillsTab() {
           fontSize: '0.7rem',
           color: 'var(--text-muted)',
           lineHeight: 1.4,
-          margin: '0 0 var(--space-md)',
+          margin: '0 0 var(--space-16)',
         }}>
           {t('settings.skills.compatDesc')}
         </p>

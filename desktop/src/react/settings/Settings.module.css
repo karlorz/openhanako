@@ -13,10 +13,10 @@
 
 .settings-panel-modal {
     --settings-nav-width: 180px;
-    --settings-main-x-padding: var(--space-xl);
+    --settings-main-x-padding: var(--space-40);
     width: 100%;
     height: 100%;
-    padding-top: var(--space-sm);
+    padding-top: var(--space-8);
     border-radius: inherit;
 }
 
@@ -58,22 +58,22 @@
 :global(.settings-header) {
     display: flex;
     align-items: center;
-    padding: 36px 0 var(--space-md) 20px;
+    padding: 36px 0 var(--space-16) 20px;
     flex-shrink: 0;
     -webkit-app-region: drag;
 }
 
 .settings-header-modal {
     display: grid;
-    grid-template-columns: calc(var(--settings-nav-width, 160px) + var(--settings-main-x-padding, var(--space-xl))) minmax(0, 640px);
+    grid-template-columns: calc(var(--settings-nav-width, 160px) + var(--settings-main-x-padding, var(--space-40))) minmax(0, 640px);
     align-items: center;
-    padding: var(--space-lg) 0 var(--space-md);
+    padding: var(--space-24) 0 var(--space-16);
     gap: 0;
     -webkit-app-region: no-drag;
 }
 
 .settings-panel-wide.settings-panel-modal .settings-header-modal {
-    grid-template-columns: calc(var(--settings-nav-width, 160px) + var(--settings-main-x-padding, var(--space-xl))) minmax(0, 960px);
+    grid-template-columns: calc(var(--settings-nav-width, 160px) + var(--settings-main-x-padding, var(--space-40))) minmax(0, 960px);
 }
 
 .settings-return-btn {
@@ -105,9 +105,9 @@
 .settings-title-group {
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
+    gap: var(--space-8);
     min-width: 0;
-    padding-left: var(--space-md);
+    padding-left: var(--space-16);
     -webkit-app-region: no-drag;
 }
 
@@ -127,7 +127,7 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
-    padding: var(--space-xs) var(--space-sm);
+    padding: var(--space-4) var(--space-8);
     border-right: 1px solid var(--overlay-light);
     overflow-x: hidden;
     overflow-y: auto;
@@ -138,7 +138,7 @@
     display: flex;
     align-items: center;
     min-height: 34px;
-    margin: 0 0 var(--space-sm);
+    margin: 0 0 var(--space-8);
     color: var(--text-muted);
     flex-shrink: 0;
 }
@@ -268,7 +268,7 @@
 }
 
 .settings-search-empty {
-    padding: var(--space-md) 10px;
+    padding: var(--space-16) 10px;
     color: var(--text-muted);
     font-size: var(--fs-caption);
     line-height: 1.4;
@@ -319,7 +319,7 @@
     min-height: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
-    padding: 0 var(--settings-main-x-padding, var(--space-xl)) var(--space-xl);
+    padding: 0 var(--settings-main-x-padding, var(--space-40)) var(--space-40);
     max-width: none;
 }
 
@@ -401,7 +401,7 @@
 
 .settings-loading-text {
     position: absolute;
-    bottom: var(--space-lg);
+    bottom: var(--space-24);
     left: 0;
     right: 0;
     text-align: center;
@@ -412,7 +412,7 @@
 
 /* Tab 顶部大标题（每个 tab 右侧面板第一行：工作台、界面、助手…） */
 .settings-tab-heading {
-    margin: 0 0 var(--space-xl) 0;
+    margin: 0 0 var(--space-40) 0;
 }
 
 .settings-tab-title {
@@ -425,7 +425,7 @@
 }
 
 .settings-tab-description {
-    margin: var(--space-md) 0 0;
+    margin: var(--space-16) 0 0;
     color: var(--text-muted);
     font-size: var(--fs-ui);
     line-height: 1.5;
@@ -445,20 +445,20 @@
 
 /* Section */
 .settings-section {
-    margin-bottom: var(--space-xl);
+    margin-bottom: var(--space-40);
 }
 
 .settings-section-title {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: var(--space-md);
+    gap: var(--space-16);
     font-size: var(--fs-title);
     font-weight: 600;
     color: var(--text-light);
     letter-spacing: 0.12em;
     text-align: center;
-    margin-bottom: var(--space-lg);
+    margin-bottom: var(--space-24);
     white-space: nowrap;
 }
 
@@ -489,7 +489,7 @@
 .settings-inline-note {
     font-size: var(--fs-caption);
     color: var(--text-muted);
-    margin: var(--space-sm) 0 var(--space-md);
+    margin: var(--space-8) 0 var(--space-16);
     text-align: center;
 }
 
@@ -522,7 +522,7 @@
 .quick-chat-shortcut-control {
     display: inline-flex;
     align-items: center;
-    gap: var(--space-sm);
+    gap: var(--space-8);
     min-width: 0;
 }
 
@@ -567,7 +567,7 @@
 .quick-chat-timeout-control {
     display: inline-flex;
     align-items: center;
-    gap: var(--space-xs);
+    gap: var(--space-4);
 }
 
 .quick-chat-timeout-input {
@@ -601,7 +601,7 @@
 .settings-avatar-center {
     display: flex;
     justify-content: center;
-    margin-bottom: var(--space-md);
+    margin-bottom: var(--space-16);
 }
 
 /* ═══ Agent 卡片弧形堆叠 ═══ */
@@ -610,8 +610,8 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    margin-top: calc(var(--space-lg) * -0.5);
-    margin-bottom: var(--space-md);
+    margin-top: calc(var(--space-24) * -0.5);
+    margin-bottom: var(--space-16);
     padding-top: 0;
 }
 
@@ -824,9 +824,9 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: var(--space-sm);
+    gap: var(--space-8);
     min-height: 1.4rem;
-    margin-top: calc(var(--space-xs) * -0.5);
+    margin-top: calc(var(--space-4) * -0.5);
 }
 
 .agent-card-action {
@@ -839,7 +839,7 @@
     font-size: var(--fs-hint);
     line-height: 1.3;
     opacity: 0.68;
-    padding: calc(var(--space-xs) * 0.5) var(--space-sm);
+    padding: calc(var(--space-4) * 0.5) var(--space-8);
     transition: background var(--duration-fast) var(--ease-out),
                 color var(--duration-fast) var(--ease-out),
                 opacity var(--duration-fast) var(--ease-out);
@@ -892,7 +892,7 @@
     --agent-create-content-width: 448px;
     background-color: var(--bg-card);
     border-radius: var(--radius-lg);
-    padding: var(--space-lg);
+    padding: var(--space-24);
     width: 620px;
     max-width: 90vw;
     box-shadow: 0 12px 48px var(--shadow);
@@ -905,7 +905,7 @@
     margin-right: auto;
     font-size: var(--fs-title);
     font-weight: 500;
-    margin-bottom: var(--space-md);
+    margin-bottom: var(--space-16);
     color: var(--text);
 }
 
@@ -917,7 +917,7 @@
 
 .settings-inline-error {
     max-width: var(--agent-create-content-width, 448px);
-    margin: 0 auto var(--space-sm);
+    margin: 0 auto var(--space-8);
     color: var(--danger, #9f3a32);
     font-size: var(--fs-ui);
     line-height: 1.45;
@@ -926,8 +926,8 @@
 .agent-create-actions {
     display: flex;
     justify-content: flex-end;
-    gap: var(--space-sm);
-    margin-top: var(--space-md);
+    gap: var(--space-8);
+    margin-top: var(--space-16);
     max-width: var(--agent-create-content-width);
     margin-left: auto;
     margin-right: auto;
@@ -1551,10 +1551,10 @@
 /* 卡片下方操作栏 */
 .agent-stack-actions {
     display: flex;
-    gap: var(--space-sm);
+    gap: var(--space-8);
     align-items: center;
     justify-content: center;
-    margin-top: var(--space-xs);
+    margin-top: var(--space-4);
 }
 
 /* 删除按钮 */
@@ -1606,7 +1606,7 @@
 .agent-delete-card {
     background-color: var(--bg-card);
     border-radius: var(--radius-lg);
-    padding: var(--space-lg);
+    padding: var(--space-24);
     width: 320px;
     max-width: 90vw;
     box-shadow: 0 12px 48px var(--shadow);
@@ -1620,7 +1620,7 @@
 .agent-delete-title {
     font-size: var(--fs-title);
     font-weight: 500;
-    margin-bottom: var(--space-sm);
+    margin-bottom: var(--space-8);
     color: var(--text);
 }
 
@@ -1628,7 +1628,7 @@
     font-size: var(--fs-ui);
     color: var(--text-light);
     line-height: 1.5;
-    margin-bottom: var(--space-sm);
+    margin-bottom: var(--space-8);
 }
 
 .agent-delete-input {
@@ -1638,8 +1638,8 @@
 .agent-delete-actions {
     display: flex;
     justify-content: flex-end;
-    gap: var(--space-sm);
-    margin-top: var(--space-md);
+    gap: var(--space-8);
+    margin-top: var(--space-16);
 }
 
 .agent-delete-cancel,
@@ -1784,7 +1784,7 @@
     align-items: center;
     justify-content: center;
     width: 4rem;
-    margin: var(--space-sm) auto 0;
+    margin: var(--space-8) auto 0;
     padding: 0.4rem 0;
     font-family: inherit;
     font-size: var(--fs-ui);
@@ -1868,7 +1868,7 @@
     height: 14px;
     flex: 0 0 14px;
     color: var(--text-muted);
-    margin-left: var(--space-sm);
+    margin-left: var(--space-8);
     transition: transform var(--duration-fast) var(--ease-out);
 }
 
@@ -1899,21 +1899,21 @@
 
 /* Subsection（API 分组内的子标题） */
 .settings-subsection {
-    margin-bottom: var(--space-lg);
+    margin-bottom: var(--space-24);
 }
 
 .settings-subsection-title {
     font-size: var(--fs-ui);
     font-weight: 600;
     color: var(--text-light);
-    margin-bottom: var(--space-sm);
+    margin-bottom: var(--space-8);
 }
 
 .settings-subsection-header {
     display: flex;
     align-items: baseline;
-    gap: var(--space-sm);
-    margin-bottom: var(--space-sm);
+    gap: var(--space-8);
+    margin-bottom: var(--space-8);
 }
 
 .settings-subsection-header .settings-subsection-title {
@@ -1932,7 +1932,7 @@
     display: flex;
     flex-direction: column;
     gap: 3px;
-    margin-bottom: var(--space-md);
+    margin-bottom: var(--space-16);
 }
 
 .settings-form-label {
@@ -1945,7 +1945,7 @@
 .settings-toggle-row {
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
+    gap: var(--space-8);
 }
 
 .settings-form-hint {
@@ -1962,7 +1962,7 @@
 /* 两列布局 */
 .settings-form-grid {
     display: flex;
-    gap: var(--space-md);
+    gap: var(--space-16);
 }
 
 .settings-form-field-half {
@@ -1973,7 +1973,7 @@
 .settings-proxy-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--space-sm);
+    gap: var(--space-8);
 }
 
 .settings-proxy-wide {
@@ -1987,7 +1987,7 @@
 .access-url-row {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
-    gap: var(--space-sm);
+    gap: var(--space-8);
     width: 100%;
 }
 
@@ -2003,7 +2003,7 @@
 .access-status-grid {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: var(--space-sm);
+    gap: var(--space-8);
     width: 100%;
 }
 
@@ -2012,7 +2012,7 @@
     display: flex;
     flex-direction: column;
     gap: 3px;
-    padding: var(--space-sm);
+    padding: var(--space-8);
     border: 1px solid var(--border);
     border-radius: var(--radius-input, 6px);
     background: var(--bg-card);
@@ -2034,8 +2034,8 @@
 .access-remote-panel {
     display: flex;
     flex-direction: column;
-    gap: var(--space-md);
-    padding: var(--space-md);
+    gap: var(--space-16);
+    padding: var(--space-16);
 }
 
 .access-device-list {
@@ -2048,8 +2048,8 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: var(--space-md);
-    padding: var(--space-sm) var(--space-md);
+    gap: var(--space-16);
+    padding: var(--space-8) var(--space-16);
 }
 
 .access-device-item + .access-device-item {
@@ -2076,13 +2076,13 @@
 }
 
 .access-empty {
-    padding: var(--space-sm) var(--space-md);
+    padding: var(--space-8) var(--space-16);
 }
 
 .access-field {
     display: flex;
     flex-direction: column;
-    gap: var(--space-xs);
+    gap: var(--space-4);
     width: 100%;
 }
 
@@ -2132,7 +2132,7 @@
 .settings-muted-note {
     font-size: var(--fs-hint);
     color: var(--text-muted);
-    margin-top: var(--space-xs);
+    margin-top: var(--space-4);
     line-height: 1.5;
 }
 
@@ -2180,9 +2180,9 @@
 }
 
 .skills-system-details {
-    margin-top: var(--space-lg);
+    margin-top: var(--space-24);
     border-top: 1px solid var(--overlay-light);
-    padding-top: var(--space-md);
+    padding-top: var(--space-16);
 }
 
 .skills-system-summary {
@@ -2190,7 +2190,7 @@
     font-weight: 600;
     color: var(--text-muted);
     cursor: default;
-    padding: var(--space-xs) 0;
+    padding: var(--space-4) 0;
     user-select: none;
     list-style: none;
 }
@@ -2206,7 +2206,7 @@
 }
 
 .skills-empty {
-    padding: var(--space-lg) 0;
+    padding: var(--space-24) 0;
     text-align: center;
     color: var(--text-muted);
     font-size: var(--fs-caption);
@@ -2219,8 +2219,8 @@
     align-items: center;
     justify-content: center;
     gap: 0.5rem;
-    margin-bottom: var(--space-md);
-    padding: var(--space-lg) var(--space-md);
+    margin-bottom: var(--space-16);
+    padding: var(--space-24) var(--space-16);
     min-height: 5rem;
     border: 1.5px dashed var(--border);
     border-radius: var(--radius-card, 8px);
@@ -2242,8 +2242,8 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: var(--space-md);
-    padding: 0.65rem var(--space-md);
+    gap: var(--space-16);
+    padding: 0.65rem var(--space-16);
     background-color: var(--bg-card);
 }
 
@@ -2264,7 +2264,7 @@
 
 /* 缩进子项（如 allow_github_fetch） */
 .capability-row-nested {
-    padding-left: calc(var(--space-md) + 1rem);
+    padding-left: calc(var(--space-16) + 1rem);
     background: var(--bg-hover, color-mix(in srgb, var(--bg-card) 90%, transparent));
 }
 
@@ -2307,15 +2307,15 @@
 }
 
 .skills-list-block-spaced {
-    margin-bottom: var(--space-md);
+    margin-bottom: var(--space-16);
 }
 
 .skills-list-item {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: var(--space-md);
-    padding: 0.65rem var(--space-md);
+    gap: var(--space-16);
+    padding: 0.65rem var(--space-16);
     background-color: var(--bg-card);
     cursor: default;
     transition: background-color var(--duration-fast);
@@ -2387,7 +2387,7 @@
 .skill-bundle-tree {
     display: flex;
     flex-direction: column;
-    gap: var(--space-sm);
+    gap: var(--space-8);
 }
 
 .skill-bundle-toolbar {
@@ -2435,8 +2435,8 @@
     display: grid;
     grid-template-columns: 24px minmax(0, 1fr) auto;
     align-items: center;
-    gap: var(--space-sm);
-    padding: 0.62rem var(--space-md);
+    gap: var(--space-8);
+    padding: 0.62rem var(--space-16);
     background: var(--bg-card);
     transition: background var(--duration-fast);
 }
@@ -2503,12 +2503,12 @@
 }
 
 .skill-bundle-child-row {
-    padding-left: calc(var(--space-md) + 1.6rem);
+    padding-left: calc(var(--space-16) + 1.6rem);
     background: transparent;
 }
 
 .skill-bundle-empty {
-    padding: 0.6rem var(--space-md);
+    padding: 0.6rem var(--space-16);
     color: var(--text-muted);
     font-size: var(--fs-hint);
     font-style: italic;
@@ -2527,14 +2527,14 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: var(--space-xl);
+    padding: var(--space-40);
     background: rgba(21, 23, 24, 0.24);
     backdrop-filter: blur(8px);
 }
 
 .skill-bundle-dialog {
     width: min(360px, calc(100vw - 48px));
-    padding: var(--space-lg);
+    padding: var(--space-24);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
     background: var(--bg-card);
@@ -2545,8 +2545,8 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: var(--space-md);
-    margin-bottom: var(--space-md);
+    gap: var(--space-16);
+    margin-bottom: var(--space-16);
 }
 
 .skill-bundle-dialog-header h3 {
@@ -2597,8 +2597,8 @@
 .skill-bundle-dialog-actions {
     display: flex;
     justify-content: flex-end;
-    gap: var(--space-sm);
-    margin-top: var(--space-lg);
+    gap: var(--space-8);
+    margin-top: var(--space-24);
 }
 
 .skill-bundle-dialog-actions button {
@@ -2625,7 +2625,7 @@
 .plugin-marketplace-grid {
     display: grid;
     grid-template-columns: minmax(220px, 0.9fr) minmax(260px, 1.1fr);
-    gap: var(--space-md);
+    gap: var(--space-16);
     align-items: start;
 }
 
@@ -2633,8 +2633,8 @@
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
-    gap: var(--space-sm);
-    margin: calc(-1 * var(--space-sm)) 0 var(--space-md);
+    gap: var(--space-8);
+    margin: calc(-1 * var(--space-8)) 0 var(--space-16);
 }
 
 .plugin-marketplace-toolbar-actions {
@@ -2646,7 +2646,7 @@
 .plugin-marketplace-detail-header {
     display: flex;
     justify-content: space-between;
-    gap: var(--space-md);
+    gap: var(--space-16);
     align-items: center;
 }
 
@@ -2738,7 +2738,7 @@
     font-size: var(--fs-caption);
     color: var(--text-muted);
     font-style: italic;
-    padding: var(--space-sm) 0;
+    padding: var(--space-8) 0;
     margin: 0;
 }
 
@@ -2833,7 +2833,7 @@
     align-items: center;
     gap: 8px;
     width: 100%;
-    padding: 0.65rem var(--space-md);
+    padding: 0.65rem var(--space-16);
     background: none;
     border: none;
     cursor: default;
@@ -3053,18 +3053,18 @@
 .theme-options {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--space-sm);
+    gap: var(--space-8);
 }
 
 .theme-card {
-    flex: 1 1 calc(33.333% - var(--space-sm));
+    flex: 1 1 calc(33.333% - var(--space-8));
     min-width: 0;
     position: relative;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: var(--space-md) var(--space-sm);
+    padding: var(--space-16) var(--space-8);
     border: var(--border-width, 1px) solid var(--border);
     border-radius: var(--radius-card, 8px);
     cursor: default;
@@ -3274,7 +3274,7 @@
 .font-options {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--space-sm);
+    gap: var(--space-8);
 }
 
 .font-card {
@@ -3285,7 +3285,7 @@
     align-items: center;
     justify-content: center;
     gap: 4px;
-    padding: var(--space-sm);
+    padding: var(--space-8);
     border: var(--border-width, 1px) solid var(--border);
     border-radius: var(--radius-card, 8px);
     background: var(--bg-card);
@@ -3336,10 +3336,10 @@
 .settings-section-footer {
     position: sticky;
     bottom: 0;
-    padding: var(--space-md) 0;
+    padding: var(--space-16) 0;
     display: flex;
     justify-content: center;
-    gap: var(--space-sm);
+    gap: var(--space-8);
     background: none;
     z-index: 5;
     pointer-events: none;
@@ -3350,7 +3350,7 @@
 }
 
 .settings-btn-primary {
-    padding: 0.3rem var(--space-sm);
+    padding: 0.3rem var(--space-8);
     font-family: inherit;
     font-size: var(--fs-hint);
     color: var(--accent);
@@ -3376,7 +3376,7 @@
 }
 
 .settings-btn-secondary {
-    padding: 0.3rem var(--space-sm);
+    padding: 0.3rem var(--space-8);
     font-family: inherit;
     font-size: var(--fs-hint);
     color: var(--text-muted);
@@ -3401,7 +3401,7 @@
 .settings-save-btn-sm {
     width: auto;
     white-space: nowrap;
-    padding: 0.4rem var(--space-md);
+    padding: 0.4rem var(--space-16);
     font-family: inherit;
     font-size: var(--fs-ui);
     color: white;
@@ -3605,7 +3605,7 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: var(--space-xl) 0 var(--space-lg);
+    padding: var(--space-40) 0 var(--space-24);
     gap: 6px;
 }
 
@@ -3613,7 +3613,7 @@
     width: 80px;
     height: 80px;
     border-radius: var(--radius-lg);
-    margin-bottom: var(--space-sm);
+    margin-bottom: var(--space-8);
     box-shadow: 0 2px 12px var(--shadow);
 }
 
@@ -3622,7 +3622,7 @@
 }
 
 .about-dev-section {
-    margin-top: var(--space-lg);
+    margin-top: var(--space-24);
 }
 
 .about-name {
@@ -3651,7 +3651,7 @@
 }
 
 .about-check-update-btn {
-    margin-top: var(--space-xs);
+    margin-top: var(--space-4);
     padding: 4px 12px;
     font-size: var(--fs-caption);
     color: var(--text-muted);
@@ -3670,15 +3670,15 @@
 .about-info {
     border-top: 1px solid var(--overlay-light);
     border-bottom: 1px solid var(--overlay-light);
-    padding: var(--space-sm) 0;
-    margin: 0 0 var(--space-md);
+    padding: var(--space-8) 0;
+    margin: 0 0 var(--space-16);
 }
 
 .about-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: var(--space-xs) 0;
+    padding: var(--space-4) 0;
     font-size: var(--fs-ui);
 }
 
@@ -3722,8 +3722,8 @@ a.about-link:hover {
 }
 
 .about-license-text {
-    margin-top: var(--space-sm);
-    padding: var(--space-md);
+    margin-top: var(--space-8);
+    padding: var(--space-16);
     background: var(--overlay-light);
     border-radius: var(--radius-input, 6px);
     font-size: var(--fs-hint);
@@ -3742,7 +3742,7 @@ a.about-link:hover {
 .providers-layout {
     display: flex;
     flex-direction: column;
-    gap: var(--space-lg);
+    gap: var(--space-24);
 }
 
 .providers-left {
@@ -3771,7 +3771,7 @@ a.about-link:hover {
 
 .provider-empty {
     text-align: center;
-    padding: var(--space-lg) var(--space-sm);
+    padding: var(--space-24) var(--space-8);
     color: var(--text-muted);
     font-size: var(--fs-ui);
 }
@@ -3779,8 +3779,8 @@ a.about-link:hover {
 .provider-item {
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
-    padding: 0.45rem var(--space-md);
+    gap: var(--space-8);
+    padding: 0.45rem var(--space-16);
     border-bottom: 1px solid var(--overlay-light);
     transition: background var(--duration-fast);
 }
@@ -3867,7 +3867,7 @@ a.about-link:hover {
 /* 添加供应商按钮 */
 .provider-add-btn {
     width: 100%;
-    padding: 0.5rem var(--space-md);
+    padding: 0.5rem var(--space-16);
     font-family: inherit;
     font-size: var(--fs-ui);
     color: var(--accent);
@@ -3897,7 +3897,7 @@ a.about-link:hover {
     display: flex;
     flex-direction: column;
     gap: 4px;
-    padding: 0.45rem var(--space-md);
+    padding: 0.45rem var(--space-16);
     border-bottom: 1px solid var(--overlay-light);
 }
 
@@ -3908,7 +3908,7 @@ a.about-link:hover {
 .oauth-provider-header {
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
+    gap: var(--space-8);
 }
 
 .oauth-provider-models {
@@ -3927,7 +3927,7 @@ a.about-link:hover {
 .oauth-custom-model-item {
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
+    gap: var(--space-8);
     padding: 3px 6px;
     border-radius: var(--radius-input, 6px);
 }
@@ -4048,8 +4048,8 @@ a.about-link:hover {
 
 .oauth-code-section {
     display: flex;
-    gap: var(--space-xs);
-    margin-top: var(--space-xs);
+    gap: var(--space-4);
+    margin-top: var(--space-4);
     width: 100%;
 }
 
@@ -4084,8 +4084,8 @@ a.about-link:hover {
 .oauth-device-code {
     flex-direction: column;
     align-items: center;
-    gap: var(--space-sm);
-    padding: var(--space-sm) 0;
+    gap: var(--space-8);
+    padding: var(--space-8) 0;
 }
 
 .oauth-user-code {
@@ -4093,7 +4093,7 @@ a.about-link:hover {
     font-size: 1.3rem;
     font-weight: 600;
     letter-spacing: 0.15em;
-    padding: var(--space-xs) var(--space-md);
+    padding: var(--space-4) var(--space-16);
     background: var(--bg-secondary, #f5f5f5);
     border: 1px dashed var(--border);
     border-radius: var(--radius-input, 6px);
@@ -4141,7 +4141,7 @@ a.about-link:hover {
     display: flex;
     flex-direction: column;
     gap: 2px;
-    padding: var(--space-xs) 0;
+    padding: var(--space-4) 0;
     overflow-y: auto;
     background: transparent;
 }
@@ -4227,7 +4227,7 @@ a.about-link:hover {
 }
 
 .pv-config-alert {
-    margin: 0 0 var(--space-md);
+    margin: 0 0 var(--space-16);
     padding: 8px 10px;
     border: 1px solid rgba(var(--danger-rgb, 200, 81, 67), 0.24);
     background: rgba(var(--danger-rgb, 200, 81, 67), 0.08);
@@ -4273,7 +4273,7 @@ a.about-link:hover {
     z-index: 5;
     display: flex;
     flex-direction: column;
-    padding: var(--space-md) var(--space-lg) var(--space-lg);
+    padding: var(--space-16) var(--space-24) var(--space-24);
     overflow-y: auto;
     animation: hana-fade-in var(--duration-fast) var(--ease-out);
 }
@@ -4281,8 +4281,8 @@ a.about-link:hover {
 .pv-add-overlay-header {
     display: flex;
     align-items: center;
-    gap: var(--space-md);
-    margin-bottom: var(--space-md);
+    gap: var(--space-16);
+    margin-bottom: var(--space-16);
     flex-shrink: 0;
 }
 
@@ -4316,9 +4316,9 @@ a.about-link:hover {
     --usage-track: color-mix(in srgb, var(--overlay-light) 74%, transparent);
     display: flex;
     flex-direction: column;
-    gap: var(--space-md);
+    gap: var(--space-16);
     height: clamp(500px, 58vh, 560px);
-    padding: var(--space-md);
+    padding: var(--space-16);
 }
 
 .usage-note {
@@ -4384,7 +4384,7 @@ a.about-link:hover {
     position: relative;
     z-index: 1;
     min-width: 0;
-    padding: var(--space-xs) var(--space-md);
+    padding: var(--space-4) var(--space-16);
     border: none;
     background: transparent;
     color: var(--text-muted);
@@ -4407,7 +4407,7 @@ a.about-link:hover {
 
 .usage-error,
 .usage-empty {
-    padding: var(--space-md) 0;
+    padding: var(--space-16) 0;
     color: var(--text-muted);
     font-size: var(--fs-body);
     line-height: 1.5;
@@ -4422,14 +4422,14 @@ a.about-link:hover {
     min-height: 0;
     overflow-x: hidden;
     overflow-y: auto;
-    padding-right: var(--space-xs);
+    padding-right: var(--space-4);
 }
 
 .usage-overall,
 .usage-daily {
     display: flex;
     flex-direction: column;
-    gap: var(--space-lg);
+    gap: var(--space-24);
     min-height: 100%;
 }
 
@@ -4437,8 +4437,8 @@ a.about-link:hover {
     display: grid;
     grid-template-columns: minmax(180px, 0.92fr) minmax(0, 1fr);
     align-items: center;
-    gap: var(--space-xl);
-    padding: var(--space-sm) 0 var(--space-lg);
+    gap: var(--space-40);
+    padding: var(--space-8) 0 var(--space-24);
     border-bottom: 1px solid var(--overlay-light);
 }
 
@@ -4487,7 +4487,7 @@ a.about-link:hover {
     min-width: 0;
     display: flex;
     flex-direction: column;
-    gap: var(--space-sm);
+    gap: var(--space-8);
 }
 
 .usage-eyebrow {
@@ -4498,7 +4498,7 @@ a.about-link:hover {
 .usage-legend {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--space-sm) var(--space-md);
+    gap: var(--space-8) var(--space-16);
     color: var(--text-muted);
     font-size: var(--fs-hint);
     line-height: 1.4;
@@ -4507,7 +4507,7 @@ a.about-link:hover {
 .usage-legend span {
     display: inline-flex;
     align-items: center;
-    gap: var(--space-xs);
+    gap: var(--space-4);
 }
 
 .usage-legend i {
@@ -4528,15 +4528,15 @@ a.about-link:hover {
 .usage-hero-stats {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: var(--space-md);
-    padding-top: var(--space-xs);
+    gap: var(--space-16);
+    padding-top: var(--space-4);
 }
 
 .usage-hero-stat {
     min-width: 0;
     display: flex;
     flex-direction: column;
-    gap: var(--space-xs);
+    gap: var(--space-4);
 }
 
 .usage-hero-stat span {
@@ -4556,21 +4556,21 @@ a.about-link:hover {
 .usage-overall-grid {
     display: grid;
     grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
-    gap: var(--space-xl);
+    gap: var(--space-40);
 }
 
 .usage-panel {
     min-width: 0;
     display: flex;
     flex-direction: column;
-    gap: var(--space-md);
+    gap: var(--space-16);
 }
 
 .usage-panel-head {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: var(--space-md);
+    gap: var(--space-16);
     flex-wrap: wrap;
 }
 
@@ -4585,7 +4585,7 @@ a.about-link:hover {
     min-width: 0;
     display: flex;
     align-items: center;
-    gap: var(--space-md);
+    gap: var(--space-16);
     flex-wrap: wrap;
 }
 
@@ -4600,7 +4600,7 @@ a.about-link:hover {
 
 .usage-period-btn {
     min-width: 0;
-    padding: var(--space-xs) var(--space-sm);
+    padding: var(--space-4) var(--space-8);
     border: none;
     border-radius: var(--radius-sm);
     background: transparent;
@@ -4632,20 +4632,20 @@ a.about-link:hover {
 .usage-ring-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    column-gap: var(--space-xl);
+    column-gap: var(--space-40);
 }
 
 .usage-group-row {
     display: flex;
     align-items: center;
-    gap: var(--space-md);
+    gap: var(--space-16);
     min-width: 0;
-    padding: var(--space-md) 0;
+    padding: var(--space-16) 0;
     border-bottom: 1px solid var(--overlay-light);
 }
 
 .usage-group-row.compact {
-    padding: var(--space-sm) 0;
+    padding: var(--space-8) 0;
 }
 
 .usage-group-row.compact .usage-group-numbers {
@@ -4692,7 +4692,7 @@ a.about-link:hover {
     min-width: 0;
     display: flex;
     flex-direction: column;
-    gap: var(--space-xs);
+    gap: var(--space-4);
 }
 
 .usage-group-title {
@@ -4714,7 +4714,7 @@ a.about-link:hover {
     flex-shrink: 0;
     display: grid;
     grid-template-columns: minmax(70px, auto) minmax(44px, auto);
-    gap: var(--space-sm);
+    gap: var(--space-8);
     text-align: right;
     font-variant-numeric: tabular-nums;
     color: var(--text-muted);
@@ -4727,8 +4727,8 @@ a.about-link:hover {
     grid-auto-flow: column;
     grid-auto-columns: minmax(10px, 1fr);
     align-items: end;
-    gap: var(--space-sm);
-    padding-top: var(--space-md);
+    gap: var(--space-8);
+    padding-top: var(--space-16);
     border-top: 1px solid var(--overlay-light);
 }
 
@@ -4737,7 +4737,7 @@ a.about-link:hover {
     height: 100%;
     display: grid;
     grid-template-rows: 1fr auto;
-    gap: var(--space-sm);
+    gap: var(--space-8);
 }
 
 .usage-day-bar {
@@ -4789,8 +4789,8 @@ a.about-link:hover {
 .usage-request-row {
     display: flex;
     flex-direction: column;
-    gap: var(--space-xs);
-    padding: var(--space-sm) 0;
+    gap: var(--space-4);
+    padding: var(--space-8) 0;
     border-bottom: 1px solid var(--overlay-light);
 }
 
@@ -4798,7 +4798,7 @@ a.about-link:hover {
     min-width: 0;
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
+    gap: var(--space-8);
 }
 
 .usage-request-source {
@@ -4816,7 +4816,7 @@ a.about-link:hover {
     line-height: 1.35;
     display: flex;
     flex-wrap: wrap;
-    gap: var(--space-xs) var(--space-sm);
+    gap: var(--space-4) var(--space-8);
     font-variant-numeric: tabular-nums;
 }
 
@@ -4863,7 +4863,7 @@ a.about-link:hover {
     }
 
     .usage-hero {
-        gap: var(--space-lg);
+        gap: var(--space-24);
     }
 
     .usage-tabs {
@@ -4889,7 +4889,7 @@ a.about-link:hover {
 
     .usage-daily-bars {
         grid-auto-columns: minmax(8px, 1fr);
-        gap: var(--space-xs);
+        gap: var(--space-4);
     }
 }
 
@@ -4909,16 +4909,16 @@ a.about-link:hover {
 .pv-add-form {
     display: flex;
     flex-direction: column;
-    gap: var(--space-md);
+    gap: var(--space-16);
 }
 
 .pv-add-form .settings-form-field { margin-bottom: 0; }
 
 .pv-add-form-actions {
     display: flex;
-    gap: var(--space-sm);
+    gap: var(--space-8);
     justify-content: flex-end;
-    margin-top: var(--space-sm);
+    margin-top: var(--space-8);
 }
 
 /* 通用小按钮：删除确认、模型编辑等紧凑弹窗场景沿用 */
@@ -4971,7 +4971,7 @@ a.about-link:hover {
 .pv-setup-hint {
     font-size: var(--fs-caption);
     color: var(--text-secondary);
-    margin: 0 0 var(--space-md);
+    margin: 0 0 var(--space-16);
 }
 
 .pv-setup-activate-btn {
@@ -4992,7 +4992,7 @@ a.about-link:hover {
 .pv-detail {
     flex: 1;
     min-width: 0;
-    padding: var(--space-md);
+    padding: var(--space-16);
     overflow-y: auto;
     background: transparent;
 }
@@ -5003,7 +5003,7 @@ a.about-link:hover {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: var(--space-md);
+    margin-bottom: var(--space-16);
 }
 
 .pv-detail-title {
@@ -5027,15 +5027,15 @@ a.about-link:hover {
     display: flex;
     flex-direction: column;
     gap: 6px;
-    margin-bottom: var(--space-md);
-    padding-bottom: var(--space-md);
+    margin-bottom: var(--space-16);
+    padding-bottom: var(--space-16);
     border-bottom: 1px solid var(--overlay-light);
 }
 
 .pv-cred-row {
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
+    gap: var(--space-8);
     min-height: 28px;
 }
 
@@ -5182,13 +5182,13 @@ a.about-link:hover {
 .pv-oauth-status {
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
+    gap: var(--space-8);
 }
 
 /* ── 已收藏模型（紧凑列表） ── */
 .pv-fav-section {
-    margin-bottom: var(--space-md);
-    padding-bottom: var(--space-sm);
+    margin-bottom: var(--space-16);
+    padding-bottom: var(--space-8);
     border-bottom: 1px solid var(--overlay-light);
 }
 
@@ -5346,7 +5346,7 @@ a.about-link:hover {
 
 /* ── 模型列表区（折叠式） ── */
 .pv-models {
-    margin-bottom: var(--space-md);
+    margin-bottom: var(--space-16);
 }
 
 /* ── 添加模型行 ── */
@@ -5559,7 +5559,7 @@ a.about-link:hover {
     width: 100%;
     font-size: var(--fs-caption);
     padding: 4px 8px;
-    margin-bottom: var(--space-xs);
+    margin-bottom: var(--space-4);
     border: 1px solid var(--border);
     border-radius: var(--radius-input, 6px);
     background: var(--bg-input, var(--bg));
@@ -5568,7 +5568,7 @@ a.about-link:hover {
 }
 
 .pv-models-empty {
-    padding: var(--space-md);
+    padding: var(--space-16);
     text-align: center;
     color: var(--text-muted);
     font-size: var(--fs-caption);
@@ -5640,7 +5640,7 @@ a.about-link:hover {
     display: flex;
     align-items: center;
     gap: 4px;
-    margin-top: var(--space-xs);
+    margin-top: var(--space-4);
 }
 
 .pv-model-add-input {
@@ -5723,9 +5723,9 @@ a.about-link:hover {
 
 /* ── 底部全局模型分配 ── */
 .pv-other-section {
-    margin-top: var(--space-md);
+    margin-top: var(--space-16);
     border-top: 1px solid var(--overlay-light);
-    padding-top: var(--space-md);
+    padding-top: var(--space-16);
 }
 
 /* ========================================
@@ -5738,12 +5738,12 @@ a.about-link:hover {
 
 .pin-list:not(:empty) {
     box-shadow: 0 1px 4px var(--shadow);
-    margin-bottom: var(--space-sm);
+    margin-bottom: var(--space-8);
 }
 
 .pin-empty {
     text-align: center;
-    padding: var(--space-md) var(--space-sm);
+    padding: var(--space-16) var(--space-8);
     color: var(--text-muted);
     font-size: var(--fs-ui);
 }
@@ -5751,8 +5751,8 @@ a.about-link:hover {
 .pin-item {
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
-    padding: 0.45rem var(--space-md);
+    gap: var(--space-8);
+    padding: 0.45rem var(--space-16);
     border-bottom: 1px solid var(--overlay-light);
     transition: background var(--duration-fast);
 }
@@ -5821,8 +5821,8 @@ a.about-link:hover {
 /* 添加 Pin 行 */
 .pin-add-row {
     display: flex;
-    gap: var(--space-xs);
-    margin-top: var(--space-sm);
+    gap: var(--space-4);
+    margin-top: var(--space-8);
 }
 
 .pin-add-input {
@@ -5856,12 +5856,12 @@ a.about-link:hover {
 .exp-list {
     display: flex;
     flex-direction: column;
-    gap: var(--space-sm);
+    gap: var(--space-8);
 }
 
 .exp-empty {
     text-align: center;
-    padding: var(--space-lg) var(--space-sm);
+    padding: var(--space-24) var(--space-8);
     color: var(--text-muted);
     font-size: var(--fs-ui);
     font-family: var(--font-serif);
@@ -5871,7 +5871,7 @@ a.about-link:hover {
     background: var(--bg-card, var(--bg));
     border-radius: var(--radius-card, 8px);
     box-shadow: 0 1px 4px var(--shadow);
-    padding: 0.6rem var(--space-md) 0.5rem;
+    padding: 0.6rem var(--space-16) 0.5rem;
     transition: box-shadow var(--duration-fast) var(--ease-out);
 }
 
@@ -5985,12 +5985,12 @@ a.about-link:hover {
    ======================================== */
 .memory-actions-section {
     border-top: 1px solid var(--overlay-light);
-    padding-top: var(--space-lg);
+    padding-top: var(--space-24);
 }
 
 .memory-actions-row {
     display: flex;
-    gap: var(--space-sm);
+    gap: var(--space-8);
     align-items: center;
 }
 
@@ -6000,7 +6000,7 @@ a.about-link:hover {
 
 .memory-action-btn {
     flex: 1;
-    padding: 0.4rem var(--space-md);
+    padding: 0.4rem var(--space-16);
     font-size: var(--fs-ui);
     border: 1px solid var(--overlay-light);
     border-radius: var(--radius-card, 8px);
@@ -6033,7 +6033,7 @@ a.about-link:hover {
     flex-direction: column;
     gap: 0.35rem;
     padding: 0.58rem 0.68rem;
-    margin-bottom: var(--space-lg);
+    margin-bottom: var(--space-24);
     border: 1px solid var(--overlay-light);
     border-radius: 6px;
     background: var(--overlay-subtle);
@@ -6116,7 +6116,7 @@ a.about-link:hover {
 .memory-confirm-card {
     background: var(--bg-card, var(--bg));
     border-radius: var(--radius-lg);
-    padding: var(--space-lg);
+    padding: var(--space-24);
     max-width: 360px;
     width: 90%;
     box-shadow: 0 8px 32px var(--shadow);
@@ -6126,18 +6126,18 @@ a.about-link:hover {
 .memory-confirm-text {
     font-size: var(--fs-body);
     line-height: 1.6;
-    margin-bottom: var(--space-md);
+    margin-bottom: var(--space-16);
     color: var(--text);
 }
 
 .memory-confirm-actions {
     display: flex;
-    gap: var(--space-sm);
+    gap: var(--space-8);
     justify-content: center;
 }
 
 .memory-confirm-cancel {
-    padding: 0.35rem var(--space-lg);
+    padding: 0.35rem var(--space-24);
     font-size: var(--fs-ui);
     border: 1px solid var(--overlay-light);
     border-radius: var(--radius-card, 8px);
@@ -6152,7 +6152,7 @@ a.about-link:hover {
 }
 
 .memory-confirm-danger {
-    padding: 0.35rem var(--space-lg);
+    padding: 0.35rem var(--space-24);
     font-size: var(--fs-ui);
     border: none;
     border-radius: var(--radius-card, 8px);
@@ -6167,7 +6167,7 @@ a.about-link:hover {
 }
 
 .memory-confirm-primary {
-    padding: 0.35rem var(--space-lg);
+    padding: 0.35rem var(--space-24);
     font-size: var(--fs-ui);
     border: none;
     border-radius: var(--radius-card, 8px);
@@ -6199,7 +6199,7 @@ a.about-link:hover {
 
 .memory-viewer-backdrop {
     box-sizing: border-box;
-    padding: var(--space-md);
+    padding: var(--space-16);
 }
 
 .memory-viewer {
@@ -6219,7 +6219,7 @@ a.about-link:hover {
     align-items: center;
     justify-content: space-between;
     flex-shrink: 0;
-    padding: var(--space-md) var(--space-md) var(--space-sm);
+    padding: var(--space-16) var(--space-16) var(--space-8);
     border-bottom: 1px solid var(--overlay-light);
 }
 
@@ -6254,21 +6254,21 @@ a.about-link:hover {
     min-height: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
-    padding: var(--space-md);
+    padding: var(--space-16);
 }
 
 :global(.memory-viewer-empty) {
     text-align: center;
     color: var(--text-muted);
     font-size: var(--fs-ui);
-    padding: var(--space-xl) 0;
+    padding: var(--space-40) 0;
 }
 
 /* 当下记忆（compiled memory.md） */
 .memory-viewer-header-actions {
     display: flex;
     align-items: center;
-    gap: var(--space-xs);
+    gap: var(--space-4);
 }
 
 .compiled-clear-btn {
@@ -6301,8 +6301,8 @@ a.about-link:hover {
     font-size: var(--fs-body);
     font-weight: 600;
     color: var(--text-light);
-    margin: var(--space-md) 0 var(--space-xs);
-    padding-bottom: var(--space-xs);
+    margin: var(--space-16) 0 var(--space-4);
+    padding-bottom: var(--space-4);
     border-bottom: 1px solid var(--overlay-light);
 }
 
@@ -6311,13 +6311,13 @@ a.about-link:hover {
 }
 
 .compiled-memory-md p {
-    margin: var(--space-xs) 0;
+    margin: var(--space-4) 0;
 }
 
 .compiled-memory-md ul,
 .compiled-memory-md ol {
     padding-left: 1.2em;
-    margin: var(--space-xs) 0;
+    margin: var(--space-4) 0;
 }
 
 .compiled-memory-md li {
@@ -6327,7 +6327,7 @@ a.about-link:hover {
 .compiled-memory-editable {
     display: flex;
     flex-direction: column;
-    gap: var(--space-md);
+    gap: var(--space-16);
 }
 
 .compiled-memory-editor-label,
@@ -6345,7 +6345,7 @@ a.about-link:hover {
     border-radius: var(--radius-input, 6px);
     background: var(--bg);
     color: var(--text);
-    padding: var(--space-sm) var(--space-md);
+    padding: var(--space-8) var(--space-16);
     font: inherit;
     line-height: 1.65;
     outline: none;
@@ -6378,16 +6378,16 @@ a.about-link:hover {
 .compiled-memory-readonly-list {
     display: flex;
     flex-direction: column;
-    gap: var(--space-md);
+    gap: var(--space-16);
 }
 
 .compiled-memory-readonly-block {
     border-top: 1px solid var(--overlay-light);
-    padding-top: var(--space-sm);
+    padding-top: var(--space-8);
 }
 
 .compiled-memory-readonly-block h4 {
-    margin: 0 0 var(--space-xs);
+    margin: 0 0 var(--space-4);
     font-size: var(--fs-caption);
     font-weight: 600;
     color: var(--text-muted);
@@ -6399,17 +6399,17 @@ a.about-link:hover {
 
 /* 实验功能：Cache Snapshot 观察区 */
 .experiments-observation {
-    padding: var(--space-md);
+    padding: var(--space-16);
     border-top: var(--border-width, 1px) solid var(--border);
     display: flex;
     flex-direction: column;
-    gap: var(--space-sm);
+    gap: var(--space-8);
 }
 
 .experiments-observation-meta {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--space-xs);
+    gap: var(--space-4);
     color: var(--text-muted);
     font-size: var(--fs-hint);
 }
@@ -6430,7 +6430,7 @@ a.about-link:hover {
 .experiments-preview-block {
     display: flex;
     flex-direction: column;
-    gap: var(--space-xs);
+    gap: var(--space-4);
 }
 
 .experiments-preview-block h3 {
@@ -6451,14 +6451,14 @@ a.about-link:hover {
     background: var(--overlay-subtle);
     border: var(--border-width, 1px) solid var(--border);
     border-radius: var(--radius-input, 6px);
-    padding: var(--space-sm);
+    padding: var(--space-8);
 }
 
 .experiments-empty {
     color: var(--text-muted);
     font-size: var(--fs-caption);
     line-height: 1.5;
-    padding: var(--space-sm) var(--space-md);
+    padding: var(--space-8) var(--space-16);
 }
 
 .experiments-clear-btn {
@@ -6478,26 +6478,26 @@ a.about-link:hover {
 }
 
 :global(.memory-date-group) {
-    margin-bottom: var(--space-md);
+    margin-bottom: var(--space-16);
 }
 
 :global(.memory-date-label) {
     font-size: var(--fs-caption);
     color: var(--text-muted);
-    margin-bottom: var(--space-xs);
-    padding-bottom: var(--space-xs);
+    margin-bottom: var(--space-4);
+    padding-bottom: var(--space-4);
     border-bottom: 1px solid var(--overlay-light);
 }
 
 :global(.memory-item) {
-    padding: var(--space-xs) 0;
+    padding: var(--space-4) 0;
     font-size: var(--fs-ui);
     line-height: 1.6;
 }
 
 :global(.memory-item) + :global(.memory-item) {
     border-top: 1px solid var(--overlay-light);
-    padding-top: var(--space-xs);
+    padding-top: var(--space-4);
 }
 
 :global(.memory-item-content) {
@@ -6506,7 +6506,7 @@ a.about-link:hover {
 
 :global(.memory-item-meta) {
     display: flex;
-    gap: var(--space-xs);
+    gap: var(--space-4);
     margin-top: 2px;
     flex-wrap: wrap;
 }
@@ -6542,14 +6542,14 @@ a.about-link:hover {
 .crop-card {
     background: var(--bg-card, var(--bg));
     border-radius: var(--radius-lg);
-    padding: var(--space-lg);
+    padding: var(--space-24);
     width: 340px;
     max-width: 90vw;
     box-shadow: 0 12px 48px var(--shadow);
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: var(--space-md);
+    gap: var(--space-16);
 }
 
 .crop-header {
@@ -6628,7 +6628,7 @@ a.about-link:hover {
 
 .crop-actions {
     display: flex;
-    gap: var(--space-sm);
+    gap: var(--space-8);
     width: 100%;
     justify-content: flex-end;
 }
@@ -6673,7 +6673,7 @@ a.about-link:hover {
 .cml-row {
     display: flex;
     flex-direction: column;
-    gap: var(--space-md);
+    gap: var(--space-16);
 }
 
 /* 添加按钮 + picker 下拉 */
@@ -6688,7 +6688,7 @@ a.about-link:hover {
     align-items: center;
     justify-content: center;
     gap: 0.3rem;
-    padding: 0.45rem var(--space-md);
+    padding: 0.45rem var(--space-16);
     font-family: inherit;
     font-size: var(--fs-ui);
     color: var(--accent);
@@ -6710,7 +6710,7 @@ a.about-link:hover {
     top: 100%;
     left: 0;
     right: 0;
-    margin-top: var(--space-xs);
+    margin-top: var(--space-4);
     max-height: 320px;
     background-color: var(--bg-card);
     border: none;
@@ -6939,14 +6939,14 @@ a.about-link:hover {
 /* 模型编辑弹出面板 */
 .cml-edit-panel {
     border-top: none;
-    padding: var(--space-sm) var(--space-md);
+    padding: var(--space-8) var(--space-16);
     background: var(--overlay-subtle);
     animation: hana-fade-up var(--duration-fast) var(--ease-out);
 }
 
 .cml-edit-panel-columns {
     display: flex;
-    gap: var(--space-md);
+    gap: var(--space-16);
 }
 
 .cml-edit-panel-col {
@@ -7052,8 +7052,8 @@ a.about-link:hover {
 .cml-edit-panel-actions {
     display: flex;
     justify-content: flex-end;
-    gap: var(--space-xs);
-    margin-top: var(--space-xs);
+    gap: var(--space-4);
+    margin-top: var(--space-4);
 }
 
 .cml-edit-panel-btn {
@@ -7105,7 +7105,7 @@ a.about-link:hover {
 }
 
 .cml-empty {
-    padding: 1.5rem var(--space-md);
+    padding: 1.5rem var(--space-16);
     text-align: center;
     color: var(--text-muted);
     font-size: var(--fs-ui);
@@ -7164,7 +7164,7 @@ a.about-link:hover {
     flex-shrink: 0;
     font-size: var(--fs-hint);
     color: var(--text-muted);
-    margin-left: var(--space-sm);
+    margin-left: var(--space-8);
     transition: transform var(--duration-slow);
 }
 
@@ -7216,7 +7216,7 @@ a.about-link:hover {
 .mdw-options {
     overflow-y: auto;
     flex: 1;
-    padding: var(--space-xs) 0;
+    padding: var(--space-4) 0;
 }
 
 .mdw-group-label {
@@ -7293,8 +7293,8 @@ a.about-link:hover {
     display: flex;
     gap: 0;
     border-top: 1px solid var(--overlay-light);
-    margin-top: var(--space-xs);
-    padding: var(--space-xs) var(--space-xs) var(--space-xs);
+    margin-top: var(--space-4);
+    padding: var(--space-4) var(--space-4) var(--space-4);
 }
 
 .mdw-custom-input {
@@ -7334,7 +7334,7 @@ a.about-link:hover {
 .mdw-empty {
     text-align: center;
     color: var(--text-muted);
-    padding: var(--space-md);
+    padding: var(--space-16);
     font-size: var(--fs-ui);
 }
 
@@ -7343,7 +7343,7 @@ a.about-link:hover {
     display: grid;
     grid-template-columns: 1fr 1fr 1fr;
     gap: 12px;
-    margin-top: var(--space-sm);
+    margin-top: var(--space-8);
 }
 
 /* Backup list in Security tab */
@@ -7412,15 +7412,15 @@ a.about-link:hover {
 
 .ss-layout-group {
   display: flex;
-  gap: var(--space-md);
+  gap: var(--space-16);
 }
 
 .ss-layout-card {
   flex: 1;
   display: flex;
   align-items: center;
-  gap: var(--space-md);
-  padding: var(--space-sm);
+  gap: var(--space-16);
+  padding: var(--space-8);
   background: var(--bg-card, #fcfaf5);
   border: var(--border-width, 1px) solid var(--border);
   border-radius: var(--radius-card, 8px);
@@ -7492,7 +7492,7 @@ a.about-link:hover {
 /* ═══ Bridge Agent Selector ═══ */
 
 .bridge-agent-select {
-    margin-bottom: var(--space-lg);
+    margin-bottom: var(--space-24);
 }
 
 .bridge-agent-select-label {
@@ -7540,7 +7540,7 @@ a.about-link:hover {
     width: 14px;
     height: 14px;
     color: var(--text-muted);
-    margin-left: var(--space-sm);
+    margin-left: var(--space-8);
     transition: transform var(--duration-fast) var(--ease-out);
 }
 

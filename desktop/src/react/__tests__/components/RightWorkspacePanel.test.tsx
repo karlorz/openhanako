@@ -230,7 +230,7 @@ describe('RightWorkspacePanel', () => {
     const rootBlock = globalCss.match(/:root\s*\{[\s\S]*?\}/)?.[0] ?? '';
     const universalCardBlock = globalCss.match(/\.universal-card,\s*\.jian-card\s*\{[\s\S]*?\}/)?.[0] ?? '';
 
-    expect(rootBlock).toMatch(/--panel-edge-gap:\s*var\(--space-sm\);/);
+    expect(rootBlock).toMatch(/--panel-edge-gap:\s*var\(--space-8\);/);
     expect(rootBlock).toMatch(/--panel-card-bg:\s*var\(--bg-card,\s*var\(--bg\)\);/);
     expect(rootBlock).toMatch(/--panel-card-radius:\s*var\(--radius-lg\);/);
     expect(rootBlock).toMatch(/--panel-card-border:\s*1px solid rgba\(0,\s*0,\s*0,\s*0\.08\);/);

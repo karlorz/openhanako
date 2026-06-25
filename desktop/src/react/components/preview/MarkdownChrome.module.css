@@ -1,6 +1,6 @@
 .propertiesBlock,
 .referencesBlock {
-    margin: 0 auto var(--space-md);
+    margin: 0 auto var(--space-16);
     max-width: var(--editor-markdown-content-width);
     font-family: var(--font-ui);
     color: var(--text);
@@ -145,8 +145,8 @@
 }
 
 .referencesBlock {
-    margin-top: var(--space-xl);
-    padding-top: var(--space-md);
+    margin-top: var(--space-40);
+    padding-top: var(--space-16);
     border-top: 1px solid var(--overlay-light);
 }
 

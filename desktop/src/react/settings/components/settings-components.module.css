@@ -8,7 +8,7 @@
 /* ─── Section ─── */
 
 .section {
-    margin-bottom: var(--space-xl);
+    margin-bottom: var(--space-40);
 }
 
 .section:last-child {
@@ -19,12 +19,12 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: var(--space-md);
-    margin-bottom: var(--space-md);
+    gap: var(--space-16);
+    margin-bottom: var(--space-16);
 }
 
 .sectionHeaderWithDescription {
-    margin-bottom: var(--space-xs);
+    margin-bottom: var(--space-4);
 }
 
 .sectionTitle {
@@ -49,7 +49,7 @@
 }
 
 .sectionDescription {
-    margin: 0 0 var(--space-md);
+    margin: 0 0 var(--space-16);
     color: var(--text-muted);
     font-size: var(--fs-caption);
     line-height: 1.5;
@@ -73,20 +73,20 @@
 }
 
 .sectionBody > .sectionCard:not(:first-child) {
-    margin-top: var(--space-md);
+    margin-top: var(--space-16);
 }
 
 .sectionFooter {
     display: flex;
     justify-content: flex-end;
     /* 和 row 一样的 padding 节奏；border-top 作为和上一个 row 的分隔线 */
-    padding: var(--space-sm) var(--space-md);
+    padding: var(--space-8) var(--space-16);
     border-top: var(--border-width, 1px) solid var(--border);
 }
 
 /* Hero variant：用于 AboutTab */
 .sectionHero {
-    padding: var(--space-xl) var(--space-md);
+    padding: var(--space-40) var(--space-16);
     text-align: center;
 }
 
@@ -127,7 +127,7 @@
 /* Section 内的警告块（sandbox 关闭时显示等）
  * 位置：卡片内，row 之后，和 row 之间用贴边的伪元素分隔线 */
 .sectionWarning {
-    padding: var(--space-sm) var(--space-md);
+    padding: var(--space-8) var(--space-16);
     color: var(--danger, #b56b66);
     font-size: var(--fs-caption);
     line-height: 1.5;
@@ -135,7 +135,7 @@
 }
 
 .sectionNote {
-    padding: var(--space-sm) var(--space-md);
+    padding: var(--space-8) var(--space-16);
     color: var(--text-muted);
     font-size: var(--fs-hint);
     line-height: 1.4;
@@ -145,7 +145,7 @@
 /* ─── SubBlock ─── */
 
 .subBlock {
-    margin-bottom: var(--space-md);
+    margin-bottom: var(--space-16);
 }
 
 .subBlock:last-child {
@@ -156,13 +156,13 @@
     font-size: var(--fs-body);
     font-weight: 600;
     color: var(--text-light);
-    margin: 0 0 var(--space-sm) 0;
+    margin: 0 0 var(--space-8) 0;
 }
 
 /* ─── Row ─── */
 
 .row {
-    padding: var(--space-sm) var(--space-md);
+    padding: var(--space-8) var(--space-16);
     position: relative;
 }
 
@@ -191,13 +191,13 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: var(--space-md);
+    gap: var(--space-16);
 }
 
 .rowStacked {
     display: flex;
     flex-direction: column;
-    gap: var(--space-md);
+    gap: var(--space-16);
 }
 
 .rowText {
@@ -228,7 +228,7 @@
     flex-shrink: 0;
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
+    gap: var(--space-8);
 }
 
 .rowStacked .rowControl {
@@ -239,16 +239,16 @@
 /* ─── ExpandableRow ─── */
 
 .expandable {
-    margin-top: var(--space-sm);
+    margin-top: var(--space-8);
 }
 
 .expandableHeader {
     display: flex;
     align-items: center;
-    gap: var(--space-xs);
+    gap: var(--space-4);
     background: none;
     border: none;
-    padding: var(--space-sm) 0;
+    padding: var(--space-8) 0;
     font-family: inherit;
     font-size: var(--fs-ui);
     color: var(--text-light);
@@ -279,10 +279,10 @@
 }
 
 .expandableBody {
-    padding: var(--space-sm) 0 var(--space-md);
+    padding: var(--space-8) 0 var(--space-16);
     display: flex;
     flex-direction: column;
-    gap: var(--space-sm);
+    gap: var(--space-8);
 }
 
 /* ─── NumberInput（SPEC §3.6 Number-Unit Row 用）─── */
@@ -290,7 +290,7 @@
 .numberInput {
     display: flex;
     align-items: center;
-    gap: var(--space-xs);
+    gap: var(--space-4);
 }
 
 .numberInputField {

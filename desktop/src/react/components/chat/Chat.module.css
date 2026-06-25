@@ -24,7 +24,7 @@
 
 .messageGroupAssistant {
     align-items: flex-start;
-    padding-left: var(--space-sm);
+    padding-left: var(--space-8);
     margin-left: 2px;
     position: relative;
 }
@@ -40,7 +40,7 @@
     display: flex;
     align-items: center;
     gap: 0.4rem;
-    margin-top: var(--space-lg);
+    margin-top: var(--space-24);
     margin-bottom: 0.2rem;
 }
 
@@ -83,13 +83,13 @@
 }
 
 .message + .message {
-    margin-top: var(--space-xs);
+    margin-top: var(--space-4);
 }
 
 /* 用户消息 */
 .messageUser {
     background: rgba(0, 0, 0, 0.045);
-    padding: var(--space-sm) var(--space-md);
+    padding: var(--space-8) var(--space-16);
     border-radius: var(--radius-chat-card) var(--radius-chat-card) var(--radius-chat-card-inner) var(--radius-chat-card);
     color: var(--text);
     font-size: var(--chat-message-font-size);
@@ -120,7 +120,7 @@
     color: var(--text);
     font: inherit;
     line-height: 1.65;
-    padding: var(--space-sm) var(--space-md);
+    padding: var(--space-8) var(--space-16);
 }
 
 .messageFooterActions {
@@ -362,7 +362,7 @@
 
 .moodWrapper {
     --mood-accent: var(--accent);
-    margin: var(--space-xs) 0;
+    margin: var(--space-4) 0;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     font-size: var(--fs-ui);
     animation: hana-chat-soft-down-in 170ms var(--ease-out) both;
@@ -400,8 +400,8 @@
 }
 
 .moodBlock {
-    margin-top: var(--space-xs);
-    padding: var(--space-sm) var(--space-md);
+    margin-top: var(--space-4);
+    padding: var(--space-8) var(--space-16);
     color: var(--text-muted);
     font-style: italic;
     font-size: var(--fs-caption);
@@ -416,7 +416,7 @@
 
 .interludeRow {
     width: 100%;
-    margin: var(--space-lg) 0;
+    margin: var(--space-24) 0;
     display: flex;
     justify-content: center;
     font-family: var(--font-sans);
@@ -499,8 +499,8 @@
 /* ── Cron 确认卡片 ── */
 
 .cronConfirmCard {
-    margin: var(--space-sm) 0;
-    padding: var(--space-md);
+    margin: var(--space-8) 0;
+    padding: var(--space-16);
     animation: hana-chat-soft-up-in 130ms var(--ease-out) both;
     background: var(--bg-card, #fff);
     border-radius: var(--radius-chat-card);
@@ -551,7 +551,7 @@
 }
 
 .cronConfirmPrompt {
-    margin-top: var(--space-xs);
+    margin-top: var(--space-4);
     color: var(--text-light);
     font-size: var(--fs-caption);
     font-style: italic;
@@ -559,16 +559,16 @@
 }
 
 .cronConfirmFields {
-    margin-top: var(--space-sm);
+    margin-top: var(--space-8);
     display: flex;
     flex-direction: column;
-    gap: var(--space-xs);
+    gap: var(--space-4);
 }
 
 .cronConfirmFieldGrid {
     display: grid;
     grid-template-columns: 112px minmax(0, 1fr);
-    gap: var(--space-xs);
+    gap: var(--space-4);
 }
 
 .cronConfirmField {
@@ -615,9 +615,9 @@
 }
 
 .cronConfirmActions {
-    margin-top: var(--space-sm);
+    margin-top: var(--space-8);
     display: flex;
-    gap: var(--space-xs);
+    gap: var(--space-4);
 }
 
 .cronConfirmBtn {
@@ -644,7 +644,7 @@
 }
 
 .cronConfirmStatus {
-    margin-top: var(--space-xs);
+    margin-top: var(--space-4);
     font-size: var(--fs-caption);
     font-style: italic;
 }
@@ -669,7 +669,7 @@
     max-height: min(78vh, 680px);
     display: flex;
     flex-direction: column;
-    gap: var(--space-md);
+    gap: var(--space-16);
     padding: 22px 24px 18px;
     border-radius: var(--radius-chat-card);
     border: 1px solid rgba(0, 0, 0, 0.045);
@@ -682,7 +682,7 @@
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
-    gap: var(--space-sm);
+    gap: var(--space-8);
 }
 
 .automationDraftTitleInput {
@@ -737,8 +737,8 @@
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(116px, 0.32fr) auto;
     align-items: end;
-    gap: var(--space-sm);
-    padding-top: var(--space-xs);
+    gap: var(--space-8);
+    padding-top: var(--space-4);
 }
 
 .automationDraftField {
@@ -831,7 +831,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: flex-end;
-    gap: var(--space-xs);
+    gap: var(--space-4);
 }
 
 .automationDraftTextButton,
@@ -866,7 +866,7 @@
 @media (max-width: 720px) {
     .automationDraftOverlay {
         align-items: flex-end;
-        padding: var(--space-md);
+        padding: var(--space-16);
     }
 
     .automationDraftModal {
@@ -887,8 +887,8 @@
 /* ── 设置确认卡片 ── */
 
 .settingsConfirmCard {
-    margin: var(--space-md) 0;
-    padding: var(--space-lg) var(--space-lg) var(--space-md);
+    margin: var(--space-16) 0;
+    padding: var(--space-24) var(--space-24) var(--space-16);
     background: var(--bg-card, #fff);
     border-radius: var(--radius-chat-card);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.04);
@@ -899,14 +899,14 @@
 }
 
 .settingsConfirmCardDone {
-    padding: var(--space-md);
+    padding: var(--space-16);
 }
 
 .settingsConfirmHeader {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: var(--space-md);
+    gap: var(--space-16);
 }
 
 .settingsConfirmLabel {
@@ -925,11 +925,11 @@
 .settingsConfirmNote {
     font-size: var(--fs-caption);
     color: var(--text-muted);
-    margin-top: var(--space-sm);
+    margin-top: var(--space-8);
 }
 
 .settingsConfirmControl {
-    margin: var(--space-md) 0;
+    margin: var(--space-16) 0;
 }
 
 .settingsConfirmOptions {
@@ -989,10 +989,10 @@
 }
 
 .settingsConfirmActions {
-    margin-top: var(--space-md);
+    margin-top: var(--space-16);
     display: flex;
     justify-content: center;
-    gap: var(--space-sm);
+    gap: var(--space-8);
 }
 
 .settingsConfirmBtn {
@@ -1028,7 +1028,7 @@
     align-items: center;
     justify-content: space-between;
     font-size: var(--fs-body);
-    padding: var(--space-xs) 0;
+    padding: var(--space-4) 0;
     color: var(--text-muted);
 }
 
@@ -1037,8 +1037,8 @@
 /* ── 设置修改结果卡片 ── */
 
 .settingsUpdateCard {
-    margin: var(--space-md) 0;
-    padding: var(--space-md);
+    margin: var(--space-16) 0;
+    padding: var(--space-16);
     background: var(--bg-card, #fff);
     border-radius: var(--radius-chat-card);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.04);
@@ -1060,7 +1060,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: var(--space-md);
+    gap: var(--space-16);
 }
 
 .settingsUpdateTitle {
@@ -1078,13 +1078,13 @@
 }
 
 .settingsUpdateSummary {
-    margin-top: var(--space-xs);
+    margin-top: var(--space-4);
     color: var(--text-muted);
     line-height: 1.45;
 }
 
 .settingsUpdateChanges {
-    margin-top: var(--space-sm);
+    margin-top: var(--space-8);
     display: flex;
     flex-direction: column;
     gap: 6px;
@@ -1093,7 +1093,7 @@
 .settingsUpdateChange {
     display: grid;
     grid-template-columns: minmax(88px, 0.38fr) minmax(0, 1fr);
-    gap: var(--space-sm);
+    gap: var(--space-8);
     align-items: center;
     padding-top: 6px;
     border-top: 1px solid var(--overlay-light, rgba(0,0,0,0.06));
@@ -1115,7 +1115,7 @@
 
 .toolGroup {
     position: relative;
-    margin: var(--space-xs) 0;
+    margin: var(--space-4) 0;
     padding-left: 2px;
     border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
     background: var(--tool-bg);
@@ -1198,7 +1198,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    margin: var(--space-xs) 0;
+    margin: var(--space-4) 0;
     padding: 0.4rem 0.75rem;
     border: 0;
     border-radius: var(--radius-sm);
@@ -1252,7 +1252,7 @@
 .processFoldPanel {
     width: 100%;
     box-sizing: border-box;
-    margin: 0 0 var(--space-xs);
+    margin: 0 0 var(--space-4);
     padding: 0.4rem 0.75rem;
     border-radius: 0 0 var(--radius-sm) var(--radius-sm);
     background: var(--overlay-subtle);
@@ -1270,7 +1270,7 @@
 }
 
 .processFoldPanel .messageGroupAssistant + .messageGroupAssistant {
-    margin-top: var(--space-sm);
+    margin-top: var(--space-8);
 }
 
 .processFoldPanel .message {
@@ -1371,7 +1371,7 @@
 /* ── 思考折叠块 ── */
 
 .thinkingBlock {
-    margin: var(--space-xs) 0;
+    margin: var(--space-4) 0;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     font-size: var(--fs-ui);
     animation: hana-chat-soft-down-in 130ms var(--ease-out) both;
@@ -1417,8 +1417,8 @@
 }
 
 .thinkingBlockBody {
-    margin-top: var(--space-xs);
-    padding: var(--space-sm) var(--space-md);
+    margin-top: var(--space-4);
+    padding: var(--space-8) var(--space-16);
     color: var(--text-muted);
     font-style: italic;
     font-size: var(--fs-caption);
@@ -1514,7 +1514,7 @@
     width: clamp(220px, 50%, 360px);
     max-width: 100%;
     aspect-ratio: 3 / 2;
-    margin: var(--space-sm) 0;
+    margin: var(--space-8) 0;
     padding: 0.3rem;
     background: var(--bg-card, var(--bg));
     border: 0.5px solid var(--border, rgba(0,0,0,0.08));
@@ -1579,7 +1579,7 @@
 }
 
 .mediaGenerationRetryButton {
-    margin-top: var(--space-sm);
+    margin-top: var(--space-8);
     padding: 0.28rem 0.55rem;
     color: var(--text);
     background: color-mix(in srgb, var(--bg-card, var(--bg)) 80%, var(--text) 8%);
@@ -1612,7 +1612,7 @@
     flex-direction: column;
     position: relative;
     max-width: 100%;
-    margin: var(--space-sm) 0;
+    margin: var(--space-8) 0;
     padding: 0.3rem;
     background: var(--bg-card, var(--bg));
     border: 0.5px solid var(--border, rgba(0,0,0,0.08));
@@ -1721,8 +1721,8 @@
 .legacyArtifactCard {
     display: inline-flex;
     align-items: center;
-    gap: var(--space-sm);
-    margin: var(--space-xs) 0;
+    gap: var(--space-8);
+    margin: var(--space-4) 0;
     padding: 0.55rem 0.85rem;
     background: var(--tool-bg);
     border: 1px solid var(--accent);
@@ -1740,7 +1740,7 @@
 
 .legacyArtifactExpiredBadge {
     flex-shrink: 0;
-    margin-left: var(--space-xs);
+    margin-left: var(--space-4);
     font-size: var(--fs-hint);
     color: var(--text-muted);
 }
@@ -1806,7 +1806,7 @@
     top: 0;
     left: 0;
     right: 0;
-    bottom: calc(var(--chat-scrollbar-bottom-inset) + var(--space-lg));
+    bottom: calc(var(--chat-scrollbar-bottom-inset) + var(--space-24));
     overflow: hidden;
 }
 
@@ -1814,7 +1814,7 @@
     position: absolute;
     inset: 0;
     overflow-y: auto;
-    padding: 76px var(--space-lg) 0;
+    padding: 76px var(--space-24) 0;
 }
 
 /* 静默滚动条：默认 thumb 透明（track 已是 transparent），hover 或正在滚动时才显色。
@@ -1838,7 +1838,7 @@
     margin: 0 auto;
     display: flex;
     flex-direction: column;
-    gap: var(--space-sm);
+    gap: var(--space-8);
 }
 
 .cardSessionShell {
@@ -1850,21 +1850,21 @@
 }
 
 .cardSessionShell .sessionPanel {
-    padding: var(--space-sm) var(--space-sm) 0;
+    padding: var(--space-8) var(--space-8) 0;
 }
 
 .cardSessionShell .sessionMessages {
     max-width: none;
-    gap: var(--space-xs);
+    gap: var(--space-4);
 }
 
 .cardSessionShell .sessionFooter {
-    height: var(--space-md);
+    height: var(--space-16);
 }
 
 :global(.mobile-desktop-root) .sessionPanel {
-    padding-left: var(--space-md);
-    padding-right: var(--space-md);
+    padding-left: var(--space-16);
+    padding-right: var(--space-16);
 }
 
 :global(.mobile-desktop-root) .messageUser,
@@ -1882,7 +1882,7 @@
 
 .sessionFooter {
     /* 和 sessionPanel 的切点对齐：遮挡发生在输入卡片中部，同时在滚到底时额外留一行左右呼吸空间。 */
-    height: calc(var(--chat-scrollbar-bottom-inset) + var(--space-lg) + 5rem);
+    height: calc(var(--chat-scrollbar-bottom-inset) + var(--space-24) + 5rem);
     flex-shrink: 0;
 }
 
@@ -1890,7 +1890,7 @@
 
 .typingIndicator {
     padding: 0.2rem 0 0.6rem;
-    padding-left: calc(var(--space-sm) + 2px);
+    padding-left: calc(var(--space-8) + 2px);
     font-family: var(--font-serif);
     font-size: 1.6rem;
     font-weight: 700;
@@ -1913,7 +1913,7 @@
     /* 跟随输入卡片实时高度浮在其上方，避免多行输入时被输入框覆盖（#1297）。
        复用 InputArea 注入到 .main-content 的 --input-card-h（.sessionShell 同源消费）；
        变量未注入时回退 124px(≈单行卡片高度)+space-md=原 140px，行为不变。 */
-    bottom: calc(var(--input-card-h, 124px) + var(--space-md));
+    bottom: calc(var(--input-card-h, 124px) + var(--space-16));
     left: 50%;
     transform: translateX(-50%);
     z-index: 6;
@@ -2003,7 +2003,7 @@
 }
 
 .subagentPreviewTranscript .avatarRow {
-    margin-top: var(--space-md);
+    margin-top: var(--space-16);
     margin-bottom: 0.1rem;
     gap: 0.35rem;
 }
