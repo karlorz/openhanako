@@ -685,8 +685,8 @@
 }
 
 :global(.cm-table-widget table) {
-    width: max-content;
-    max-width: none;
+    width: 100%;
+    min-width: max-content;
     border-collapse: collapse;
     font-size: 0.9em;
     font-family: var(--editor-markdown-font-family, var(--font-serif));

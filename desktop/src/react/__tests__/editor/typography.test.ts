@@ -202,13 +202,13 @@ describe('editor typography settings', () => {
   it('constrains markdown tables while allowing horizontal scroll', () => {
     for (const css of [readGlobalStyles(), readMobileStyles()]) {
       expect(css).toMatch(/\.md-content \.markdown-table-scroll\s*\{[\s\S]*max-width:\s*100%[\s\S]*overflow-x:\s*auto/);
-      expect(css).toMatch(/\.md-content \.markdown-table-scroll > table\s*\{[\s\S]*width:\s*max-content[\s\S]*margin:\s*0/);
+      expect(css).toMatch(/\.md-content \.markdown-table-scroll > table\s*\{[\s\S]*width:\s*100%[\s\S]*min-width:\s*max-content[\s\S]*margin:\s*0/);
       expect(css).toMatch(/\.md-content th,\s*\.md-content td\s*\{[\s\S]*white-space:\s*nowrap/);
     }
 
     const previewCss = readPreviewStyles();
     expect(previewCss).toMatch(/:global\(\.cm-table-widget\)\s*\{[\s\S]*max-width:\s*100%[\s\S]*overflow-x:\s*auto/);
-    expect(previewCss).toMatch(/:global\(\.cm-table-widget table\)\s*\{[\s\S]*width:\s*max-content/);
+    expect(previewCss).toMatch(/:global\(\.cm-table-widget table\)\s*\{[\s\S]*width:\s*100%[\s\S]*min-width:\s*max-content/);
     expect(previewCss).toMatch(/:global\(\.cm-table-widget th\),\s*:global\(\.cm-table-widget td\)\s*\{[\s\S]*white-space:\s*nowrap/);
   });
 
