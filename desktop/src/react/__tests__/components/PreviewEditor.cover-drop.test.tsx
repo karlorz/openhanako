@@ -58,9 +58,26 @@ function putWorkspaceImageOnDrag(dataTransfer: DataTransfer) {
   });
 }
 
+function elementRect(width = 960, height = 640): DOMRect {
+  return {
+    x: 0,
+    y: 0,
+    width,
+    height,
+    top: 0,
+    right: width,
+    bottom: height,
+    left: 0,
+    toJSON: () => ({}),
+  } as DOMRect;
+}
+
 describe('PreviewEditor markdown cover drop', () => {
+  let elementRectSpy: ReturnType<typeof vi.spyOn>;
+
   beforeEach(() => {
     window.t = ((key: string) => key) as typeof window.t;
+    elementRectSpy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(() => elementRect());
     Range.prototype.getClientRects = vi.fn(() => [] as unknown as DOMRectList);
     Range.prototype.getBoundingClientRect = vi.fn(() => ({
       x: 0,
@@ -100,6 +117,7 @@ describe('PreviewEditor markdown cover drop', () => {
   afterEach(() => {
     clearAppFileDragPayload();
     cleanup();
+    elementRectSpy.mockRestore();
   });
 
   it('replaces an existing editor cover when a workspace image is dropped on it', async () => {
