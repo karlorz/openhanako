@@ -990,7 +990,7 @@
     max-width: 92%;
     padding: var(--space-sm) var(--space-md);
     border-radius: var(--radius-md);
-    font-size: 0.95rem;
+    font-size: var(--fs-title);
     line-height: 1.75;
     word-break: break-word;
 }

@@ -376,7 +376,7 @@
 }
 
 .settings-title {
-    font-size: 1.05rem;
+    font-size: var(--fs-title);
     font-weight: 600;
     color: var(--text);
     letter-spacing: 0.03em;
@@ -453,7 +453,7 @@
     align-items: center;
     justify-content: center;
     gap: var(--space-md);
-    font-size: 1rem;
+    font-size: var(--fs-title);
     font-weight: 600;
     color: var(--text-light);
     letter-spacing: 0.12em;
@@ -903,7 +903,7 @@
     max-width: var(--agent-create-content-width);
     margin-left: auto;
     margin-right: auto;
-    font-size: 0.95rem;
+    font-size: var(--fs-title);
     font-weight: 500;
     margin-bottom: var(--space-md);
     color: var(--text);
@@ -1171,7 +1171,7 @@
 
 .character-card-title-row h3 {
     font-family: "Songti SC", "STSong", serif;
-    font-size: 1.06rem;
+    font-size: var(--fs-title);
     font-weight: 600;
     line-height: 1.08;
     margin: 0 0 4px;
@@ -1481,7 +1481,7 @@
 }
 
 .character-card-detail-grid h4 {
-    font-size: 1rem;
+    font-size: var(--fs-title);
     margin-bottom: 8px;
 }
 
@@ -1618,7 +1618,7 @@
 }
 
 .agent-delete-title {
-    font-size: 0.95rem;
+    font-size: var(--fs-title);
     font-weight: 500;
     margin-bottom: var(--space-sm);
     color: var(--text);
@@ -2464,7 +2464,7 @@
     background: transparent;
     color: var(--text-muted);
     cursor: default;
-    font-size: 1rem;
+    font-size: var(--fs-title);
     line-height: 1;
 }
 
@@ -2551,7 +2551,7 @@
 
 .skill-bundle-dialog-header h3 {
     margin: 0;
-    font-size: 0.95rem;
+    font-size: var(--fs-title);
     font-weight: 600;
     color: var(--text);
 }
@@ -3315,7 +3315,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 1.05rem;
+    font-size: var(--fs-title);
     font-weight: 600;
     line-height: 1.25;
 }
@@ -4468,7 +4468,7 @@ a.about-link:hover {
 
 .usage-orbit-center span,
 .usage-hero-value {
-    font-size: 1rem;
+    font-size: var(--fs-title);
     color: var(--text);
     font-weight: 700;
     line-height: 1.2;
@@ -4895,7 +4895,7 @@ a.about-link:hover {
 
 .pv-add-overlay-title {
     font-family: "Songti SC", "STSong", serif;
-    font-size: 1rem;
+    font-size: var(--fs-title);
     font-weight: 600;
     color: var(--text);
     letter-spacing: 0.04em;
@@ -5007,7 +5007,7 @@ a.about-link:hover {
 }
 
 .pv-detail-title {
-    font-size: 1rem;
+    font-size: var(--fs-title);
     font-weight: 600;
     margin: 0;
     color: var(--text);
@@ -5835,7 +5835,7 @@ a.about-link:hover {
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 1.1rem;
+    font-size: var(--fs-title);
     color: var(--accent);
     background: var(--accent-light);
     border: none;

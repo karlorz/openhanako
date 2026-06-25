@@ -302,7 +302,7 @@
 }
 
 .channelHeaderName {
-    font-size: 0.95rem;
+    font-size: var(--fs-title);
     font-weight: 600;
     color: var(--text);
 }
@@ -552,7 +552,7 @@
     border: none;
     padding: 4px 0;
     font-family: inherit;
-    font-size: 0.95rem;
+    font-size: var(--fs-title);
     line-height: 1.6;
     background: none;
     color: var(--text);
@@ -633,7 +633,7 @@
 }
 
 .createTitle {
-    font-size: 0.95rem;
+    font-size: var(--fs-title);
     font-weight: 500;
     margin-bottom: var(--space-md);
     color: var(--text);

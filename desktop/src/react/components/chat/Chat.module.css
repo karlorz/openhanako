@@ -264,7 +264,7 @@
     max-width: 100%;
     padding: 0 0.08rem;
     color: var(--text);
-    font-size: 0.98rem;
+    font-size: var(--fs-title);
     line-height: 1.5;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
@@ -701,7 +701,7 @@
     background: transparent;
     color: var(--text);
     font: inherit;
-    font-size: 1.05rem;
+    font-size: var(--fs-title);
     line-height: 1.35;
 }
 
@@ -1073,7 +1073,7 @@
 
 .settingsUpdateTitle {
     font-weight: 600;
-    font-size: 1rem;
+    font-size: var(--fs-title);
     color: var(--text);
 }
 

@@ -2344,7 +2344,7 @@ body.resizing .channel-inspector-rail {
 .jian-title,
 .jian-section-title {
     flex: 1;
-    font-size: 0.95rem;
+    font-size: var(--fs-title);
     font-weight: 600;
     color: var(--accent);
     display: flex;
@@ -2949,7 +2949,7 @@ body.resizing .channel-inspector-rail {
     animation: hana-fade-up var(--duration-slow) var(--ease-out);
 }
 .hana-warning-title {
-    font-size: 1rem;
+    font-size: var(--fs-title);
     font-weight: 600;
     color: var(--text);
     margin: 0 0 0.8rem;
@@ -4044,7 +4044,7 @@ html[data-platform="linux"] .onboarding {
 
 #labelYuan {
     text-align: center;
-    font-size: 1.1rem;
+    font-size: var(--fs-title);
     font-weight: 600;
     letter-spacing: 0.08em;
 }

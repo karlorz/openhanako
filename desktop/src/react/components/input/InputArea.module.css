@@ -1439,7 +1439,7 @@
 .input-box {
     width: 100%;
     font-family: inherit;
-    font-size: 0.95rem;
+    font-size: var(--fs-title);
     line-height: 1.6;
     color: var(--text);
     background: none;

@@ -44,7 +44,7 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     font-family: "Songti SC", "Noto Serif CJK SC", serif;
-    font-size: 0.95rem;
+    font-size: var(--fs-title);
     font-weight: 600;
     color: var(--accent);
 }

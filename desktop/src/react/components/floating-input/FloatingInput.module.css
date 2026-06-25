@@ -57,7 +57,7 @@
     min-height: 1.45em;
     max-height: 160px;
     font-family: inherit;
-    font-size: 0.95rem;
+    font-size: var(--fs-title);
     line-height: 1.45;
     color: var(--text);
     background: none;

@@ -409,7 +409,7 @@
 }
 
 .previewPanelBody :global(.preview-file-name) {
-    font-size: 1.1rem;
+    font-size: var(--fs-title);
     font-weight: 600;
     color: var(--text);
     word-break: break-all;

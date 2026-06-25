@@ -28,7 +28,7 @@
 }
 
 .welcomeText {
-    font-size: 1.05rem;
+    font-size: var(--fs-title);
     color: var(--text-light);
     letter-spacing: 0.06em;
     font-family: var(--font-serif);

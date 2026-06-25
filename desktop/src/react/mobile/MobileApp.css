@@ -7,7 +7,7 @@ body,
 .mobile-desktop-root {
   height: 100vh;
   height: 100dvh;
-  font-size: 1.0625rem;
+  font-size: var(--fs-title);
   overflow: hidden;
   touch-action: pan-y;
   overscroll-behavior-x: contain;

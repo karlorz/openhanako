@@ -33,7 +33,7 @@
 }
 
 .title {
-  font-size: 1.05rem;
+  font-size: var(--fs-title);
   font-weight: 600;
   letter-spacing: 0.03em;
   margin: 0;
@@ -207,7 +207,7 @@
   }
 
   .title {
-    font-size: 1rem;
+    font-size: var(--fs-title);
   }
 
   .content {
