@@ -127,10 +127,10 @@ target from the GitHub releases API:
 ```sh
 # latest stable (auto-resolved from karlorz/openhanako)
 node scripts/install-server.mjs upgrade --current-version v0.323.0 --dry-run
-# pinned version (prereleases require --channel prerelease)
-node scripts/install-server.mjs upgrade --version v0.323.0-karlorz.2 --channel prerelease --current-version v0.323.0 --dry-run
+# pinned fork release tag
+node scripts/install-server.mjs upgrade --version v0.323.0-karlorz.2 --current-version v0.323.0 --dry-run
 # apply
-node scripts/install-server.mjs upgrade --version v0.323.0-karlorz.2 --channel prerelease --current-version v0.323.0 --execute
+node scripts/install-server.mjs upgrade --version v0.323.0-karlorz.2 --current-version v0.323.0 --execute
 # explicit metadata still accepted (skips the GitHub fetch)
 node scripts/install-server.mjs upgrade --metadata release.json --current-version v0.323.0 --execute
 ```
