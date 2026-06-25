@@ -1267,8 +1267,8 @@ html[data-platform="linux"] .tb-toggle-right {
 }
 
 .md-content .markdown-table-scroll > table {
-    width: max-content;
-    max-width: none;
+    width: 100%;
+    min-width: max-content;
     margin: 0;
 }
 
