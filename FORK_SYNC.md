@@ -37,6 +37,7 @@ Current status:
 ## Sync cadence
 
 - **Stable release-tag sync, manual.** Pull when upstream cuts a new non-prerelease release tag. Do NOT track `main` HEAD and do NOT treat prereleases as production sync targets.
+- **Tag namespace.** Plain `vX.Y.Z` tags belong to upstream release sync targets. Do not create, retarget, or push a plain upstream tag in the fork. Fork-published release tags use `vX.Y.Z-karlorz.N` so upstream tag fetches remain clobber-free.
 - **Permanent PR dashboard.** PR [#1](https://github.com/karlorz/openhanako/pull/1) is a permanent draft dashboard from `dev` to `main`. It is for human review and agent drilldown only; never merge it.
 - **Dashboard base.** `origin/main` is a disposable mirror of `liliMozi/openhanako/main`. The conflict dashboard helper may replace `origin/main` from `upstream/main`, but it must never mutate `dev`, the index, or the working tree.
 - **Machine-readable rules:** `docs/fork-sync/rules.yml` is the source of truth for release-target policy, diverging-file rules, fork-only-file rules, issue-tracking states, and verification commands. This runbook explains the same policy for humans.
@@ -166,6 +167,17 @@ What the script does:
    - DevTools Console: no `Refused to connect ... CSP` errors; WS establishes (no `[WS_DISCONNECTED]`)
    - Paste/upload an image, send it, switch to another chat, switch back, and confirm the chat thumbnail and Conversation Files preview still render
 11. **Log** — append to the sync log below with: date, tag synced, conflicts encountered + resolution, test result.
+
+## Fork release tags
+
+After a stable sync is complete and verified, publish this fork from `dev` with a fork-scoped tag:
+
+```bash
+git tag vX.Y.Z-karlorz.N dev
+git push origin refs/tags/vX.Y.Z-karlorz.N
+```
+
+Do not push `vX.Y.Z` to `origin` for fork releases. The local plain tag should continue to resolve to the upstream release commit so `git fetch upstream --tags` and `node scripts/sync-upstream.mjs` remain safe.
 
 ## Verification contract (what "the fix still works" means)
 
