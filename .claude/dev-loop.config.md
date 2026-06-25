@@ -69,7 +69,9 @@ required_checks:
 remote_hosts: []
 release_policy:
   auto_bump: false
-  tag_format: "v{version}"
+  upstream_tag_format: "v{version}"
+  tag_format: "v{version}-karlorz.N"
+  tag_namespace_rule: "Plain v{version} tags belong to upstream sync targets; fork release tags must use the -karlorz.N suffix."
   verify_after_push: true
 
 # Interviews happen before spec/plan unless the loop is running unattended
