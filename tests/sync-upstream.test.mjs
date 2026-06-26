@@ -245,6 +245,26 @@ describe("sync-upstream rule engine", () => {
     ]);
   });
 
+  it("keeps the resource-url rule explicit about LAN resource transport", () => {
+    const rules = loadRules();
+
+    const plan = buildConflictPlan([
+      "desktop/src/react/services/resource-url.ts",
+    ], rules);
+
+    expect(plan.conflicts).toEqual([
+      expect.objectContaining({
+        file: "desktop/src/react/services/resource-url.ts",
+        strategy: "human-review",
+        source: "policy",
+        risk: "critical",
+        plannedAction: expect.stringContaining("connection.kind === 'local'"),
+      }),
+    ]);
+    expect(plan.conflicts[0].plannedAction).toContain("sf_*");
+    expect(plan.conflicts[0].plannedAction).toContain("LAN device-credential");
+  });
+
   it("parses conflicted files from git merge-tree output", () => {
     const output = [
       "100644 abc 1\tpackage.json",
