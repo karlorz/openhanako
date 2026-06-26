@@ -167,6 +167,16 @@ What the script does:
    - DevTools Console: no `Refused to connect ... CSP` errors; WS establishes (no `[WS_DISCONNECTED]`)
    - Paste/upload an image, send it, switch to another chat, switch back, and confirm the chat thumbnail and Conversation Files preview still render
 11. **Log** — append to the sync log below with: date, tag synced, conflicts encountered + resolution, test result.
+12. **Detailed changelog note** — after verification, create a raw changelog
+    note under the SkillWiki vault:
+    `raw/transcripts/YYYY-MM-DD-changelog-sync-stable-vX-Y-Z.md`.
+    Use `kind: note`, `project: "[[openhanako]]"`, and
+    `closes_work_item: projects/openhanako/work/YYYY-MM-DD-sync-stable-vX-Y-Z/spec.md`
+    so the changelog remains searchable project evidence without becoming
+    claimable dev-loop work. Include the sync summary and SHAs, upstream commit
+    themes, fork behavior preserved, conflict-risk resolution table, Tier 0-3
+    verification evidence, release/tag outcome when a fork release is produced,
+    and any workflow lessons.
 
 ## Fork release tags
 
