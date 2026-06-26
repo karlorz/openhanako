@@ -124,8 +124,9 @@ conflictRules:
       resolution: HUMAN REVIEW. Keep scoped remote resource origins in img-src and media-src.
     desktop/src/react/services/resource-url.ts:
       class: remote_attachment_preview
-      risk: high
-      resolution: HUMAN REVIEW. Preserve remote session resource URL synthesis.
+      risk: critical
+      resolution: HUMAN REVIEW. Preserve remote session resource URL synthesis and the fork transport invariant that local/LAN connections use `!connection || connection.kind === 'local'`, not `isLocalOwnerConnection(connection)`.
+      plannedAction: Keep fork `isLocalTransport` as `!connection || connection.kind === 'local'`, preserve the synthetic `/api/resources/res_sf_.../content` fallback for `sf_*` session files, and keep token-query resource URLs for LAN device-credential connections.
     desktop/src/react/utils/preview-file-refresh.ts:
       class: remote_attachment_preview
       risk: medium
