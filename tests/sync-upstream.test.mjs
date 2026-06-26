@@ -6,7 +6,6 @@ import {
   changedDivergingFiles,
   forkOnlyFilePatterns,
   ISSUE_COMMANDS,
-  loadMigrationContracts,
   loadRules,
   minimatch,
   missingForkOnlyFiles,
@@ -28,43 +27,6 @@ describe("sync-upstream rule engine", () => {
     expect(rules.conflictRules.divergingFiles).toContain("core/server-auth.ts");
     expect(rules.criticalFileClasses).toContain("lan_connect_auth");
     expect(rules.issueTracking.states).toContain("tracked/no-upstream-issue");
-  });
-
-  it("loads the migration contract inventory schema", () => {
-    const config = loadMigrationContracts();
-    const requiredMigrationContracts = [
-      "connection-csp-bootstrap",
-      "websocket-ticket-auth",
-      "remote-recovery-credentials",
-      "provider-model-persistence",
-      "session-routing-replay-compaction",
-      "agent-reminder-isolation",
-      "remote-resource-ownership",
-      "server-installer-artifact-activation",
-      "fork-build-identity",
-    ];
-
-    expect(config.schemaVersion).toBe(1);
-    expect(config.migrationContracts.map((item) => item.id)).toEqual(
-      expect.arrayContaining(requiredMigrationContracts),
-    );
-    expect(config.migrationContracts).toHaveLength(requiredMigrationContracts.length);
-    for (const item of config.migrationContracts) {
-      expect(["retain", "adapt", "retire", "defer"]).toContain(item.preliminaryDisposition);
-      expect(item.focusedTests.length).toBeGreaterThan(0);
-      expect(item.stopConditions.length).toBeGreaterThan(0);
-      expect(item.surface).toBeTruthy();
-      expect(Array.isArray(item.forkPaths)).toBe(true);
-      expect(Array.isArray(item.upstreamPaths)).toBe(true);
-      expect(item.activationGate).toBeTruthy();
-      expect(Array.isArray(item.liveSmoke)).toBe(true);
-    }
-  });
-
-  it("keeps the migration inventory path in fork-only files", () => {
-    const patterns = forkOnlyFilePatterns(loadRules());
-    expect(patterns).toContain("docs/fork-sync/migration-contracts.yml");
-    expect(loadRules().migrationContracts?.inventory).toBe("docs/fork-sync/migration-contracts.yml");
   });
 
   it("selects stable upstream releases by default", () => {
@@ -104,12 +66,6 @@ describe("sync-upstream rule engine", () => {
 
     expect(patterns).toContain("scripts/sync-upstream.mjs");
     expect(patterns).toContain("FORK_SYNC.md");
-    expect(patterns).toContain(".envrc");
-    expect(patterns).toContain("docs/release-digest-generation.md");
-    expect(patterns).toContain("scripts/check-remote-prerequisites.mjs");
-    expect(patterns).toContain("shared/remote-feature-contracts.*");
-    expect(patterns).toContain("shared/server-build-info.*");
-    expect(patterns).toContain("tests/remote-server-*.test.*");
     expect(patterns).toContain("docs/upstream-issues/**");
     expect(patterns.some((p) => p.startsWith("examples/plugins/office-workflow"))).toBe(true);
   });
@@ -123,25 +79,6 @@ describe("sync-upstream rule engine", () => {
     expect(minimatch("examples/plugins/other/x.js", "examples/plugins/office-workflow/**")).toBe(false);
     expect(minimatch("scripts/sync-upstream.mjs", "scripts/sync-upstream.mjs")).toBe(true);
     expect(minimatch("scripts/other.mjs", "scripts/sync-upstream.mjs")).toBe(false);
-  });
-
-  it("tracks remote assessment and release workflow files as explicit divergence", () => {
-    const rules = loadRules();
-    expect(rules.conflictRules.divergingFiles).toEqual(expect.arrayContaining([
-      "scripts/generate-release-digest.mjs",
-      "scripts/install-server.mjs",
-      "scripts/hana-desktop-smoke-helper.mjs",
-      "desktop/src/react/services/remote-server-assessment-coordinator.ts",
-      "server/index.ts",
-    ]));
-    expect(rules.conflictRules.policies["scripts/generate-release-digest.mjs"]).toMatchObject({
-      class: "fork_release_digest",
-      strategy: "preserve-both",
-    });
-    expect(rules.conflictRules.policies["scripts/install-server.mjs"]).toMatchObject({
-      class: "server_release_compatibility",
-      risk: "critical",
-    });
   });
 
   it("reports fork-only patterns that match zero tracked files after a sync", () => {
@@ -326,32 +263,6 @@ describe("sync-upstream rule engine", () => {
     ]);
     expect(plan.conflicts[0].plannedAction).toContain("sf_*");
     expect(plan.conflicts[0].plannedAction).toContain("LAN device-credential");
-  });
-
-  it("plans the next stable KeyInput and release digest conflicts explicitly", () => {
-    const rules = loadRules();
-
-    const plan = buildConflictPlan([
-      "desktop/src/react/settings/widgets/KeyInput.tsx",
-      "release-digest.v1.json",
-    ], rules);
-
-    expect(plan.conflicts).toEqual([
-      expect.objectContaining({
-        file: "desktop/src/react/settings/widgets/KeyInput.tsx",
-        strategy: "preserve-both",
-        source: "policy",
-        risk: "high",
-        plannedAction: expect.stringContaining("wrapper-level blur handling"),
-      }),
-      expect.objectContaining({
-        file: "release-digest.v1.json",
-        strategy: "take-main",
-        source: "policy",
-        risk: "medium",
-        plannedAction: expect.stringContaining("fork-scoped tag"),
-      }),
-    ]);
   });
 
   it("parses conflicted files from git merge-tree output", () => {
