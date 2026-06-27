@@ -99,7 +99,7 @@ Ran a manual core `/dev-loop` cycle audit on 2026-06-15 after the remote preview
 - Vault sync caveat: installed SkillWiki v0.9.4 exposes `skillwiki sync lock/unlock`, while dev-loop v1.24.4 probes for the older `--acquire-lock` flag. `vault_sync.peer_aware` is set to `false` until that probe is updated; launchd vault-sync remains active outside dev-loop.
 - Doctor caveat: `skillwiki doctor` reports `32 pass`, `1 warn`, `0 errors`, but exits non-zero with the warning. Treat the JSON summary as authoritative for blocking decisions, not the exit code alone.
 - GitHub CLI caveat: plain `gh repo view` initially resolved to upstream `liliMozi/openhanako`. Ran `gh repo set-default karlorz/openhanako`; future CI/PR checks should still prefer explicit `--repo karlorz/openhanako` when scripted.
-- CI health: no recent GitHub Actions runs exist on `dev` yet after adding the branch trigger, so the workflow is configured but not proven by a post-change run.
+- CI health: the `dev` branch trigger is proven by the 2026-06-27 UTC post-force-push runs for docs closeout commit `7628f54f`: push run `28295481409` and PR dashboard run `28295481912` both completed successfully on macOS and Windows.
 - Upstream release check: the 2026-06-27 stable sync rebased local `dev` from the `v0.345.3` baseline onto upstream `v0.346.18`. `node scripts/sync-upstream.mjs` and `node scripts/sync-upstream.mjs --post-rebase` passed Tier 0 through Tier 2. Tier 3A local desktop install/version verification and Tier 3B sg01 desktop live smoke both passed. `--include-prerelease --check` remains only for explicit prerelease candidate review.
 - Codex cache caveat: dev-loop's cached skill copy references `skills/dev-loop/scripts/preflight-inventory.js`, but the Codex plugin package currently stores that helper at plugin root `scripts/preflight-inventory.js`. Use the plugin-root script as the fallback until the packaging layout is repaired upstream.
 
@@ -128,5 +128,6 @@ After the 2026-06-16 maintenance cycle, the compact config now treats fork-sync 
 - Semantic regression fixed post-rebase: upstream's owner-only local transport predicate was replaced with the fork LAN-safe predicate, with focused regression coverage in `desktop/src/react/__tests__/services/resource-url.test.ts`.
 - Release tag: `v0.346.18-karlorz.1`; release workflow run `28293195697` completed successfully, then published the prerelease with 20 assets.
 - Release assets verified by CI: macOS arm64/x64 DMG and ZIP, Windows x64 EXE, Linux AppImage and deb, `latest.yml`, `latest-mac.yml`, `latest-linux.yml`, and all five server bundles with `.sha256` sidecars.
+- Post-force-push CI: docs closeout commit `7628f54f` completed successfully on push run `28295481409` and permanent dashboard PR run `28295481912`, both covering macOS and Windows.
 - Final sync check: `node scripts/sync-upstream.mjs --check` reports latest upstream tag and last synced tag both `v0.346.18`.
 - Permanent dashboard PR #1 remained open, draft, and unmerged.
