@@ -1,6 +1,6 @@
 # OpenHanako Dev-Loop Setup Notes
 
-Generated during the 2026-06-15 remote attachment preview fix closeout. Last revised during the 2026-06-21 stable sync to upstream `v0.333.6`.
+Generated during the 2026-06-15 remote attachment preview fix closeout. Last revised during the 2026-06-28 closeout for the stable sync to upstream `v0.346.18`.
 
 ## Discovery
 
@@ -8,13 +8,14 @@ Generated during the 2026-06-15 remote attachment preview fix closeout. Last rev
 - Upstream: `liliMozi/openhanako`
 - Current branch: `dev`
 - GitHub CLI default repo: `karlorz/openhanako`
-- App version: `0.333.6` after the stable sync rebase; Tier 3A local desktop install/version verification and Tier 3B desktop smoke are still required before marking the sync complete.
+- App version: `0.346.18` after the stable sync rebase. Tier 3A local desktop install/version verification and Tier 3B sg01 desktop smoke passed on 2026-06-27 before the fork release tag was published.
 - SkillWiki vault: resolved by `skillwiki path`; project wiki path `projects/openhanako`
 - SkillWiki doctor: 32 pass, 6 info, 0 warn, 0 errors
 - Dev-loop dependency probe: usable; required dependencies present
 - Missing optional dependency: `claude-mem` only
 - Existing CI: `.github/workflows/ci.yml`, targets `main` and `dev`
 - Release workflow: `.github/workflows/build.yml`, tag-triggered `v*`
+- Latest fork release tag: `v0.346.18-karlorz.1`; GitHub Actions run `28293195697` completed successfully and published 20 release assets.
 - Upstream sync workflow: `node scripts/sync-upstream.mjs --check` checks stable upstream releases by default; prerelease candidate review requires `--include-prerelease`
 - Fork sync rules: `docs/fork-sync/rules.yml` is the machine-readable policy used by `scripts/sync-upstream.mjs`.
 - Post-rebase fork sync verification: `node scripts/sync-upstream.mjs --post-rebase` prints Tier 3A local desktop install/version verification before Tier 3B sg01 live smoke. The installed `/Applications/HanaAgent.app` bundle metadata, `build-info.json`, and Settings → About must match `package.json` before the live smoke counts.
@@ -35,6 +36,7 @@ Generated during the 2026-06-15 remote attachment preview fix closeout. Last rev
 - `interview_trigger`: `auto`
 - External memory: none for now; do not add a `memory_layer` field to dev-loop config because v1.24.7 does not parse it.
 - PR safety: PR #1 is a permanent draft dashboard from `dev` to `main`; never merge it, never enable auto-merge for it, and never treat `main` as the dev-loop release branch.
+- Rebased branch publication: attended stable syncs may require `git push --force-with-lease origin dev` after all docs/wiki closeout and release checks are complete, because local `dev` is intentionally rebased onto the upstream stable tag.
 - `fact_check`: local repo + SkillWiki + web when available
 - `browser_verification`: enable for renderer/UI changes with Vite/Electron smoke
 - `reactive_debugging`: enable with 2 retries and captured evidence
@@ -98,7 +100,7 @@ Ran a manual core `/dev-loop` cycle audit on 2026-06-15 after the remote preview
 - Doctor caveat: `skillwiki doctor` reports `32 pass`, `1 warn`, `0 errors`, but exits non-zero with the warning. Treat the JSON summary as authoritative for blocking decisions, not the exit code alone.
 - GitHub CLI caveat: plain `gh repo view` initially resolved to upstream `liliMozi/openhanako`. Ran `gh repo set-default karlorz/openhanako`; future CI/PR checks should still prefer explicit `--repo karlorz/openhanako` when scripted.
 - CI health: no recent GitHub Actions runs exist on `dev` yet after adding the branch trigger, so the workflow is configured but not proven by a post-change run.
-- Upstream release check: the 2026-06-21 stable sync rebased local `dev` from the `v0.323.0` baseline onto upstream `v0.333.6`. `node scripts/sync-upstream.mjs --post-rebase` passed Tier 1 and Tier 2; Tier 3A local desktop install/version verification and Tier 3B sg01 desktop live smoke remain the completion gates. `--include-prerelease --check` is still only for explicit prerelease candidate review.
+- Upstream release check: the 2026-06-27 stable sync rebased local `dev` from the `v0.345.3` baseline onto upstream `v0.346.18`. `node scripts/sync-upstream.mjs` and `node scripts/sync-upstream.mjs --post-rebase` passed Tier 0 through Tier 2. Tier 3A local desktop install/version verification and Tier 3B sg01 desktop live smoke both passed. `--include-prerelease --check` remains only for explicit prerelease candidate review.
 - Codex cache caveat: dev-loop's cached skill copy references `skills/dev-loop/scripts/preflight-inventory.js`, but the Codex plugin package currently stores that helper at plugin root `scripts/preflight-inventory.js`. Use the plugin-root script as the fallback until the packaging layout is repaired upstream.
 
 ## Claude Review Follow-Up
@@ -118,3 +120,13 @@ Config cleanup performed after the review:
 ## Post-Cycle Tuning
 
 After the 2026-06-16 maintenance cycle, the compact config now treats fork-sync and install-server as the two automation-ready maintenance paths. The old shell sync helper and sg01 deploy helper are retired; unattended dev-loop runs should test and review these paths but never push, pull, deploy, or target `sg01` unless a later attended release explicitly changes the config.
+
+## Stable Sync Closeout - 2026-06-28
+
+- Sync target: upstream stable `v0.346.18`; previous fork baseline was `v0.345.3`.
+- Rule update required: `docs/fork-sync/rules.yml` now marks `desktop/src/react/services/resource-url.ts` as critical and requires the fork LAN transport invariant `!connection || connection.kind === 'local'`.
+- Semantic regression fixed post-rebase: upstream's owner-only local transport predicate was replaced with the fork LAN-safe predicate, with focused regression coverage in `desktop/src/react/__tests__/services/resource-url.test.ts`.
+- Release tag: `v0.346.18-karlorz.1`; release workflow run `28293195697` completed successfully, then published the prerelease with 20 assets.
+- Release assets verified by CI: macOS arm64/x64 DMG and ZIP, Windows x64 EXE, Linux AppImage and deb, `latest.yml`, `latest-mac.yml`, `latest-linux.yml`, and all five server bundles with `.sha256` sidecars.
+- Final sync check: `node scripts/sync-upstream.mjs --check` reports latest upstream tag and last synced tag both `v0.346.18`.
+- Permanent dashboard PR #1 remained open, draft, and unmerged.
