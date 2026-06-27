@@ -13,9 +13,27 @@ This is not an SSH deploy workflow. SSH can still be used by an operator to reac
 Supported bootstrap forms:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/karlorz/openhanako/<tag>/scripts/install-server-bootstrap.sh | sudo bash
-curl -fsSL https://raw.githubusercontent.com/karlorz/openhanako/<tag>/scripts/install-server-bootstrap.sh | bash
+# Install only the durable /usr/local/bin/install-server command from a ref.
+curl -fsSL https://raw.githubusercontent.com/karlorz/openhanako/<ref>/scripts/install-server-bootstrap.sh \
+  | sudo bash -s -- --repo karlorz/openhanako --ref <ref> --install-cli-only
+
+# Fresh host install from a pinned fork prerelease tag.
+curl -fsSL https://raw.githubusercontent.com/karlorz/openhanako/<tag>/scripts/install-server-bootstrap.sh \
+  | sudo bash -s -- --repo karlorz/openhanako --version <tag> --channel prerelease --execute
+
+# Existing host upgrade from a pinned fork prerelease tag.
+curl -fsSL https://raw.githubusercontent.com/karlorz/openhanako/<tag>/scripts/install-server-bootstrap.sh \
+  | sudo bash -s -- --repo karlorz/openhanako --version <tag> --channel prerelease --upgrade --execute
 ```
+
+The bootstrap script defaults to `--install-cli-only` behavior unless
+`--execute` is passed. It installs:
+
+- `/opt/hanaagent/install/install-server.mjs`
+- `/usr/local/bin/install-server`
+
+It does not run local builds, git resets, SSH deploy commands, or service
+mutation unless the operator explicitly passes `--execute`.
 
 Root mode:
 
@@ -45,7 +63,7 @@ The first install creates:
 Minimum command surface:
 
 ```sh
-install-server install --version <tag> [--channel stable|prerelease]
+install-server install [--version <tag>] [--channel stable|prerelease]
 install-server upgrade [--version <tag>] [--channel stable|prerelease]
 install-server status
 install-server backup [--output <path>]
@@ -74,9 +92,12 @@ Required artifact metadata:
 Rules:
 
 - Stable channel ignores prerelease releases by default.
-- Prerelease install or upgrade requires explicit `--channel prerelease` or an exact prerelease `--version`.
+- Prerelease install or upgrade requires explicit `--channel prerelease`,
+  including when pinning an exact fork prerelease tag.
 - The downloaded artifact is verified before extraction.
 - A checksum mismatch aborts before touching the active service.
+- The default GitHub release source for the installer is the fork
+  `karlorz/openhanako`. Override only when intentionally testing another repo.
 
 Release asset shape (published by `.github/workflows/build.yml` on every `v*` tag):
 
@@ -97,16 +118,19 @@ The server runs as the `hanaagent` system user and group.
 Install behavior:
 
 1. Detect OS and architecture. Support Linux only.
-2. Create the `hanaagent` user/group if missing.
-3. Create `/opt/hanaagent`, `/var/lib/hanaagent`, and `/etc/hanaagent` with least-privilege ownership.
-4. Download artifact and checksum to a staging directory.
-5. Verify checksum.
-6. Extract to `/opt/hanaagent/releases/<version>-<platform>-<arch>/`.
-7. Write or update `/etc/systemd/system/hanaagent.service`.
-8. Switch `/opt/hanaagent/current` atomically.
-9. Run `systemctl daemon-reload`.
-10. Enable and restart `hanaagent`.
-11. Run local health verification against the configured bind address.
+2. Refuse to continue if `/opt/hanaagent/current` already exists; existing
+   installs must use `install-server upgrade`.
+3. Create the `hanaagent` user/group if missing.
+4. Create `/opt/hanaagent`, `/var/lib/hanaagent`, and `/etc/hanaagent`.
+5. Download artifact and checksum to a staging directory.
+6. Verify checksum.
+7. Extract to `/opt/hanaagent/releases/<version>-<platform>-<arch>/`.
+8. Write or update `/etc/systemd/system/hanaagent.service`.
+9. Switch `/opt/hanaagent/current` atomically.
+10. Install or refresh the durable `/usr/local/bin/install-server` shim.
+11. Run `systemctl daemon-reload`.
+12. Enable and restart `hanaagent`.
+13. Run local health verification against the configured bind address.
 
 Expected service defaults:
 
@@ -116,6 +140,13 @@ Expected service defaults:
 - Config directory: `/etc/hanaagent`.
 - Active bundle: `/opt/hanaagent/current`.
 - Default bind can remain the existing server default unless `/etc/hanaagent/server-network.json` is present.
+
+Fresh install creates a new data root. It does not import provider, model,
+device, LAN, or pairing configuration. To clear an existing data root while
+keeping operational provider/model/LAN bootstrap, use `install-server
+reinit-data --dry-run` followed by `install-server reinit-data --confirm
+<plan-id>`. Passing `--reset-pairing` to `reinit-data` is the explicit
+full-clear mode and does not preserve provider or device bootstrap data.
 
 ## Upgrade Behavior
 
@@ -137,7 +168,7 @@ node scripts/install-server.mjs upgrade --metadata release.json --current-versio
 
 `--current-version` is required unless `/opt/hanaagent/current` resolves a
 release name (then it is inferred). Resolution refuses prereleases unless
-`--channel prerelease` or an exact prerelease `--version` is given. GitHub
+`--channel prerelease` is given. GitHub
 Releases does not expose asset sha256, so the download step fetches the
 `<asset>.sha256` sidecar published alongside each server bundle and verifies
 the archive against it before extraction.
@@ -185,6 +216,17 @@ For local/explicit metadata, the release metadata file has this shape:
 ```
 
 `--dry-run` is non-mutating and prints the plan. `--execute` is host-mutating and is intended to be run only on the target Linux server after release assets and checksums exist.
+
+Fresh install resolution uses the same GitHub release API path as upgrade:
+
+```sh
+# latest stable from karlorz/openhanako
+install-server install --dry-run
+# pinned fork prerelease tag
+install-server install --version v0.346.18-karlorz.1 --channel prerelease --dry-run
+# apply on a fresh host
+install-server install --version v0.346.18-karlorz.1 --channel prerelease --execute
+```
 
 Upgrade sequence:
 
@@ -241,7 +283,8 @@ Before implementation starts:
 - CI must publish Linux server artifacts and checksums for `linux-x64` and `linux-arm64`.
 - The release metadata format must be documented.
 - The service health endpoint and default local verification command must be fixed in tests.
-- The reinit-data failsafe design must be completed before implementing the reserved `reinit-data` command.
+- The reinit-data failsafe design must stay separate from install/upgrade so
+  provider preservation remains an explicit data operation.
 
 ## Test Plan For Implementation
 
@@ -250,5 +293,7 @@ Before implementation starts:
 - Unit-test checksum mismatch aborts before extraction or service changes.
 - Unit-test upgrade rollback when health verification fails.
 - Unit-test generated systemd unit content.
+- Unit-test durable `/usr/local/bin/install-server` shim installation.
+- Unit-test bootstrap script root/non-root/sudo behavior by static contract and shell lint where available.
 - Integration-test install/upgrade in a disposable Linux container or VM.
 - Verify that the old sg01 SSH deploy helper is not invoked by the new flow.
