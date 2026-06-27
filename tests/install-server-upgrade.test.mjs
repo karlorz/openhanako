@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import {
   buildUpgradePlan,
@@ -10,9 +11,11 @@ import {
   buildReinitDataConfirmPlan,
   buildStatusPlan,
   createShellReinitDataOps,
+  createShellInstallOps,
   createShellUpgradeOps,
   createSystemdUnit,
   deriveUpgradeHostDefaults,
+  executeInstallPlan,
   executeReinitDataPlan,
   executeReinitDataRestore,
   executeUpgradePlan,
@@ -22,12 +25,14 @@ import {
   resolveLinuxAsset,
   resolvePrivilegeModel,
   resolveRelease,
+  runInstall,
   selectServerAsset,
   runUpgrade,
   writeReinitDataDryRunPlan,
 } from "../scripts/install-server.mjs";
 
 const ARM64_SHA256 = "a".repeat(64);
+const INSTALL_SERVER_SOURCE = fileURLToPath(new URL("../scripts/install-server.mjs", import.meta.url));
 
 const metadata = {
   tag: "v0.400.0",
@@ -605,6 +610,7 @@ PrivateTmp=true
     expect(plan.paths.serviceName).toBe("hanaagent");
     expect(plan.steps.map((step) => step.id)).toEqual([
       "preflight",
+      "assert-no-existing-install",
       "create-user",
       "create-directories",
       "download",
@@ -612,6 +618,7 @@ PrivateTmp=true
       "extract-release",
       "write-systemd-unit",
       "switch-current",
+      "install-cli",
       "enable-service",
       "restart-service",
       "health-check",
@@ -619,6 +626,174 @@ PrivateTmp=true
     expect(plan.steps.map((step) => step.command).join("\n")).not.toMatch(
       /ssh|git reset|npm ci|npm run build:server|rm -rf|cp -R|deploy-sg01-server/i,
     );
+  });
+
+  it("executeInstallPlan installs only after checksum verification and enables the service", async () => {
+    const plan = buildInstallPlan({
+      metadata,
+      platform: "linux",
+      arch: "arm64",
+      uid: 0,
+      hasSudo: false,
+      dryRun: false,
+    });
+    const calls = [];
+    const result = await executeInstallPlan(plan, {
+      preflight: async () => calls.push("preflight"),
+      assertNoExistingInstall: async () => calls.push("assert-no-existing-install"),
+      createUser: async () => calls.push("create-user"),
+      createDirectories: async () => calls.push("create-directories"),
+      download: async () => calls.push("download"),
+      verifyChecksum: async () => calls.push("verify-checksum"),
+      extractRelease: async () => calls.push("extract-release"),
+      writeSystemdUnit: async () => calls.push("write-systemd-unit"),
+      switchCurrent: async () => calls.push("switch-current"),
+      installCli: async () => calls.push("install-cli"),
+      enableService: async () => calls.push("enable-service"),
+      restartService: async () => calls.push("restart-service"),
+      healthCheck: async () => calls.push("health-check"),
+    });
+
+    expect(result).toEqual({ ok: true });
+    expect(calls).toEqual([
+      "preflight",
+      "assert-no-existing-install",
+      "create-user",
+      "create-directories",
+      "download",
+      "verify-checksum",
+      "extract-release",
+      "write-systemd-unit",
+      "switch-current",
+      "install-cli",
+      "enable-service",
+      "restart-service",
+      "health-check",
+    ]);
+  });
+
+  it("executeInstallPlan does not extract or mutate service state when an install already exists", async () => {
+    const plan = buildInstallPlan({
+      metadata,
+      platform: "linux",
+      arch: "arm64",
+      uid: 0,
+      hasSudo: false,
+      dryRun: false,
+    });
+    const calls = [];
+    const result = await executeInstallPlan(plan, {
+      preflight: async () => calls.push("preflight"),
+      assertNoExistingInstall: async () => {
+        calls.push("assert-no-existing-install");
+        throw new Error("existing install");
+      },
+      createUser: async () => calls.push("create-user"),
+      createDirectories: async () => calls.push("create-directories"),
+      download: async () => calls.push("download"),
+      verifyChecksum: async () => calls.push("verify-checksum"),
+      extractRelease: async () => calls.push("extract-release"),
+      writeSystemdUnit: async () => calls.push("write-systemd-unit"),
+      switchCurrent: async () => calls.push("switch-current"),
+      installCli: async () => calls.push("install-cli"),
+      enableService: async () => calls.push("enable-service"),
+      restartService: async () => calls.push("restart-service"),
+      healthCheck: async () => calls.push("health-check"),
+    });
+
+    expect(result).toMatchObject({ ok: false, error: "existing install" });
+    expect(calls).toEqual(["preflight", "assert-no-existing-install"]);
+  });
+
+  it("fresh install shell operations stay inside an explicit command allowlist", async () => {
+    const plan = buildInstallPlan({
+      metadata,
+      platform: "linux",
+      arch: "arm64",
+      uid: 0,
+      hasSudo: false,
+      dryRun: false,
+    });
+    const commands = [];
+    const ops = createShellInstallOps({
+      run: async (cmd, args) => {
+        commands.push([cmd, ...args].join(" "));
+        if (cmd === "sha256sum") return { status: 0, stdout: `${ARM64_SHA256}  ${args[0]}\n`, stderr: "" };
+        if (cmd === "test" || cmd === "id" || cmd === "getent") return { status: 1, stdout: "", stderr: "" };
+        return { status: 0, stdout: "", stderr: "" };
+      },
+    });
+
+    await ops.preflight(plan);
+    await ops.assertNoExistingInstall(plan);
+    await ops.createUser(plan);
+    await ops.createDirectories(plan);
+    await ops.download(plan);
+    await ops.verifyChecksum(plan);
+    await ops.extractRelease(plan);
+    await ops.writeSystemdUnit(plan);
+    await ops.switchCurrent(plan.targetReleaseDir, plan);
+    await ops.installCli(plan);
+    await ops.enableService(plan);
+    await ops.restartService(plan);
+    await ops.healthCheck(plan);
+
+    expect(new Set(commands.map((call) => call.split(/\s+/)[0]))).toEqual(
+      new Set(["systemctl", "tar", "sha256sum", "curl", "mkdir", "ln", "cp", "chmod", "id", "getent", "useradd", "groupadd", "test"]),
+    );
+    expect(commands.join("\n")).not.toMatch(/ssh|git reset|npm ci|npm run build|rm -rf|deploy-sg01-server/i);
+  });
+
+  it("fresh install shell operations refuse a broken current symlink marker", async () => {
+    const plan = buildInstallPlan({
+      metadata,
+      platform: "linux",
+      arch: "arm64",
+      uid: 0,
+      hasSudo: false,
+      dryRun: false,
+    });
+    const commands = [];
+    const ops = createShellInstallOps({
+      run: async (cmd, args) => {
+        commands.push([cmd, ...args].join(" "));
+        if (cmd === "test" && args[0] === "-e") return { status: 1, stdout: "", stderr: "" };
+        if (cmd === "test" && args[0] === "-L") return { status: 0, stdout: "", stderr: "" };
+        return { status: 0, stdout: "", stderr: "" };
+      },
+    });
+
+    await expect(ops.assertNoExistingInstall(plan)).rejects.toThrow(/already exists/);
+    expect(commands).toEqual([
+      `test -e ${plan.paths.currentLink}`,
+      `test -L ${plan.paths.currentLink}`,
+    ]);
+  });
+
+  it("fresh install shell operations do not copy the installer implementation onto itself", async () => {
+    const plan = buildInstallPlan({
+      metadata,
+      platform: "linux",
+      arch: "arm64",
+      uid: 0,
+      hasSudo: false,
+      dryRun: false,
+      paths: {
+        installImpl: INSTALL_SERVER_SOURCE,
+      },
+    });
+    const commands = [];
+    const ops = createShellInstallOps({
+      run: async (cmd, args) => {
+        commands.push([cmd, ...args].join(" "));
+        return { status: 0, stdout: "", stderr: "" };
+      },
+    });
+
+    await ops.installCli(plan);
+
+    expect(commands.join("\n")).not.toContain(`cp ${INSTALL_SERVER_SOURCE} ${INSTALL_SERVER_SOURCE}`);
+    expect(commands).toContain(`chmod 0755 ${INSTALL_SERVER_SOURCE}`);
   });
 
   it("status plan is read-only and reports the hanaagent service/current release", () => {
@@ -1688,5 +1863,46 @@ describe("install-server runUpgrade (command resolution)", () => {
   it("zero-arg propagates resolution failure (no stable release)", async () => {
     const onlyPre = { listReleases: async () => [MOCK_RELEASES[0]], getRelease: async () => null };
     await expect(runUpgrade([], runOpts({ httpClient: onlyPre }))).rejects.toThrow(/stable/i);
+  });
+});
+
+describe("install-server runInstall (command resolution)", () => {
+  const runOpts = (overrides = {}) => ({
+    httpClient: mockClient,
+    platform: "linux",
+    arch: "arm64",
+    ...overrides,
+  });
+
+  it("zero-arg resolves latest stable and builds a dry-run install plan", async () => {
+    const plan = await runInstall([], runOpts());
+    expect(plan.kind).toBe("install-server-install-plan");
+    expect(plan.tag).toBe("v0.300.0");
+    expect(plan.dryRun).toBe(true);
+    expect(plan.asset.name).toBe("hanaagent-server-v0.300.0-linux-arm64.tar.gz");
+  });
+
+  it("--version pin resolves that tag for fresh install with --channel prerelease", async () => {
+    const plan = await runInstall(["--version", "v0.323.0-karlorz.1", "--channel", "prerelease"], runOpts());
+    expect(plan.tag).toBe("v0.323.0-karlorz.1");
+    expect(plan.asset.name).toBe("hanaagent-server-v0.323.0-karlorz.1-linux-arm64.tar.gz");
+  });
+});
+
+describe("install-server bootstrap script", () => {
+  it("installs the durable install-server shim without requiring sudo as root", () => {
+    const source = fs.readFileSync(path.join(process.cwd(), "scripts/install-server-bootstrap.sh"), "utf8");
+    expect(source).toContain('REPO="${REPO:-karlorz/openhanako}"');
+    expect(source).toContain('if [ "$(id -u)" = "0" ]');
+    expect(source).toContain("command -v sudo");
+    expect(source).toContain("/usr/local/bin/install-server");
+    expect(source).toContain("/opt/hanaagent/install/install-server.mjs");
+  });
+
+  it("only mutates the service when --execute is explicitly forwarded", () => {
+    const source = fs.readFileSync(path.join(process.cwd(), "scripts/install-server-bootstrap.sh"), "utf8");
+    expect(source).toContain("--install-cli-only");
+    expect(source).toContain("INSTALL_ARGS");
+    expect(source).toContain("--execute");
   });
 });
