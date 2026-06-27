@@ -165,7 +165,7 @@ export function buildUpgradePlan({
     fail("Release metadata must include a tag");
   }
   if (metadata.prerelease && channel !== "prerelease") {
-    fail("Prerelease upgrade requires --channel prerelease (or an exact prerelease --version)");
+    fail("Prerelease upgrade requires --channel prerelease");
   }
   if (!currentVersion) {
     fail("Current installed version is required before planning an upgrade");
@@ -267,25 +267,36 @@ export function buildInstallPlan({
   uid = typeof process.getuid === "function" ? process.getuid() : 0,
   hasSudo = commandExists("sudo"),
   dryRun = true,
+  channel = "stable",
   hostProfile = "default",
   paths = {},
+  serviceUser = "hanaagent",
+  serviceGroup = serviceUser,
+  serviceEnvironment = {},
 } = {}) {
   if (!metadata?.tag) {
     fail("Release metadata must include a tag");
   }
-  if (metadata.prerelease) {
-    fail("Prerelease install requires an explicit prerelease channel; not enabled in this plan");
+  if (metadata.prerelease && channel !== "prerelease") {
+    fail("Prerelease install requires --channel prerelease");
   }
 
   const resolvedPaths = { ...DEFAULT_PATHS, ...paths };
   const normalizedArch = normalizeArch(arch);
   const targetReleaseDir = path.posix.join(resolvedPaths.releasesDir, `${metadata.tag}-linux-${normalizedArch}`);
   const privilege = resolvePrivilegeModel({ uid, hasSudo });
-  const asset = resolveLinuxAsset(metadata, { platform, arch: normalizedArch });
+  const asset = selectServerAsset(metadata, { platform, arch: normalizedArch });
+  if (asset.sha256 != null && !/^[a-fA-F0-9]{64}$/.test(asset.sha256)) {
+    fail(`Release asset ${asset.name ?? asset.url ?? normalizedArch} has an invalid sha256`);
+  }
   const steps = [
     {
       id: "preflight",
       command: "verify linux host, systemd, artifact metadata, and target paths",
+    },
+    {
+      id: "assert-no-existing-install",
+      command: `refuse install if ${resolvedPaths.currentLink} already exists; use upgrade instead`,
     },
     {
       id: "create-user",
@@ -301,7 +312,9 @@ export function buildInstallPlan({
     },
     {
       id: "verify-checksum",
-      command: `verify sha256 ${asset.sha256}`,
+      command: asset.sha256
+        ? `verify sha256 ${asset.sha256}`
+        : `verify sha256 from ${asset.name ?? "server artifact"}.sha256 sidecar`,
     },
     {
       id: "extract-release",
@@ -314,6 +327,10 @@ export function buildInstallPlan({
     {
       id: "switch-current",
       command: `atomically switch ${resolvedPaths.currentLink} to ${targetReleaseDir}`,
+    },
+    {
+      id: "install-cli",
+      command: `install durable ${resolvedPaths.installBin} shim and ${resolvedPaths.installImpl}`,
     },
     {
       id: "enable-service",
@@ -341,6 +358,12 @@ export function buildInstallPlan({
     asset,
     paths: resolvedPaths,
     privilege,
+    serviceUser,
+    serviceGroup,
+    serviceEnvironment: {
+      HANA_HOME: resolvedPaths.dataDir,
+      ...serviceEnvironment,
+    },
     targetReleaseDir,
     steps,
   };
@@ -1533,7 +1556,56 @@ export async function executeUpgradePlan(plan, ops = {}) {
   }
 }
 
+export async function executeInstallPlan(plan, ops = {}) {
+  if (plan.dryRun) {
+    return { ok: true, dryRun: true, plan };
+  }
+  const requiredOps = [
+    "preflight",
+    "assertNoExistingInstall",
+    "createUser",
+    "createDirectories",
+    "download",
+    "verifyChecksum",
+    "extractRelease",
+    "writeSystemdUnit",
+    "switchCurrent",
+    "installCli",
+    "enableService",
+    "restartService",
+    "healthCheck",
+  ];
+  for (const op of requiredOps) {
+    if (typeof ops[op] !== "function") {
+      fail(`executeInstallPlan requires ops.${op}`);
+    }
+  }
+
+  try {
+    await ops.preflight(plan);
+    await ops.assertNoExistingInstall(plan);
+    await ops.createUser(plan);
+    await ops.createDirectories(plan);
+    await ops.download(plan);
+    await ops.verifyChecksum(plan);
+    await ops.extractRelease(plan);
+    await ops.writeSystemdUnit(plan);
+    await ops.switchCurrent(plan.targetReleaseDir, plan);
+    await ops.installCli(plan);
+    await ops.enableService(plan);
+    await ops.restartService(plan);
+    await ops.healthCheck(plan);
+    return { ok: true };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 const SAFE_UPGRADE_COMMANDS = new Set(["systemctl", "tar", "sha256sum", "curl", "mkdir", "ln", "cp"]);
+const SAFE_INSTALL_COMMANDS = new Set(["systemctl", "tar", "sha256sum", "curl", "mkdir", "ln", "cp", "chmod", "id", "getent", "useradd", "groupadd", "test"]);
 
 export function createShellUpgradeOps({
   run = runCommand,
@@ -1544,6 +1616,12 @@ export function createShellUpgradeOps({
   let downloadedArchive = null;
   let downloadedSidecar = null;
   let backupArchive = null;
+  let localWriteDir = null;
+
+  function writableTempDir() {
+    localWriteDir ??= fs.mkdtempSync(path.join(os.tmpdir(), "hanaagent-upgrade-local-"));
+    return localWriteDir;
+  }
 
   async function checked(cmd, args, options = {}) {
     if (!SAFE_UPGRADE_COMMANDS.has(cmd)) {
@@ -1637,8 +1715,7 @@ export function createShellUpgradeOps({
       return true;
     },
     async writeSystemdUnit(plan) {
-      fs.mkdirSync(stagingDir, { recursive: true });
-      const stagedUnit = path.posix.join(stagingDir, `${plan.paths.serviceName}.service`);
+      const stagedUnit = path.join(writableTempDir(), `${plan.paths.serviceName}.service`);
       fs.writeFileSync(stagedUnit, createSystemdUnit({
         paths: plan.paths,
         user: plan.serviceUser,
@@ -1665,6 +1742,197 @@ export function createShellUpgradeOps({
       return true;
     },
   };
+}
+
+export function createShellInstallOps({
+  run = runCommand,
+  stagingDir = path.posix.join(os.tmpdir(), "hanaagent-install"),
+} = {}) {
+  let downloadedArchive = null;
+  let downloadedSidecar = null;
+  let localWriteDir = null;
+
+  function writableTempDir() {
+    localWriteDir ??= fs.mkdtempSync(path.join(os.tmpdir(), "hanaagent-install-local-"));
+    return localWriteDir;
+  }
+
+  async function runInstallCommand(cmd, args, options = {}) {
+    if (!SAFE_INSTALL_COMMANDS.has(cmd)) {
+      fail(`Unexpected install operation command: ${cmd}`);
+    }
+    const commandArgs = options.privileged ? [...options.plan.privilege.commandPrefix, cmd, ...args] : [cmd, ...args];
+    const command = commandArgs.shift();
+    return await run(command, commandArgs);
+  }
+
+  async function checked(cmd, args, options = {}) {
+    const result = await runInstallCommand(cmd, args, options);
+    if (result.status !== 0) {
+      fail(`${cmd} failed: ${result.stderr || result.stdout || `exit ${result.status}`}`);
+    }
+    return result;
+  }
+
+  return {
+    async preflight(plan) {
+      if (plan.platform !== "linux") fail("install-server install can only execute on Linux");
+      for (const [command, args] of [
+        ["systemctl", ["--version"]],
+        ["tar", ["--version"]],
+        ["sha256sum", ["--version"]],
+        ["curl", ["--version"]],
+        ["mkdir", ["--version"]],
+        ["ln", ["--version"]],
+        ["cp", ["--version"]],
+        ["chmod", ["--version"]],
+      ]) {
+        await checked(command, args, { plan });
+      }
+      return true;
+    },
+    async assertNoExistingInstall(plan) {
+      const pathResult = await runInstallCommand("test", ["-e", plan.paths.currentLink], { plan, privileged: true });
+      const symlinkResult = await runInstallCommand("test", ["-L", plan.paths.currentLink], { plan, privileged: true });
+      if (pathResult.status === 0 || symlinkResult.status === 0) {
+        fail(`${plan.paths.currentLink} already exists; use install-server upgrade instead of install`);
+      }
+      return true;
+    },
+    async createUser(plan) {
+      const group = await runInstallCommand("getent", ["group", plan.serviceGroup], { plan });
+      if (group.status !== 0) {
+        await checked("groupadd", ["--system", plan.serviceGroup], { plan, privileged: true });
+      }
+      const user = await runInstallCommand("id", ["-u", plan.serviceUser], { plan });
+      if (user.status !== 0) {
+        await checked("useradd", [
+          "--system",
+          "--gid",
+          plan.serviceGroup,
+          "--home-dir",
+          plan.paths.dataDir,
+          "--shell",
+          "/usr/sbin/nologin",
+          plan.serviceUser,
+        ], { plan, privileged: true });
+      }
+      return true;
+    },
+    async createDirectories(plan) {
+      await checked("mkdir", [
+        "-p",
+        plan.paths.installRoot,
+        path.posix.dirname(plan.paths.installImpl),
+        plan.paths.releasesDir,
+        plan.paths.configDir,
+        plan.paths.dataDir,
+        stagingDir,
+      ], { plan, privileged: true });
+      return true;
+    },
+    async download(plan) {
+      await checked("mkdir", ["-p", stagingDir], { plan, privileged: true });
+      downloadedArchive = path.posix.join(stagingDir, safeAssetArchiveName(plan));
+      await checked("curl", ["-fL", plan.asset.url, "-o", downloadedArchive], { plan, privileged: true });
+      if (plan.asset.sha256 == null) {
+        downloadedSidecar = `${downloadedArchive}.sha256`;
+        await checked("curl", ["-fL", `${plan.asset.url}.sha256`, "-o", downloadedSidecar], {
+          plan,
+          privileged: true,
+        });
+      }
+      return { downloadedArchive };
+    },
+    async verifyChecksum(plan) {
+      if (!downloadedArchive) fail("download must run before verifyChecksum");
+      const result = await checked("sha256sum", [downloadedArchive], { plan, privileged: true });
+      const actual = String(result.stdout || "").trim().split(/\s+/)[0]?.toLowerCase();
+      let expected;
+      if (plan.asset.sha256) {
+        expected = String(plan.asset.sha256).toLowerCase();
+      } else {
+        if (!downloadedSidecar || !fs.existsSync(downloadedSidecar)) {
+          fail(`sha256 sidecar missing for ${downloadedArchive}; expected ${plan.asset.name ?? ""}.sha256 alongside the asset`);
+        }
+        expected = String(fs.readFileSync(downloadedSidecar, "utf8")).trim().split(/\s+/)[0]?.toLowerCase();
+      }
+      if (!expected || actual !== expected) {
+        fail(`sha256 mismatch for ${downloadedArchive}: expected ${expected || "unknown"}, got ${actual || "unknown"}`);
+      }
+      return true;
+    },
+    async extractRelease(plan) {
+      if (!downloadedArchive) fail("download must run before extractRelease");
+      await checked("mkdir", ["-p", plan.targetReleaseDir], { plan, privileged: true });
+      await checked("tar", ["-xzf", downloadedArchive, "-C", plan.targetReleaseDir, "--strip-components=1"], {
+        plan,
+        privileged: true,
+      });
+      return true;
+    },
+    async writeSystemdUnit(plan) {
+      const stagedUnit = path.join(writableTempDir(), `${plan.paths.serviceName}.service`);
+      fs.writeFileSync(stagedUnit, createSystemdUnit({
+        paths: plan.paths,
+        user: plan.serviceUser,
+        group: plan.serviceGroup,
+        environment: plan.serviceEnvironment,
+      }));
+      await checked("mkdir", ["-p", path.posix.dirname(plan.paths.serviceUnit)], { plan, privileged: true });
+      await checked("cp", [stagedUnit, plan.paths.serviceUnit], { plan, privileged: true });
+      return { serviceUnit: plan.paths.serviceUnit };
+    },
+    async switchCurrent(targetReleaseDir, plan) {
+      await checked("ln", ["-sfn", targetReleaseDir, plan.paths.currentLink], { plan, privileged: true });
+      return true;
+    },
+    async installCli(plan) {
+      const shimPath = path.join(writableTempDir(), "install-server");
+      fs.writeFileSync(shimPath, createInstallServerShim(plan.paths.installImpl), { mode: 0o755 });
+      await checked("mkdir", ["-p", path.posix.dirname(plan.paths.installImpl), path.posix.dirname(plan.paths.installBin)], {
+        plan,
+        privileged: true,
+      });
+      if (!isSameLocalFilePath(__filename, plan.paths.installImpl)) {
+        await checked("cp", [__filename, plan.paths.installImpl], { plan, privileged: true });
+      }
+      await checked("chmod", ["0755", plan.paths.installImpl], { plan, privileged: true });
+      await checked("cp", [shimPath, plan.paths.installBin], { plan, privileged: true });
+      await checked("chmod", ["0755", plan.paths.installBin], { plan, privileged: true });
+      return { installBin: plan.paths.installBin, installImpl: plan.paths.installImpl };
+    },
+    async enableService(plan) {
+      await checked("systemctl", ["daemon-reload"], { plan, privileged: true });
+      await checked("systemctl", ["enable", plan.paths.serviceName], { plan, privileged: true });
+      return true;
+    },
+    async restartService(plan) {
+      await checked("systemctl", ["restart", plan.paths.serviceName], { plan, privileged: true });
+      return true;
+    },
+    async healthCheck(plan) {
+      await checked("systemctl", ["is-active", "--quiet", plan.paths.serviceName], { plan, privileged: true });
+      return true;
+    },
+  };
+}
+
+function createInstallServerShim(installImpl) {
+  return `#!/usr/bin/env sh
+set -eu
+exec node "${installImpl}" "$@"
+`;
+}
+
+function isSameLocalFilePath(left, right) {
+  if (path.resolve(left) === path.resolve(right)) return true;
+  try {
+    if (!fs.existsSync(left) || !fs.existsSync(right)) return false;
+    return fs.realpathSync(left) === fs.realpathSync(right);
+  } catch {
+    return false;
+  }
 }
 
 function safeAssetArchiveName(plan) {
@@ -1968,6 +2236,41 @@ export async function runUpgrade(argv, {
   return plan;
 }
 
+export async function runInstall(argv, {
+  httpClient,
+  metadata: explicitMetadata = null,
+  platform = process.platform,
+  arch = process.arch,
+  uid = typeof process.getuid === "function" ? process.getuid() : 0,
+  hasSudo = commandExists("sudo"),
+  paths = {},
+  serviceUser = "hanaagent",
+  serviceGroup = serviceUser,
+  serviceEnvironment = {},
+} = {}) {
+  const options = parseArgs(["install", ...argv]);
+  let metadata = explicitMetadata;
+  if (!metadata && options.metadataPath) {
+    metadata = readJson(options.metadataPath);
+  }
+  if (!metadata && !options.metadataPath) {
+    metadata = await resolveRelease({ version: options.version, channel: options.channel ?? "stable" }, httpClient);
+  }
+  return buildInstallPlan({
+    metadata,
+    platform: options.platform ?? platform,
+    arch: options.arch ?? arch,
+    uid,
+    hasSudo,
+    dryRun: options.dryRun,
+    channel: options.channel ?? "stable",
+    paths,
+    serviceUser,
+    serviceGroup,
+    serviceEnvironment,
+  });
+}
+
 function usage() {
   return `install-server - HanaAgent Linux server installer
 
@@ -1978,7 +2281,12 @@ Usage:
     pin an exact release tag (use --channel prerelease for pre-releases)
   node scripts/install-server.mjs upgrade --metadata <release.json> --current-version <version> [--dry-run]
     use explicit local metadata instead of GitHub
-  node scripts/install-server.mjs install --metadata <release.json> --platform linux --arch arm64 --dry-run
+  node scripts/install-server.mjs install [--version <tag>] [--channel prerelease] [--dry-run]
+    resolve latest stable release from GitHub for a fresh host install
+  node scripts/install-server.mjs install --version <tag> [--channel prerelease] --execute
+    pin an exact release tag and execute a fresh host install
+  node scripts/install-server.mjs install --metadata <release.json> --platform linux --arch arm64 [--dry-run|--execute]
+    use explicit local metadata instead of GitHub for fresh host install
   node scripts/install-server.mjs status
   node scripts/install-server.mjs backup --output <path> [--data-root <path>]
   node scripts/install-server.mjs reinit-data [--dry-run] [--reset-pairing] [--data-root <path>] [--plan-dir <path>]
@@ -1987,7 +2295,7 @@ Usage:
   node scripts/install-server.mjs reinit-data --restore <backup-path|latest-full-state> [--data-root <path>]
 
 Notes:
-  upgrade resolves latest stable by default; prereleases require --channel prerelease or an exact prerelease --version.
+  upgrade resolves latest stable by default; prereleases require --channel prerelease.
   upgrade --execute is host-mutating (stops service, swaps /opt/hanaagent/current); --dry-run is safe.
   reinit-data preserves provider/model and LAN device bootstrap by default; --reset-pairing requests a fully fresh root.
   reinit-data --list-backups inspects existing backup archives without mutating service or data state.
@@ -2114,17 +2422,22 @@ function main(argv = process.argv.slice(2)) {
     return;
   }
   if (options.command === "install") {
-    if (!options.metadataPath) fail("install requires --metadata <release.json>");
-    const plan = buildInstallPlan({
-      metadata: readJson(options.metadataPath),
-      platform: options.platform,
-      arch: options.arch,
-      dryRun: options.dryRun,
+    const planPromise = runInstall(argv.slice(1), {
+      httpClient: createGithubReleasesClient(),
     });
-    console.log(JSON.stringify(plan, null, 2));
-    if (!options.dryRun) {
-      fail("Host-mutating install execution is not wired yet; run dry-run or implement tested install ops.");
-    }
+    planPromise.then((plan) => {
+      if (options.dryRun) {
+        console.log(JSON.stringify(plan, null, 2));
+        return;
+      }
+      return executeInstallPlan(plan, createShellInstallOps()).then((result) => {
+        console.log(JSON.stringify(result, null, 2));
+        if (!result.ok) process.exitCode = 1;
+      });
+    }).catch((error) => {
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exitCode = 1;
+    });
     return;
   }
   if (options.command === "status") {
