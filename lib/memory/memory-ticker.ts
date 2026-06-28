@@ -187,7 +187,7 @@ export function createMemoryTicker(opts) {
 
   // ── 步骤健康状态：每步独立记录，方便 UI 层 / healthz 接口读取 ──
   // 注意：failCount 只在连续失败时递增，一次成功立即清零
-  const _stepKeys = ["rollingSummary", "cacheSnapshotReflection", "compileToday", "compileWeek", "compileLongterm", "compileFacts", "deepMemory"];
+  const _stepKeys = ["rollingSummary", "compileToday", "compileWeek", "compileLongterm", "compileFacts", "deepMemory"];
   const _health = {};
   for (const k of _stepKeys) {
     _health[k] = { lastSuccessAt: null, lastErrorAt: null, lastErrorMsg: null, failCount: 0 };

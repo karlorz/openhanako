@@ -1692,7 +1692,13 @@ export function createSessionsRoute(engine, hub = null) {
       }, newSessionPath);
       return c.json(response);
     } catch (err) {
-      return c.json({ error: err.message }, 500);
+      const status = Number.isInteger(err?.status) && err.status >= 400 && err.status < 600
+        ? err.status
+        : 500;
+      return c.json({
+        error: err.message,
+        ...(err?.code ? { code: err.code } : {}),
+      }, status);
     }
   });
 

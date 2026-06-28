@@ -3248,6 +3248,87 @@ describe("SessionCoordinator", () => {
     expect(fs.existsSync(createdPath)).toBe(true);
   });
 
+  it("uses compaction summaries as transcript material when continuing a deleted-agent session", async () => {
+    const agentsDir = path.join(tempDir, "agents");
+    const sourcePath = path.join(agentsDir, "deleted", "sessions", "old-compacted.jsonl");
+    const createdPath = path.join(agentsDir, "hana", "sessions", "continued-compacted.jsonl");
+    fs.mkdirSync(path.dirname(sourcePath), { recursive: true });
+    fs.mkdirSync(path.dirname(createdPath), { recursive: true });
+    fs.writeFileSync(sourcePath, "source", "utf-8");
+    fs.writeFileSync(createdPath, "created", "utf-8");
+
+    (SessionManager.open as any).mockReturnValue({
+      getCwd: () => tempDir,
+      getBranch: () => [{
+        type: "compaction",
+        summary: "old compacted context",
+        timestamp: "2026-06-17T00:00:00.000Z",
+      }],
+    });
+
+    const manager = {
+      getCwd: () => tempDir,
+      appendMessage: vi.fn(),
+      appendModelChange: vi.fn(),
+      _rewriteFile: vi.fn(),
+    };
+    const coordinator = Object.create(SessionCoordinator.prototype);
+    coordinator._assertActiveDesktopSessionPath = vi.fn();
+    coordinator._d = {
+      agentIdFromSessionPath: vi.fn(() => "deleted"),
+      isAgentDeleted: vi.fn((agentId) => agentId === "deleted"),
+      getPrefs: vi.fn(() => ({ getPrimaryAgent: () => "hana" })),
+      getAgentById: vi.fn(() => ({ id: "hana", agentName: "Hana" })),
+      getAgent: vi.fn(() => ({ id: "hana", agentName: "Hana" })),
+      getHomeCwd: vi.fn(() => tempDir),
+    };
+    coordinator.createSession = vi.fn(async () => ({
+      sessionPath: createdPath,
+      session: { sessionManager: manager, model: null },
+    }));
+    coordinator.writeSessionMeta = vi.fn(async () => {});
+    coordinator._freshCompactDeletedAgentContinuation = vi.fn(async () => {});
+    coordinator.discardSessionRuntime = vi.fn(async () => {});
+    coordinator.getSessionWorkspaceFolders = vi.fn(() => []);
+
+    await coordinator.continueDeletedAgentSession(sourcePath);
+
+    expect(manager.appendMessage).toHaveBeenCalledWith(expect.objectContaining({
+      role: "assistant",
+      content: [{ type: "text", text: "[历史压缩摘要]\nold compacted context" }],
+    }));
+  });
+
+  it("throws a typed 422 when a deleted-agent source session has no displayable transcript", async () => {
+    const agentsDir = path.join(tempDir, "agents");
+    const sourcePath = path.join(agentsDir, "deleted", "sessions", "empty.jsonl");
+    fs.mkdirSync(path.dirname(sourcePath), { recursive: true });
+    fs.writeFileSync(sourcePath, "source", "utf-8");
+
+    (SessionManager.open as any).mockReturnValue({
+      getCwd: () => tempDir,
+      getBranch: () => [{ type: "message", message: { role: "assistant", content: "<think>private</think>" } }],
+    });
+
+    const coordinator = Object.create(SessionCoordinator.prototype);
+    coordinator._assertActiveDesktopSessionPath = vi.fn();
+    coordinator._d = {
+      agentIdFromSessionPath: vi.fn(() => "deleted"),
+      isAgentDeleted: vi.fn((agentId) => agentId === "deleted"),
+      getPrefs: vi.fn(() => ({ getPrimaryAgent: () => "hana" })),
+      getAgentById: vi.fn(() => ({ id: "hana", agentName: "Hana" })),
+      getAgent: vi.fn(() => ({ id: "hana", agentName: "Hana" })),
+      getHomeCwd: vi.fn(() => tempDir),
+    };
+    coordinator.createSession = vi.fn();
+
+    await expect(coordinator.continueDeletedAgentSession(sourcePath)).rejects.toMatchObject({
+      code: "SESSION_TRANSCRIPT_EMPTY",
+      status: 422,
+    });
+    expect(coordinator.createSession).not.toHaveBeenCalled();
+  });
+
   const isoDeps = () => ({
     agentsDir: "/tmp/agents",
     getAgent: () => ({ agentDir: tempDir, sessionDir: tempDir, agentName: "test-agent", config: { models: { chat: { id: "default-model", provider: "test" } } }, tools: [] }),

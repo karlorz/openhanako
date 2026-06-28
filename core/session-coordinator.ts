@@ -226,6 +226,15 @@ function activeToolDefinitionsFromSnapshot(allToolObjects: any, snapshotToolName
 
 function normalizeDeletedAgentTranscriptMessage(message: any) {
   if (!message || typeof message !== "object") return null;
+  if (message.role === "compactionSummary") {
+    const text = textOrNull(message.summary) || extractPlainTextFromContent(message.content).trim();
+    if (!text) return null;
+    return {
+      role: "assistant",
+      content: [{ type: "text", text: `[历史压缩摘要]\n${text}` }],
+      timestamp: timestampFromHistoryMessage(message),
+    };
+  }
   if (message.role !== "user" && message.role !== "assistant") return null;
   const text = extractPlainTextFromContent(message.content, { stripThink: message.role === "assistant" }).trim();
   if (!text) return null;
@@ -239,16 +248,35 @@ function normalizeDeletedAgentTranscriptMessage(message: any) {
 function readSessionBranchMessages(sessionPath: any) {
   const manager = SessionManager.open(sessionPath, path.dirname(sessionPath));
   const branch = manager.getBranch();
-  return branch
-    .filter(entry => entry?.type === "message" && (entry as any).message)
-    .map(entry => ({
-      ...(entry as any).message,
-      timestamp: (entry as any).message.timestamp ?? entry.timestamp ?? null,
-    }));
+  const messages: any[] = [];
+  for (const entry of branch) {
+    if (entry?.type === "message" && (entry as any).message) {
+      messages.push({
+        ...(entry as any).message,
+        timestamp: (entry as any).message.timestamp ?? entry.timestamp ?? null,
+      });
+      continue;
+    }
+    if (entry?.type === "compaction" && textOrNull((entry as any).summary)) {
+      messages.push({
+        role: "compactionSummary",
+        summary: (entry as any).summary,
+        timestamp: (entry as any).timestamp ?? null,
+      });
+    }
+  }
+  return messages;
 }
 
 function textOrNull(value: any) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function deletedAgentContinuationError(code: string, message: string, status = 422) {
+  const err = new Error(`continueDeletedAgentSession: ${message}`);
+  (err as any).code = code;
+  (err as any).status = status;
+  return err;
 }
 
 function modelIdFromModel(model: any) {
@@ -1958,7 +1986,11 @@ export class SessionCoordinator {
       .map(normalizeDeletedAgentTranscriptMessage)
       .filter(Boolean);
     if (transcriptMessages.length === 0) {
-      throw new Error("continueDeletedAgentSession: source session has no displayable transcript");
+      throw deletedAgentContinuationError(
+        "SESSION_TRANSCRIPT_EMPTY",
+        "source session has no displayable transcript",
+        422,
+      );
     }
 
     let createdSessionPath = null;
@@ -4392,7 +4424,8 @@ export class SessionCoordinator {
         delete meta[sessKey].model;
         delete meta[sessKey].modelId;
         meta[sessKey] = await this._externalizeSessionMetaPayloads(metaPath, sessKey, meta[sessKey]);
-        await fsp.writeFile(metaPath, JSON.stringify(meta, null, 2));
+        const compactedMeta = await this._externalizeSessionMetaForIndexBudget(metaPath, meta);
+        await fsp.writeFile(metaPath, JSON.stringify(compactedMeta, null, 2));
         this.invalidateMetaCache(metaPath);
         this._writeSessionCapabilitySnapshot(sessionPath, partial);
         return;
@@ -4474,14 +4507,63 @@ export class SessionCoordinator {
     for (const [sessKey, entry] of Object.entries(data)) {
       compacted[sessKey] = await this._externalizeSessionMetaPayloads(metaPath, sessKey, entry);
     }
-    await fsp.writeFile(metaPath, JSON.stringify(compacted, null, 2));
+    const budgeted = await this._externalizeSessionMetaForIndexBudget(metaPath, compacted);
+    await fsp.writeFile(metaPath, JSON.stringify(budgeted, null, 2));
     this.invalidateMetaCache(metaPath);
     log.warn(`oversized session-meta compacted with payload sidecars: ${metaPath}`);
-    return compacted;
+    return budgeted;
   }
 
-  async _externalizeSessionMetaPayloads(metaPath: any, sessKey: any, entry: any) {
+  _sessionMetaIndexSizeBytes(data: any) {
+    try {
+      return Buffer.byteLength(JSON.stringify(data, null, 2), "utf-8");
+    } catch {
+      return Number.POSITIVE_INFINITY;
+    }
+  }
+
+  _sessionMetaPayloadSizeBytes(value: any) {
+    try {
+      return Buffer.byteLength(JSON.stringify(value), "utf-8");
+    } catch {
+      return 0;
+    }
+  }
+
+  async _externalizeSessionMetaForIndexBudget(metaPath: any, meta: any) {
+    if (this._sessionMetaIndexSizeBytes(meta) <= SESSION_META_INDEX_MAX_BYTES) return meta;
+
+    const next = { ...meta };
+    const candidates: any[] = [];
+    for (const [sessKey, entry] of Object.entries(next)) {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+      for (const field of SESSION_META_PAYLOAD_FIELDS) {
+        const value = (entry as any)[field];
+        if (value === undefined || this._isSessionMetaPayloadRef(value, field)) continue;
+        const byteLength = this._sessionMetaPayloadSizeBytes(value);
+        if (byteLength <= 0) continue;
+        candidates.push({ sessKey, field, byteLength });
+      }
+    }
+
+    candidates.sort((a, b) => b.byteLength - a.byteLength);
+    for (const candidate of candidates) {
+      next[candidate.sessKey] = await this._externalizeSessionMetaPayloads(
+        metaPath,
+        candidate.sessKey,
+        next[candidate.sessKey],
+        { forceFields: new Set([candidate.field]) },
+      );
+      if (this._sessionMetaIndexSizeBytes(next) <= SESSION_META_INDEX_MAX_BYTES) break;
+    }
+    return next;
+  }
+
+  async _externalizeSessionMetaPayloads(metaPath: any, sessKey: any, entry: any, options: any = {}) {
     if (!entry || typeof entry !== "object" || Array.isArray(entry)) return entry;
+    const forceFields = options?.forceFields instanceof Set
+      ? options.forceFields
+      : new Set(Array.isArray(options?.forceFields) ? options.forceFields : []);
     const next = { ...entry };
     for (const field of SESSION_META_PAYLOAD_FIELDS) {
       const value = next[field];
@@ -4492,7 +4574,10 @@ export class SessionCoordinator {
       } catch {
         continue;
       }
-      if (Buffer.byteLength(encoded, "utf-8") <= SESSION_META_PAYLOAD_INLINE_LIMIT_BYTES) continue;
+      if (
+        !forceFields.has(field)
+        && Buffer.byteLength(encoded, "utf-8") <= SESSION_META_PAYLOAD_INLINE_LIMIT_BYTES
+      ) continue;
       const relPath = this._sessionMetaPayloadRelativePath(sessKey, field);
       const absPath = this._sessionMetaPayloadAbsolutePath(metaPath, relPath);
       await fsp.mkdir(path.dirname(absPath), { recursive: true });

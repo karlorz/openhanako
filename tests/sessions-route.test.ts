@@ -1031,6 +1031,41 @@ describe("sessions route", () => {
     );
   });
 
+  it("returns typed 422 when a deleted-agent continuation source has no transcript", async () => {
+    const { createSessionsRoute } = await import("../server/routes/sessions.ts");
+    const app = new Hono();
+    const agentsDir = path.join(tmpDir, "agents");
+    const oldPath = path.join(agentsDir, "deleted", "sessions", "empty.jsonl");
+    fs.mkdirSync(path.dirname(oldPath), { recursive: true });
+    fs.writeFileSync(oldPath, "{}\n");
+    const emptyError = new Error("continueDeletedAgentSession: source session has no displayable transcript") as any;
+    emptyError.code = "SESSION_TRANSCRIPT_EMPTY";
+    emptyError.status = 422;
+    const engine = {
+      agentsDir,
+      agentIdFromSessionPath: vi.fn(() => "deleted"),
+      isAgentDeleted: vi.fn(() => true),
+      continueDeletedAgentSession: vi.fn(async () => {
+        throw emptyError;
+      }),
+    };
+
+    app.route("/api", createSessionsRoute(engine));
+
+    const res = await app.request("/api/sessions/continue-deleted-agent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: oldPath }),
+    });
+    const data = await res.json();
+
+    expect(res.status).toBe(422);
+    expect(data).toMatchObject({
+      code: "SESSION_TRANSCRIPT_EMPTY",
+      error: "continueDeletedAgentSession: source session has no displayable transcript",
+    });
+  });
+
   it("rejects write operations against deleted-agent sessions", async () => {
     const { createSessionsRoute } = await import("../server/routes/sessions.ts");
     const app = new Hono();
