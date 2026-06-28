@@ -314,6 +314,7 @@ export function PreviewPanel() {
   // DOM 模式选区捕获（非编辑模式下 mouseup 时检测选中文本）
   const handleMouseUp = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
     if (!previewItem || editable) return;
+    if (event.button === 2) return;
     scheduleCaptureSelection(previewItem, undefined, getSelectionCommitAnchorRect(event.nativeEvent));
   }, [previewItem, editable]);
 
