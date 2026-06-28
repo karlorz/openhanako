@@ -12,9 +12,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { motion } from 'motion/react';
 import { undo, redo } from '@codemirror/commands';
-import { spring } from '../../ui/motion';
 import {
   toggleBold,
   toggleItalic,
@@ -186,13 +184,10 @@ export function EditorContextMenu({ getView, containerRef, mode, readOnly = fals
   const showFmt = mode === 'markdown' && !readOnly;
 
   return createPortal(
-    <motion.div
+    <div
       className="context-menu"
       ref={menuRef}
       style={{ left: menu.position.x, top: menu.position.y }}
-      initial={{ opacity: 0, scale: 0.95, y: -2 }}
-      animate={{ opacity: 1, scale: 1, y: 0 }}
-      transition={spring.paperSnap}
     >
       {!readOnly && (
         <MenuItem
@@ -296,7 +291,7 @@ export function EditorContextMenu({ getView, containerRef, mode, readOnly = fals
           </div>
         </>
       )}
-    </motion.div>,
+    </div>,
     ownerDoc().body,
   );
 }

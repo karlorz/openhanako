@@ -14,6 +14,7 @@
 
 import { forwardRef, useEffect, useRef, useCallback, useImperativeHandle, useLayoutEffect, useState, Fragment } from 'react';
 import { EditorContextMenu } from './preview/EditorContextMenu';
+import { isContextMenuButton } from '../stores/selection-actions';
 import {
   EditorView, keymap, highlightActiveLine, drawSelection,
   lineNumbers,
@@ -834,7 +835,7 @@ export const PreviewEditor = forwardRef<PreviewEditorHandle, PreviewEditorProps>
       const handledSelectionCommitEvents = new WeakSet<Event>();
       const onSelectionCommitEvent = (event: Event) => {
         if (handledSelectionCommitEvents.has(event)) return;
-        if ('button' in event && (event as MouseEvent).button === 2) return;
+        if (isContextMenuButton(event)) return;
         handledSelectionCommitEvents.add(event);
         selectionCommitCbRef.current?.(view);
       };

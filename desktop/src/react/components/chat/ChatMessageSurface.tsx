@@ -1,9 +1,8 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from 'react';
+import type { PointerEvent as ReactPointerEvent } from 'react';
 import { useStore } from '../../stores';
 import { sessionScopedListIncludes, sessionScopedValue } from '../../stores/session-slice';
 import { loadMoreMessages } from '../../stores/session-actions';
-import { getSelectionCommitAnchorRect, scheduleCaptureChatSelection } from '../../stores/selection-actions';
 import { useBoxSelection } from '../../hooks/use-box-selection';
 import { useContinuousBottomScroll } from '../../hooks/use-continuous-bottom-scroll';
 import type { ChatListItem } from '../../stores/chat-types';
@@ -77,11 +76,10 @@ export const ChatMessageSurface = memo(function ChatMessageSurface({
     return ids;
   }, [items]);
   const boxSelection = useBoxSelection({ messageElementsRef, orderedIds, sessionPath, active });
-  const handleCaptureSelection = useCallback((event: ReactMouseEvent<HTMLDivElement> | ReactKeyboardEvent<HTMLDivElement>) => {
-    if (!active) return;
-    if ('button' in event && event.button === 2) return;
-    scheduleCaptureChatSelection(sessionPath, getSelectionCommitAnchorRect(event.nativeEvent));
-  }, [active, sessionPath]);
+  // 聊天选区提交不在组件层挂 mouseup/keyup：document 级 initQuotedSelectionLifecycle
+  // 已按 surface 统一捕获（主窗口 + 每个拆窗子窗各注册一次，且查询各自 document 的
+  // 原生选区）。组件层再挂一份既冗余、又会在子窗口里误查主窗口 document。这里只需
+  // 标注 data-chat-selection-root / data-session-path 供 document lifecycle 定位。
   const handleShellPointerMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
     const xFromRight = rect.right - event.clientX;
@@ -216,8 +214,6 @@ export const ChatMessageSurface = memo(function ChatMessageSurface({
         data-session-path={sessionPath}
         onPointerDown={boxSelection.onPointerDown}
         onClickCapture={boxSelection.onClickCapture}
-        onMouseUp={handleCaptureSelection}
-        onKeyUp={handleCaptureSelection}
       >
         <div
           ref={contentRef}

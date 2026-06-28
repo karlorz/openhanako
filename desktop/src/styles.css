@@ -2378,6 +2378,14 @@ body.resizing .channel-inspector-rail {
 /* (书桌文件区样式已迁移至 Desk.module.css) */
 
 /* ── 右键菜单 ── */
+/* 进场动画走纯 CSS（合成器驱动、每窗口独立），不用 framer-motion：
+   拆窗子窗口里 framer-motion 依赖主窗口 rAF，主窗口退后台被节流时动画会停摆。
+   CSS 动画跑在子窗口自己的合成器线程上，主窗口/tile/detach/viewer 全部即时。 */
+@keyframes context-menu-enter {
+    from { opacity: 0; transform: translateY(-2px) scale(0.97); }
+    to   { opacity: 1; transform: none; }
+}
+
 .context-menu {
     position: fixed;
     z-index: 9999;
@@ -2388,6 +2396,12 @@ body.resizing .channel-inspector-rail {
     box-shadow: 0 6px 24px rgba(0, 0, 0, 0.14), 0 2px 6px rgba(0, 0, 0, 0.07);
     padding: 4px 0;
     font-family: inherit;
+    transform-origin: top left;
+    animation: context-menu-enter var(--duration-fast) var(--ease-out);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .context-menu { animation: none; }
 }
 
 .context-menu-item {
