@@ -70,6 +70,39 @@ describe("callText provider-compat routing", () => {
     expect(body.enable_thinking).toBe(false);
   });
 
+  it("disables LongCat thinking for utility callText requests", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({
+        choices: [{ message: { content: "ok" } }],
+      }),
+    } as any);
+
+    await callText({
+      api: "openai-completions",
+      baseUrl: "https://api.longcat.chat/openai/v1",
+      model: {
+        id: "LongCat-2.0-Preview",
+        provider: "longcat",
+        api: "openai-completions",
+        baseUrl: "https://api.longcat.chat/openai/v1",
+        reasoning: true,
+      },
+      messages: [
+        { role: "assistant", content: "answer", reasoning_content: "private" },
+        { role: "user", content: "summarize" },
+      ],
+      timeoutMs: 5_000,
+    } as any);
+
+    const [, init] = fetchMock.mock.calls[0];
+    const body = JSON.parse(init.body as string);
+    expect(body.thinking).toEqual({ type: "disabled" });
+    expect(body).not.toHaveProperty("reasoning_effort");
+    expect(body.messages[0]).not.toHaveProperty("reasoning_content");
+  });
+
   it("omits temperature from utility requests unless the caller sets it explicitly", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: true,

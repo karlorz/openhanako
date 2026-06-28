@@ -24,6 +24,7 @@ import * as mimo from "./provider-compat/mimo.ts";
 import * as qwen from "./provider-compat/qwen.ts";
 import * as zhipu from "./provider-compat/zhipu.ts";
 import * as volcengine from "./provider-compat/volcengine.ts";
+import * as longcat from "./provider-compat/longcat.ts";
 import * as agnes from "./provider-compat/agnes.ts";
 import * as openaiInputAudio from "./provider-compat/openai-input-audio.ts";
 import * as openaiVideoUrl from "./provider-compat/openai-video-url.ts";
@@ -60,6 +61,7 @@ const PROVIDER_MODULES: ProviderModule[] = [
   qwen,
   zhipu,
   volcengine,
+  longcat,
   agnes,
   openaiInputAudio,
   openaiVideoUrl,
@@ -98,6 +100,7 @@ export function getThinkingFormat(model) {
   if (isDeepSeekModel(model)) return "deepseek";
   if (zhipu.matches(model)) return "zhipu";
   if (volcengine.matches(model)) return "volcengine";
+  if (longcat.matches(model)) return "longcat";
   return null;
 }
 
@@ -128,6 +131,7 @@ function stripIncompatibleThinking(payload, model) {
     || thinkingFormat === "zhipu"
     || thinkingFormat === "kimi"
     || thinkingFormat === "volcengine"
+    || thinkingFormat === "longcat"
   ) return payload;
   const { thinking, ...rest } = payload;
   return rest;
