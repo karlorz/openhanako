@@ -284,6 +284,7 @@ function attachmentFromRef(
     ...(listed === false ? { listed } : {}),
     ...(status ? { status } : {}),
     ...(hasMissingAt ? { missingAt } : {}),
+    ...(sessionFile?.resource ? { resource: sessionFile.resource } : {}),
     ...(transcription ? { transcription } : {}),
     ...(waveform ? { waveform } : {}),
   };
