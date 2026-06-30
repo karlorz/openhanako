@@ -6,6 +6,7 @@ import {
 } from '../services/server-connection';
 
 const DEFAULT_TIMEOUT = 30_000;
+const MAX_HTTP_ERROR_DETAIL_LENGTH = 1000;
 
 /**
  * 构建带认证的 HanaAgent Server URL
@@ -53,10 +54,31 @@ export async function hanaFetch(
       signal: controller.signal,
     });
     if (throwOnHttpError && !res.ok) {
-      throw new Error(`hanaFetch ${path}: ${res.status} ${res.statusText}`);
+      const detail = await readHttpErrorDetail(res);
+      throw new Error(`hanaFetch ${path}: ${res.status} ${res.statusText}${detail ? ` - ${detail}` : ''}`);
     }
     return res;
   } finally {
     clearTimeout(timer);
+  }
+}
+
+async function readHttpErrorDetail(res: Response): Promise<string> {
+  const cloned = typeof res.clone === 'function' ? res.clone() : res;
+  try {
+    const body = await cloned.json();
+    const detail = typeof body?.error === 'string' && body.error.trim()
+      ? body.error.trim()
+      : typeof body?.message === 'string' && body.message.trim()
+        ? body.message.trim()
+        : '';
+    if (detail) return detail.slice(0, MAX_HTTP_ERROR_DETAIL_LENGTH);
+  } catch {}
+
+  try {
+    const text = (await cloned.text()).trim();
+    return text.slice(0, MAX_HTTP_ERROR_DETAIL_LENGTH);
+  } catch {
+    return '';
   }
 }
