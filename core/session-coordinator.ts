@@ -2297,7 +2297,16 @@ export class SessionCoordinator {
     if (liveSnapshot && typeof liveSnapshot === "object" && !Array.isArray(liveSnapshot)) {
       return liveSnapshot;
     }
-    const metaSnapshot = this._readSessionMetaEntrySync(sessionPath)?.memoryReflectionSnapshot;
+    const metaEntry = this._readSessionMetaEntrySync(sessionPath);
+    let metaSnapshot = metaEntry?.memoryReflectionSnapshot;
+    if (this._isSessionMetaPayloadRef(metaSnapshot, "memoryReflectionSnapshot")) {
+      metaSnapshot = this._readSessionMetaPayloadSync(
+        this._sessionMetaPathFor(sessionPath),
+        path.basename(sessionPath),
+        metaSnapshot,
+        "memoryReflectionSnapshot",
+      );
+    }
     return metaSnapshot && typeof metaSnapshot === "object" && !Array.isArray(metaSnapshot)
       ? metaSnapshot
       : null;
@@ -4420,7 +4429,24 @@ export class SessionCoordinator {
   }
 
   _sessionMetaPayloadAbsolutePath(metaPath: any, refPath: any) {
-    return path.join(path.dirname(metaPath), refPath);
+    const payloadDir = path.resolve(path.dirname(metaPath), SESSION_META_PAYLOAD_DIR);
+    const absPath = path.resolve(path.dirname(metaPath), refPath);
+    const relative = path.relative(payloadDir, absPath);
+    if (relative.startsWith("..") || path.isAbsolute(relative)) {
+      throw new Error("session-meta payload path escapes payload directory");
+    }
+    return absPath;
+  }
+
+  _readSessionMetaPayloadSync(metaPath: any, sessKey: any, ref: any, field: any) {
+    if (!this._isSessionMetaPayloadRef(ref, field)) return undefined;
+    try {
+      const raw = fs.readFileSync(this._sessionMetaPayloadAbsolutePath(metaPath, ref.path), "utf-8");
+      return JSON.parse(raw);
+    } catch (err) {
+      log.warn(`session-meta payload read failed for ${sessKey}/${field}: ${err.message}`);
+      return undefined;
+    }
   }
 
   async _readSessionMetaIndexForWrite(metaPath: any) {
@@ -4472,7 +4498,9 @@ export class SessionCoordinator {
     }
     const compacted: any = {};
     for (const [sessKey, entry] of Object.entries(data)) {
-      compacted[sessKey] = await this._externalizeSessionMetaPayloads(metaPath, sessKey, entry);
+      compacted[sessKey] = await this._externalizeSessionMetaPayloads(metaPath, sessKey, entry, {
+        forcePayloadExternalization: true,
+      });
     }
     await fsp.writeFile(metaPath, JSON.stringify(compacted, null, 2));
     this.invalidateMetaCache(metaPath);
@@ -4480,19 +4508,26 @@ export class SessionCoordinator {
     return compacted;
   }
 
-  async _externalizeSessionMetaPayloads(metaPath: any, sessKey: any, entry: any) {
+  async _externalizeSessionMetaPayloads(metaPath: any, sessKey: any, entry: any, {
+    forcePayloadExternalization = false,
+  }: any = {}) {
     if (!entry || typeof entry !== "object" || Array.isArray(entry)) return entry;
     const next = { ...entry };
     for (const field of SESSION_META_PAYLOAD_FIELDS) {
       const value = next[field];
-      if (value === undefined || this._isSessionMetaPayloadRef(value, field)) continue;
+      if (value === undefined || value === null || this._isSessionMetaPayloadRef(value, field)) continue;
       let encoded = "";
       try {
         encoded = JSON.stringify(value);
       } catch {
         continue;
       }
-      if (Buffer.byteLength(encoded, "utf-8") <= SESSION_META_PAYLOAD_INLINE_LIMIT_BYTES) continue;
+      if (
+        !forcePayloadExternalization
+        && Buffer.byteLength(encoded, "utf-8") <= SESSION_META_PAYLOAD_INLINE_LIMIT_BYTES
+      ) {
+        continue;
+      }
       const relPath = this._sessionMetaPayloadRelativePath(sessKey, field);
       const absPath = this._sessionMetaPayloadAbsolutePath(metaPath, relPath);
       await fsp.mkdir(path.dirname(absPath), { recursive: true });

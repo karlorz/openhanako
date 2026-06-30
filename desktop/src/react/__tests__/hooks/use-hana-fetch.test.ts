@@ -73,6 +73,18 @@ describe('hanaFetch', () => {
     await expect(hanaFetch('/api/missing')).rejects.toThrow('404');
   });
 
+  it('非 2xx 状态码错误包含 JSON 响应体里的 error 字段', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      statusText: 'Bad Request',
+      json: async () => ({ error: 'provider rejected image_url' }),
+    });
+
+    await expect(hanaFetch('/api/sessions/latest-user-message/replay'))
+      .rejects.toThrow('provider rejected image_url');
+  });
+
   it('允许调用方显式读取非 2xx 响应体', async () => {
     const response = {
       ok: false,
