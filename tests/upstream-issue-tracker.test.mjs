@@ -16,6 +16,8 @@ describe("upstream issue tracker", () => {
       "lan-query-token-network-hardening",
       "remote-attachment-preview-persistence",
       "desktop-temp-upload-session-cache-materialization",
+      "session-replay-marker-only-image-regenerate",
+      "toolgroup-file-detail-link-context",
       "remote-skill-viewer-local-file-ipc",
       "remote-skill-install-client-local-path",
       "plugin-iframe-remote-credential-query-leak",
