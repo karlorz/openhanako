@@ -174,6 +174,7 @@ export function selectSessionFiles(
           mime: att.mimeType,
           status: att.status,
           missingAt: att.missingAt,
+          resource: compactResourceRef(att.resource),
           presentation: presentationOf(att),
           listed: listedOf(att),
           timestamp: msg.timestamp,
@@ -321,7 +322,9 @@ function isFileVersion(value: unknown): value is FileVersion {
     && Number.isFinite(candidate.size);
 }
 
-function compactResourceRef(resource: ResourceEnvelope | undefined): FileRef['resource'] | undefined {
+type CompactResourceRef = NonNullable<FileRef['resource']>;
+
+function compactResourceRef(resource: ResourceEnvelope | CompactResourceRef | undefined): FileRef['resource'] | undefined {
   if (!resource?.resourceId || !resource.studioId || !resource.links?.self) return undefined;
   return {
     resourceId: resource.resourceId,

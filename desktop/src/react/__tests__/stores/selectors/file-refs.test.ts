@@ -305,6 +305,46 @@ describe('selectSessionFiles', () => {
     expect(refs[1].mime).toBe('video/mp4');
   });
 
+  it('把 user attachment 的 resource envelope 带入 FileRef', () => {
+    const items: ChatListItem[] = [{
+      type: 'message',
+      data: {
+        id: 'm-resource-att',
+        role: 'user',
+        attachments: [{
+          fileId: 'sf_uploaded_image',
+          path: '/root/.hanako/session-files/image.png',
+          name: 'image.png',
+          isDir: false,
+          mimeType: 'image/png',
+          resource: {
+            resourceId: 'res_sf_uploaded_image',
+            studioId: 'studio_remote',
+            links: {
+              self: '/api/resources/res_sf_uploaded_image',
+              content: '/api/resources/res_sf_uploaded_image/content',
+            },
+          },
+        }],
+        timestamp: 1000,
+      },
+    }];
+    const refs = selectSessionFiles(sessionState(items), '/s/1');
+
+    expect(refs[0]).toMatchObject({
+      fileId: 'sf_uploaded_image',
+      source: 'session-attachment',
+      resource: {
+        resourceId: 'res_sf_uploaded_image',
+        studioId: 'studio_remote',
+        links: {
+          self: '/api/resources/res_sf_uploaded_image',
+          content: '/api/resources/res_sf_uploaded_image/content',
+        },
+      },
+    });
+  });
+
   it('保留 attachment 的 session file lifecycle 状态', () => {
     const items: ChatListItem[] = [{
       type: 'message',
