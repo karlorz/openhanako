@@ -43,22 +43,6 @@
     "createSessionFailed": "创建会话失败",
     "sendFailed": "发送失败"
   },
-  "app": {
-    "remoteRecovery": {
-      "title": "远程服务器需要处理",
-      "subtitle": "已保留当前远程服务器连接，但应用未能完成兼容性检查。",
-      "serverUrl": "服务器地址",
-      "accessKey": "访问密钥",
-      "retryRemote": "重试远程",
-      "retrying": "正在重试...",
-      "switchLocal": "切换到本机",
-      "localUnavailable": "本机服务器尚未就绪",
-      "status": {
-        "identity_failed": "身份检查失败",
-        "compatibility_failed": "兼容性检查失败"
-      }
-    }
-  },
   "channel": {
     "tab": "频道",
     "chatTab": "聊天",
@@ -108,12 +92,6 @@
     "noAvailableMembers": "没有可添加的 Agent",
     "agentActivity": "Agent 动态",
     "agentSettings": "群聊设置",
-    "exportTitle": "保存当前聊天",
-    "exportDescription": "将当前群聊或私聊保存为 Markdown 文件，下载到系统下载文件夹。",
-    "exportAction": "导出当前聊天",
-    "exporting": "正在导出…",
-    "exportSuccess": "聊天记录已下载：{filename}",
-    "exportFailed": "导出聊天记录失败：{message}",
     "toolPermission": "工具权限",
     "agentIdle": "空闲",
     "phoneReceivedNewMessages": "收到新的群聊消息",
@@ -141,11 +119,6 @@
     "filesUnsupported": "频道暂只支持文本消息，文件不会加入普通聊天附件",
     "unpinPluginTab": "取消固定「{label}」"
   },
-  "announcement": {
-    "title": "更新完成 · v{version}",
-    "fallbackBody": "HanaAgent 已更新至 v{version}。",
-    "confirm": "知道了"
-  },
   "skills": {
     "panel": {
       "title": "Skills",
@@ -163,9 +136,9 @@
     "empty": "还没有对话哦 ✿",
     "activity": "助手活动",
     "jian": "书桌",
-    "bridge": "社交平台",
+    "bridge": "接入社交平台",
     "toggle": "侧边栏",
-    "bridgeShort": "社交平台",
+    "bridgeShort": "接入社交平台",
     "pinned": "置顶",
     "searchPlaceholder": "搜索聊天记录",
     "searchClear": "清空搜索",
@@ -218,10 +191,6 @@
     "pinFailed": "置顶 session 失败",
     "unpinFailed": "取消置顶失败",
     "archive": "归档",
-    "copyId": "复制 Session ID",
-    "copyIdDone": "Session ID 已复制",
-    "copyIdFailed": "复制 Session ID 失败",
-    "copyIdUnavailable": "这个 Session 暂时没有可复制的 ID",
     "deletedAgent": {
       "title": "Agent 已删除",
       "description": "这段对话会保留为只读历史。继续聊天会用主 Agent 新建一个 session，并尝试压缩旧上下文。",
@@ -315,10 +284,6 @@
     "markAllComplete": "全部标记为已完成"
   },
   "chat": {
-    "find": {
-      "locateFailed": "未能定位到该消息",
-      "placeholder": "在会话中查找"
-    },
     "send": "发送",
     "steer": "插话",
     "stop": "停止",
@@ -456,26 +421,7 @@
     "confirmMoreOptions": "更多确认选项",
     "attachmentDirectory": "[目录] {label}",
     "attachmentFile": "[附件] {label}",
-    "referenceDocument": "[参考文档] {path}",
-    "mention": {
-      "title": "引用内容",
-      "tab": { "files": "文件", "sessions": "对话", "agents": "助手" },
-      "empty": "没有匹配项",
-      "singleAgent": "每个回合暂时只能邀请一位助手审阅"
-    }
-  },
-  "agentReview": {
-    "running": "正在审阅当前对话",
-    "completed": "另一位助手的审阅结果",
-    "failed": "审阅失败，主助手尚未回答",
-    "cancelled": "审阅已取消",
-    "openSession": "打开审阅对话",
-    "sessionUnavailable": "找不到这个审阅对话",
-    "requestReceived": "已收到来自另一个对话的审阅请求",
-    "openReviewedSession": "打开被审阅对话",
-    "reviewedSessionFallback": "来源对话",
-    "reviewSessionFallback": "{name} 的审阅对话",
-    "interjectionUnavailable": "助手审阅不能作为插话发送，请等待当前回复结束"
+    "referenceDocument": "[参考文档] {path}"
   },
   "slash": {
     "diary": "写今日日记",
@@ -958,11 +904,7 @@
       "{name} 闻到了某个下午的橘子味",
       "那些对话还带着体温"
     ],
-    "installing": "{name} 正在更新到 v{version}，请稍候……",
-    "preparing": {
-      "named": "{name} 正在准备新家……",
-      "anonymous": "你的助手正在准备新家……"
-    }
+    "installing": "{name} 正在更新到 v{version}，请稍候……"
   },
   "settings": {
     "title": "设置",
@@ -1283,10 +1225,6 @@
             "label": "Office",
             "summary": "让 Agent 读取文档、转换 HTML 到 PDF"
           },
-          "session": {
-            "label": "跨会话协作",
-            "summary": "列出/读取其它会话，经确认卡发送消息或创建会话"
-          },
           "update_settings": {
             "label": "修改设置",
             "summary": "让 Agent 修改应用配置项"
@@ -1322,13 +1260,10 @@
       },
       "notifications": {
         "title": "通知",
-        "chatCompletion": "聊天回复完成",
-        "scheduledTaskCompletion": "计划任务完成",
-        "patrolCompletion": "巡检完成",
-        "never": "从不",
-        "whenUnfocused": "焦点不在 HanaAgent 时",
-        "whenSessionUnfocused": "焦点不在该聊天时",
-        "always": "总是"
+        "turnCompletion": "轮次完成通知",
+        "turnCompletionNever": "从不",
+        "turnCompletionWhenUnfocused": "焦点不在 HanaAgent 时",
+        "turnCompletionWhenSessionUnfocused": "焦点不在完成任务的 Session 时"
       }
     },
     "about": {
@@ -1340,36 +1275,17 @@
       "updateAvailable": "有新版本可用：v{version}",
       "updateDownload": "下载",
       "updateChecking": "正在检查更新…",
-      "updateDownloading": "{agentName}正在准备新家",
+      "updateDownloading": "{agentName}正在准备新家 {percent}%",
       "updateReadyInstall": "v{version} 已就绪",
       "updateInstalling": "正在安装更新，HanaAgent 会自动重启…",
       "updateInstallManualHint": "点「重启更新」后安装，直接退出不会自动安装",
       "updateInstall": "重启更新",
       "updateInstallNow": "重启立即更新",
-      "updateApply": "更新",
-      "updateApplyAutoHint": "不点击也会在下次启动时自动生效",
-      "trainStickerTitle": "有新版本可用",
-      "trainStickerDownloading": "下载中 {percent}%",
-      "trainStickerApplying": "正在应用更新…",
-      "shellStickerTitle": "平台更新可用，需重启",
-      "shellStickerTitleBlocking": "完成此更新后才能继续接收新版本",
-      "fallbackStickerTitle": "版本 {fromVersion} 连续启动失败，已退回 {toVersion}。出问题的版本已被隔离，不会自动重试。",
-      "fallbackStickerAckLabel": "知道了",
-      "updateHistoryTitle": "更新历史",
-      "updateHistorySubtitle": "最近 5 个已发布版本",
-      "updateHistoryLoading": "正在读取更新历史…",
-      "updateHistoryOffline": "暂时无法连接发布网站，当前展示随应用保存的版本。",
-      "updateHistoryPartial": "目前只找到部分带有更新说明的版本。",
-      "updateHistoryUnavailable": "暂时无法读取更新历史，请稍后再试。",
       "updateProgress": "{percent}%",
       "updateError": "检查更新失败",
       "updateLatest": "已是最新版本",
-      "updateLatestCheckedAt": "已是最新（上次检查 {time}）",
-      "updateManifestReleasedAt": "货架清单签发于 {date}",
-      "updateManifestReleasedAtViaMirror": "货架清单签发于 {date}（经备用源）",
       "updateDisabled": "此本地构建已停用更新",
       "updateCheckBtn": "检查更新",
-      "updateRetryBtn": "重试",
       "updateNeedInstall": "请先将 HanaAgent 移动到应用程序文件夹",
       "updateDiskSpace": "磁盘空间不足，无法下载更新",
       "updateDigestCta": "此次更新你将获得",
@@ -1426,20 +1342,15 @@
       "desktopKeyOnce": "密钥只在生成后显示一次，请在另一台电脑上填入",
       "desktopKeyCreated": "已生成电脑访问密钥",
       "desktopKeyFailed": "生成失败",
-      "onboarding": "引导设置",
-      "openOnboarding": "打开引导设置",
-      "openOnboardingHint": "重新打开首次设置窗口，用于账号、服务器和教程设置",
-      "openOnboardingFailed": "无法打开引导设置",
-      "openOnboardingUnavailable": "当前版本不可用引导设置窗口",
-      "connectLanServer": "连接远程服务器",
+      "connectLanServer": "连接局域网服务器",
       "remoteServerUrl": "服务器地址",
       "remoteServerUrlHint": "填入另一台电脑或 NAS 上 HanaAgent Server 的地址",
       "remoteServerKey": "访问密钥",
       "remoteServerKeyHint": "填入那台服务器设置页生成的电脑访问密钥",
-      "remoteServerConnected": "已连接远程服务器",
+      "remoteServerConnected": "已连接局域网服务器",
       "remoteServerFailed": "连接失败",
-      "remoteConnection": "当前连接的是远程服务器",
-      "remoteConnectionDesc": "这台桌面端正在使用远程服务器。访问与设备里的本地账号、密码、局域网开关和密钥生成只属于本机服务器。",
+      "remoteConnection": "当前连接的是远端 Hana",
+      "remoteConnectionDesc": "访问与设备里的本地账号、密码、局域网开关和密钥生成只属于本机 Hana。",
       "remoteConnectionName": "连接名称",
       "remoteConnectionKind": "连接类型",
       "remoteConnectionUrl": "服务器地址",
@@ -1454,69 +1365,11 @@
       "remoteStudioLabel": "工作室",
       "remoteExecutionBoundary": "执行边界",
       "remoteRuntime": "运行位置",
-      "remoteCompatibilityStatus": "兼容性",
-      "remoteCompatibilityReady": "已就绪",
-      "remoteCompatibilityWarning": "兼容性受限",
-      "remoteCompatibilityProblem": "远程服务器问题",
-      "remoteCoreConnection": "核心连接",
-      "remoteCoreReady": "可用",
-      "remoteCoreDegraded": "部分受限",
-      "remoteCoreBlocked": "已阻止",
-      "remoteTransport": "传输方式",
-      "remoteTransportTicket": "票据传输可用",
-      "remoteTransportLegacy": "旧版查询令牌传输",
-      "remoteServerUpdate": "服务器更新",
-      "remoteCurrent": "已是最新",
-      "remoteUpdateRecommended": "建议更新",
-      "remoteAheadOrCustom": "超前版本或自定义构建",
-      "remoteFreshnessUnknown": "无法确认发布新旧",
-      "remoteFeatureSupport": "功能支持",
-      "remoteFeaturesFull": "完整支持",
-      "remoteFeaturesLimited": "部分支持",
-      "remoteFeaturesLegacy": "旧版服务器",
-      "remoteConnectedRuntime": "已连接运行时版本",
-      "remoteInstalledRelease": "已安装发布",
-      "remoteReleaseIdentityUnverified": "无法确认确切发布",
-      "remoteRecommendedRelease": "建议的服务器发布",
-      "remoteDesktopVersion": "桌面端版本",
-      "remoteProtocolContracts": "协议 / 契约",
-      "remoteContractsLegacy": "旧版服务器；未声明契约",
-      "remoteHostCompatibility": "主机兼容性",
-      "remoteHostEligible": "有匹配的服务器安装包",
-      "remoteHostCheckOnServer": "请在服务器上运行状态命令确认",
-      "remoteHostUnavailable": "没有匹配的服务器安装包",
-      "remoteHostUnknown": "主机兼容性未知",
-      "remoteLastChecked": "发布检查",
-      "remoteCheckOnline": "已在线检查",
-      "remoteCheckCached": "正在使用缓存的发布数据",
-      "remoteCheckStale": "缓存的发布数据已过期",
-      "remoteCheckUnavailable": "无法查询发布",
-      "remoteNotAssessed": "未评估",
-      "remoteUnknown": "未知",
-      "remoteCheckAgain": "重新检查",
-      "remoteCopyDiagnostic": "复制诊断信息",
-      "remoteCopyStatusCommand": "复制服务器状态命令",
-      "remoteDiagnosticCopied": "已复制远程服务器诊断信息",
-      "remoteCompatibilityReason": "问题",
-      "remoteCompatibilityWarningLabel": "警告",
-      "remoteReason": {
-        "invalid_identity": "无法验证服务器身份",
-        "auth_failed": "远程访问密钥被拒绝",
-        "invalid_capabilities": "服务器能力缺失或无效",
-        "missing_core_capability": "缺少必需的聊天能力",
-        "missing_optional_capability": "部分可选远程服务器能力缺失",
-        "invalid_execution_boundary": "服务器执行边界不完整",
-        "identity_transport_contradiction": "已保存连接与服务器身份不一致"
-      },
-      "remoteWarning": {
-        "missing_optional_capability": "部分可选远程服务器能力不可用"
-      },
       "remoteConnectionKindLocal": "本机连接",
-      "remoteConnectionKindRemote": "远程服务器",
-      "remoteConnectionKindLan": "远程服务器",
+      "remoteConnectionKindLan": "局域网服务器",
       "remoteConnectionKindCustom": "远程服务器",
-      "remoteConnectionKindRelay": "远程服务器",
-      "remoteConnectionKindCloud": "远程服务器",
+      "remoteConnectionKindRelay": "中继服务器",
+      "remoteConnectionKindCloud": "云服务器",
       "remoteTrustLocal": "本机可信",
       "remoteTrustLan": "局域网可信",
       "remoteTrustTunnel": "隧道可信",
@@ -1538,14 +1391,10 @@
       "remoteCapabilityProviders": "服务商",
       "remoteRuntimeServerProcess": "远端 Hana 服务器进程",
       "remoteRuntimeServer": "远端 Hana 服务器",
-      "remoteLocalOnlyNote": "需要管理这台电脑的局域网访问、设备密钥或本地账号时，请先切换到本机。",
-      "remoteConnectionActions": "远程服务器连接",
-      "remoteConnectionActionsDesc": "重试此远程服务器，或输入另一个服务器地址和访问密钥。",
-      "retryRemote": "重试远程",
-      "connectAnotherRemote": "连接另一个远程服务器",
-      "returnToLocal": "切换到本机",
-      "returnedToLocal": "已切换到本机",
-      "localConnectionUnavailable": "本机服务器尚未就绪",
+      "remoteLocalOnlyNote": "需要管理这台电脑的局域网访问、设备密钥或本地账号时，请先切回本机 Hana。",
+      "returnToLocal": "切回本机 Hana",
+      "returnedToLocal": "已切回本机 Hana",
+      "localConnectionUnavailable": "本机 Hana 连接尚未就绪",
       "pairedDevices": "已配对设备",
       "noDevices": "暂无已配对设备",
       "revoke": "撤销",
@@ -1982,12 +1831,6 @@
       "injectAgentsMdDesc": "开启后，新会话会读取当前工作目录到 Git 根目录之间的 AGENTS.md。",
       "injectClaudeMd": "注入 CLAUDE.md",
       "injectClaudeMdDesc": "开启后，新会话会读取当前工作目录到 Git 根目录之间的 CLAUDE.md。",
-      "projectSkillsTitle": "项目技能发现",
-      "projectSkillsDesc": "选择这个 Agent 在新会话中加载哪些项目技能目录。",
-      "discoverProjectSkills": "加载项目技能",
-      "discoverProjectSkillsDesc": "发现并加载当前项目 .agents/skills 中的技能。",
-      "discoverCompatibleProjectSkills": "加载其他工具的项目技能",
-      "discoverCompatibleProjectSkillsDesc": "同时发现项目内 Claude Code、Codex 与 OpenClaw 的技能目录。",
       "agentDeskSection": "Agent 工作台设置"
     },
     "toolCaps": {
@@ -2244,12 +2087,11 @@
       "feishuAppSecret": "App Secret",
       "feishuHint": "从飞书开放平台获取；使用长连接接收事件，不需要本地回调 URL",
       "dingtalk": "钉钉",
-      "dingtalkCorpId": "Corp ID",
       "dingtalkClientId": "Client ID / AppKey",
       "dingtalkClientSecret": "Client Secret / AppSecret",
       "dingtalkRobotCode": "Robot Code",
-      "dingtalkApiBaseUrl": "API Base URL",
-      "dingtalkHint": "Corp ID 和应用凭证用于新版 token 接口；Client ID 与 Client Secret 也用于建立 Stream 长连接，Robot Code 用于发送回复。API Base URL 默认 https://api.dingtalk.com/v1.0",
+      "dingtalkRestBaseUrl": "REST Base URL",
+      "dingtalkHint": "企业内部应用凭证用于 token/Stream；Robot Code 用于企业机器人发送；REST Base URL 默认 https://api.dingtalk.io/v1.0",
       "whatsapp": "WhatsApp",
       "qq": "QQ",
       "qqAppId": "App ID",
@@ -2273,15 +2115,12 @@
       "connected": "已连接",
       "disconnected": "未连接",
       "error": "连接失败",
-      "connectionToggle": "启用或停用连接",
       "test": "测试连接",
       "testOk": "连接成功",
-      "dingtalkCredentialTestOk": "凭证验证成功；Stream 长连接和机器人回复将在启用后确认",
       "testFail": "测试失败",
-      "secretStoredPlaceholder": "已保存，输入新值以替换",
       "noToken": "请先输入 Bot Token",
       "noCredentials": "请先填写 App ID 和 App Secret",
-      "noDingtalkCredentials": "请先填写 Corp ID、Client ID、Client Secret、Robot Code 和 API Base URL",
+      "noDingtalkCredentials": "请先填写 Client ID、Client Secret、Robot Code 和 REST Base URL",
       "globalSettings": "全局设置",
       "agentSettings": "角色",
       "permissionMode": "权限模式",
@@ -2325,12 +2164,11 @@
       ],
       "tutorialDtSteps": [
         "前往 <code>open.dingtalk.com</code>，进入「开发者后台」",
-        "从企业信息中复制企业的 <code>Corp ID</code>",
         "创建「企业内部应用」，在应用凭证中复制 <code>Client ID/AppKey</code> 和 <code>Client Secret/AppSecret</code>",
         "添加「应用机器人」能力，复制机器人详情里的 <code>Robot Code</code>",
         "确认应用已开通机器人收发消息所需权限，并发布到企业可用范围",
-        "API Base URL 保持默认 <code>https://api.dingtalk.com/v1.0</code>，除非你明确要接入钉钉兼容网关",
-        "将 Corp ID、Client ID、Client Secret、Robot Code 和 API Base URL 粘贴到上方输入框。新版 token 测试与 Stream 长连接都正常后，机器人才能完整收发消息"
+        "REST Base URL 保持默认 <code>https://api.dingtalk.io/v1.0</code>，除非你明确要接入钉钉兼容网关",
+        "将 Client ID、Client Secret、Robot Code 和 REST Base URL 粘贴到上方输入框，测试通过后打开开关即可"
       ],
       "whatsappHint": "即将支持"
     },
@@ -2371,12 +2209,12 @@
       "next": "开始设置"
     },
     "remote": {
-      "link": "已有服务器？连接到远程服务器",
+      "link": "已有服务器？使用局域网连接",
       "url": "服务器地址",
       "key": "访问密钥",
       "connect": "连接",
       "connecting": "连接中...",
-      "failed": "连接远程服务器失败"
+      "failed": "连接局域网服务器失败"
     },
     "name": {
       "title": "名字与记忆",
@@ -2597,8 +2435,7 @@
     "blockquote": "引用",
     "codeBlock": "代码块",
     "horizontalRule": "分隔线",
-    "list": "列表",
-    "blockActions": "块操作"
+    "list": "列表"
   },
   "rightWorkspace": {
     "activity": {
@@ -2674,9 +2511,6 @@
     "cwdSkillsHint": "在文件夹下创建 .agents/skills/ 目录即可",
     "cwdSkillsDesc": "技能跟随工作台",
     "cwdSkillsDrop": "拖入文件夹或 .zip 安装技能",
-    "cwdSkillActive": "已加载",
-    "cwdSkillInactive": "未加载",
-    "cwdSkillShadowed": "已被覆盖",
     "deleteSkill": "删除技能",
     "openInFinder": "打开文件夹",
     "jianLabel": "笺",
@@ -2776,11 +2610,7 @@
     }
   },
   "notification": {
-    "chatCompletionBody": "这一轮聊天已经完成",
-    "scheduledTaskCompletionBody": "计划任务已完成：{label}",
-    "scheduledTaskCompletionFailedBody": "计划任务执行失败：{label}",
-    "patrolCompletionBody": "巡检已完成：{label}",
-    "patrolCompletionFailedBody": "巡检执行失败：{label}"
+    "turnCompletionBody": "这一轮已经完成"
   },
   "error": {
     "pathsRequired": "需要 paths 数组",
@@ -3046,8 +2876,7 @@
     "tray": {
       "show": "显示 HanaAgent",
       "settings": "设置",
-      "quit": "退出",
-      "repairArtifacts": "修复组件…"
+      "quit": "退出"
     },
     "dialog": {
       "selectFolder": "选择工作文件夹",
@@ -3063,16 +2892,10 @@
       "serverFilesNotReady": "自动更新刚完成，新版本文件还在落地（缺少 {missing}），已等待 {waited}s 仍未就绪。请稍后重新启动 HanaAgent。",
       "serverModuleMissing": "Server 启动时找不到模块 {module}。\n通常是自动更新刚完成、新版本文件还在写入磁盘导致的。\n建议：等待 1-2 分钟后重新启动 HanaAgent；若反复出现，请前往 GitHub 反馈。",
       "installFailedTitle": "HanaAgent 更新",
-      "installFailedBody": "更新安装失败：\n{error}\n\n请重启 HanaAgent 后重试，或前往设置页面手动检查更新。",
-      "repairArtifactsTitle": "修复组件",
-      "repairArtifactsBody": "此操作会把 HanaAgent 的应用组件重置为安装包自带的版本，并重启应用。你的数据（助手、会话、设置）不受影响。",
-      "repairArtifactsConfirm": "修复并重启",
-      "repairArtifactsCancel": "取消",
-      "trainUpdateApplyFailedBody": "HanaAgent v{version}\n\n更新应用失败：\n{error}\n\n请重新启动应用。"
+      "installFailedBody": "更新安装失败：\n{error}\n\n请重启 HanaAgent 后重试，或前往设置页面手动检查更新。"
     },
     "notification": {
-      "ready": "通知已就绪",
-      "componentQuarantined": "组件已自动回退到上一版本，功能不受影响"
+      "ready": "通知已就绪"
     }
   },
   "devtools": {
@@ -3523,21 +3346,5 @@
     "copyPath": "复制路径",
     "copyLink": "复制链接",
     "openInSystemBrowser": "用系统浏览器打开"
-  },
-  "sessionCollab": {
-    "messagePrefix": "[来自 Agent「{name}」的消息，非用户本人]",
-    "fromAgent": "来自 {name} 的消息",
-    "expand": "展开",
-    "collapse": "收起",
-    "confirmSend": "发送",
-    "confirmCreate": "创建并发送",
-    "ignore": "忽略",
-    "expired": "草稿已过期，请让 Agent 重新发起",
-    "inFlight": "正在执行中",
-    "halfCreated": "会话已创建（{id}），首条消息投递失败，可重试或打开该会话手动发送",
-    "createdSession": "已创建会话 {id}",
-    "sendFailed": "发送失败：{error}",
-    "rejectFailed": "忽略失败：{error}",
-    "messageField": "消息内容"
   }
 }
