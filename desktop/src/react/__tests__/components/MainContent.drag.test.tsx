@@ -231,4 +231,52 @@ describe('MainContent app file drag attachments', () => {
       filePath: '/root/.hanako/session-files/report.pdf',
     });
   });
+
+  it('uploads dropped .skill package bytes for remote connections instead of installing by macOS path', async () => {
+    const readFileBase64 = vi.fn(async () => 'SKILL_BASE64');
+    window.platform = { readFileBase64 } as unknown as typeof window.platform;
+    useStore.setState({
+      currentAgentId: 'agent-a',
+      serverConnections: {
+        'lan:node:studio': {
+          connectionId: 'lan:node:studio',
+          kind: 'lan',
+          serverId: 'remote',
+          studioId: 'studio',
+          label: 'Remote Hana',
+          baseUrl: 'http://100.125.173.118:14500',
+          wsUrl: 'ws://100.125.173.118:14500',
+          token: 'remote-token',
+          authState: 'paired',
+          trustState: 'lan',
+          credentialKind: 'device_credential',
+          capabilities: ['chat', 'settings.write'],
+        },
+      },
+      activeServerConnectionId: 'lan:node:studio',
+      addToast: vi.fn(),
+    } as never);
+    vi.mocked(hanaFetch).mockResolvedValue({
+      json: async () => ({ ok: true, skill: { name: 'remote-skill' } }),
+    } as Response);
+
+    const { attachFilesFromPaths } = await import('../../MainContent');
+
+    await attachFilesFromPaths(['/Users/me/Desktop/remote-skill.skill']);
+
+    await vi.waitFor(() => expect(hanaFetch).toHaveBeenCalledWith(
+      '/api/skills/install?agentId=agent-a',
+      expect.objectContaining({ method: 'POST' }),
+    ));
+    expect(readFileBase64).toHaveBeenCalledWith('/Users/me/Desktop/remote-skill.skill');
+    const body = JSON.parse(String(vi.mocked(hanaFetch).mock.calls[0][1]?.body));
+    expect(body).toMatchObject({
+      file: {
+        filename: 'remote-skill.skill',
+        contentBase64: 'SKILL_BASE64',
+      },
+      sessionPath: '/sessions/main.jsonl',
+    });
+    expect(body.path).toBeUndefined();
+  });
 });

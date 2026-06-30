@@ -8,6 +8,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useStore } from '../stores';
 import { hanaFetch } from '../hooks/use-hana-fetch';
+import { canUseNativeResourcePath } from '../services/resource-access';
+import { resolveServerConnection } from '../services/server-connection';
 
 import { renderMarkdownPreview } from '../utils/markdown';
 import { useMermaidDiagrams } from '../hooks/use-mermaid-diagrams';
@@ -44,10 +46,13 @@ function SkillMarkdown({ html }: { html: string }) {
 
 export function SkillViewerOverlay() {
   const data = useStore(s => s.skillViewerData) as SkillInfo | null;
+  const currentAgentId = useStore(s => s.currentAgentId);
+  const canUseNativePath = useStore(s => canUseNativeResourcePath({ connection: resolveServerConnection(s) }));
   const [files, setFiles] = useState<TreeItem[]>([]);
   const [activeFile, setActiveFile] = useState<string | null>(null);
   const [fileName, setFileName] = useState('SKILL.md');
   const [content, setContent] = useState<string | null>(null);
+  const [readError, setReadError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
@@ -59,6 +64,18 @@ export function SkillViewerOverlay() {
   useEffect(() => {
     if (!data) return;
     (async () => {
+      if (shouldUseServerPreview(data, canUseNativePath)) {
+        const mdPath = serverRelativeSkillPath(data.baseDir, data.filePath) || 'SKILL.md';
+        try {
+          const items = await fetchServerSkillFiles(data.name, currentAgentId);
+          setFiles(items);
+        } catch (err) {
+          console.warn('[skill-viewer] remote file tree failed:', err);
+          setFiles([{ name: fileNameFromPath(mdPath), path: mdPath, isDir: false }]);
+        }
+        loadFile(mdPath, fileNameFromPath(mdPath));
+        return;
+      }
       const hana = window.hana;
       const items = await hana?.listSkillFiles?.(data.baseDir) as TreeItem[] | undefined;
       setFiles(items || []);
@@ -66,11 +83,23 @@ export function SkillViewerOverlay() {
       loadFile(mdPath, 'SKILL.md');
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-like：仅在 baseDir 变化时重新加载文件树，loadFile 是组件内函数不需追踪
-  }, [data?.baseDir]);
+  }, [canUseNativePath, currentAgentId, data?.baseDir, data?.filePath, data?.name]);
 
   async function loadFile(filePath: string, name: string) {
     setActiveFile(filePath);
     setFileName(name);
+    setReadError(null);
+    if (data && shouldUseServerPreview(data, canUseNativePath)) {
+      try {
+        const text = await fetchServerSkillFile(data.name, filePath, currentAgentId);
+        setContent(text);
+      } catch (err) {
+        console.warn('[skill-viewer] remote file read failed:', err);
+        setReadError(err instanceof Error ? err.message : String(err));
+        setContent(null);
+      }
+      return;
+    }
     const text = await window.hana?.readSkillFile?.(filePath);
     setContent(text ?? null);
   }
@@ -167,7 +196,7 @@ export function SkillViewerOverlay() {
           {/* 内容 */}
           <div className="sv-content">
             {content == null ? (
-              <div className="sv-empty">{t('skillViewer.cantRead')}</div>
+              <div className="sv-empty">{readError || t('skillViewer.cantRead')}</div>
             ) : ext === 'md' || ext === 'markdown' ? (
               <>
                 {description && (
@@ -253,6 +282,67 @@ function TreeNode({ item, activeFile, onSelect }: {
 }
 
 // ── 工具函数 ──
+
+function shouldUseServerPreview(data: SkillInfo, canUseNativePath: boolean): boolean {
+  return data.installed === true && !canUseNativePath;
+}
+
+async function fetchServerSkillFiles(skillName: string, agentId: string | null | undefined): Promise<TreeItem[]> {
+  const params = new URLSearchParams();
+  if (agentId) params.set('agentId', agentId);
+  const suffix = params.toString() ? `?${params.toString()}` : '';
+  const response = await hanaFetch(`/api/skills/${encodeURIComponent(skillName)}/files${suffix}`, { throwOnHttpError: false });
+  const data = await readSkillPreviewJson(response);
+  if (!response.ok) throw new Error(skillPreviewHttpError(response, data));
+  if (data?.error) throw new Error(data.error);
+  return Array.isArray(data?.files) ? data.files as TreeItem[] : [];
+}
+
+async function fetchServerSkillFile(skillName: string, filePath: string, agentId: string | null | undefined): Promise<string | null> {
+  const params = new URLSearchParams();
+  params.set('path', filePath);
+  if (agentId) params.set('agentId', agentId);
+  const response = await hanaFetch(`/api/skills/${encodeURIComponent(skillName)}/file?${params.toString()}`, { throwOnHttpError: false });
+  const data = await readSkillPreviewJson(response);
+  if (!response.ok) throw new Error(skillPreviewHttpError(response, data));
+  if (data?.error) throw new Error(data.error);
+  return typeof data?.content === 'string' ? data.content : null;
+}
+
+async function readSkillPreviewJson(response: Response): Promise<Record<string, any>> {
+  try {
+    const data = await response.json();
+    return data && typeof data === 'object' ? data as Record<string, any> : {};
+  } catch {
+    return {};
+  }
+}
+
+function skillPreviewHttpError(response: Response, data: Record<string, any>): string {
+  if (typeof data.error === 'string' && data.error.trim()) return data.error.trim();
+  if (response.status === 404) return t('skillViewer.remotePreviewUnsupported');
+  return `${response.status} ${response.statusText || t('skillViewer.cantRead')}`;
+}
+
+function serverRelativeSkillPath(baseDir: string, filePath?: string): string | null {
+  if (!filePath) return null;
+  const normalizedBase = normalizePath(baseDir).replace(/\/+$/, '');
+  const normalizedFile = normalizePath(filePath);
+  if (!normalizedBase || !normalizedFile) return null;
+  if (normalizedFile === normalizedBase) return null;
+  const prefix = `${normalizedBase}/`;
+  if (normalizedFile.startsWith(prefix)) return normalizedFile.slice(prefix.length) || null;
+  return fileNameFromPath(normalizedFile);
+}
+
+function normalizePath(value: string): string {
+  return String(value || '').replace(/\\/g, '/');
+}
+
+function fileNameFromPath(value: string): string {
+  const parts = normalizePath(value).split('/').filter(Boolean);
+  return parts[parts.length - 1] || 'SKILL.md';
+}
 
 function parseFmDescription(fm: string): string {
   const idx = fm.search(/^description:/m);
