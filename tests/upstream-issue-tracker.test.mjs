@@ -18,6 +18,7 @@ describe("upstream issue tracker", () => {
       "desktop-temp-upload-session-cache-materialization",
       "session-replay-marker-only-image-regenerate",
       "toolgroup-file-detail-link-context",
+      "provider-model-removal-persistence",
       "remote-skill-viewer-local-file-ipc",
       "remote-skill-install-client-local-path",
       "plugin-iframe-remote-credential-query-leak",
@@ -50,6 +51,7 @@ describe("upstream issue tracker", () => {
     expect(status).toContain("[#1811](https://github.com/liliMozi/openhanako/issues/1811)");
     expect(status).toContain("[#1811](https://github.com/liliMozi/openhanako/issues/1811) CLOSED");
     expect(status).toContain("desktop-temp-upload-session-cache-materialization");
+    expect(status).toContain("provider-model-removal-persistence");
     expect(status).toContain("office-workflow-example-plugin");
     expect(status).toContain("office-workflow-resourceio-session-permission");
     expect(status).toContain("server-reinit-data-failsafe");
