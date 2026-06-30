@@ -43,22 +43,6 @@
     "createSessionFailed": "Failed to create chat",
     "sendFailed": "Send failed"
   },
-  "app": {
-    "remoteRecovery": {
-      "title": "Remote Server needs attention",
-      "subtitle": "The saved Remote Server stayed selected, but this app could not finish compatibility checks.",
-      "serverUrl": "Server URL",
-      "accessKey": "Access key",
-      "retryRemote": "Retry remote",
-      "retrying": "Retrying...",
-      "switchLocal": "Switch to local",
-      "localUnavailable": "Local server is not ready yet",
-      "status": {
-        "identity_failed": "Identity check failed",
-        "compatibility_failed": "Compatibility check failed"
-      }
-    }
-  },
   "channel": {
     "tab": "Channels",
     "chatTab": "Chat",
@@ -108,12 +92,6 @@
     "noAvailableMembers": "No agents available",
     "agentActivity": "Agent activity",
     "agentSettings": "Chat settings",
-    "exportTitle": "Save current chat",
-    "exportDescription": "Save the current group chat or direct message as a Markdown file in your Downloads folder.",
-    "exportAction": "Export current chat",
-    "exporting": "Exporting…",
-    "exportSuccess": "Chat history downloaded: {filename}",
-    "exportFailed": "Could not export chat history: {message}",
     "toolPermission": "Tool permission",
     "agentIdle": "Idle",
     "phoneReceivedNewMessages": "Received new channel messages",
@@ -140,11 +118,6 @@
     "toolWrite": "Write",
     "filesUnsupported": "Channels currently support text only; files will not be attached to chat",
     "createIntroOptional": "Description"
-  },
-  "announcement": {
-    "title": "What's New · v{version}",
-    "fallbackBody": "HanaAgent has been updated to v{version}.",
-    "confirm": "Got it"
   },
   "skills": {
     "panel": {
@@ -218,10 +191,6 @@
     "pinFailed": "Failed to pin session",
     "unpinFailed": "Failed to unpin session",
     "archive": "Archive",
-    "copyId": "Copy Session ID",
-    "copyIdDone": "Session ID copied",
-    "copyIdFailed": "Failed to copy Session ID",
-    "copyIdUnavailable": "This Session does not have a copyable ID",
     "deletedAgent": {
       "title": "Agent deleted",
       "description": "This chat is kept as read-only history. Continuing will create a new session on your primary Agent and try to compact the old context.",
@@ -316,10 +285,6 @@
     "markAllComplete": "Mark all as complete"
   },
   "chat": {
-    "find": {
-      "locateFailed": "Could not locate that message",
-      "placeholder": "Find in conversation"
-    },
     "send": "Send",
     "steer": "Steer",
     "stop": "Stop",
@@ -457,26 +422,7 @@
     "contextActions": "Context actions",
     "refreshAndCompact": "Update and compact",
     "refreshAndCompactTooltip": "Update to the latest memory and tool set",
-    "compact": "Compact",
-    "mention": {
-      "title": "Mention",
-      "tab": { "files": "Files", "sessions": "Conversations", "agents": "Agents" },
-      "empty": "No matches",
-      "singleAgent": "Only one Agent reviewer can be invited per turn"
-    }
-  },
-  "agentReview": {
-    "running": "Reviewing this Session",
-    "completed": "Review from another Agent",
-    "failed": "Review failed; the main Agent has not replied",
-    "cancelled": "Review cancelled",
-    "openSession": "Open review Session",
-    "sessionUnavailable": "Review Session not found",
-    "requestReceived": "Review request received from another Session",
-    "openReviewedSession": "Open reviewed Session",
-    "reviewedSessionFallback": "Source conversation",
-    "reviewSessionFallback": "{name}'s review conversation",
-    "interjectionUnavailable": "Agent review cannot be sent as an interjection; wait for the current reply to finish"
+    "compact": "Compact"
   },
   "slash": {
     "diary": "Write today's diary",
@@ -966,11 +912,7 @@
       "{name} smelled oranges from an afternoon",
       "Those conversations still carry warmth"
     ],
-    "installing": "{name} is updating to v{version}, please wait…",
-    "preparing": {
-      "named": "{name} is preparing a new home…",
-      "anonymous": "Your assistant is preparing a new home…"
-    }
+    "installing": "{name} is updating to v{version}, please wait…"
   },
   "settings": {
     "title": "Settings",
@@ -1291,10 +1233,6 @@
             "label": "Office",
             "summary": "Let the agent read documents and convert HTML to PDF"
           },
-          "session": {
-            "label": "Session collaboration",
-            "summary": "List and read other sessions; send messages or create sessions via confirmation cards"
-          },
           "update_settings": {
             "label": "Update Settings",
             "summary": "Allow the agent to modify application configuration"
@@ -1330,13 +1268,10 @@
       },
       "notifications": {
         "title": "Notifications",
-        "chatCompletion": "Chat reply completion",
-        "scheduledTaskCompletion": "Scheduled task completion",
-        "patrolCompletion": "Patrol completion",
-        "never": "Never",
-        "whenUnfocused": "When HanaAgent is unfocused",
-        "whenSessionUnfocused": "When the completed chat is unfocused",
-        "always": "Always"
+        "turnCompletion": "Turn completion notification",
+        "turnCompletionNever": "Never",
+        "turnCompletionWhenUnfocused": "When HanaAgent is unfocused",
+        "turnCompletionWhenSessionUnfocused": "When not focused on the completed Session"
       }
     },
     "about": {
@@ -1348,36 +1283,17 @@
       "updateAvailable": "New version available: v{version}",
       "updateDownload": "Download",
       "updateChecking": "Checking for updates…",
-      "updateDownloading": "{agentName} is preparing a new home",
+      "updateDownloading": "{agentName} is preparing a new home {percent}%",
       "updateReadyInstall": "v{version} ready to install",
       "updateInstalling": "Installing update. HanaAgent will restart automatically…",
       "updateInstallManualHint": "Install after clicking Restart to update; quitting will not install automatically",
       "updateInstall": "Restart to update",
       "updateInstallNow": "Restart and update now",
-      "updateApply": "Update",
-      "updateApplyAutoHint": "It will still apply automatically at the next launch if you skip this",
-      "trainStickerTitle": "New version available",
-      "trainStickerDownloading": "Downloading {percent}%",
-      "trainStickerApplying": "Applying update…",
-      "shellStickerTitle": "Platform update available, restart needed",
-      "shellStickerTitleBlocking": "This update is required to keep receiving new versions",
-      "fallbackStickerTitle": "Version {fromVersion} failed to start repeatedly and was rolled back to {toVersion}. The problematic version has been quarantined and will not retry automatically.",
-      "fallbackStickerAckLabel": "Got it",
-      "updateHistoryTitle": "Update history",
-      "updateHistorySubtitle": "The 5 most recent published versions",
-      "updateHistoryLoading": "Loading update history…",
-      "updateHistoryOffline": "The release site is unavailable. Showing the version saved with this app.",
-      "updateHistoryPartial": "Only some published versions currently include update notes.",
-      "updateHistoryUnavailable": "Update history is temporarily unavailable. Please try again later.",
       "updateProgress": "{percent}%",
       "updateError": "Update check failed",
       "updateLatest": "You're up to date",
-      "updateLatestCheckedAt": "Up to date (last checked {time})",
-      "updateManifestReleasedAt": "Shelf manifest issued {date}",
-      "updateManifestReleasedAtViaMirror": "Shelf manifest issued {date} (via backup source)",
       "updateDisabled": "Updates are disabled for this local build",
       "updateCheckBtn": "Check for updates",
-      "updateRetryBtn": "Retry",
       "updateNeedInstall": "Please move HanaAgent to the Applications folder first",
       "updateDiskSpace": "Not enough disk space to download update",
       "updateDigestCta": "What you get in this update",
@@ -1434,20 +1350,15 @@
       "desktopKeyOnce": "The key is shown only once after creation",
       "desktopKeyCreated": "Computer access key created",
       "desktopKeyFailed": "Creation failed",
-      "onboarding": "Onboarding",
-      "openOnboarding": "Open Onboarding",
-      "openOnboardingHint": "Reopen the first-run setup window for account, server, and tutorial setup",
-      "openOnboardingFailed": "Could not open onboarding",
-      "openOnboardingUnavailable": "Onboarding window is unavailable in this build",
-      "connectLanServer": "Connect Remote Server",
+      "connectLanServer": "Connect LAN Server",
       "remoteServerUrl": "Server URL",
       "remoteServerUrlHint": "Enter the HanaAgent Server URL on another computer or NAS",
       "remoteServerKey": "Access key",
       "remoteServerKeyHint": "Enter the computer access key generated on that server",
-      "remoteServerConnected": "Remote Server connected",
+      "remoteServerConnected": "LAN server connected",
       "remoteServerFailed": "Connection failed",
-      "remoteConnection": "Connected to Remote Server",
-      "remoteConnectionDesc": "This desktop is using a Remote Server. Local account, password, LAN switches, and access-key generation belong only to the local server.",
+      "remoteConnection": "Connected to Remote Hana",
+      "remoteConnectionDesc": "Local account, password, LAN switches, and access keys in Access & Devices belong only to the local Hana instance.",
       "remoteConnectionName": "Connection Name",
       "remoteConnectionKind": "Connection Type",
       "remoteConnectionUrl": "Server URL",
@@ -1462,69 +1373,11 @@
       "remoteStudioLabel": "Studio",
       "remoteExecutionBoundary": "Execution Boundary",
       "remoteRuntime": "Runtime",
-      "remoteCompatibilityStatus": "Compatibility",
-      "remoteCompatibilityReady": "Ready",
-      "remoteCompatibilityWarning": "Limited compatibility",
-      "remoteCompatibilityProblem": "Remote Server problem",
-      "remoteCoreConnection": "Core connection",
-      "remoteCoreReady": "Ready",
-      "remoteCoreDegraded": "Degraded",
-      "remoteCoreBlocked": "Blocked",
-      "remoteTransport": "Transport",
-      "remoteTransportTicket": "Ticket transport ready",
-      "remoteTransportLegacy": "Legacy query-token transport",
-      "remoteServerUpdate": "Server update",
-      "remoteCurrent": "Current",
-      "remoteUpdateRecommended": "Update recommended",
-      "remoteAheadOrCustom": "Ahead or custom build",
-      "remoteFreshnessUnknown": "Release freshness unknown",
-      "remoteFeatureSupport": "Feature support",
-      "remoteFeaturesFull": "Full support",
-      "remoteFeaturesLimited": "Limited support",
-      "remoteFeaturesLegacy": "Legacy server",
-      "remoteConnectedRuntime": "Connected runtime version",
-      "remoteInstalledRelease": "Installed release",
-      "remoteReleaseIdentityUnverified": "Exact release not verified",
-      "remoteRecommendedRelease": "Recommended server release",
-      "remoteDesktopVersion": "Desktop version",
-      "remoteProtocolContracts": "Protocol / contracts",
-      "remoteContractsLegacy": "Legacy server; contracts not declared",
-      "remoteHostCompatibility": "Host compatibility",
-      "remoteHostEligible": "Matching server asset available",
-      "remoteHostCheckOnServer": "Run the status command on the server to confirm",
-      "remoteHostUnavailable": "No matching server asset",
-      "remoteHostUnknown": "Host compatibility unknown",
-      "remoteLastChecked": "Release check",
-      "remoteCheckOnline": "Checked online",
-      "remoteCheckCached": "Using cached release data",
-      "remoteCheckStale": "Cached release data is stale",
-      "remoteCheckUnavailable": "Release lookup unavailable",
-      "remoteNotAssessed": "Not assessed",
-      "remoteUnknown": "Unknown",
-      "remoteCheckAgain": "Check again",
-      "remoteCopyDiagnostic": "Copy diagnostic",
-      "remoteCopyStatusCommand": "Copy server status command",
-      "remoteDiagnosticCopied": "Remote Server diagnostic copied",
-      "remoteCompatibilityReason": "Problem",
-      "remoteCompatibilityWarningLabel": "Warning",
-      "remoteReason": {
-        "invalid_identity": "Server identity could not be verified",
-        "auth_failed": "Remote access key was rejected",
-        "invalid_capabilities": "Server capabilities are missing or invalid",
-        "missing_core_capability": "Required chat capability is missing",
-        "missing_optional_capability": "Some optional Remote Server capabilities are missing",
-        "invalid_execution_boundary": "Server execution boundary is incomplete",
-        "identity_transport_contradiction": "Saved connection does not match server identity"
-      },
-      "remoteWarning": {
-        "missing_optional_capability": "Some optional Remote Server capabilities are unavailable"
-      },
       "remoteConnectionKindLocal": "Local connection",
-      "remoteConnectionKindRemote": "Remote Server",
-      "remoteConnectionKindLan": "Remote Server",
-      "remoteConnectionKindCustom": "Remote Server",
-      "remoteConnectionKindRelay": "Remote Server",
-      "remoteConnectionKindCloud": "Remote Server",
+      "remoteConnectionKindLan": "LAN server",
+      "remoteConnectionKindCustom": "Remote server",
+      "remoteConnectionKindRelay": "Relay server",
+      "remoteConnectionKindCloud": "Cloud server",
       "remoteTrustLocal": "Local trusted",
       "remoteTrustLan": "LAN trusted",
       "remoteTrustTunnel": "Tunnel trusted",
@@ -1546,14 +1399,10 @@
       "remoteCapabilityProviders": "Providers",
       "remoteRuntimeServerProcess": "Remote Hana server process",
       "remoteRuntimeServer": "Remote Hana server",
-      "remoteLocalOnlyNote": "Switch to local first to manage this computer's LAN access, device keys, and local account.",
-      "remoteConnectionActions": "Remote Server connection",
-      "remoteConnectionActionsDesc": "Retry this Remote Server or enter another Server URL and access key.",
-      "retryRemote": "Retry remote",
-      "connectAnotherRemote": "Connect another Remote Server",
-      "returnToLocal": "Switch to local",
-      "returnedToLocal": "Switched to local",
-      "localConnectionUnavailable": "Local server is not ready yet",
+      "remoteLocalOnlyNote": "Switch back to local Hana before managing this computer's LAN access, device keys, or local account.",
+      "returnToLocal": "Return to Local Hana",
+      "returnedToLocal": "Returned to local Hana",
+      "localConnectionUnavailable": "Local Hana connection is not ready",
       "pairedDevices": "Paired Devices",
       "noDevices": "No paired devices",
       "revoke": "Revoke",
@@ -1990,12 +1839,6 @@
       "injectAgentsMdDesc": "When enabled, new sessions read AGENTS.md from the current working directory up to the Git root.",
       "injectClaudeMd": "Inject CLAUDE.md",
       "injectClaudeMdDesc": "When enabled, new sessions read CLAUDE.md from the current working directory up to the Git root.",
-      "projectSkillsTitle": "Project skill discovery",
-      "projectSkillsDesc": "Choose which project skill directories this Agent loads into new sessions.",
-      "discoverProjectSkills": "Load project skills",
-      "discoverProjectSkillsDesc": "Discover and load skills from the current project's .agents/skills directory.",
-      "discoverCompatibleProjectSkills": "Load skills from other tools",
-      "discoverCompatibleProjectSkillsDesc": "Also discover project skills from Claude Code, Codex, and OpenClaw directories.",
       "agentDeskSection": "Agent desk settings"
     },
     "toolCaps": {
@@ -2252,12 +2095,11 @@
       "feishuAppSecret": "App Secret",
       "feishuHint": "Get from Feishu Open Platform; events use long connection, no local callback URL needed",
       "dingtalk": "DingTalk",
-      "dingtalkCorpId": "Corp ID",
       "dingtalkClientId": "Client ID / AppKey",
       "dingtalkClientSecret": "Client Secret / AppSecret",
       "dingtalkRobotCode": "Robot Code",
-      "dingtalkApiBaseUrl": "API Base URL",
-      "dingtalkHint": "Corp ID and app credentials use the current token API; Client ID and Client Secret also open the Stream connection. Robot Code sends replies. API Base URL defaults to https://api.dingtalk.com/v1.0",
+      "dingtalkRestBaseUrl": "REST Base URL",
+      "dingtalkHint": "Internal app credentials are used for token/Stream; Robot Code is used for Enterprise bot sends; REST Base URL defaults to https://api.dingtalk.io/v1.0",
       "whatsapp": "WhatsApp",
       "qq": "QQ",
       "qqAppId": "App ID",
@@ -2281,15 +2123,12 @@
       "connected": "Connected",
       "disconnected": "Not connected",
       "error": "Connection failed",
-      "connectionToggle": "Enable or disable connection",
       "test": "Test Connection",
       "testOk": "Connection successful",
-      "dingtalkCredentialTestOk": "Credentials verified; the Stream connection and robot replies are checked after enabling",
       "testFail": "Test failed",
-      "secretStoredPlaceholder": "Saved. Enter a new value to replace it",
       "noToken": "Please enter Bot Token first",
       "noCredentials": "Please enter App ID and App Secret first",
-      "noDingtalkCredentials": "Please enter Corp ID, Client ID, Client Secret, Robot Code, and API Base URL first",
+      "noDingtalkCredentials": "Please enter Client ID, Client Secret, Robot Code, and REST Base URL first",
       "globalSettings": "Global Settings",
       "agentSettings": "Agents",
       "permissionMode": "Permission mode",
@@ -2333,12 +2172,11 @@
       ],
       "tutorialDtSteps": [
         "Go to <code>open.dingtalk.com</code> and open the Developer Console",
-        "Copy the enterprise <code>Corp ID</code> from the organization information",
         "Create an internal enterprise app, then copy <code>Client ID/AppKey</code> and <code>Client Secret/AppSecret</code> from app credentials",
         "Add the app robot capability and copy the <code>Robot Code</code> from the robot details",
         "Make sure the app has the robot message permissions it needs and is published to the target enterprise scope",
-        "Keep API Base URL as <code>https://api.dingtalk.com/v1.0</code> unless you intentionally use a DingTalk-compatible gateway",
-        "Paste Corp ID, Client ID, Client Secret, Robot Code, and API Base URL into the fields above. The token test and Stream connection must both succeed before replies can be sent"
+        "Keep REST Base URL as <code>https://api.dingtalk.io/v1.0</code> unless you intentionally use a DingTalk-compatible gateway",
+        "Paste Client ID, Client Secret, Robot Code, and REST Base URL into the fields above, test the connection, then turn on the switch"
       ],
       "whatsappHint": "Coming soon"
     },
@@ -2379,12 +2217,12 @@
       "next": "Get Started"
     },
     "remote": {
-      "link": "Already have a server? Connect to a Remote Server",
+      "link": "Already have a server? Connect over LAN",
       "url": "Server URL",
       "key": "Access key",
       "connect": "Connect",
       "connecting": "Connecting...",
-      "failed": "Failed to connect to Remote Server"
+      "failed": "Failed to connect to LAN server"
     },
     "name": {
       "title": "Names and Memory",
@@ -2605,8 +2443,7 @@
     "blockquote": "Blockquote",
     "codeBlock": "Code Block",
     "horizontalRule": "Horizontal Rule",
-    "list": "List",
-    "blockActions": "Block actions"
+    "list": "List"
   },
   "rightWorkspace": {
     "activity": {
@@ -2682,9 +2519,6 @@
     "cwdSkillsHint": "Create a .agents/skills/ directory to get started",
     "cwdSkillsDesc": "Skills follow workspace",
     "cwdSkillsDrop": "Drop folder or .zip to install skills",
-    "cwdSkillActive": "Loaded",
-    "cwdSkillInactive": "Not loaded",
-    "cwdSkillShadowed": "Shadowed",
     "deleteSkill": "Delete Skill",
     "openInFinder": "Open Folder",
     "jianLabel": "Jian",
@@ -2789,11 +2623,7 @@
     "openInSystemBrowser": "Open in system browser"
   },
   "notification": {
-    "chatCompletionBody": "This chat turn is complete",
-    "scheduledTaskCompletionBody": "Scheduled task completed: {label}",
-    "scheduledTaskCompletionFailedBody": "Scheduled task failed: {label}",
-    "patrolCompletionBody": "Patrol completed: {label}",
-    "patrolCompletionFailedBody": "Patrol failed: {label}"
+    "turnCompletionBody": "This turn is complete"
   },
   "error": {
     "pathsRequired": "paths array is required",
@@ -3059,8 +2889,7 @@
     "tray": {
       "show": "Show HanaAgent",
       "settings": "Settings",
-      "quit": "Quit",
-      "repairArtifacts": "Repair Components…"
+      "quit": "Quit"
     },
     "dialog": {
       "selectFolder": "Select Working Folder",
@@ -3076,16 +2905,10 @@
       "serverFilesNotReady": "Auto-update just completed; new version files still landing on disk (missing {missing}). Waited {waited}s without success. Please restart HanaAgent shortly.",
       "serverModuleMissing": "Server startup failed: cannot find module {module}.\nThis typically happens right after an auto-update, while new files are still being written to disk.\nRecommendation: wait 1-2 minutes and restart HanaAgent. Report on GitHub if it persists.",
       "installFailedTitle": "HanaAgent Update",
-      "installFailedBody": "Update installation failed:\n{error}\n\nPlease restart HanaAgent and try again, or check for updates manually in Settings.",
-      "repairArtifactsTitle": "Repair Components",
-      "repairArtifactsBody": "This resets HanaAgent's app components to the originally installed version and restarts the app. Your data (agents, sessions, settings) is not affected.",
-      "repairArtifactsConfirm": "Repair and Restart",
-      "repairArtifactsCancel": "Cancel",
-      "trainUpdateApplyFailedBody": "HanaAgent v{version}\n\nUpdate failed to apply:\n{error}\n\nPlease restart the app."
+      "installFailedBody": "Update installation failed:\n{error}\n\nPlease restart HanaAgent and try again, or check for updates manually in Settings."
     },
     "notification": {
-      "ready": "Notifications enabled",
-      "componentQuarantined": "A component was automatically rolled back to the previous version; functionality is unaffected"
+      "ready": "Notifications enabled"
     }
   },
   "devtools": {
@@ -3532,21 +3355,5 @@
     "fileSummaryMore": "- {count} more files",
     "fileSummaryHeader": "Generated files:",
     "mediaNoDisplayableFiles": "Generation result has no displayable files"
-  },
-  "sessionCollab": {
-    "messagePrefix": "[Message from agent \"{name}\", not the user]",
-    "fromAgent": "Message from {name}",
-    "expand": "Expand",
-    "collapse": "Collapse",
-    "confirmSend": "Send",
-    "confirmCreate": "Create & send",
-    "ignore": "Ignore",
-    "expired": "Draft expired; ask the agent to recreate it",
-    "inFlight": "Already being applied",
-    "halfCreated": "Session created ({id}) but the first message failed; retry or open the session and send manually",
-    "createdSession": "Created session {id}",
-    "sendFailed": "Delivery failed: {error}",
-    "rejectFailed": "Failed to ignore: {error}",
-    "messageField": "Message"
   }
 }
