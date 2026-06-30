@@ -185,6 +185,14 @@ describe('chat-slice', () => {
           isDir: false,
           mimeType: 'image/png',
           base64Data: 'IMAGE_BASE64',
+          resource: {
+            resourceId: 'res_sf_image',
+            studioId: 'studio_remote',
+            links: {
+              self: '/api/resources/res_sf_image',
+              content: '/api/resources/res_sf_image/content',
+            },
+          },
         }],
         sendStatus: 'pending',
       });
@@ -211,6 +219,14 @@ describe('chat-slice', () => {
         fileId: 'sf_image',
         base64Data: 'IMAGE_BASE64',
         mimeType: 'image/png',
+        resource: {
+          resourceId: 'res_sf_image',
+          studioId: 'studio_remote',
+          links: {
+            self: '/api/resources/res_sf_image',
+            content: '/api/resources/res_sf_image/content',
+          },
+        },
       });
       expect(item.data.sendStatus).toBeUndefined();
     });
