@@ -227,7 +227,7 @@ async function retrySessionTurnInternal(engine, opts, deps, compatibility) {
       if (sourceEntryId && latest && latest.id !== sourceEntryId) {
         throw new Error("Requested message is not the latest user message");
       }
-      if (isOptimisticClientUserMessageId(clientMessageId)) {
+      if (isOptimisticClientUserMessageId(clientMessageId) && !requested) {
         return await replayFromDisplayMessage(
           engine,
           sessionId,

@@ -31,6 +31,8 @@ Current status:
 | LAN/Tailscale CSP + WebSocket auth | `existing/open` | [#1749](https://github.com/liliMozi/openhanako/issues/1749) OPEN; [#1811](https://github.com/liliMozi/openhanako/issues/1811) CLOSED | Check during every sync; close or shrink divergence only if upstream accepts equivalent behavior. |
 | Remote plugin iframe credential query leak | `draft/pending-approval` | No exact issue found; related [#1493](https://github.com/liliMozi/openhanako/issues/1493), [#1546](https://github.com/liliMozi/openhanako/issues/1546) | Review `docs/upstream-issues/drafts/plugin-iframe-remote-credential-query-leak.md`; submit only after owner approval. |
 | Remote attachment preview persistence | `draft/pending-approval` | No exact issue found | Review `docs/upstream-issues/drafts/remote-attachment-preview-persistence.md`; submit only after owner approval. |
+| Marker-only image replay regenerate 400 | `draft/pending-approval` | No exact issue found | Review `docs/upstream-issues/drafts/session-replay-marker-only-image-regenerate.md`; submit only after owner approval. |
+| ToolGroup file-detail link context | `draft/pending-approval` | No exact issue found | Review `docs/upstream-issues/drafts/toolgroup-file-detail-link-context.md`; submit only after owner approval. |
 | Local fork build identity + disabled local auto-update | `tracked/no-upstream-issue` | Fork-only | Keep local; no upstream issue unless this becomes a general local-build-channel feature request. |
 | Fork sync issue tracking + prerelease policy | `tracked/no-upstream-issue` | Fork-only | Keep local; documents and automates this fork's maintenance workflow. |
 
@@ -112,6 +114,16 @@ These files fix remote desktop attachment import and preview when the macOS desk
    - Remote session images use resource URLs after transient inline bytes disappear.
    - Active remote HTTP(S) origins are allowed by runtime CSP for `img-src` and `media-src`, fixing previews after switching chats.
    - + tests in `tests/csp-sync.test.ts`, `tests/upload-route.test.ts`, and the affected React media/resource/store suites.
+4. **`4c82293b` + 2026-06-30 review follow-up** — marker-only image replay regenerate 400
+   - Persisted `[attached_image: ...]` marker-only user turns replay as marker/path-backed inputs, not synthesized direct provider image payloads.
+   - Trusted optimistic/display-message image attachments can still rebuild direct image payloads before a source entry is persisted.
+   - Confirmed local sends that keep `client-user-*` UI ids still prefer a valid persisted `sourceEntryId`, branch before the original user turn, and emit `session_branch_reset`.
+   - Oversized aggregate `session-meta.json` compacts prompt/memory snapshots into contained `session-meta-payloads/` sidecars.
+   - + tests in `tests/session-turn-actions.test.ts`, `tests/session-meta-write-serialization.test.ts`, `tests/sessions-route.test.ts`, and `desktop/src/react/__tests__/hooks/use-hana-fetch.test.ts`.
+5. **`b9d8a730`** — ToolGroup file-detail links preserve session context
+   - `AssistantMessage` passes `{ origin: 'session', sessionPath, messageId, blockIdx }` into `ToolGroupBlock`.
+   - Tool detail click and context-menu handlers pass that context to `openInternalLink`.
+   - + tests in `desktop/src/react/__tests__/components/ToolGroupBlock.test.tsx`.
 
 Full context: [[projects/openhanako/work/2026-06-15-csp-ws-lan-connect-fix]], [[projects/openhanako/work/2026-06-15-csp-bootstrapping-permanent-fix]], and [[concepts/openhanako-remote-session-file-preview]] in the wiki.
 
@@ -243,6 +255,13 @@ The server on sg01 and the desktop app stay on the last-known-good bundles until
 - Tier 3A local desktop install/version verification passed: `/Applications/HanaAgent.app` was rebuilt with `SKIP_NOTARIZE=true npm run install:local`, codesign verified, `CFBundleShortVersionString`, `CFBundleVersion`, and `build-info.json.appVersion` all reported `0.346.18`; `build-info.json` reported `channel: local`, `sourceRepo: karlorz/openhanako`, `baseTag: v0.346.18`, `gitSha: a1fa7dde96f7`, `dirty: false`, `updateEnabled: false`, and `signatureKind: adhoc`.
 - Tier 3B live sg01 smoke passed: the helper restart/verify path returned identity HTTP 200 and WebSocket open; CDP UI smoke uploaded `openhanako-sync-smoke-v0.346.18.png`, sent it, switched to `Recent Changelogs Guide`, returned to `Image Preview Smoke Test`, and confirmed the transcript image plus Conversation Files row still rendered. Opening the Conversation Files preview rendered the image from a remote `/api/resources/res_sf_.../content` URL. No CSP refusal or WebSocket disconnect was observed.
 - PR #1 remains the permanent draft dashboard and was not merged, auto-merged, or closed.
+
+## Latest fork patch closeout
+
+- 2026-06-30: patch target `v0.346.18-karlorz.5` remains on upstream package version `0.346.18` and carries the replay/link-context fixes reviewed from `4c82293b` and `b9d8a730`.
+- Code-review follow-up fixed replay source selection for confirmed `client-user-*` messages with a persisted `sourceEntryId`, switched `hanaFetch` HTTP error detail parsing to read body text once, and added sidecar traversal regression coverage.
+- Upstream issue tracker now includes local drafts for marker-only image replay regenerate 400 and ToolGroup file-detail link context; GitHub issue search on 2026-06-30 found no exact upstream matches.
+- sg01 deployment for this patch line uses the attended install-server flow: release asset check, `install-server upgrade --version v0.346.18-karlorz.5 --channel prerelease --dry-run`, then `--execute`.
 
 ## Sync log
 
