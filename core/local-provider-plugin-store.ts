@@ -233,6 +233,8 @@ export function splitLocalProviderConfig(providerId: string, config: Record<stri
   const definitionFields = pickProviderDefinitionFields(raw);
   if (hasOwn(definitionFields, "models")) {
     definitionFields.models = replaceProviderModelEntries(existingDefinition.models, definitionFields.models);
+  } else if (hasOwn(existingDefinition, "models")) {
+    definitionFields.models = mergeProviderModelEntries(existingDefinition.models, definitionFields.models);
   }
   const plugin = normalizeLocalProviderPlugin(providerId, {
     ...existingDefinition,

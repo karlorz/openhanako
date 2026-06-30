@@ -111,6 +111,32 @@ Five server-bundle assets, one per target:
 
 Each tarball is produced by `scripts/pack-server-bundle.mjs` from the matching `dist-server/<os>-<arch>/` build output. The asset's sha256 is computed at pack time and published as a same-name `.sha256` sidecar used by `install-server upgrade` to verify the download before extraction. The release verify gate fails the release if any tarball or sidecar is missing.
 
+## Staging And Build Space
+
+The supported install and upgrade path is to consume tagged GitHub release
+assets. Do not use the Linux host as the normal build machine for releases.
+
+When an attended emergency hotfix must build or pack directly on a small
+server, avoid `/tmp` for build output. On sg01, `/tmp` is tmpfs-backed; stale
+build and upgrade directories there consumed several GiB of shared memory
+during the 2026-07-01 model-removal hotfix validation and made overall memory
+usage look high even while CPU was normal. Use a disk-backed directory such as
+`/opt/hanaagent/build` for transient build artifacts, and remove it after the
+installer has completed.
+
+Before blaming CPU or DNS for a remote server stall, check memory pressure from
+tmpfs first:
+
+```sh
+df -h /tmp /opt/hanaagent
+du -sh /tmp/openhanako-* /tmp/hanaagent-* /opt/hanaagent/build 2>/dev/null
+free -h
+systemctl status hanaagent --no-pager -l
+```
+
+Only remove stale staging directories after confirming no `install-server`,
+`npm`, `node`, or tar/extract process is still using them.
+
 ## Service Model
 
 The server runs as the `hanaagent` system user and group.

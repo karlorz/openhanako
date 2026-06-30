@@ -1,6 +1,6 @@
 # OpenHanako Dev-Loop Setup Notes
 
-Generated during the 2026-06-15 remote attachment preview fix closeout. Last revised during the 2026-06-30 replay/link-context patch closeout on the upstream `v0.346.18` fork line.
+Generated during the 2026-06-15 remote attachment preview fix closeout. Last revised during the 2026-07-01 provider model-removal patch closeout on the upstream `v0.346.18` fork line.
 
 ## Discovery
 
@@ -15,7 +15,7 @@ Generated during the 2026-06-15 remote attachment preview fix closeout. Last rev
 - Missing optional dependency: `claude-mem` only
 - Existing CI: `.github/workflows/ci.yml`, targets `main` and `dev`
 - Release workflow: `.github/workflows/build.yml`, tag-triggered `v*`
-- Latest fork release tag: `v0.346.18-karlorz.5`; this patch line includes the marker-only image replay fix, ToolGroup file-detail link context propagation, and code-review hardening follow-ups.
+- Latest fork release tag: `v0.346.18-karlorz.6`; this patch line includes the marker-only image replay fix, ToolGroup file-detail link context propagation, code-review hardening follow-ups, and provider model-removal persistence fixes.
 - Upstream sync workflow: `node scripts/sync-upstream.mjs --check` checks stable upstream releases by default; prerelease candidate review requires `--include-prerelease`
 - Fork sync rules: `docs/fork-sync/rules.yml` is the machine-readable policy used by `scripts/sync-upstream.mjs`.
 - Post-rebase fork sync verification: `node scripts/sync-upstream.mjs --post-rebase` prints Tier 3A local desktop install/version verification before Tier 3B sg01 live smoke. The installed `/Applications/HanaAgent.app` bundle metadata, `build-info.json`, and Settings → About must match `package.json` before the live smoke counts.
@@ -139,3 +139,11 @@ After the 2026-06-16 maintenance cycle, the compact config now treats fork-sync 
 - Code-review follow-up: confirmed `client-user-*` UI ids now still use a valid persisted `sourceEntryId`; `hanaFetch` reads error response text once and extracts JSON or plain-text detail; session-meta sidecar traversal refs are covered by regression tests.
 - Upstream issue docs: `scripts/track-upstream-issues.mjs` now tracks `session-replay-marker-only-image-regenerate` and `toolgroup-file-detail-link-context`; `docs/upstream-issues/README.md` and both draft issue files are generated from that source.
 - sg01 deployment remains attended through `install-server upgrade --version v0.346.18-karlorz.5 --channel prerelease`, with dry-run before execute.
+
+## Fork Patch Closeout - 2026-07-01
+
+- Patch target: `v0.346.18-karlorz.6` on branch `dev`; package version remains upstream-aligned at `0.346.18`.
+- Model-removal fix: Settings now removes provider models through the dedicated provider-model delete endpoint, server routes decode slash-bearing model ids before registry mutation, and explicit local provider `models` saves replace plugin model definitions instead of merging deleted entries back in.
+- Regression coverage: `ProviderModelList` verifies DELETE endpoint usage and no broad `/api/config` rewrite; provider route tests cover encoded slash model ids; provider registry tests cover slash-bearing local provider plugin model removal.
+- sg01 live validation: a temp provider/model with model id `codex/smoke-delete-*` was created through the remote server, removed through `DELETE /api/providers/:provider/models/:modelId`, verified absent, and cleaned up.
+- sg01 memory diagnosis: high memory was tmpfs pressure from stale `/tmp/openhanako-*` and `/tmp/hanaagent-*` build/upgrade directories, not CPU saturation. Future attended hotfix builds should stage under disk-backed `/opt/hanaagent/build` and clean it after install.
