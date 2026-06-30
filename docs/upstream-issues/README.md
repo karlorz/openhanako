@@ -10,6 +10,7 @@ This file tracks local fork fixes against upstream GitHub issues. The source of 
 | desktop-temp-upload-session-cache-materialization | upstream | draft/pending-approval | none | fix: materialize temp uploads to session cache before send |
 | session-replay-marker-only-image-regenerate | upstream | draft/pending-approval | none | fix: replay persisted marker-only image turns without provider image_url rejection |
 | toolgroup-file-detail-link-context | upstream | draft/pending-approval | none | fix: preserve session link context for tool file-detail links |
+| provider-model-removal-persistence | upstream | draft/pending-approval | none | fix: make provider model removal persist for slash-bearing local provider models |
 | remote-skill-viewer-local-file-ipc | upstream | draft/pending-approval | none | fix: preview remote server skills through active server APIs |
 | remote-skill-install-client-local-path | upstream | draft/pending-approval | none | fix: upload remote skill packages instead of posting client-local paths |
 | plugin-iframe-remote-credential-query-leak | upstream | draft/pending-approval | [#1493](https://github.com/liliMozi/openhanako/issues/1493) OPEN, [#1546](https://github.com/liliMozi/openhanako/issues/1546) CLOSED | fold into LAN query-token/auth bug fix unless reviewed separately |
