@@ -16,6 +16,8 @@ describe("upstream issue tracker", () => {
       "lan-query-token-network-hardening",
       "remote-attachment-preview-persistence",
       "desktop-temp-upload-session-cache-materialization",
+      "remote-skill-viewer-local-file-ipc",
+      "remote-skill-install-client-local-path",
       "plugin-iframe-remote-credential-query-leak",
       "local-build-identity-disable-auto-update",
       "fork-sync-issue-tracking-prerelease-policy",
