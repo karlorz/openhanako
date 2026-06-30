@@ -43,10 +43,10 @@ export async function replayLatestUserTurn(engine, opts: Record<string, any> = {
   if (sourceEntryId && latestOnBranch && latestOnBranch.id !== sourceEntryId) {
     throw new Error("Requested message is not the latest user message");
   }
-  // 客户端乐观消息 ID（client-user- 前缀）指向尚未持久化的展示消息，跳过分支查找，
-  // 直接从 displayMessage 重建回放载荷；其余情况优先使用已持久化的分支条目。
-  const canResolveFromBranch = !isOptimisticClientUserMessageId(clientMessageId);
-  const latest = canResolveFromBranch ? (requested || latestOnBranch) : null;
+  // Confirmed local sends can keep a client-user-* UI id after persistence.
+  // Prefer a valid persisted source entry; use display fallback only while the
+  // optimistic message has no branch entry yet.
+  const latest = requested || (isOptimisticClientUserMessageId(clientMessageId) ? null : latestOnBranch);
   if (!latest) {
     return await replayFromDisplayMessage(engine, sessionPath, displayMessage, replacementText, uiContext, deps, session);
   }

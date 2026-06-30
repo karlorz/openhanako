@@ -1,6 +1,6 @@
 # OpenHanako Dev-Loop Setup Notes
 
-Generated during the 2026-06-15 remote attachment preview fix closeout. Last revised during the 2026-06-28 closeout for the stable sync to upstream `v0.346.18`.
+Generated during the 2026-06-15 remote attachment preview fix closeout. Last revised during the 2026-06-30 replay/link-context patch closeout on the upstream `v0.346.18` fork line.
 
 ## Discovery
 
@@ -15,7 +15,7 @@ Generated during the 2026-06-15 remote attachment preview fix closeout. Last rev
 - Missing optional dependency: `claude-mem` only
 - Existing CI: `.github/workflows/ci.yml`, targets `main` and `dev`
 - Release workflow: `.github/workflows/build.yml`, tag-triggered `v*`
-- Latest fork release tag: `v0.346.18-karlorz.1`; GitHub Actions run `28293195697` completed successfully and published 20 release assets.
+- Latest fork release tag: `v0.346.18-karlorz.5`; this patch line includes the marker-only image replay fix, ToolGroup file-detail link context propagation, and code-review hardening follow-ups.
 - Upstream sync workflow: `node scripts/sync-upstream.mjs --check` checks stable upstream releases by default; prerelease candidate review requires `--include-prerelease`
 - Fork sync rules: `docs/fork-sync/rules.yml` is the machine-readable policy used by `scripts/sync-upstream.mjs`.
 - Post-rebase fork sync verification: `node scripts/sync-upstream.mjs --post-rebase` prints Tier 3A local desktop install/version verification before Tier 3B sg01 live smoke. The installed `/Applications/HanaAgent.app` bundle metadata, `build-info.json`, and Settings → About must match `package.json` before the live smoke counts.
@@ -131,3 +131,11 @@ After the 2026-06-16 maintenance cycle, the compact config now treats fork-sync 
 - Post-force-push CI: docs closeout commit `7628f54f` completed successfully on push run `28295481409` and permanent dashboard PR run `28295481912`, both covering macOS and Windows.
 - Final sync check: `node scripts/sync-upstream.mjs --check` reports latest upstream tag and last synced tag both `v0.346.18`.
 - Permanent dashboard PR #1 remained open, draft, and unmerged.
+
+## Fork Patch Closeout - 2026-06-30
+
+- Patch target: `v0.346.18-karlorz.5` on branch `dev`; package version remains upstream-aligned at `0.346.18`.
+- Reviewed commits: `4c82293b` fixed persisted marker-only image replay by preserving marker/path semantics instead of synthesizing direct provider image payloads; `b9d8a730` passed full session link context through ToolGroup file-detail links.
+- Code-review follow-up: confirmed `client-user-*` UI ids now still use a valid persisted `sourceEntryId`; `hanaFetch` reads error response text once and extracts JSON or plain-text detail; session-meta sidecar traversal refs are covered by regression tests.
+- Upstream issue docs: `scripts/track-upstream-issues.mjs` now tracks `session-replay-marker-only-image-regenerate` and `toolgroup-file-detail-link-context`; `docs/upstream-issues/README.md` and both draft issue files are generated from that source.
+- sg01 deployment remains attended through `install-server upgrade --version v0.346.18-karlorz.5 --channel prerelease`, with dry-run before execute.

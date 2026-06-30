@@ -323,6 +323,30 @@ describe("SessionCoordinator.writeSessionMeta serialization", () => {
     });
   });
 
+  it("rejects session-meta payload refs that escape the sidecar directory", async () => {
+    const metaPath = path.join(sessionDir, "session-meta.json");
+    const targetPath = path.join(sessionDir, "escaped.jsonl");
+    await fsp.writeFile(path.join(tmpDir, "escape.json"), JSON.stringify({
+      version: 1,
+      reflections: [{ text: "secret outside payload dir" }],
+    }), "utf-8");
+    await fsp.writeFile(metaPath, JSON.stringify({
+      [path.basename(targetPath)]: {
+        memoryReflectionSnapshot: {
+          kind: "session-meta-payload",
+          version: 1,
+          field: "memoryReflectionSnapshot",
+          path: "../escape.json",
+        },
+      },
+    }), "utf-8");
+
+    const hydrated = await sessionCoord._readMetaCached(metaPath);
+
+    expect(hydrated[path.basename(targetPath)].memoryReflectionSnapshot).toBeUndefined();
+    expect(sessionCoord.getSessionMemoryReflectionSnapshot(targetPath)).toBeNull();
+  });
+
   it("setSessionPinned writes and clears pinnedAt on the session meta entry", async () => {
     const pinnedAt = await sessionCoord.setSessionPinned(fakeSessionPath, true);
 
