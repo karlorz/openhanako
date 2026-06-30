@@ -43,22 +43,6 @@
     "createSessionFailed": "대화 생성에 실패했어요",
     "sendFailed": "보내기 실패"
   },
-  "app": {
-    "remoteRecovery": {
-      "title": "원격 서버 확인 필요",
-      "subtitle": "저장된 원격 서버 연결은 유지했지만 호환성 확인을 완료하지 못했습니다.",
-      "serverUrl": "서버 URL",
-      "accessKey": "접근 키",
-      "retryRemote": "원격 재시도",
-      "retrying": "재시도 중...",
-      "switchLocal": "로컬로 전환",
-      "localUnavailable": "로컬 서버가 아직 준비되지 않았습니다",
-      "status": {
-        "identity_failed": "ID 확인 실패",
-        "compatibility_failed": "호환성 확인 실패"
-      }
-    }
-  },
   "channel": {
     "tab": "채널",
     "chatTab": "채팅",
@@ -107,12 +91,6 @@
     "noAvailableMembers": "추가할 수 있는 Agent가 없어요",
     "agentActivity": "Agent 상태",
     "agentSettings": "채팅 설정",
-    "exportTitle": "현재 채팅 저장",
-    "exportDescription": "현재 그룹 채팅 또는 DM을 Markdown 파일로 다운로드 폴더에 저장합니다.",
-    "exportAction": "현재 채팅 내보내기",
-    "exporting": "내보내는 중…",
-    "exportSuccess": "채팅 기록을 다운로드했습니다: {filename}",
-    "exportFailed": "채팅 기록을 내보내지 못했습니다: {message}",
     "toolPermission": "도구 권한",
     "agentIdle": "대기 중",
     "phoneReceivedNewMessages": "새 그룹 채팅 메시지를 받음",
@@ -140,11 +118,6 @@
     "filesUnsupported": "채널은 현재 텍스트 메시지만 지원해요. 파일은 일반 채팅 첨부에 추가되지 않습니다",
     "createIntroOptional": "설명",
     "unpinPluginTab": "「{label}」 고정 해제"
-  },
-  "announcement": {
-    "title": "업데이트 완료 · v{version}",
-    "fallbackBody": "HanaAgent가 v{version}(으)로 업데이트되었습니다.",
-    "confirm": "확인"
   },
   "skills": {
     "panel": {
@@ -221,10 +194,6 @@
     "pinFailed": "세션 고정 실패",
     "unpinFailed": "세션 고정 해제 실패",
     "archive": "보관",
-    "copyId": "Session ID 복사",
-    "copyIdDone": "Session ID를 복사했습니다",
-    "copyIdFailed": "Session ID를 복사하지 못했습니다",
-    "copyIdUnavailable": "이 Session에는 복사할 수 있는 ID가 없습니다",
     "deletedAgent": {
       "title": "Agent가 삭제됨",
       "description": "이 대화는 읽기 전용 기록으로 유지됩니다. 계속하면 기본 Agent에서 새 세션을 만들고 이전 컨텍스트 압축을 시도합니다.",
@@ -319,10 +288,6 @@
     "markAllComplete": "모두 완료로 표시"
   },
   "chat": {
-    "find": {
-      "locateFailed": "해당 메시지를 찾지 못했습니다",
-      "placeholder": "대화에서 찾기"
-    },
     "send": "보내기",
     "steer": "방향 전환",
     "stop": "중지",
@@ -460,26 +425,7 @@
     "confirmMoreOptions": "추가 확인 옵션",
     "attachmentDirectory": "[디렉터리] {label}",
     "attachmentFile": "[첨부] {label}",
-    "referenceDocument": "[참고 문서] {path}",
-    "mention": {
-      "title": "멘션",
-      "tab": { "files": "파일", "sessions": "대화", "agents": "에이전트" },
-      "empty": "일치하는 항목이 없습니다",
-      "singleAgent": "한 턴에는 한 명의 Agent 리뷰어만 초대할 수 있습니다"
-    }
-  },
-  "agentReview": {
-    "running": "이 Session을 검토하는 중",
-    "completed": "다른 Agent의 검토 결과",
-    "failed": "검토에 실패했습니다. 메인 Agent는 아직 답변하지 않았습니다",
-    "cancelled": "검토를 취소했습니다",
-    "openSession": "검토 Session 열기",
-    "sessionUnavailable": "검토 Session을 찾을 수 없습니다",
-    "requestReceived": "다른 Session에서 검토 요청을 받았습니다",
-    "openReviewedSession": "검토 대상 Session 열기",
-    "reviewedSessionFallback": "원본 대화",
-    "reviewSessionFallback": "{name}의 검토 대화",
-    "interjectionUnavailable": "Agent 검토는 끼어들기로 보낼 수 없습니다. 현재 답변이 끝날 때까지 기다려 주세요"
+    "referenceDocument": "[참고 문서] {path}"
   },
   "slash": {
     "diary": "오늘의 일기 쓰기",
@@ -969,11 +915,7 @@
       "{name}은(는) 어느 오후의 귤 향기를 맡았어요",
       "그 대화들에는 아직 온기가 남아 있어요"
     ],
-    "installing": "{name}을(를) v{version}(으)로 업데이트하고 있어요. 잠시만 기다려 주세요……",
-    "preparing": {
-      "named": "{name}은(는) 새로운 보금자리를 준비하고 있어요……",
-      "anonymous": "당신의 어시스턴트가 새로운 보금자리를 준비하고 있어요……"
-    }
+    "installing": "{name}을(를) v{version}(으)로 업데이트하고 있어요. 잠시만 기다려 주세요……"
   },
   "settings": {
     "title": "설정",
@@ -1046,13 +988,10 @@
       },
       "notifications": {
         "title": "알림",
-        "chatCompletion": "채팅 답변 완료",
-        "scheduledTaskCompletion": "예약 작업 완료",
-        "patrolCompletion": "순찰 완료",
-        "never": "사용 안 함",
-        "whenUnfocused": "HanaAgent에 포커스가 없을 때",
-        "whenSessionUnfocused": "완료된 채팅에 포커스가 없을 때",
-        "always": "항상"
+        "turnCompletion": "턴 완료 알림",
+        "turnCompletionNever": "사용 안 함",
+        "turnCompletionWhenUnfocused": "HanaAgent에 포커스가 없을 때",
+        "turnCompletionWhenSessionUnfocused": "완료된 Session에 포커스가 없을 때"
       }
     },
     "computerUse": {
@@ -1264,10 +1203,6 @@
           "office": {
             "label": "Office",
             "summary": "Agent가 문서를 읽고 HTML을 PDF로 변환할 수 있게 해요"
-          },
-          "session": {
-            "label": "세션 협업",
-            "summary": "다른 세션을 목록/조회하고, 확인 카드로 메시지 전송이나 세션 생성을 수행"
           }
         }
       },
@@ -1285,36 +1220,17 @@
       "updateAvailable": "새 버전 출시: v{version}",
       "updateDownload": "다운로드",
       "updateChecking": "업데이트 확인 중…",
-      "updateDownloading": "{agentName}이(가) 새 집을 준비하는 중",
+      "updateDownloading": "{agentName}이(가) 새 집을 준비하는 중 {percent}%",
       "updateReadyInstall": "v{version} 설치 준비 완료",
       "updateInstalling": "업데이트를 설치하는 중입니다. HanaAgent가 자동으로 다시 시작됩니다…",
       "updateInstallManualHint": "다시 시작하여 업데이트를 누른 뒤 설치합니다. 종료만으로는 자동 설치하지 않습니다",
       "updateInstall": "재시작하여 업데이트",
       "updateInstallNow": "지금 재시작하여 업데이트",
-      "updateApply": "업데이트",
-      "updateApplyAutoHint": "클릭하지 않아도 다음 실행 시 자동으로 적용됩니다",
-      "trainStickerTitle": "새 버전이 있습니다",
-      "trainStickerDownloading": "다운로드 중 {percent}%",
-      "trainStickerApplying": "업데이트 적용 중…",
-      "shellStickerTitle": "플랫폼 업데이트 사용 가능, 재시작 필요",
-      "shellStickerTitleBlocking": "새 버전을 계속 받으려면 이 업데이트를 완료해야 합니다",
-      "fallbackStickerTitle": "버전 {fromVersion}이(가) 연속으로 시작에 실패하여 {toVersion}(으)로 롤백되었습니다. 문제가 있던 버전은 격리되어 자동으로 재시도되지 않습니다.",
-      "fallbackStickerAckLabel": "확인",
-      "updateHistoryTitle": "업데이트 기록",
-      "updateHistorySubtitle": "최근에 게시된 5개 버전",
-      "updateHistoryLoading": "업데이트 기록을 불러오는 중…",
-      "updateHistoryOffline": "릴리스 사이트에 연결할 수 없어 앱에 저장된 버전을 표시합니다.",
-      "updateHistoryPartial": "업데이트 설명이 있는 게시 버전 중 일부만 찾았습니다.",
-      "updateHistoryUnavailable": "업데이트 기록을 일시적으로 불러올 수 없습니다. 나중에 다시 시도해 주세요.",
       "updateProgress": "{percent}%",
       "updateError": "업데이트 확인 실패",
       "updateLatest": "최신 버전입니다",
-      "updateLatestCheckedAt": "최신 상태입니다 (마지막 확인: {time})",
-      "updateManifestReleasedAt": "배포 매니페스트 발행일: {date}",
-      "updateManifestReleasedAtViaMirror": "배포 매니페스트 발행일: {date} (백업 소스 경유)",
       "updateDisabled": "이 로컬 빌드에서는 업데이트가 비활성화되어 있습니다",
       "updateCheckBtn": "업데이트 확인",
-      "updateRetryBtn": "다시 시도",
       "updateNeedInstall": "먼저 HanaAgent를 응용 프로그램 폴더로 이동하세요",
       "updateDiskSpace": "디스크 공간이 부족하여 업데이트를 다운로드할 수 없습니다",
       "updateDigestCta": "이번 업데이트에서 얻는 것",
@@ -1371,20 +1287,15 @@
       "desktopKeyOnce": "키는 생성 직후 한 번만 표시됩니다",
       "desktopKeyCreated": "컴퓨터 접근 키 생성됨",
       "desktopKeyFailed": "생성 실패",
-      "onboarding": "온보딩",
-      "openOnboarding": "온보딩 열기",
-      "openOnboardingHint": "계정, 서버, 튜토리얼 설정을 위한 초기 설정 창을 다시 엽니다",
-      "openOnboardingFailed": "온보딩을 열 수 없습니다",
-      "openOnboardingUnavailable": "이 빌드에서는 온보딩 창을 사용할 수 없습니다",
-      "connectLanServer": "원격 서버 연결",
+      "connectLanServer": "LAN 서버 연결",
       "remoteServerUrl": "서버 URL",
       "remoteServerUrlHint": "다른 컴퓨터나 NAS의 HanaAgent Server URL을 입력하세요",
       "remoteServerKey": "접근 키",
       "remoteServerKeyHint": "그 서버 설정 페이지에서 생성한 컴퓨터 접근 키를 입력하세요",
-      "remoteServerConnected": "원격 서버 연결됨",
+      "remoteServerConnected": "LAN 서버 연결됨",
       "remoteServerFailed": "연결 실패",
-      "remoteConnection": "원격 서버에 연결됨",
-      "remoteConnectionDesc": "이 데스크톱은 원격 서버를 사용 중입니다. 로컬 계정, 비밀번호, LAN 스위치, 접근 키 생성은 로컬 서버에만 속합니다.",
+      "remoteConnection": "원격 Hana에 연결됨",
+      "remoteConnectionDesc": "접근 및 기기의 로컬 계정, 비밀번호, LAN 스위치, 접근 키는 로컬 Hana에만 속합니다.",
       "remoteConnectionName": "연결 이름",
       "remoteConnectionKind": "연결 유형",
       "remoteConnectionUrl": "서버 URL",
@@ -1399,69 +1310,11 @@
       "remoteStudioLabel": "스튜디오",
       "remoteExecutionBoundary": "실행 경계",
       "remoteRuntime": "실행 위치",
-      "remoteCompatibilityStatus": "호환성",
-      "remoteCompatibilityReady": "준비됨",
-      "remoteCompatibilityWarning": "제한된 호환성",
-      "remoteCompatibilityProblem": "원격 서버 문제",
-      "remoteCoreConnection": "핵심 연결",
-      "remoteCoreReady": "준비됨",
-      "remoteCoreDegraded": "일부 제한",
-      "remoteCoreBlocked": "차단됨",
-      "remoteTransport": "전송 방식",
-      "remoteTransportTicket": "티켓 전송 사용 가능",
-      "remoteTransportLegacy": "레거시 쿼리 토큰 전송",
-      "remoteServerUpdate": "서버 업데이트",
-      "remoteCurrent": "최신",
-      "remoteUpdateRecommended": "업데이트 권장",
-      "remoteAheadOrCustom": "선행 또는 사용자 지정 빌드",
-      "remoteFreshnessUnknown": "릴리스 최신 여부 알 수 없음",
-      "remoteFeatureSupport": "기능 지원",
-      "remoteFeaturesFull": "전체 지원",
-      "remoteFeaturesLimited": "제한적 지원",
-      "remoteFeaturesLegacy": "레거시 서버",
-      "remoteConnectedRuntime": "연결된 런타임 버전",
-      "remoteInstalledRelease": "설치된 릴리스",
-      "remoteReleaseIdentityUnverified": "정확한 릴리스 확인 안 됨",
-      "remoteRecommendedRelease": "권장 서버 릴리스",
-      "remoteDesktopVersion": "데스크톱 버전",
-      "remoteProtocolContracts": "프로토콜 / 계약",
-      "remoteContractsLegacy": "레거시 서버; 계약 미선언",
-      "remoteHostCompatibility": "호스트 호환성",
-      "remoteHostEligible": "일치하는 서버 자산 사용 가능",
-      "remoteHostCheckOnServer": "서버에서 상태 명령을 실행해 확인하세요",
-      "remoteHostUnavailable": "일치하는 서버 자산 없음",
-      "remoteHostUnknown": "호스트 호환성 알 수 없음",
-      "remoteLastChecked": "릴리스 확인",
-      "remoteCheckOnline": "온라인 확인 완료",
-      "remoteCheckCached": "캐시된 릴리스 데이터 사용 중",
-      "remoteCheckStale": "캐시된 릴리스 데이터가 오래됨",
-      "remoteCheckUnavailable": "릴리스 조회 불가",
-      "remoteNotAssessed": "평가되지 않음",
-      "remoteUnknown": "알 수 없음",
-      "remoteCheckAgain": "다시 확인",
-      "remoteCopyDiagnostic": "진단 정보 복사",
-      "remoteCopyStatusCommand": "서버 상태 명령 복사",
-      "remoteDiagnosticCopied": "원격 서버 진단 정보를 복사했습니다",
-      "remoteCompatibilityReason": "문제",
-      "remoteCompatibilityWarningLabel": "경고",
-      "remoteReason": {
-        "invalid_identity": "서버 ID를 확인할 수 없습니다",
-        "auth_failed": "원격 액세스 키가 거부되었습니다",
-        "invalid_capabilities": "서버 기능이 없거나 올바르지 않습니다",
-        "missing_core_capability": "필수 채팅 기능이 없습니다",
-        "missing_optional_capability": "일부 선택 원격 서버 기능이 없습니다",
-        "invalid_execution_boundary": "서버 실행 경계가 불완전합니다",
-        "identity_transport_contradiction": "저장된 연결이 서버 ID와 일치하지 않습니다"
-      },
-      "remoteWarning": {
-        "missing_optional_capability": "일부 선택 원격 서버 기능을 사용할 수 없습니다"
-      },
       "remoteConnectionKindLocal": "로컬 연결",
-      "remoteConnectionKindRemote": "원격 서버",
-      "remoteConnectionKindLan": "원격 서버",
+      "remoteConnectionKindLan": "LAN 서버",
       "remoteConnectionKindCustom": "원격 서버",
-      "remoteConnectionKindRelay": "원격 서버",
-      "remoteConnectionKindCloud": "원격 서버",
+      "remoteConnectionKindRelay": "릴레이 서버",
+      "remoteConnectionKindCloud": "클라우드 서버",
       "remoteTrustLocal": "로컬 신뢰됨",
       "remoteTrustLan": "LAN 신뢰됨",
       "remoteTrustTunnel": "터널 신뢰됨",
@@ -1483,14 +1336,10 @@
       "remoteCapabilityProviders": "공급자",
       "remoteRuntimeServerProcess": "원격 Hana 서버 프로세스",
       "remoteRuntimeServer": "원격 Hana 서버",
-      "remoteLocalOnlyNote": "이 컴퓨터의 LAN 접근, 기기 키, 로컬 계정을 관리하려면 먼저 로컬로 전환하세요.",
-      "remoteConnectionActions": "원격 서버 연결",
-      "remoteConnectionActionsDesc": "이 원격 서버를 다시 시도하거나 다른 서버 URL과 접근 키를 입력하세요.",
-      "retryRemote": "원격 재시도",
-      "connectAnotherRemote": "다른 원격 서버 연결",
-      "returnToLocal": "로컬로 전환",
-      "returnedToLocal": "로컬로 전환했습니다",
-      "localConnectionUnavailable": "로컬 서버가 아직 준비되지 않았습니다",
+      "remoteLocalOnlyNote": "이 컴퓨터의 LAN 접근, 기기 키, 로컬 계정을 관리하려면 먼저 로컬 Hana로 돌아가세요.",
+      "returnToLocal": "로컬 Hana로 돌아가기",
+      "returnedToLocal": "로컬 Hana로 돌아왔습니다",
+      "localConnectionUnavailable": "로컬 Hana 연결이 아직 준비되지 않았습니다",
       "pairedDevices": "페어링된 기기",
       "noDevices": "페어링된 기기 없음",
       "revoke": "해제",
@@ -1927,12 +1776,6 @@
       "injectAgentsMdDesc": "켜면 새 세션이 현재 작업 디렉토리에서 Git 루트까지의 AGENTS.md를 읽습니다.",
       "injectClaudeMd": "CLAUDE.md 주입",
       "injectClaudeMdDesc": "켜면 새 세션이 현재 작업 디렉토리에서 Git 루트까지의 CLAUDE.md를 읽습니다.",
-      "projectSkillsTitle": "프로젝트 스킬 검색",
-      "projectSkillsDesc": "이 Agent가 새 세션에 불러올 프로젝트 스킬 디렉터리를 선택합니다.",
-      "discoverProjectSkills": "프로젝트 스킬 불러오기",
-      "discoverProjectSkillsDesc": "현재 프로젝트의 .agents/skills에서 스킬을 검색하고 불러옵니다.",
-      "discoverCompatibleProjectSkills": "다른 도구의 프로젝트 스킬 불러오기",
-      "discoverCompatibleProjectSkillsDesc": "Claude Code, Codex, OpenClaw의 프로젝트 스킬도 검색합니다.",
       "agentDeskSection": "Agent 데스크 설정"
     },
     "toolCaps": {
@@ -2189,12 +2032,11 @@
       "feishuAppSecret": "App Secret",
       "feishuHint": "Feishu 오픈 플랫폼에서 받으세요. 이벤트는 long connection으로 받으며 로컬 callback URL은 필요하지 않습니다",
       "dingtalk": "DingTalk",
-      "dingtalkCorpId": "Corp ID",
       "dingtalkClientId": "Client ID / AppKey",
       "dingtalkClientSecret": "Client Secret / AppSecret",
       "dingtalkRobotCode": "Robot Code",
-      "dingtalkApiBaseUrl": "API Base URL",
-      "dingtalkHint": "Corp ID와 앱 자격 증명은 새 token API에 사용합니다. Client ID와 Client Secret은 Stream 연결에도 사용하며 Robot Code는 답장 전송에 사용합니다. API Base URL 기본값은 https://api.dingtalk.com/v1.0 입니다",
+      "dingtalkRestBaseUrl": "REST Base URL",
+      "dingtalkHint": "내부 앱 자격 증명은 token/Stream에, Robot Code는 기업 로봇 발송에 사용됩니다. REST Base URL 기본값은 https://api.dingtalk.io/v1.0 입니다",
       "whatsapp": "WhatsApp",
       "qq": "QQ",
       "qqAppId": "App ID",
@@ -2218,15 +2060,12 @@
       "connected": "연결됨",
       "disconnected": "연결 안 됨",
       "error": "연결 실패",
-      "connectionToggle": "연결 활성화 또는 비활성화",
       "test": "연결 테스트",
       "testOk": "연결 성공",
-      "dingtalkCredentialTestOk": "자격 증명을 확인했습니다. Stream 연결과 로봇 답장은 활성화 후 확인됩니다",
       "testFail": "테스트 실패",
-      "secretStoredPlaceholder": "저장됨. 바꾸려면 새 값을 입력하세요",
       "noToken": "먼저 Bot Token을 입력해 주세요",
       "noCredentials": "먼저 App ID와 App Secret을 입력해 주세요",
-      "noDingtalkCredentials": "먼저 Corp ID, Client ID, Client Secret, Robot Code, API Base URL을 입력해 주세요",
+      "noDingtalkCredentials": "먼저 Client ID, Client Secret, Robot Code, REST Base URL을 입력해 주세요",
       "globalSettings": "전역 설정",
       "agentSettings": "에이전트",
       "permissionMode": "권한 모드",
@@ -2270,12 +2109,11 @@
       ],
       "tutorialDtSteps": [
         "<code>open.dingtalk.com</code>으로 이동해 개발자 콘솔을 열어 주세요",
-        "기업 정보에서 <code>Corp ID</code>를 복사해 주세요",
         "내부 기업 앱을 만들고 앱 자격 증명에서 <code>Client ID/AppKey</code>와 <code>Client Secret/AppSecret</code>을 복사해 주세요",
         "앱 로봇 기능을 추가하고 로봇 상세에서 <code>Robot Code</code>를 복사해 주세요",
         "로봇 메시지 송수신에 필요한 권한을 확인하고 대상 기업 범위에 배포해 주세요",
-        "DingTalk 호환 게이트웨이를 명시적으로 쓰는 경우가 아니면 API Base URL은 <code>https://api.dingtalk.com/v1.0</code> 기본값을 유지해 주세요",
-        "위 입력란에 Corp ID, Client ID, Client Secret, Robot Code, API Base URL을 붙여넣어 주세요. 새 token 테스트와 Stream 연결이 모두 성공해야 메시지를 완전히 주고받을 수 있어요"
+        "DingTalk 호환 게이트웨이를 명시적으로 쓰는 경우가 아니면 REST Base URL은 <code>https://api.dingtalk.io/v1.0</code> 기본값을 유지해 주세요",
+        "위 입력란에 Client ID, Client Secret, Robot Code, REST Base URL을 붙여넣고 연결 테스트 후 스위치를 켜주세요"
       ],
       "whatsappHint": "곧 지원 예정"
     },
@@ -2382,12 +2220,12 @@
       "next": "시작하기"
     },
     "remote": {
-      "link": "이미 서버가 있나요? 원격 서버에 연결",
+      "link": "이미 서버가 있나요? LAN으로 연결",
       "url": "서버 URL",
       "key": "접근 키",
       "connect": "연결",
       "connecting": "연결 중...",
-      "failed": "원격 서버 연결 실패"
+      "failed": "LAN 서버 연결 실패"
     },
     "name": {
       "title": "이름과 메모리",
@@ -2608,8 +2446,7 @@
     "blockquote": "인용",
     "codeBlock": "코드 블록",
     "horizontalRule": "구분선",
-    "list": "목록",
-    "blockActions": "블록 작업"
+    "list": "목록"
   },
   "rightWorkspace": {
     "activity": {
@@ -2685,9 +2522,6 @@
     "cwdSkillsHint": ".agents/skills/ 디렉토리를 만들어서 시작하세요",
     "cwdSkillsDesc": "스킬은 작업 공간을 따라가요",
     "cwdSkillsDrop": "폴더나 .zip을 드래그해서 스킬을 설치하세요",
-    "cwdSkillActive": "불러옴",
-    "cwdSkillInactive": "불러오지 않음",
-    "cwdSkillShadowed": "우선 소스에 의해 비활성",
     "deleteSkill": "스킬 삭제",
     "openInFinder": "폴더 열기",
     "jianLabel": "Jian",
@@ -2787,11 +2621,7 @@
     }
   },
   "notification": {
-    "chatCompletionBody": "이번 채팅 턴이 완료됐어요",
-    "scheduledTaskCompletionBody": "예약 작업이 완료됐어요: {label}",
-    "scheduledTaskCompletionFailedBody": "예약 작업에 실패했어요: {label}",
-    "patrolCompletionBody": "순찰이 완료됐어요: {label}",
-    "patrolCompletionFailedBody": "순찰에 실패했어요: {label}"
+    "turnCompletionBody": "이번 턴이 완료됐어요"
   },
   "error": {
     "pathsRequired": "paths 배열이 필요해요",
@@ -3056,8 +2886,7 @@
     "tray": {
       "show": "HanaAgent 표시",
       "settings": "설정",
-      "quit": "종료",
-      "repairArtifacts": "구성 요소 복구…"
+      "quit": "종료"
     },
     "dialog": {
       "selectFolder": "작업 폴더 선택",
@@ -3073,16 +2902,10 @@
       "serverFilesNotReady": "자동 업데이트가 방금 완료되었고, 새 버전 파일이 아직 디스크에 쓰이고 있어요 ({missing} 없음). {waited}초 동안 기다렸지만 준비되지 않았어요. 잠시 후 HanaAgent를 다시 시작해 주세요.",
       "serverModuleMissing": "Server 시작 실패: 모듈 {module}을(를) 찾을 수 없어요.\n자동 업데이트가 완료된 직후 파일이 아직 디스크에 쓰이는 중일 때 자주 발생해요.\n권장: 1-2분 기다린 후 HanaAgent를 다시 시작해 주세요. 반복되면 GitHub에 신고해 주세요.",
       "installFailedTitle": "HanaAgent 업데이트",
-      "installFailedBody": "업데이트 설치에 실패했어요:\n{error}\n\nHanaAgent를 다시 시작한 후 재시도하거나, 설정 페이지에서 수동으로 업데이트를 확인해 주세요.",
-      "repairArtifactsTitle": "구성 요소 복구",
-      "repairArtifactsBody": "이 작업은 HanaAgent의 앱 구성 요소를 설치 당시 버전으로 재설정하고 앱을 다시 시작해요. 데이터(에이전트, 세션, 설정)는 영향을 받지 않아요.",
-      "repairArtifactsConfirm": "복구 후 재시작",
-      "repairArtifactsCancel": "취소",
-      "trainUpdateApplyFailedBody": "HanaAgent v{version}\n\n업데이트 적용 실패:\n{error}\n\n앱을 다시 시작해 주세요."
+      "installFailedBody": "업데이트 설치에 실패했어요:\n{error}\n\nHanaAgent를 다시 시작한 후 재시도하거나, 설정 페이지에서 수동으로 업데이트를 확인해 주세요."
     },
     "notification": {
-      "ready": "알림이 준비되었어요",
-      "componentQuarantined": "구성 요소가 이전 버전으로 자동 복구되었어요. 기능에는 영향이 없어요"
+      "ready": "알림이 준비되었어요"
     }
   },
   "devtools": {
@@ -3529,21 +3352,5 @@
     "fileSummaryMore": "- 파일 {count}개 더",
     "fileSummaryHeader": "생성된 파일:",
     "mediaNoDisplayableFiles": "생성 결과에 표시 가능한 파일이 없어요"
-  },
-  "sessionCollab": {
-    "messagePrefix": "[에이전트 \"{name}\"의 메시지입니다. 사용자 본인이 아닙니다]",
-    "fromAgent": "{name}의 메시지",
-    "expand": "펼치기",
-    "collapse": "접기",
-    "confirmSend": "보내기",
-    "confirmCreate": "만들고 보내기",
-    "ignore": "무시",
-    "expired": "초안이 만료되었어요. 에이전트에게 다시 요청해 주세요",
-    "inFlight": "이미 처리 중이에요",
-    "halfCreated": "세션이 생성되었지만({id}) 첫 메시지 전송에 실패했어요. 다시 시도하거나 세션을 열어 직접 보내 주세요",
-    "createdSession": "세션이 생성되었어요 {id}",
-    "sendFailed": "전송 실패: {error}",
-    "rejectFailed": "무시 실패: {error}",
-    "messageField": "메시지 내용"
   }
 }
