@@ -43,22 +43,6 @@
     "createSessionFailed": "会話の作成に失敗しました",
     "sendFailed": "送信に失敗しました"
   },
-  "app": {
-    "remoteRecovery": {
-      "title": "リモートサーバーの確認が必要です",
-      "subtitle": "保存済みのリモートサーバー接続は維持しましたが、互換性チェックを完了できませんでした。",
-      "serverUrl": "サーバー URL",
-      "accessKey": "アクセスキー",
-      "retryRemote": "リモートを再試行",
-      "retrying": "再試行中...",
-      "switchLocal": "ローカルに切り替え",
-      "localUnavailable": "ローカルサーバーはまだ準備できていません",
-      "status": {
-        "identity_failed": "ID チェックに失敗しました",
-        "compatibility_failed": "互換性チェックに失敗しました"
-      }
-    }
-  },
   "channel": {
     "tab": "チャンネル",
     "chatTab": "チャット",
@@ -107,12 +91,6 @@
     "noAvailableMembers": "追加できる Agent はありません",
     "agentActivity": "Agent の動き",
     "agentSettings": "チャット設定",
-    "exportTitle": "現在のチャットを保存",
-    "exportDescription": "現在のグループチャットまたはダイレクトメッセージを Markdown ファイルとしてダウンロードフォルダへ保存します。",
-    "exportAction": "現在のチャットをエクスポート",
-    "exporting": "エクスポート中…",
-    "exportSuccess": "チャット履歴をダウンロードしました：{filename}",
-    "exportFailed": "チャット履歴をエクスポートできませんでした：{message}",
     "toolPermission": "ツール権限",
     "agentIdle": "待機中",
     "phoneReceivedNewMessages": "新しいグループチャットメッセージを受信",
@@ -140,11 +118,6 @@
     "filesUnsupported": "チャンネルは現在テキストのみ対応しています。ファイルはチャット添付に追加されません",
     "createIntroOptional": "説明",
     "unpinPluginTab": "「{label}」の固定を解除"
-  },
-  "announcement": {
-    "title": "アップデート完了 · v{version}",
-    "fallbackBody": "HanaAgent は v{version} に更新されました。",
-    "confirm": "OK"
   },
   "skills": {
     "panel": {
@@ -222,10 +195,6 @@
     "unpinFailed": "ピン留め解除に失敗しました",
     "reorderFailed": "ピン留めの並び替えに失敗しました",
     "archive": "アーカイブ",
-    "copyId": "Session ID をコピー",
-    "copyIdDone": "Session ID をコピーしました",
-    "copyIdFailed": "Session ID をコピーできませんでした",
-    "copyIdUnavailable": "この Session にはコピー可能な ID がありません",
     "deletedAgent": {
       "title": "Agent は削除済みです",
       "description": "このチャットは読み取り専用の履歴として保持されます。続行すると、主 Agent で新しいセッションを作成し、古いコンテキストの圧縮を試みます。",
@@ -307,10 +276,6 @@
     "back": "戻る"
   },
   "chat": {
-    "find": {
-      "locateFailed": "メッセージを特定できませんでした",
-      "placeholder": "会話内を検索"
-    },
     "send": "送信",
     "steer": "操舵",
     "stop": "停止",
@@ -1051,11 +1016,7 @@
       "{name} はある午後のオレンジの香りがしました",
       "あの会話はまだ温もりを残しています"
     ],
-    "installing": "{name} を v{version} に更新しています。少々お待ちください……",
-    "preparing": {
-      "named": "{name} が新しい住まいを準備しています……",
-      "anonymous": "あなたのアシスタントが新しい住まいを準備しています……"
-    }
+    "installing": "{name} を v{version} に更新しています。少々お待ちください……"
   },
   "settings": {
     "title": "設定",
@@ -1129,13 +1090,10 @@
       },
       "notifications": {
         "title": "通知",
-        "chatCompletion": "チャット返信の完了",
-        "scheduledTaskCompletion": "スケジュールタスクの完了",
-        "patrolCompletion": "巡回の完了",
-        "never": "通知しない",
-        "whenUnfocused": "HanaAgent にフォーカスがないとき",
-        "whenSessionUnfocused": "完了したチャットにフォーカスしていないとき",
-        "always": "常に"
+        "turnCompletion": "ターン完了通知",
+        "turnCompletionNever": "通知しない",
+        "turnCompletionWhenUnfocused": "HanaAgent にフォーカスがないとき",
+        "turnCompletionWhenSessionUnfocused": "完了した Session にフォーカスしていないとき"
       }
     },
     "computerUse": {
@@ -1347,10 +1305,6 @@
           "office": {
             "label": "Office",
             "summary": "Agent にドキュメントの読み取りと HTML から PDF への変換を許可"
-          },
-          "session": {
-            "label": "セッション連携",
-            "summary": "他のセッションを一覧・閲覧し、確認カード経由でメッセージ送信やセッション作成を行う"
           }
         }
       },
@@ -1368,36 +1322,17 @@
       "updateAvailable": "新しいバージョンがあります：v{version}",
       "updateDownload": "ダウンロード",
       "updateChecking": "アップデートを確認中…",
-      "updateDownloading": "{agentName}が新しいお家を準備中",
+      "updateDownloading": "{agentName}が新しいお家を準備中 {percent}%",
       "updateReadyInstall": "v{version} インストール準備完了",
       "updateInstalling": "アップデートをインストール中です。HanaAgent は自動で再起動します…",
       "updateInstallManualHint": "「再起動して更新」を押すとインストールします。終了だけでは自動インストールしません",
       "updateInstall": "再起動して更新",
       "updateInstallNow": "今すぐ再起動して更新",
-      "updateApply": "更新",
-      "updateApplyAutoHint": "クリックしなくても次回起動時に自動的に適用されます",
-      "trainStickerTitle": "新しいバージョンがあります",
-      "trainStickerDownloading": "ダウンロード中 {percent}%",
-      "trainStickerApplying": "更新を適用中…",
-      "shellStickerTitle": "プラットフォームの更新が利用可能です（再起動が必要）",
-      "shellStickerTitleBlocking": "この更新を完了しないと新しいバージョンを受信できません",
-      "fallbackStickerTitle": "バージョン {fromVersion} が連続して起動に失敗したため、{toVersion} にロールバックしました。問題のあったバージョンは隔離され、自動的に再試行されません。",
-      "fallbackStickerAckLabel": "わかりました",
-      "updateHistoryTitle": "更新履歴",
-      "updateHistorySubtitle": "最近公開された5つのバージョン",
-      "updateHistoryLoading": "更新履歴を読み込んでいます…",
-      "updateHistoryOffline": "リリースサイトに接続できないため、アプリに保存されたバージョンを表示しています。",
-      "updateHistoryPartial": "更新内容がある公開バージョンの一部のみ表示しています。",
-      "updateHistoryUnavailable": "更新履歴を一時的に読み込めません。後でもう一度お試しください。",
       "updateProgress": "{percent}%",
       "updateError": "アップデートの確認に失敗しました",
       "updateLatest": "最新バージョンです",
-      "updateLatestCheckedAt": "最新です（最終確認: {time}）",
-      "updateManifestReleasedAt": "配布マニフェストの発行日: {date}",
-      "updateManifestReleasedAtViaMirror": "配布マニフェストの発行日: {date}（バックアップ経由）",
       "updateDisabled": "このローカルビルドではアップデートが無効です",
       "updateCheckBtn": "アップデートを確認",
-      "updateRetryBtn": "再試行",
       "updateNeedInstall": "先に HanaAgent をアプリケーションフォルダに移動してください",
       "updateDiskSpace": "ディスク容量不足のため、アップデートをダウンロードできません",
       "updateDigestCta": "このアップデートで得られるもの",
@@ -1472,20 +1407,15 @@
       "desktopKeyOnce": "キーは生成直後に一度だけ表示されます",
       "desktopKeyCreated": "コンピューターアクセスキーを生成しました",
       "desktopKeyFailed": "生成に失敗しました",
-      "onboarding": "オンボーディング",
-      "openOnboarding": "オンボーディングを開く",
-      "openOnboardingHint": "アカウント、サーバー、チュートリアル設定用の初回セットアップ画面を開き直します",
-      "openOnboardingFailed": "オンボーディングを開けません",
-      "openOnboardingUnavailable": "このビルドではオンボーディング画面を利用できません",
-      "connectLanServer": "リモートサーバーに接続",
+      "connectLanServer": "LAN サーバーに接続",
       "remoteServerUrl": "サーバー URL",
       "remoteServerUrlHint": "別のコンピューターまたは NAS の HanaAgent Server URL を入力します",
       "remoteServerKey": "アクセスキー",
       "remoteServerKeyHint": "そのサーバーの設定ページで生成したコンピューターアクセスキーを入力します",
-      "remoteServerConnected": "リモートサーバーに接続しました",
+      "remoteServerConnected": "LAN サーバーに接続しました",
       "remoteServerFailed": "接続に失敗しました",
-      "remoteConnection": "リモートサーバーに接続中",
-      "remoteConnectionDesc": "このデスクトップはリモートサーバーを使用しています。ローカルアカウント、パスワード、LAN スイッチ、アクセスキー生成はローカルサーバーだけに属します。",
+      "remoteConnection": "リモート Hana に接続中",
+      "remoteConnectionDesc": "アクセスとデバイス内のローカルアカウント、パスワード、LAN スイッチ、アクセスキーはローカル Hana だけに属します。",
       "remoteConnectionName": "接続名",
       "remoteConnectionKind": "接続タイプ",
       "remoteConnectionUrl": "サーバー URL",
@@ -1500,69 +1430,11 @@
       "remoteStudioLabel": "スタジオ",
       "remoteExecutionBoundary": "実行境界",
       "remoteRuntime": "実行先",
-      "remoteCompatibilityStatus": "互換性",
-      "remoteCompatibilityReady": "準備完了",
-      "remoteCompatibilityWarning": "互換性に制限あり",
-      "remoteCompatibilityProblem": "リモートサーバーの問題",
-      "remoteCoreConnection": "コア接続",
-      "remoteCoreReady": "利用可能",
-      "remoteCoreDegraded": "一部制限あり",
-      "remoteCoreBlocked": "ブロック",
-      "remoteTransport": "通信方式",
-      "remoteTransportTicket": "チケット通信を利用可能",
-      "remoteTransportLegacy": "従来のクエリトークン通信",
-      "remoteServerUpdate": "サーバー更新",
-      "remoteCurrent": "最新",
-      "remoteUpdateRecommended": "更新を推奨",
-      "remoteAheadOrCustom": "先行版またはカスタムビルド",
-      "remoteFreshnessUnknown": "リリースの新しさを確認できません",
-      "remoteFeatureSupport": "機能サポート",
-      "remoteFeaturesFull": "すべて対応",
-      "remoteFeaturesLimited": "一部対応",
-      "remoteFeaturesLegacy": "旧式サーバー",
-      "remoteConnectedRuntime": "接続中のランタイムバージョン",
-      "remoteInstalledRelease": "インストール済みリリース",
-      "remoteReleaseIdentityUnverified": "正確なリリースを確認できません",
-      "remoteRecommendedRelease": "推奨サーバーリリース",
-      "remoteDesktopVersion": "デスクトップ版",
-      "remoteProtocolContracts": "プロトコル / コントラクト",
-      "remoteContractsLegacy": "旧式サーバー（コントラクト未申告）",
-      "remoteHostCompatibility": "ホスト互換性",
-      "remoteHostEligible": "一致するサーバー資産があります",
-      "remoteHostCheckOnServer": "サーバー上でステータスコマンドを実行して確認してください",
-      "remoteHostUnavailable": "一致するサーバー資産がありません",
-      "remoteHostUnknown": "ホスト互換性は不明です",
-      "remoteLastChecked": "リリース確認",
-      "remoteCheckOnline": "オンラインで確認済み",
-      "remoteCheckCached": "キャッシュ済みリリース情報を使用中",
-      "remoteCheckStale": "キャッシュ済みリリース情報が古くなっています",
-      "remoteCheckUnavailable": "リリースを確認できません",
-      "remoteNotAssessed": "未評価",
-      "remoteUnknown": "不明",
-      "remoteCheckAgain": "再確認",
-      "remoteCopyDiagnostic": "診断情報をコピー",
-      "remoteCopyStatusCommand": "サーバーステータスコマンドをコピー",
-      "remoteDiagnosticCopied": "リモートサーバーの診断情報をコピーしました",
-      "remoteCompatibilityReason": "問題",
-      "remoteCompatibilityWarningLabel": "警告",
-      "remoteReason": {
-        "invalid_identity": "サーバー ID を確認できませんでした",
-        "auth_failed": "リモートアクセスキーが拒否されました",
-        "invalid_capabilities": "サーバー機能がないか無効です",
-        "missing_core_capability": "必須のチャット機能がありません",
-        "missing_optional_capability": "一部の任意リモートサーバー機能がありません",
-        "invalid_execution_boundary": "サーバー実行境界が不完全です",
-        "identity_transport_contradiction": "保存済み接続がサーバー ID と一致しません"
-      },
-      "remoteWarning": {
-        "missing_optional_capability": "一部の任意リモートサーバー機能を利用できません"
-      },
       "remoteConnectionKindLocal": "ローカル接続",
-      "remoteConnectionKindRemote": "リモートサーバー",
-      "remoteConnectionKindLan": "リモートサーバー",
+      "remoteConnectionKindLan": "LAN サーバー",
       "remoteConnectionKindCustom": "リモートサーバー",
-      "remoteConnectionKindRelay": "リモートサーバー",
-      "remoteConnectionKindCloud": "リモートサーバー",
+      "remoteConnectionKindRelay": "リレーサーバー",
+      "remoteConnectionKindCloud": "クラウドサーバー",
       "remoteTrustLocal": "ローカル信頼済み",
       "remoteTrustLan": "LAN 信頼済み",
       "remoteTrustTunnel": "トンネル信頼済み",
@@ -1584,14 +1456,10 @@
       "remoteCapabilityProviders": "プロバイダー",
       "remoteRuntimeServerProcess": "リモート Hana サーバープロセス",
       "remoteRuntimeServer": "リモート Hana サーバー",
-      "remoteLocalOnlyNote": "このコンピューターの LAN アクセス、デバイスキー、ローカルアカウントを管理するには、先にローカルへ切り替えてください。",
-      "remoteConnectionActions": "リモートサーバー接続",
-      "remoteConnectionActionsDesc": "このリモートサーバーを再試行するか、別のサーバー URL とアクセスキーを入力します。",
-      "retryRemote": "リモートを再試行",
-      "connectAnotherRemote": "別のリモートサーバーに接続",
-      "returnToLocal": "ローカルに切り替え",
-      "returnedToLocal": "ローカルに切り替えました",
-      "localConnectionUnavailable": "ローカルサーバーはまだ準備できていません",
+      "remoteLocalOnlyNote": "このコンピューターの LAN アクセス、デバイスキー、ローカルアカウントを管理するには、先にローカル Hana に戻ってください。",
+      "returnToLocal": "ローカル Hana に戻る",
+      "returnedToLocal": "ローカル Hana に戻りました",
+      "localConnectionUnavailable": "ローカル Hana 接続はまだ準備できていません",
       "pairedDevices": "ペアリング済みデバイス",
       "noDevices": "ペアリング済みデバイスはありません",
       "revoke": "取り消す",
@@ -2068,12 +1936,6 @@
       "injectAgentsMdDesc": "オンにすると、新規セッションは現在の作業ディレクトリから Git ルートまでの AGENTS.md を読み込みます。",
       "injectClaudeMd": "CLAUDE.md を注入",
       "injectClaudeMdDesc": "オンにすると、新規セッションは現在の作業ディレクトリから Git ルートまでの CLAUDE.md を読み込みます。",
-      "projectSkillsTitle": "プロジェクトスキルの検出",
-      "projectSkillsDesc": "この Agent が新しいセッションに読み込むプロジェクトスキルのディレクトリを選択します。",
-      "discoverProjectSkills": "プロジェクトスキルを読み込む",
-      "discoverProjectSkillsDesc": "現在のプロジェクトの .agents/skills からスキルを検出して読み込みます。",
-      "discoverCompatibleProjectSkills": "他ツールのプロジェクトスキルを読み込む",
-      "discoverCompatibleProjectSkillsDesc": "Claude Code、Codex、OpenClaw のプロジェクトスキルも検出します。",
       "agentDeskSection": "Agent デスク設定"
     },
     "toolCaps": {
@@ -2379,12 +2241,11 @@
       "feishuAppSecret": "App Secret",
       "feishuHint": "Feishu オープンプラットフォームから取得。イベントは長接続で受信するため、ローカル callback URL は不要です",
       "dingtalk": "DingTalk",
-      "dingtalkCorpId": "Corp ID",
       "dingtalkClientId": "Client ID / AppKey",
       "dingtalkClientSecret": "Client Secret / AppSecret",
       "dingtalkRobotCode": "Robot Code",
-      "dingtalkApiBaseUrl": "API Base URL",
-      "dingtalkHint": "Corp ID とアプリ認証情報は新しい token API に使います。Client ID と Client Secret は Stream 接続にも使い、Robot Code は返信送信に使います。API Base URL の既定値は https://api.dingtalk.com/v1.0 です",
+      "dingtalkRestBaseUrl": "REST Base URL",
+      "dingtalkHint": "内部アプリ認証情報は token/Stream に、Robot Code はエンタープライズ Bot 送信に使います。REST Base URL の既定値は https://api.dingtalk.io/v1.0 です",
       "whatsapp": "WhatsApp",
       "qq": "QQ",
       "qqAppId": "App ID",
@@ -2408,15 +2269,12 @@
       "connected": "接続済み",
       "disconnected": "未接続",
       "error": "接続に失敗しました",
-      "connectionToggle": "接続を有効または無効にする",
       "test": "接続テスト",
       "testOk": "接続に成功しました",
-      "dingtalkCredentialTestOk": "認証情報を確認しました。Stream 接続とロボット返信は有効化後に確認されます",
       "testFail": "テストに失敗しました",
-      "secretStoredPlaceholder": "保存済みです。置き換えるには新しい値を入力してください",
       "noToken": "先に Bot Token を入力してください",
       "noCredentials": "先に App ID と App Secret を入力してください",
-      "noDingtalkCredentials": "先に Corp ID、Client ID、Client Secret、Robot Code、API Base URL を入力してください",
+      "noDingtalkCredentials": "先に Client ID、Client Secret、Robot Code、REST Base URL を入力してください",
       "globalSettings": "グローバル設定",
       "agentSettings": "エージェント",
       "permissionMode": "権限モード",
@@ -2460,12 +2318,11 @@
       ],
       "tutorialDtSteps": [
         "<code>open.dingtalk.com</code> にアクセスし、開発者コンソールを開きます",
-        "企業情報から <code>Corp ID</code> をコピーします",
         "内部企業アプリを作成し、アプリ認証情報から <code>Client ID/AppKey</code> と <code>Client Secret/AppSecret</code> をコピーします",
         "アプリロボット機能を追加し、ロボット詳細から <code>Robot Code</code> をコピーします",
         "ロボットのメッセージ送受信に必要な権限を確認し、対象企業範囲へ公開します",
-        "DingTalk 互換ゲートウェイを明示的に使う場合を除き、API Base URL は <code>https://api.dingtalk.com/v1.0</code> のままにします",
-        "上の入力欄に Corp ID、Client ID、Client Secret、Robot Code、API Base URL を貼り付けます。新しい token テストと Stream 接続の両方が成功すると、メッセージを完全に送受信できます"
+        "DingTalk 互換ゲートウェイを明示的に使う場合を除き、REST Base URL は <code>https://api.dingtalk.io/v1.0</code> のままにします",
+        "上の入力欄に Client ID、Client Secret、Robot Code、REST Base URL を貼り付け、接続テスト後にスイッチをオンにします"
       ],
       "whatsappHint": "近日対応予定"
     },
@@ -2576,12 +2433,12 @@
       "next": "はじめる"
     },
     "remote": {
-      "link": "既存のサーバーがありますか？リモートサーバーに接続",
+      "link": "既存のサーバーがありますか？LAN で接続",
       "url": "サーバー URL",
       "key": "アクセスキー",
       "connect": "接続",
       "connecting": "接続中...",
-      "failed": "リモートサーバーへの接続に失敗しました"
+      "failed": "LAN サーバーへの接続に失敗しました"
     },
     "name": {
       "title": "名前とメモリ",
@@ -2802,8 +2659,7 @@
     "blockquote": "引用",
     "codeBlock": "コードブロック",
     "horizontalRule": "水平線",
-    "list": "リスト",
-    "blockActions": "ブロック操作"
+    "list": "リスト"
   },
   "rightWorkspace": {
     "activity": {
@@ -2879,9 +2735,6 @@
     "cwdSkillsHint": ".agents/skills/ ディレクトリを作成して始めましょう",
     "cwdSkillsDesc": "スキルはワークスペースに連動します",
     "cwdSkillsDrop": "フォルダまたは .zip をドロップしてスキルをインストール",
-    "cwdSkillActive": "読み込み済み",
-    "cwdSkillInactive": "未読み込み",
-    "cwdSkillShadowed": "優先元により無効",
     "deleteSkill": "スキルを削除",
     "openInFinder": "フォルダを開く",
     "jianLabel": "Jian",
@@ -2986,11 +2839,7 @@
     }
   },
   "notification": {
-    "chatCompletionBody": "このチャットターンは完了しました",
-    "scheduledTaskCompletionBody": "スケジュールタスクが完了しました：{label}",
-    "scheduledTaskCompletionFailedBody": "スケジュールタスクに失敗しました：{label}",
-    "patrolCompletionBody": "巡回が完了しました：{label}",
-    "patrolCompletionFailedBody": "巡回に失敗しました：{label}"
+    "turnCompletionBody": "このターンは完了しました"
   },
   "error": {
     "pathsRequired": "paths 配列は必須です",
@@ -3297,8 +3146,7 @@
     "tray": {
       "show": "HanaAgent を表示",
       "settings": "設定",
-      "quit": "終了",
-      "repairArtifacts": "コンポーネントを修復…"
+      "quit": "終了"
     },
     "dialog": {
       "selectFolder": "作業フォルダを選択",
@@ -3314,16 +3162,10 @@
       "serverFilesNotReady": "自動アップデートが完了したばかりで、新バージョンのファイルがまだディスクに書き込まれていません（{missing} が見つかりません）。{waited} 秒待機しましたが完了しませんでした。しばらくしてから HanaAgent を再起動してください。",
       "serverModuleMissing": "Server 起動失敗：モジュール {module} が見つかりません。\n通常、自動アップデート完了直後にファイルがまだディスクに書き込み中の場合に発生します。\n推奨：1〜2 分待ってから HanaAgent を再起動してください。問題が続く場合は GitHub で報告してください。",
       "installFailedTitle": "HanaAgent アップデート",
-      "installFailedBody": "アップデートのインストールに失敗しました：\n{error}\n\nHanaAgent を再起動してからもう一度お試しください。または設定ページで手動でアップデートを確認してください。",
-      "repairArtifactsTitle": "コンポーネントの修復",
-      "repairArtifactsBody": "この操作は HanaAgent のアプリコンポーネントをインストール時のバージョンにリセットし、アプリを再起動します。データ（エージェント、セッション、設定）は影響を受けません。",
-      "repairArtifactsConfirm": "修復して再起動",
-      "repairArtifactsCancel": "キャンセル",
-      "trainUpdateApplyFailedBody": "HanaAgent v{version}\n\n更新の適用に失敗しました：\n{error}\n\nアプリを再起動してください。"
+      "installFailedBody": "アップデートのインストールに失敗しました：\n{error}\n\nHanaAgent を再起動してからもう一度お試しください。または設定ページで手動でアップデートを確認してください。"
     },
     "notification": {
-      "ready": "通知が有効になりました",
-      "componentQuarantined": "コンポーネントは自動的に前のバージョンにロールバックされました。機能には影響ありません"
+      "ready": "通知が有効になりました"
     }
   },
   "devtools": {
@@ -3798,21 +3640,5 @@
     "fileSummaryMore": "- 他 {count} 件のファイル",
     "fileSummaryHeader": "生成されたファイル:",
     "mediaNoDisplayableFiles": "生成結果に表示可能なファイルがありません"
-  },
-  "sessionCollab": {
-    "messagePrefix": "[エージェント「{name}」からのメッセージです。ユーザー本人ではありません]",
-    "fromAgent": "{name} からのメッセージ",
-    "expand": "展開",
-    "collapse": "折りたたむ",
-    "confirmSend": "送信",
-    "confirmCreate": "作成して送信",
-    "ignore": "無視",
-    "expired": "下書きの期限が切れました。エージェントに再作成させてください",
-    "inFlight": "実行中です",
-    "halfCreated": "セッションは作成されました（{id}）が、最初のメッセージの送信に失敗しました。再試行するか、セッションを開いて手動で送信してください",
-    "createdSession": "セッションを作成しました {id}",
-    "sendFailed": "送信に失敗しました：{error}",
-    "rejectFailed": "無視に失敗しました：{error}",
-    "messageField": "メッセージ内容"
   }
 }
