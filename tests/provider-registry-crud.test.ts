@@ -786,6 +786,24 @@ describe("removeModel", () => {
     expect(persisted["test-provider"].models).toEqual(["model-a"]);
   });
 
+  it("removes slash-bearing models from local provider plugin definitions", () => {
+    writeAddedModels({});
+    const reg = makeRegistry();
+    reg.saveProvider("custom-local", {
+      display_name: "Custom Local",
+      base_url: "https://custom.local/v1",
+      api: "openai-completions",
+      models: ["vendor/model-a"],
+    });
+
+    expect(reg.getAllProvidersRaw()["custom-local"].models).toEqual(["vendor/model-a"]);
+
+    reg.removeModel("custom-local", "vendor/model-a");
+
+    expect(reg.getAllProvidersRaw()["custom-local"].models || []).toEqual([]);
+    expect(readLocalProviderPlugin("custom-local")).not.toHaveProperty("models");
+  });
+
   it("移除不存在的模型不会报错", () => {
     writeAddedModels({
       "test-provider": {

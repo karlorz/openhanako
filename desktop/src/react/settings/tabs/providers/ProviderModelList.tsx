@@ -171,11 +171,8 @@ export function ProviderModelList({ providerId, summary, onRefresh }: {
 
   const removeModelFromProvider = async (mid: string) => {
     try {
-      const next = rawModels.filter((m: ProviderModelEntry) => modelIdOf(m) !== mid);
-      await hanaFetch('/api/config', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ providers: { [providerId]: { models: next } } }),
+      await hanaFetch(`/api/providers/${encodeURIComponent(providerId)}/models/${encodeURIComponent(mid)}`, {
+        method: 'DELETE',
       });
       invalidateConfigCache();
       await onRefresh();
