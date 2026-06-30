@@ -214,7 +214,9 @@ export function splitLocalProviderConfig(providerId: string, config: Record<stri
   const raw = isPlainObject(config) ? cloneData(config) : {};
   const existingDefinition: Record<string, any> = existingPlugin ? providerPluginToCatalogDefinition(existingPlugin) : {};
   const definitionFields = pickProviderDefinitionFields(raw);
-  if (hasOwn(existingDefinition, "models") || hasOwn(definitionFields, "models")) {
+  if (hasOwn(definitionFields, "models")) {
+    definitionFields.models = normalizeModels(definitionFields.models);
+  } else if (hasOwn(existingDefinition, "models")) {
     definitionFields.models = mergeProviderModelEntries(existingDefinition.models, definitionFields.models);
   }
   const plugin = normalizeLocalProviderPlugin(providerId, {
