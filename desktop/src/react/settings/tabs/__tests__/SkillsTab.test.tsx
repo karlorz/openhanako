@@ -296,6 +296,75 @@ describe('SkillsTab — sticky skillsViewAgentId & toggleSkill race guard', () =
     expect(body.path).toBeUndefined();
   });
 
+  it('uploads selected skill package bytes for remote connections even when Electron exposes a local path', async () => {
+    const remoteConnection = {
+      connectionId: 'lan:node:studio',
+      kind: 'lan',
+      serverId: 'remote',
+      studioId: 'studio',
+      label: 'Remote Hana',
+      baseUrl: 'http://100.125.173.118:14500',
+      wsUrl: 'ws://100.125.173.118:14500',
+      token: 'remote-token',
+      authState: 'paired',
+      trustState: 'lan',
+      credentialKind: 'device_credential',
+      capabilities: ['chat', 'settings.read', 'settings.write'],
+    };
+    seedStore({
+      currentAgentId: 'agent-a',
+      serverConnections: { [remoteConnection.connectionId]: remoteConnection },
+      activeServerConnectionId: remoteConnection.connectionId,
+      activeServerConnection: remoteConnection,
+    } as Partial<SettingsState>);
+    window.platform = {
+      getFilePath: vi.fn(() => '/Users/me/Desktop/uploaded-skill.skill'),
+    } as unknown as typeof window.platform;
+    fetchMock.mockImplementation((url: string, opts?: RequestInit) => {
+      if (url.includes('/api/skills/install')) {
+        expect(opts).toMatchObject({ method: 'POST' });
+        return Promise.resolve(jsonResponse({ ok: true, skill: { name: 'uploaded-skill' } }));
+      }
+      if (url.includes('/api/skills/external-paths')) {
+        return Promise.resolve(jsonResponse({ configured: [], discovered: [] }));
+      }
+      if (url.includes('/api/skills/bundles')) {
+        return Promise.resolve(jsonResponse({ bundles: [] }));
+      }
+      if (url.includes('/api/skills?agentId=agent-a')) {
+        return Promise.resolve(jsonResponse({ skills: [] }));
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+
+    const { container } = render(<SkillsTab />);
+    await flushMicrotasks();
+
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement | null;
+    expect(input).toBeTruthy();
+    const file = new File(['fake skill'], 'uploaded-skill.skill');
+    fireEvent.change(input!, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.some((call) =>
+        typeof call[0] === 'string' && call[0].includes('/api/skills/install'))).toBe(true);
+    });
+    await flushMicrotasks(6);
+
+    const installCall = fetchMock.mock.calls.find((call) =>
+      typeof call[0] === 'string' && call[0].includes('/api/skills/install'));
+    expect(installCall).toBeTruthy();
+    const body = JSON.parse(String((installCall?.[1] as RequestInit).body || '{}'));
+    expect(body).toMatchObject({
+      file: {
+        filename: 'uploaded-skill.skill',
+      },
+    });
+    expect(typeof body.file.contentBase64).toBe('string');
+    expect(body.file.contentBase64.length).toBeGreaterThan(0);
+    expect(body.path).toBeUndefined();
+  });
+
   // ── Test 2: sticky — external currentAgentId change does NOT resync ─────────
   it('external currentAgentId change does NOT resync skillsViewAgentId (sticky)', async () => {
     seedStore({ currentAgentId: 'agent-a' });

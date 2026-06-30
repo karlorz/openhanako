@@ -275,6 +275,8 @@ describe("HTTP route security policy", () => {
       ["GET", "/api/plugins/settings"],
       ["GET", "/api/plugins/settings-tabs"],
       ["GET", "/api/plugins/theme.css"],
+      ["GET", "/api/skills/remote-skill/files"],
+      ["GET", "/api/skills/remote-skill/file"],
       ["GET", "/api/plugins/demo/assets/dist/app.js"],
       ["HEAD", "/api/plugins/demo/assets/dist/app.js"],
       ["POST", "/api/plugins/iframe-ticket"],

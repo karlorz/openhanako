@@ -74,9 +74,10 @@ export async function loadAgents(): Promise<void> {
     const s = useStore.getState();
 
     const patch: Record<string, any> = { agents };
-    if (!s.currentAgentId) {
+    const currentStillExists = !!s.currentAgentId && agents.some((agent: any) => agent.id === s.currentAgentId);
+    if (!currentStillExists) {
       const primary = agents.find((a: any) => a.isPrimary) || agents[0];
-      if (primary) patch.currentAgentId = primary.id;
+      patch.currentAgentId = primary?.id || null;
     }
 
     const currentId = patch.currentAgentId ?? s.currentAgentId;

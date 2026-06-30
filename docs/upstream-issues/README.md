@@ -8,6 +8,8 @@ This file tracks local fork fixes against upstream GitHub issues. The source of 
 | lan-query-token-network-hardening | upstream | draft/pending-approval | [#1749](https://github.com/liliMozi/openhanako/issues/1749) OPEN, [#1811](https://github.com/liliMozi/openhanako/issues/1811) CLOSED | fold into LAN query-token/auth bug fix unless reviewed separately |
 | remote-attachment-preview-persistence | upstream | draft/pending-approval | none | fix: preserve remote session attachment previews |
 | desktop-temp-upload-session-cache-materialization | upstream | draft/pending-approval | none | fix: materialize temp uploads to session cache before send |
+| remote-skill-viewer-local-file-ipc | upstream | draft/pending-approval | none | fix: preview remote server skills through active server APIs |
+| remote-skill-install-client-local-path | upstream | draft/pending-approval | none | fix: upload remote skill packages instead of posting client-local paths |
 | plugin-iframe-remote-credential-query-leak | upstream | draft/pending-approval | [#1493](https://github.com/liliMozi/openhanako/issues/1493) OPEN, [#1546](https://github.com/liliMozi/openhanako/issues/1546) CLOSED | fold into LAN query-token/auth bug fix unless reviewed separately |
 | local-build-identity-disable-auto-update | fork-only | tracked/no-upstream-issue | none | chore: identify local fork builds and disable local auto-update |
 | fork-sync-issue-tracking-prerelease-policy | fork-only | tracked/no-upstream-issue | none | docs: add fork sync policy and upstream issue helper |
