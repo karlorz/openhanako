@@ -77,6 +77,46 @@ describe("replayLatestUserTurn", () => {
     }));
   });
 
+  it("prefers a persisted source entry over a confirmed optimistic client id", async () => {
+    const manager = SessionManager.inMemory("/workspace");
+    const priorUserId = manager.appendMessage({ role: "user", content: [{ type: "text", text: "context" }] } as any);
+    const priorAssistantId = manager.appendMessage({ role: "assistant", content: [{ type: "text", text: "context answer" }] } as any);
+    const latestUserId = manager.appendMessage({ role: "user", content: [{ type: "text", text: "confirmed prompt" }] } as any);
+    manager.appendMessage({ role: "assistant", content: [{ type: "text", text: "bad answer" }] } as any);
+    const session = makeNavigableSession(manager);
+    const submit = vi.fn(async () => ({ text: "new answer", toolMedia: [] }));
+    const engine = {
+      ensureSessionLoaded: vi.fn(async () => session),
+      isSessionStreaming: vi.fn(() => false),
+      emitEvent: vi.fn(),
+      setSessionBranchHead: vi.fn(),
+    };
+
+    await replayLatestUserTurn(engine, {
+      sessionPath: "/tmp/main.jsonl",
+      sourceEntryId: latestUserId,
+      clientMessageId: "client-user-confirmed",
+      displayMessage: { text: "display fallback text" },
+    }, { submit });
+
+    expect(manager.getBranch().filter(entry => entry.type === "message").map(entry => entry.id))
+      .toEqual([priorUserId, priorAssistantId]);
+    expect(manager.getBranch().at(-1)).toMatchObject({ customType: "hana-session-branch-reset" });
+    expect(engine.emitEvent).toHaveBeenCalledWith({
+      type: "session_branch_reset",
+      messageId: latestUserId,
+      projectionMessageId: latestUserId,
+      clientMessageId: "client-user-confirmed",
+      todos: [],
+      sessionFiles: [],
+      discardedTaskIds: [],
+    }, "/tmp/main.jsonl");
+    expect(submit).toHaveBeenCalledWith(engine, expect.objectContaining({
+      text: "confirmed prompt",
+      displayMessage: expect.objectContaining({ text: "display fallback text" }),
+    }));
+  });
+
   it("replaces only the visible text when editing and preserves attachment markers", async () => {
     const manager = SessionManager.inMemory("/workspace");
     const latestUserId = manager.appendMessage({
