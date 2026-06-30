@@ -1,5 +1,6 @@
 import fsp from "fs/promises";
-import { detectMime } from "../lib/file-metadata.ts";
+import path from "path";
+import { detectMime, extOfName, inferFileKind } from "../lib/file-metadata.ts";
 import {
   AGENT_REVIEW_RECORD_TYPE,
   MESSAGE_ORIGIN_RECORD_TYPE,
@@ -210,11 +211,54 @@ async function retrySessionTurnInternal(engine, opts, deps, compatibility) {
     let target = opts.target;
     if (compatibility.latestUserOnly) {
       const latest = findLatestUserEntry(branch);
-      if (!latest) throw new Error("No latest user message to replay");
-      if (sourceEntryId && latest.id !== sourceEntryId) {
+      const requested = sourceEntryId
+        ? findUserEntryById(session.sessionManager, sourceEntryId)
+        : null;
+      if (sourceEntryId && !requested) {
         throw new Error("Requested message is not the latest user message");
       }
-      target = { role: "user", entryId: latest.id };
+      if (sourceEntryId && latest && latest.id !== sourceEntryId) {
+        throw new Error("Requested message is not the latest user message");
+      }
+      if (isOptimisticClientUserMessageId(clientMessageId)) {
+        return await replayFromDisplayMessage(
+          engine,
+          sessionId,
+          sessionPath,
+          displayMessage,
+          replacementText,
+          uiContext,
+          deps,
+          session,
+        );
+      }
+      if (!latest && requested) {
+        return await replayPersistedUserEntry(
+          engine,
+          sessionId,
+          sessionPath,
+          requested,
+          clientMessageId,
+          replacementText,
+          displayMessage,
+          uiContext,
+          deps,
+          session,
+        );
+      }
+      if (!latest) {
+        return await replayFromDisplayMessage(
+          engine,
+          sessionId,
+          sessionPath,
+          displayMessage,
+          replacementText,
+          uiContext,
+          deps,
+          session,
+        );
+      }
+      target = { role: "user", entryId: (requested || latest).id };
     }
     const resolved = resolveSessionNodeTarget(branch, target, { mode: "retry" });
     const customTurnInput = resolved.turnInputEntry?.type === "custom_message";
@@ -240,6 +284,9 @@ async function retrySessionTurnInternal(engine, opts, deps, compatibility) {
     const videoAttachmentPaths = customTurnInput ? [] : attachedMediaPathsFromText(promptText, "video");
     const audioAttachmentPaths = customTurnInput ? [] : attachedMediaPathsFromText(promptText, "audio");
     const mediaDeps = { ...deps, engine, sessionPath };
+    // Persisted marker-only image turns remain path-only unless the session
+    // registry maps the stale marker to an active cache entry. That mapping is
+    // required for forked sessions after the parent cache has been cleaned.
     const images = customTurnInput
       ? []
       : await completeMediaPayloads(original.images, imageAttachmentPaths, "image", mediaDeps);
@@ -631,6 +678,262 @@ function restoreRetryBranch(session, originalLeafId, resolved, reason) {
   }
 }
 
+async function replayFromDisplayMessage(
+  engine,
+  sessionId,
+  sessionPath,
+  displayMessage,
+  replacementText,
+  uiContext,
+  deps,
+  session,
+) {
+  const submit = deps.submit || submitDesktopSessionMessage;
+  const fallback = await promptPayloadFromDisplayMessage(engine, sessionPath, displayMessage, replacementText, deps);
+  if (!fallback) throw new Error("No latest user message to replay");
+  replaceAgentMessagesFromBranch(session);
+  return await submit(engine, {
+    ...(sessionId ? { sessionId } : {}),
+    sessionPath,
+    text: fallback.text,
+    images: fallback.images.length ? fallback.images : undefined,
+    imageAttachmentPaths: fallback.imageAttachmentPaths.length ? fallback.imageAttachmentPaths : undefined,
+    displayMessage: {
+      ...(displayMessage || {}),
+      text: replacementText == null ? (displayMessage?.text ?? fallback.text) : String(replacementText),
+      ...(fallback.displayAttachments.length ? { attachments: fallback.displayAttachments } : { attachments: undefined }),
+    },
+    uiContext,
+  });
+}
+
+async function replayPersistedUserEntry(
+  engine,
+  sessionId,
+  sessionPath,
+  entry,
+  clientMessageId,
+  replacementText,
+  displayMessage,
+  uiContext,
+  deps,
+  session,
+) {
+  const submit = deps.submit || submitDesktopSessionMessage;
+  const original = promptPayloadFromUserMessage(entry.message);
+  const originalVisibleText = visibleUserText(original.text);
+  const promptText = replacementText == null
+    ? original.text
+    : replaceVisiblePromptText(original.text, originalVisibleText, String(replacementText));
+  const imageAttachmentPaths = attachedMediaPathsFromText(promptText, "image");
+  const images = await completeMediaPayloads(original.images, imageAttachmentPaths, "image", {
+    ...deps,
+    engine,
+    sessionPath,
+  });
+  const nextDisplayMessage = canonicalizeRetryDisplayMessage(engine, sessionPath, {
+    ...(displayMessage || {}),
+    text: displayMessage?.text
+      ?? (replacementText == null ? originalVisibleText : String(replacementText)),
+  });
+  let branchCommitted = false;
+  const commitReplayBranch = () => {
+    if (branchCommitted) return;
+    if (typeof engine.setSessionBranchHead !== "function") {
+      throw new Error("session branch persistence is unavailable");
+    }
+    if (entry.parentId) session.sessionManager.branch(entry.parentId);
+    else session.sessionManager.resetLeaf();
+    engine.setSessionBranchHead(sessionPath, {
+      leafId: session.sessionManager.getLeafId?.() ?? null,
+      reason: "replay_rewind",
+    });
+    replaceAgentMessagesFromBranch(session);
+    branchCommitted = true;
+    engine.emitEvent?.({
+      type: "session_branch_reset",
+      ...(sessionId ? { sessionId } : {}),
+      messageId: entry.id,
+      clientMessageId: clientMessageId || null,
+    }, sessionPath);
+  };
+
+  const result = await submit(engine, {
+    ...(sessionId ? { sessionId } : {}),
+    sessionPath,
+    text: promptText,
+    images: images.length ? images : undefined,
+    imageAttachmentPaths: imageAttachmentPaths.length ? imageAttachmentPaths : undefined,
+    clientMessageId: clientMessageId || undefined,
+    displayMessage: nextDisplayMessage,
+    uiContext,
+    preservePromptEnvelope: true,
+    projectUserMessage: true,
+    beforeInputSideEffects: commitReplayBranch,
+  });
+  commitReplayBranch();
+  return result;
+}
+
+async function imagePayloadsFromPaths(paths, deps: Record<string, any> = {}) {
+  const readFile = deps.readFile || fsp.readFile;
+  const images = [];
+  for (const filePath of paths) {
+    const buffer = await readFile(filePath);
+    const bytes = Buffer.from(buffer);
+    images.push({
+      type: "image",
+      data: bytes.toString("base64"),
+      mimeType: detectMime(bytes, "image/png", filePath),
+    });
+  }
+  return images;
+}
+
+async function promptPayloadFromDisplayMessage(engine, sessionPath, displayMessage, replacementText, deps: Record<string, any> = {}) {
+  const text = replacementText == null
+    ? String(displayMessage?.text || "")
+    : String(replacementText);
+  const { imageRefs, displayAttachments, hadImageAttachmentCandidate } = imageRefsFromDisplayAttachments(
+    engine,
+    sessionPath,
+    displayMessage?.attachments,
+  );
+  const images = [];
+  const pathsToRead = [];
+  const imageAttachmentPaths = [];
+
+  for (const ref of imageRefs) {
+    if (ref.path) imageAttachmentPaths.push(ref.path);
+    if (ref.base64Data) {
+      images.push({
+        type: "image",
+        data: ref.base64Data,
+        mimeType: ref.mimeType || "image/png",
+      });
+    } else if (ref.path) {
+      pathsToRead.push(ref.path);
+    }
+  }
+
+  images.push(...await imagePayloadsFromPaths(uniqueStrings(pathsToRead), deps));
+  const uniqueImageAttachmentPaths = uniqueStrings(imageAttachmentPaths);
+  if (hadImageAttachmentCandidate && images.length === 0) return null;
+  if (!text && images.length === 0) return null;
+  return { text, images, imageAttachmentPaths: uniqueImageAttachmentPaths, displayAttachments };
+}
+
+function imageRefsFromDisplayAttachments(engine, sessionPath, attachments) {
+  if (!Array.isArray(attachments)) return { imageRefs: [], displayAttachments: [], hadImageAttachmentCandidate: false };
+  const refs = [];
+  const displayAttachments = [];
+  let hadImageAttachmentCandidate = false;
+  for (const attachment of attachments) {
+    if (!attachment || attachment.isDir || attachment.isDirectory) continue;
+    const trustedFile = trustedImageFileForAttachment(engine, sessionPath, attachment);
+    const trustedPath = trustedFile ? readablePathFromSessionFile(trustedFile) : "";
+    const inlineBase64 = typeof attachment.base64Data === "string" && attachment.base64Data
+      ? attachment.base64Data
+      : "";
+    const isImageCandidate = isImageAttachmentCandidate(attachment) || !!trustedFile;
+    if (!isImageCandidate) continue;
+    hadImageAttachmentCandidate = true;
+    if (!inlineBase64 && !trustedPath) continue;
+
+    const mimeType = imageMimeTypeForAttachment(attachment, trustedFile);
+    refs.push({
+      path: trustedPath,
+      base64Data: inlineBase64,
+      mimeType,
+    });
+    displayAttachments.push(trustedFile
+      ? displayAttachmentFromTrustedFile(attachment, trustedFile, trustedPath, mimeType)
+      : displayAttachmentFromInlineImage(attachment, inlineBase64, mimeType));
+  }
+  return { imageRefs: refs, displayAttachments, hadImageAttachmentCandidate };
+}
+
+function trustedImageFileForAttachment(engine, sessionPath, attachment) {
+  let file = null;
+  const fileId = typeof attachment?.fileId === "string" && attachment.fileId.trim()
+    ? attachment.fileId.trim()
+    : "";
+  if (fileId && typeof engine?.getSessionFile === "function") {
+    file = engine.getSessionFile(fileId, { sessionPath });
+  }
+  const attachmentPath = typeof attachment?.path === "string" ? attachment.path.trim() : "";
+  if (!file && attachmentPath && path.isAbsolute(attachmentPath) && typeof engine?.getSessionFileByPath === "function") {
+    file = engine.getSessionFileByPath(attachmentPath, { sessionPath });
+  }
+  if (!isTrustedImageFile(file)) return null;
+  if (!readablePathFromSessionFile(file)) return null;
+  return file;
+}
+
+function isTrustedImageFile(file) {
+  if (!file || file.isDir || file.isDirectory) return false;
+  if (file.kind) return file.kind === "image";
+  return inferFileKind({
+    mime: file.mime || file.mimeType || file.contentType,
+    ext: file.ext || extOfName(file.filename || file.displayName || file.label || file.filePath || file.realPath),
+    isDirectory: !!file.isDir || !!file.isDirectory,
+  }) === "image";
+}
+
+function readablePathFromSessionFile(file) {
+  const candidates = [file?.filePath, file?.realPath];
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim() && path.isAbsolute(candidate.trim())) {
+      return candidate.trim();
+    }
+  }
+  return "";
+}
+
+function isImageAttachmentCandidate(attachment) {
+  if (!attachment || attachment.isDir || attachment.isDirectory) return false;
+  if (typeof attachment.base64Data === "string" && attachment.base64Data) return true;
+  const attachmentPath = typeof attachment.path === "string" ? attachment.path.trim() : "";
+  const name = attachment.name || attachment.label || attachmentPath;
+  return inferFileKind({
+    mime: attachment.mimeType,
+    ext: extOfName(name),
+    isDirectory: !!attachment.isDir || !!attachment.isDirectory,
+  }) === "image";
+}
+
+function imageMimeTypeForAttachment(attachment, file) {
+  return file?.mime || file?.mimeType || attachment?.mimeType || "image/png";
+}
+
+function displayAttachmentFromTrustedFile(attachment, file, filePath, mimeType) {
+  return {
+    ...attachment,
+    fileId: file.fileId || file.id || attachment.fileId,
+    path: filePath,
+    name: attachment.name || file.displayName || file.filename || file.label || path.basename(filePath),
+    isDir: false,
+    mimeType,
+    ...(file.presentation ? { presentation: file.presentation } : {}),
+    ...(file.listed !== undefined ? { listed: file.listed !== false } : {}),
+    ...(file.status ? { status: file.status } : {}),
+    ...(Object.prototype.hasOwnProperty.call(file, "missingAt") ? { missingAt: file.missingAt } : {}),
+    ...(file.waveform ? { waveform: file.waveform } : {}),
+  };
+}
+
+function displayAttachmentFromInlineImage(attachment, base64Data, mimeType) {
+  const attachmentPath = typeof attachment?.path === "string" ? attachment.path.trim() : "";
+  const name = attachment?.name || attachment?.label || "image";
+  return {
+    path: attachmentPath && !path.isAbsolute(attachmentPath) ? attachmentPath : name,
+    name,
+    isDir: false,
+    base64Data,
+    mimeType,
+  };
+}
+
 function findLatestUserEntry(branch) {
   if (!Array.isArray(branch)) return null;
   for (let i = branch.length - 1; i >= 0; i -= 1) {
@@ -642,6 +945,16 @@ function findLatestUserEntry(branch) {
 
 function isUserMessageEntry(entry) {
   return entry?.type === "message" && entry.message?.role === "user";
+}
+
+function findUserEntryById(sessionManager, entryId) {
+  const entry = sessionManager?.getEntry?.(entryId);
+  if (entry?.type === "message" && entry.message?.role === "user") return entry;
+  return null;
+}
+
+function isOptimisticClientUserMessageId(clientMessageId) {
+  return typeof clientMessageId === "string" && clientMessageId.startsWith("client-user-");
 }
 
 function findPrecedingTurnInputIndex(branch, beforeIndex) {
@@ -738,6 +1051,7 @@ async function completeMediaPayloads(existing, paths, kind, deps) {
       filePath: markerPath,
       sessionPath: deps.sessionPath || null,
     }) || null;
+    if (kind === "image" && !activeFile) continue;
     const bytesPath = activeFile?.realPath || activeFile?.filePath || markerPath;
     const bytes = Buffer.from(await readFile(bytesPath));
     payloads.push({
@@ -747,6 +1061,10 @@ async function completeMediaPayloads(existing, paths, kind, deps) {
     });
   }
   return payloads;
+}
+
+function uniqueStrings(values) {
+  return Array.from(new Set((values || []).filter(Boolean)));
 }
 
 function canonicalizeRetryDisplayMessage(engine, sessionPath, displayMessage) {
