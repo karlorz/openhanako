@@ -66,17 +66,17 @@ export async function hanaFetch(
 async function readHttpErrorDetail(res: Response): Promise<string> {
   const cloned = typeof res.clone === 'function' ? res.clone() : res;
   try {
-    const body = await cloned.json();
-    const detail = typeof body?.error === 'string' && body.error.trim()
-      ? body.error.trim()
-      : typeof body?.message === 'string' && body.message.trim()
-        ? body.message.trim()
-        : '';
-    if (detail) return detail.slice(0, MAX_HTTP_ERROR_DETAIL_LENGTH);
-  } catch {}
-
-  try {
     const text = (await cloned.text()).trim();
+    if (!text) return '';
+    try {
+      const body = JSON.parse(text);
+      const detail = typeof body?.error === 'string' && body.error.trim()
+        ? body.error.trim()
+        : typeof body?.message === 'string' && body.message.trim()
+          ? body.message.trim()
+          : '';
+      if (detail) return detail.slice(0, MAX_HTTP_ERROR_DETAIL_LENGTH);
+    } catch {}
     return text.slice(0, MAX_HTTP_ERROR_DETAIL_LENGTH);
   } catch {
     return '';
