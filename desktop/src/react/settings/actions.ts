@@ -30,9 +30,9 @@ export async function loadAgents() {
     if (data.error) throw new Error(data.error);
     const agents = data.agents || [];
     let currentAgentId = store.currentAgentId;
-    if (!currentAgentId) {
+    if (!currentAgentId || !agents.some((agent: any) => agent.id === currentAgentId)) {
       const primary = agents.find((a: any) => a.isPrimary) || agents[0];
-      if (primary) currentAgentId = primary.id;
+      currentAgentId = primary?.id || null;
     }
     const currentAgent = agents.find((a: any) => a.id === currentAgentId);
     store.set({
