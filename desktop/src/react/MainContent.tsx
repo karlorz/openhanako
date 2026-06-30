@@ -14,6 +14,7 @@ import { toSlash, baseName } from './utils/format';
 import { isAudioFileName, kindOfFileName } from './utils/file-kind';
 import { buildWaveformFromBase64 } from './utils/audio-waveform';
 import { isLocalOwnerConnection, resolveServerConnection } from './services/server-connection';
+import { canUseNativeSkillInstallPath, skillPathToUploadInstallBody } from './services/skill-install-upload';
 import { upsertUploadedSessionFile } from './utils/uploaded-session-file';
 import type { AudioWaveform } from './stores/chat-types';
 import {
@@ -47,10 +48,13 @@ async function installSkillFile(filePath: string, sessionPath?: string | null): 
       );
       return;
     }
+    const body = canUseNativeSkillInstallPath(useStore.getState())
+      ? { path: filePath, ...(sessionPath ? { sessionPath } : {}) }
+      : await skillPathToUploadInstallBody(filePath, { sessionPath });
     const res = await hanaFetch(`/api/skills/install?agentId=${encodeURIComponent(agentId)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: filePath, ...(sessionPath ? { sessionPath } : {}) }),
+      body: JSON.stringify(body),
     });
     const data = await res.json();
     if (data.error) throw new Error(data.error);
@@ -220,7 +224,7 @@ export async function attachFilesFromPaths(
   if (skillPaths.length) {
     srcPaths = srcPaths.filter(p => !skillPaths.includes(p));
     const sessionPath = useStore.getState().currentSessionPath || null;
-    for (const p of skillPaths) installSkillFile(p, sessionPath);
+    for (const p of skillPaths) await installSkillFile(p, sessionPath);
     if (srcPaths.length === 0) return;
   }
 

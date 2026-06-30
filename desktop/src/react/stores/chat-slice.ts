@@ -61,6 +61,7 @@ function mergeConfirmedUserAttachments(
       ...attachment,
       ...(!attachment.base64Data && current.base64Data ? { base64Data: current.base64Data } : {}),
       ...(!attachment.mimeType && current.mimeType ? { mimeType: current.mimeType } : {}),
+      ...(!attachment.resource?.links.content && current.resource?.links.content ? { resource: current.resource } : {}),
       ...(!attachment.waveform && current.waveform ? { waveform: current.waveform } : {}),
     };
   });

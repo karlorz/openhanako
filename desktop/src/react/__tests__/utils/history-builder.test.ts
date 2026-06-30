@@ -328,6 +328,59 @@ describe('buildItemsFromHistory user image restoration', () => {
     }]);
   });
 
+  it('从 SessionFile 账本恢复用户附件时保留 resource content link', () => {
+    const filePath = '/root/.hanako/session-files/pasted.png';
+    const items = buildItemsFromHistory({
+      messages: [{
+        id: 'u-resource-image',
+        role: 'user',
+        content: `[attached_image: ${filePath}]`,
+      }],
+      sessionFiles: [{
+        fileId: 'sf_remote_image',
+        filePath,
+        displayName: 'pasted.png',
+        mime: 'image/png',
+        kind: 'image',
+        status: 'available',
+        missingAt: null,
+        resource: {
+          schemaVersion: 1,
+          resourceId: 'res_sf_remote_image',
+          name: 'studios/studio_remote/resources/res_sf_remote_image',
+          studioId: 'studio_remote',
+          type: 'file',
+          source: 'session_file',
+          fileId: 'sf_remote_image',
+          displayName: 'pasted.png',
+          lifecycle: { status: 'available', missingAt: null },
+          storage: { provider: 'session_file', localOnly: true },
+          links: {
+            self: '/api/resources/res_sf_remote_image',
+            content: '/api/resources/res_sf_remote_image/content',
+          },
+        },
+      }],
+    });
+
+    const first = items[0];
+    expect(first.type).toBe('message');
+    if (first.type !== 'message') throw new Error('expected message');
+    expect(first.data.attachments?.[0]).toMatchObject({
+      fileId: 'sf_remote_image',
+      path: filePath,
+      name: 'pasted.png',
+      resource: {
+        resourceId: 'res_sf_remote_image',
+        studioId: 'studio_remote',
+        links: {
+          self: '/api/resources/res_sf_remote_image',
+          content: '/api/resources/res_sf_remote_image/content',
+        },
+      },
+    });
+  });
+
   it('从 SessionFile 机器上下文恢复展示名附件，并把机器行排除出可见正文', () => {
     const filePath = '/Users/test/.hanako/uploads/报告2026_mq6l.txt';
     const items = buildItemsFromHistory({

@@ -7,6 +7,12 @@ import { SkillCapabilities } from './skills/SkillCapabilities';
 import { CompatPathDrawer } from './skills/CompatPathDrawer';
 import { AgentSelect } from './bridge/AgentSelect';
 import { SettingsSection } from '../components/SettingsSection';
+import {
+  canUseNativeSkillInstallPath,
+  skillFileToUploadInstallBody,
+  skillPathToUploadInstallBody,
+  type SkillInstallBody,
+} from '../../services/skill-install-upload';
 import styles from '../Settings.module.css';
 
 type BundleDialogState =
@@ -17,18 +23,6 @@ type BundleDialogState =
 interface ExternalPathsData {
   configured: string[];
   discovered: { dirPath: string; label: string; exists: boolean }[];
-}
-
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(reader.error || new Error('failed to read file'));
-    reader.onload = () => {
-      const result = String(reader.result || '');
-      resolve(result.includes(',') ? result.split(',').pop() || '' : result);
-    };
-    reader.readAsDataURL(file);
-  });
 }
 
 export function SkillsTab() {
@@ -148,12 +142,12 @@ export function SkillsTab() {
 
   // 全局安装：只注册 skill 到 engine.skillsDir，不自动对任何 agent 启用。
   // 原则：全局的管全局的。装完后用户到 Section 3 "Agent 配置" 自己打开开关。
-  const installSkillFromPath = async (filePath: string) => {
+  const installSkillWithBody = async (body: SkillInstallBody) => {
     try {
       const res = await hanaFetch('/api/skills/install', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: filePath }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
@@ -164,28 +158,21 @@ export function SkillsTab() {
     }
   };
 
+  const installSkillFromPath = async (filePath: string) => {
+    const body = canUseNativeSkillInstallPath(useSettingsStore.getState())
+      ? { path: filePath }
+      : await skillPathToUploadInstallBody(filePath);
+    await installSkillWithBody(body);
+  };
+
   const installSkillFromFile = async (file: File) => {
     const filePath = window.platform?.getFilePath?.(file) || (file as File & { path?: string })?.path;
-    if (filePath) {
-      await installSkillFromPath(filePath);
+    if (filePath && canUseNativeSkillInstallPath(useSettingsStore.getState())) {
+      await installSkillWithBody({ path: filePath });
       return;
     }
     try {
-      const contentBase64 = await fileToBase64(file);
-      const res = await hanaFetch('/api/skills/install', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          file: {
-            filename: file.name || 'skill.skill',
-            contentBase64,
-          },
-        }),
-      });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      showToast(t('settings.skills.installSuccess', { name: data.skill?.name || '' }), 'success');
-      await loadSkills();
+      await installSkillWithBody(await skillFileToUploadInstallBody(file));
     } catch (err: unknown) {
       showToast(t('settings.skills.installError') + ': ' + (err instanceof Error ? err.message : String(err)), 'error');
     }

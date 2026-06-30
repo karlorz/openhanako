@@ -5,6 +5,12 @@ import { hanaFetch } from '../hooks/use-hana-fetch';
 import { AgentAvatar, resolveAgentDisplayInfo } from '../utils/agent-display';
 import { SkillBundleTree, type SkillBundleInfo } from '../settings/tabs/skills/SkillBundleTree';
 import type { SkillInfo } from '../settings/store';
+import {
+  canUseNativeSkillInstallPath,
+  skillFileToUploadInstallBody,
+  skillPathToUploadInstallBody,
+  type SkillInstallBody,
+} from '../services/skill-install-upload';
 import { AgentTabScroller, type AgentTabScrollerItem } from './automation/AgentTabScroller';
 import fp from './FloatingPanels.module.css';
 import settingsStyles from '../settings/Settings.module.css';
@@ -55,18 +61,6 @@ function bundleListField(data: JsonObject): SkillBundleInfo[] {
 
 function isFileTransfer(dataTransfer: DataTransfer): boolean {
   return dataTransfer.files.length > 0 || Array.from(dataTransfer.types).includes('Files');
-}
-
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(reader.error || new Error('failed to read file'));
-    reader.onload = () => {
-      const result = String(reader.result || '');
-      resolve(result.includes(',') ? result.split(',').pop() || '' : result);
-    };
-    reader.readAsDataURL(file);
-  });
 }
 
 function firstUsableAgentId(agents: Array<{ id: string; isPrimary?: boolean }>, currentAgentId: string | null): string | null {
@@ -240,7 +234,7 @@ export function SkillsPanel() {
     return firstUsableAgentId(agents, currentAgentId);
   }, [agents, currentAgentId, selectedTabId]);
 
-  const installSkillFromPath = useCallback(async (filePath: string) => {
+  const installSkillWithBody = useCallback(async (body: SkillInstallBody) => {
     const targetAgentId = installTargetAgentId();
     if (!targetAgentId) {
       addToast(t('settings.skills.installError') + ': no current agent', 'error');
@@ -250,7 +244,7 @@ export function SkillsPanel() {
       const res = await hanaFetch(`/api/skills/install?agentId=${encodeURIComponent(targetAgentId)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: filePath }),
+        body: JSON.stringify(body),
       });
       const data = await readJsonObject(res);
       const error = responseError(data);
@@ -267,43 +261,25 @@ export function SkillsPanel() {
     }
   }, [addToast, flashInstalled, installTargetAgentId, loadSkillsForAgent, t]);
 
+  const installSkillFromPath = useCallback(async (filePath: string) => {
+    const body = canUseNativeSkillInstallPath(useStore.getState())
+      ? { path: filePath }
+      : await skillPathToUploadInstallBody(filePath);
+    await installSkillWithBody(body);
+  }, [installSkillWithBody]);
+
   const installSkillFromFile = useCallback(async (file: File) => {
     const filePath = window.platform?.getFilePath?.(file) || (file as File & { path?: string })?.path;
-    if (filePath) {
-      await installSkillFromPath(filePath);
-      return;
-    }
-    const targetAgentId = installTargetAgentId();
-    if (!targetAgentId) {
-      addToast(t('settings.skills.installError') + ': no current agent', 'error');
+    if (filePath && canUseNativeSkillInstallPath(useStore.getState())) {
+      await installSkillWithBody({ path: filePath });
       return;
     }
     try {
-      const contentBase64 = await fileToBase64(file);
-      const res = await hanaFetch(`/api/skills/install?agentId=${encodeURIComponent(targetAgentId)}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          file: {
-            filename: file.name || 'skill.skill',
-            contentBase64,
-          },
-        }),
-      });
-      const data = await readJsonObject(res);
-      const error = responseError(data);
-      if (error) throw new Error(error);
-      const skillName = installedSkillName(data);
-      const bundleId = installedBundleId(data);
-      setAllViewAgentId(targetAgentId);
-      setSelectedTabId(ALL_SKILLS_TAB);
-      await loadSkillsForAgent(targetAgentId);
-      flashInstalled({ skillName, bundleId });
-      addToast(t('settings.skills.installSuccess', { name: skillName || '' }), 'success');
+      await installSkillWithBody(await skillFileToUploadInstallBody(file));
     } catch (err) {
       addToast(t('settings.skills.installError') + ': ' + (err instanceof Error ? err.message : String(err)), 'error');
     }
-  }, [addToast, flashInstalled, installSkillFromPath, installTargetAgentId, loadSkillsForAgent, t]);
+  }, [addToast, installSkillWithBody, t]);
 
   const installSkill = useCallback(async () => {
     if (typeof window.platform?.selectSkill === 'function') {

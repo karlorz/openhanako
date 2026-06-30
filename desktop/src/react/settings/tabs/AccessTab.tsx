@@ -66,6 +66,28 @@ interface AccessSummary {
   }>;
 }
 
+interface RemoteServerIdentity {
+  connectionKind?: string;
+  serverId?: string;
+  serverNodeId?: string;
+  userId?: string;
+  studioId?: string;
+  label?: string;
+  userLabel?: string;
+  studioLabel?: string;
+  trustState?: string;
+  authState?: string;
+  credentialKind?: string;
+  capabilities?: string[];
+  version?: string;
+  executionBoundary?: {
+    kind?: string;
+    workbench?: {
+      kind?: string;
+    };
+  };
+}
+
 const MOBILE_ACCESS_SCOPES = [...MOBILE_REMOTE_ACCESS_SCOPES];
 const DESKTOP_ACCESS_SCOPES = [...DESKTOP_REMOTE_ACCESS_SCOPES];
 
@@ -95,6 +117,7 @@ export function AccessTab() {
   const [savingNetwork, setSavingNetwork] = useState(false);
   const [accountDraft, setAccountDraft] = useState({ username: '', displayName: '' });
   const [passwordDraft, setPasswordDraft] = useState('');
+  const [remoteIdentity, setRemoteIdentity] = useState<RemoteServerIdentity | null>(null);
 
   useEffect(() => {
     if (!snapshotAccess) return;
@@ -134,6 +157,26 @@ export function AccessTab() {
       showToast(`${t('settings.access.loadFailed')}: ${err.message}`, 'error');
     });
   }, [loadSummary, showToast]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (isLocalOwner) {
+      setRemoteIdentity(null);
+      return () => { cancelled = true; };
+    }
+    setRemoteIdentity(null);
+    hanaFetch('/api/server/identity')
+      .then(res => res.json())
+      .then((data) => {
+        if (!cancelled && data && typeof data === 'object' && !data.error) {
+          setRemoteIdentity(data as RemoteServerIdentity);
+        }
+      })
+      .catch((err) => {
+        console.warn('[access] remote identity load failed:', err);
+      });
+    return () => { cancelled = true; };
+  }, [effectiveConnection?.connectionId, isLocalOwner]);
 
   const mobileUrl = useMemo(() => {
     if (!summary) return '';
@@ -367,6 +410,15 @@ export function AccessTab() {
   if (!isLocalOwner) {
     const connectionLabel = effectiveConnection?.label || t('settings.access.remoteConnectionUnknown');
     const connectionUrl = effectiveConnection?.baseUrl || '';
+    const remoteUnknown = t('settings.access.remoteConnectionUnknown');
+    const remoteVersion = remoteValue(remoteIdentity?.version, effectiveConnection?.serverVersion, remoteUnknown);
+    const remoteConnectionKind = remoteConnectionKindLabel(remoteIdentity?.connectionKind || effectiveConnection?.kind, remoteUnknown);
+    const remoteTrustState = remoteTrustStateLabel(remoteIdentity?.trustState || effectiveConnection?.trustState, remoteUnknown);
+    const remoteAuthState = remoteAuthStateLabel(remoteIdentity?.authState || effectiveConnection?.authState, remoteUnknown);
+    const remoteCredentialKind = remoteCredentialKindLabel(remoteIdentity?.credentialKind || effectiveConnection?.credentialKind, remoteUnknown);
+    const remoteCapabilities = remoteCapabilitySummary(remoteIdentity?.capabilities || effectiveConnection?.capabilities, remoteUnknown);
+    const remoteStudioLabel = remoteValue(remoteIdentity?.studioLabel, effectiveConnection?.studioLabel, remoteIdentity?.studioId, effectiveConnection?.studioId, remoteUnknown);
+    const remoteRuntime = remoteRuntimeLabel(remoteIdentity?.executionBoundary || effectiveConnection?.executionBoundary, remoteUnknown);
     return (
       <div className={`${styles['settings-tab-content']} ${styles.active}`} data-tab="access">
         <SettingsSection
@@ -381,11 +433,39 @@ export function AccessTab() {
               </div>
               <div className={styles['access-status-item']}>
                 <span>{t('settings.access.remoteConnectionKind')}</span>
-                <strong>{effectiveConnection?.kind || t('settings.access.remoteConnectionUnknown')}</strong>
+                <strong>{remoteConnectionKind}</strong>
               </div>
               <div className={styles['access-status-item']}>
                 <span>{t('settings.access.remoteConnectionUrl')}</span>
                 <strong>{connectionUrl || t('settings.access.remoteConnectionUnknown')}</strong>
+              </div>
+              <div className={styles['access-status-item']}>
+                <span>{t('settings.access.remoteServerVersion')}</span>
+                <strong>{remoteVersion}</strong>
+              </div>
+              <div className={styles['access-status-item']}>
+                <span>{t('settings.access.remoteTrustState')}</span>
+                <strong>{remoteTrustState}</strong>
+              </div>
+              <div className={styles['access-status-item']}>
+                <span>{t('settings.access.remoteAuthState')}</span>
+                <strong>{remoteAuthState}</strong>
+              </div>
+              <div className={styles['access-status-item']}>
+                <span>{t('settings.access.remoteCredentialKind')}</span>
+                <strong>{remoteCredentialKind}</strong>
+              </div>
+              <div className={styles['access-status-item']}>
+                <span>{t('settings.access.remoteCapabilities')}</span>
+                <strong>{remoteCapabilities}</strong>
+              </div>
+              <div className={styles['access-status-item']}>
+                <span>{t('settings.access.remoteStudioLabel')}</span>
+                <strong>{remoteStudioLabel}</strong>
+              </div>
+              <div className={styles['access-status-item']}>
+                <span>{t('settings.access.remoteRuntime')}</span>
+                <strong>{remoteRuntime}</strong>
               </div>
             </div>
             <SettingsSection.Note>{t('settings.access.remoteLocalOnlyNote')}</SettingsSection.Note>
@@ -726,4 +806,80 @@ export function AccessTab() {
       </SettingsSection>
     </div>
   );
+}
+
+function remoteValue(...values: Array<string | null | undefined>): string {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
+}
+
+function remoteList(values: string[] | null | undefined, fallback: string): string {
+  const list = Array.isArray(values) ? values.filter(value => typeof value === 'string' && value.trim()) : [];
+  return list.length ? list.join(', ') : fallback;
+}
+
+function remoteConnectionKindLabel(value: string | null | undefined, fallback: string): string {
+  switch (value) {
+    case 'local': return t('settings.access.remoteConnectionKindLocal');
+    case 'lan': return t('settings.access.remoteConnectionKindLan');
+    case 'custom_remote': return t('settings.access.remoteConnectionKindCustom');
+    case 'relay': return t('settings.access.remoteConnectionKindRelay');
+    case 'cloud': return t('settings.access.remoteConnectionKindCloud');
+    default: return fallback;
+  }
+}
+
+function remoteTrustStateLabel(value: string | null | undefined, fallback: string): string {
+  switch (value) {
+    case 'local': return t('settings.access.remoteTrustLocal');
+    case 'lan': return t('settings.access.remoteTrustLan');
+    case 'tunnel': return t('settings.access.remoteTrustTunnel');
+    case 'cloud': return t('settings.access.remoteTrustCloud');
+    default: return fallback;
+  }
+}
+
+function remoteAuthStateLabel(value: string | null | undefined, fallback: string): string {
+  switch (value) {
+    case 'paired': return t('settings.access.remoteAuthPaired');
+    case 'user': return t('settings.access.remoteAuthUser');
+    case 'anonymous': return t('settings.access.remoteAuthAnonymous');
+    case 'expired': return t('settings.access.remoteAuthExpired');
+    default: return fallback;
+  }
+}
+
+function remoteCredentialKindLabel(value: string | null | undefined, fallback: string): string {
+  switch (value) {
+    case 'loopback_token': return t('settings.access.remoteCredentialLoopback');
+    case 'device_credential': return t('settings.access.remoteCredentialDevice');
+    case 'user_session': return t('settings.access.remoteCredentialUserSession');
+    case 'none': return t('settings.access.remoteCredentialNone');
+    default: return fallback;
+  }
+}
+
+function remoteCapabilitySummary(values: string[] | null | undefined, fallback: string): string {
+  const list = Array.isArray(values) ? values.filter(value => typeof value === 'string' && value.trim()) : [];
+  if (list.length === 0) return fallback;
+  const out: string[] = [];
+  const has = (name: string) => list.some(value => value === name || value.startsWith(`${name}.`));
+  if (has('chat')) out.push(t('settings.access.remoteCapabilityChat'));
+  if (has('files')) out.push(t('settings.access.remoteCapabilityFiles'));
+  if (has('resources')) out.push(t('settings.access.remoteCapabilityResources'));
+  if (has('settings')) out.push(t('settings.access.remoteCapabilitySettings'));
+  if (has('tools')) out.push(t('settings.access.remoteCapabilityTools'));
+  if (has('bridge')) out.push(t('settings.access.remoteCapabilityBridge'));
+  if (list.some(value => value.startsWith('providers.'))) out.push(t('settings.access.remoteCapabilityProviders'));
+  if (out.length === 0) return remoteList(list, fallback);
+  return Array.from(new Set(out)).join(', ');
+}
+
+function remoteRuntimeLabel(boundary: RemoteServerIdentity['executionBoundary'] | undefined, fallback: string): string {
+  const kind = remoteValue(boundary?.kind);
+  if (!kind) return fallback;
+  if (kind === 'local_process') return t('settings.access.remoteRuntimeServerProcess');
+  return t('settings.access.remoteRuntimeServer');
 }

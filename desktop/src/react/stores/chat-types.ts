@@ -8,6 +8,7 @@
 
 import type { FileVersion } from '../types';
 import type { ThinkingLevel } from './model-slice';
+import type { FileRef } from '../types/file-ref';
 
 // ── 工具调用 ──
 
@@ -33,6 +34,7 @@ export interface UserAttachment {
   listed?: boolean;
   status?: 'available' | 'expired' | string;
   missingAt?: number | null;
+  resource?: FileRef['resource'];
   visionAuxiliary?: boolean;
   transcription?: VoiceTranscription;
   waveform?: AudioWaveform;
