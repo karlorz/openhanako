@@ -262,6 +262,10 @@ The server on sg01 and the desktop app stay on the last-known-good bundles until
 - Code-review follow-up fixed replay source selection for confirmed `client-user-*` messages with a persisted `sourceEntryId`, switched `hanaFetch` HTTP error detail parsing to read body text once, and added sidecar traversal regression coverage.
 - Upstream issue tracker now includes local drafts for marker-only image replay regenerate 400 and ToolGroup file-detail link context; GitHub issue search on 2026-06-30 found no exact upstream matches.
 - sg01 deployment for this patch line uses the attended install-server flow: release asset check, `install-server upgrade --version v0.346.18-karlorz.5 --channel prerelease --dry-run`, then `--execute`.
+- 2026-07-01: patch target `v0.346.18-karlorz.6` remains on upstream package version `0.346.18` and carries the provider model-removal persistence fix.
+- Model removal now uses the dedicated provider-model DELETE route from Settings, decodes slash-bearing route model ids before registry mutation, and treats explicit local provider `models` saves as replacement lists so deleted plugin models do not merge back in.
+- Upstream issue tracker now includes a local draft for provider model removal persistence; GitHub issue searches on 2026-07-01 found no exact upstream matches.
+- sg01 live validation created a temp remote provider/model with a slash-bearing id, deleted it through the encoded provider model DELETE route, confirmed it stayed absent, and cleaned up the temp provider. Memory pressure during the attended hotfix was traced to stale tmpfs `/tmp/openhanako-*` and `/tmp/hanaagent-*` staging directories; future host-side hotfix builds should stage under `/opt/hanaagent/build`.
 
 ## Sync log
 
