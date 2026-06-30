@@ -35,6 +35,18 @@ import { createModuleLogger } from "../../lib/debug-log.ts";
 import { materializeUploadedSkillPackage } from "../utils/uploaded-skill-package.ts";
 
 const log = createModuleLogger("skills");
+const MAX_SKILL_PREVIEW_BYTES = 2 * 1024 * 1024;
+const SKILL_PREVIEW_IGNORED_DIRS = new Set([
+  "node_modules",
+  "target",
+  "build",
+  "dist",
+  "out",
+  "__pycache__",
+  "coverage",
+  "venv",
+  ".venv",
+]);
 
 /** 递归删除目录 */
 function rmDirSync(dir) {
@@ -151,6 +163,138 @@ export function createSkillsRoute(engine) {
       return c.json({ error: "agent not found" }, 404);
     }
     return null;
+  }
+
+  function resolveSkillPreviewTarget(c) {
+    const name = sanitizeSkillName(c.req.param("name"));
+    if (!name) {
+      const err: any = new Error("invalid skill name");
+      err.status = 400;
+      throw err;
+    }
+    const agentId = c.req.query("agentId") || engine.currentAgentId || "";
+    if (agentId && (!validateId(agentId) || !agentExists(engine, agentId))) {
+      const err: any = new Error("agent not found");
+      err.status = 404;
+      throw err;
+    }
+    const skills = agentId ? engine.getAllSkills(agentId) : (engine.getAllSkills?.() || []);
+    const skill = skills.find(item => item?.name === name);
+    const baseDir = skill?.sourceIdentity?.baseDir || skill?.baseDir;
+    if (!skill || !baseDir || !path.isAbsolute(baseDir)) {
+      const err: any = new Error("skill not found");
+      err.status = 404;
+      throw err;
+    }
+    let rootStat;
+    try {
+      rootStat = fs.statSync(baseDir);
+    } catch {
+      const err: any = new Error("skill not found");
+      err.status = 404;
+      throw err;
+    }
+    if (!rootStat.isDirectory()) {
+      const err: any = new Error("skill not found");
+      err.status = 404;
+      throw err;
+    }
+    return { skill, baseDir: path.resolve(baseDir), agentId };
+  }
+
+  function normalizeSkillPreviewPath(rawPath) {
+    const text = String(rawPath || "SKILL.md");
+    if (!text || text.includes("\0") || path.isAbsolute(text) || /^[a-zA-Z]:[\\/]/.test(text)) {
+      const err: any = new Error("invalid skill file path");
+      err.status = 400;
+      throw err;
+    }
+    const parts = text.replace(/\\/g, "/").split("/").filter(Boolean);
+    if (parts.length === 0 || parts.some(part => part === "." || part === "..")) {
+      const err: any = new Error("invalid skill file path");
+      err.status = 400;
+      throw err;
+    }
+    return parts.join("/");
+  }
+
+  function isPathInside(childPath, rootPath) {
+    const rel = path.relative(rootPath, childPath);
+    return rel === "" || (!!rel && !rel.startsWith("..") && !path.isAbsolute(rel));
+  }
+
+  function resolveSkillPreviewFile(baseDir, rawPath) {
+    const relativePath = normalizeSkillPreviewPath(rawPath);
+    const resolvedRoot = path.resolve(baseDir);
+    const candidate = path.resolve(resolvedRoot, relativePath);
+    if (!isPathInside(candidate, resolvedRoot)) {
+      const err: any = new Error("invalid skill file path");
+      err.status = 400;
+      throw err;
+    }
+    let realRoot;
+    let realFile;
+    try {
+      realRoot = fs.realpathSync(resolvedRoot);
+      realFile = fs.realpathSync(candidate);
+    } catch {
+      const err: any = new Error("skill file not found");
+      err.status = 404;
+      throw err;
+    }
+    if (!isPathInside(realFile, realRoot)) {
+      const err: any = new Error("invalid skill file path");
+      err.status = 400;
+      throw err;
+    }
+    return { relativePath, filePath: realFile };
+  }
+
+  function scanSkillPreviewDir(dir, rootDir) {
+    const entries = fs.readdirSync(dir, { withFileTypes: true })
+      .filter(entry => !entry.name.startsWith("."))
+      .filter(entry => !entry.isDirectory() || !SKILL_PREVIEW_IGNORED_DIRS.has(entry.name))
+      .sort((a, b) => {
+        if (a.name === "SKILL.md") return -1;
+        if (b.name === "SKILL.md") return 1;
+        if (a.isDirectory() && !b.isDirectory()) return -1;
+        if (!a.isDirectory() && b.isDirectory()) return 1;
+        return a.name.localeCompare(b.name);
+      });
+    return entries.map((entry) => {
+      const fullPath = path.join(dir, entry.name);
+      const relativePath = path.relative(rootDir, fullPath).replace(/\\/g, "/");
+      if (entry.isDirectory()) {
+        return {
+          name: entry.name,
+          path: relativePath,
+          isDir: true,
+          children: scanSkillPreviewDir(fullPath, rootDir),
+        };
+      }
+      return { name: entry.name, path: relativePath, isDir: false };
+    });
+  }
+
+  function readSkillPreviewText(filePath) {
+    const stat = fs.statSync(filePath);
+    if (!stat.isFile()) {
+      const err: any = new Error("skill file not found");
+      err.status = 404;
+      throw err;
+    }
+    if (stat.size > MAX_SKILL_PREVIEW_BYTES) {
+      const err: any = new Error("skill file is too large");
+      err.status = 413;
+      throw err;
+    }
+    const buffer = fs.readFileSync(filePath);
+    if (buffer.includes(0)) {
+      const err: any = new Error("skill file is not text");
+      err.status = 415;
+      throw err;
+    }
+    return buffer.toString("utf-8");
   }
 
   async function persistEnabledSkills(agentId, enabled) {
@@ -295,6 +439,25 @@ export function createSkillsRoute(engine) {
       });
     } catch (err) {
       return c.json({ error: err.message }, 500);
+    }
+  });
+
+  route.get("/skills/:name/files", async (c) => {
+    try {
+      const { baseDir } = resolveSkillPreviewTarget(c);
+      return c.json({ files: scanSkillPreviewDir(baseDir, baseDir) });
+    } catch (err) {
+      return c.json({ error: err.message }, err.status || 500);
+    }
+  });
+
+  route.get("/skills/:name/file", async (c) => {
+    try {
+      const { baseDir } = resolveSkillPreviewTarget(c);
+      const { relativePath, filePath } = resolveSkillPreviewFile(baseDir, c.req.query("path") || "SKILL.md");
+      return c.json({ path: relativePath, content: readSkillPreviewText(filePath) });
+    } catch (err) {
+      return c.json({ error: err.message }, err.status || 500);
     }
   });
 
