@@ -269,6 +269,43 @@ describe('ProviderModelList', () => {
     expect(onRefresh).toHaveBeenCalled();
   });
 
+  it('removes added models through the provider model delete endpoint', async () => {
+    const onRefresh = vi.fn(async () => {});
+    mocks.hanaFetch.mockResolvedValue(jsonResponse({ models: [] }));
+
+    render(
+      <ProviderModelList
+        providerId="openrouter"
+        summary={{
+          type: 'api-key',
+          auth_type: 'api-key',
+          display_name: 'OpenRouter',
+          base_url: 'https://openrouter.ai/api/v1',
+          api: 'openai-completions',
+          api_key: 'sk-test',
+          models: ['openrouter/qwen/qwen-vl-plus'],
+          custom_models: [],
+          has_credentials: true,
+          supports_oauth: false,
+          is_coding_plan: false,
+          can_delete: true,
+        }}
+        onRefresh={onRefresh}
+      />,
+    );
+
+    fireEvent.click(screen.getByTitle('settings.api.removeModel'));
+
+    await waitFor(() => {
+      expect(mocks.hanaFetch).toHaveBeenCalledWith(
+        '/api/providers/openrouter/models/openrouter%2Fqwen%2Fqwen-vl-plus',
+        expect.objectContaining({ method: 'DELETE' }),
+      );
+    });
+    expect(mocks.hanaFetch).not.toHaveBeenCalledWith('/api/config', expect.objectContaining({ method: 'PUT' }));
+    expect(onRefresh).toHaveBeenCalled();
+  });
+
   it('does not serialize untouched capability defaults as explicit false overrides', async () => {
     const onRefresh = vi.fn(async () => {});
     mocks.hanaFetch.mockResolvedValue(jsonResponse({ models: [] }));
