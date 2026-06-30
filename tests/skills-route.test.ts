@@ -703,6 +703,112 @@ describe("skills route", () => {
       },
     });
   });
+
+  it("lists and reads files for an installed skill through relative server-owned paths", async () => {
+    const { createSkillsRoute } = await import("../server/routes/skills.ts");
+    const app = new Hono();
+    const agentId = "hana";
+    const agentDir = path.join(tempRoot, agentId);
+    const skillDir = path.join(tempRoot, "server-skills", "remote-skill");
+    fs.mkdirSync(agentDir, { recursive: true });
+    fs.mkdirSync(path.join(skillDir, "references"), { recursive: true });
+    fs.writeFileSync(path.join(agentDir, "config.yaml"), "agent:\n  name: Hana\n", "utf-8");
+    fs.writeFileSync(path.join(skillDir, "SKILL.md"), "---\nname: remote-skill\n---\n# Remote Skill\n", "utf-8");
+    fs.writeFileSync(path.join(skillDir, "references", "guide.md"), "# Guide\n", "utf-8");
+    const engine = {
+      agentsDir: tempRoot,
+      currentAgentId: agentId,
+      getAllSkills: vi.fn(() => [{
+        name: "remote-skill",
+        baseDir: skillDir,
+        filePath: path.join(skillDir, "SKILL.md"),
+        source: "user",
+      }]),
+    };
+
+    app.route("/api", createSkillsRoute(engine));
+
+    const filesRes = await app.request(`/api/skills/remote-skill/files?agentId=${agentId}`);
+    expect(filesRes.status).toBe(200);
+    expect(await filesRes.json()).toMatchObject({
+      files: [
+        { name: "SKILL.md", path: "SKILL.md", isDir: false },
+        {
+          name: "references",
+          path: "references",
+          isDir: true,
+          children: [{ name: "guide.md", path: "references/guide.md", isDir: false }],
+        },
+      ],
+    });
+
+    const fileRes = await app.request(`/api/skills/remote-skill/file?agentId=${agentId}&path=${encodeURIComponent("SKILL.md")}`);
+    expect(fileRes.status).toBe(200);
+    expect(await fileRes.json()).toEqual({
+      path: "SKILL.md",
+      content: "---\nname: remote-skill\n---\n# Remote Skill\n",
+    });
+  });
+
+  it("rejects skill preview path traversal outside the installed skill root", async () => {
+    const { createSkillsRoute } = await import("../server/routes/skills.ts");
+    const app = new Hono();
+    const agentId = "hana";
+    const agentDir = path.join(tempRoot, agentId);
+    const skillDir = path.join(tempRoot, "server-skills", "remote-skill");
+    fs.mkdirSync(agentDir, { recursive: true });
+    fs.mkdirSync(skillDir, { recursive: true });
+    fs.writeFileSync(path.join(agentDir, "config.yaml"), "agent:\n  name: Hana\n", "utf-8");
+    fs.writeFileSync(path.join(skillDir, "SKILL.md"), "---\nname: remote-skill\n---\n# Remote Skill\n", "utf-8");
+    fs.writeFileSync(path.join(tempRoot, "secret.txt"), "secret", "utf-8");
+    const engine = {
+      agentsDir: tempRoot,
+      currentAgentId: agentId,
+      getAllSkills: vi.fn(() => [{
+        name: "remote-skill",
+        baseDir: skillDir,
+        filePath: path.join(skillDir, "SKILL.md"),
+        source: "user",
+      }]),
+    };
+
+    app.route("/api", createSkillsRoute(engine));
+
+    const res = await app.request(`/api/skills/remote-skill/file?agentId=${agentId}&path=${encodeURIComponent("../secret.txt")}`);
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: "invalid skill file path" });
+  });
+
+  it("rejects oversized skill preview files", async () => {
+    const { createSkillsRoute } = await import("../server/routes/skills.ts");
+    const app = new Hono();
+    const agentId = "hana";
+    const agentDir = path.join(tempRoot, agentId);
+    const skillDir = path.join(tempRoot, "server-skills", "remote-skill");
+    fs.mkdirSync(agentDir, { recursive: true });
+    fs.mkdirSync(skillDir, { recursive: true });
+    fs.writeFileSync(path.join(agentDir, "config.yaml"), "agent:\n  name: Hana\n", "utf-8");
+    fs.writeFileSync(path.join(skillDir, "SKILL.md"), "---\nname: remote-skill\n---\n# Remote Skill\n", "utf-8");
+    fs.writeFileSync(path.join(skillDir, "huge.md"), "x".repeat((2 * 1024 * 1024) + 1), "utf-8");
+    const engine = {
+      agentsDir: tempRoot,
+      currentAgentId: agentId,
+      getAllSkills: vi.fn(() => [{
+        name: "remote-skill",
+        baseDir: skillDir,
+        filePath: path.join(skillDir, "SKILL.md"),
+        source: "user",
+      }]),
+    };
+
+    app.route("/api", createSkillsRoute(engine));
+
+    const res = await app.request(`/api/skills/remote-skill/file?agentId=${agentId}&path=${encodeURIComponent("huge.md")}`);
+
+    expect(res.status).toBe(413);
+    expect(await res.json()).toMatchObject({ error: "skill file is too large" });
+  });
 });
 
 describe("DELETE /skills/:name — per-agent target selection", () => {

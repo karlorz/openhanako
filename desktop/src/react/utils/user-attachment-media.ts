@@ -7,7 +7,7 @@ import { extOfName } from './file-kind';
 
 type FileUrlPlatform = Pick<PlatformApi, 'getFileUrl'> | null | undefined;
 type AttachmentImageSource = Pick<UserAttachment, 'path'> &
-  Partial<Pick<UserAttachment, 'fileId' | 'name' | 'base64Data' | 'mimeType'>>;
+  Partial<Pick<UserAttachment, 'fileId' | 'name' | 'base64Data' | 'mimeType' | 'resource'>>;
 
 export function getUserAttachmentImageSrc(
   attachment: AttachmentImageSource,
@@ -28,6 +28,7 @@ export function getUserAttachmentImageSrc(
       path: attachment.path,
       ext: extOfName(name),
       mime: attachment.mimeType,
+      resource: attachment.resource,
     }, {
       connection: resolveServerConnection(useStore.getState()),
       platform,
