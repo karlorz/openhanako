@@ -3,9 +3,21 @@
 import '@testing-library/jest-dom/vitest';
 import fs from 'node:fs';
 import path from 'node:path';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ToolGroupBlock } from '../../components/chat/ToolGroupBlock';
+
+const mocks = vi.hoisted(() => ({
+  openInternalLink: vi.fn(async () => true),
+}));
+
+vi.mock('../../utils/link-open', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../utils/link-open')>();
+  return {
+    ...actual,
+    openInternalLink: mocks.openInternalLink,
+  };
+});
 
 describe('ToolGroupBlock', () => {
   beforeEach(() => {
@@ -14,6 +26,7 @@ describe('ToolGroupBlock', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    mocks.openInternalLink.mockClear();
     cleanup();
   });
 
@@ -83,6 +96,38 @@ describe('ToolGroupBlock', () => {
 
     expect(screen.queryByText('toolGroup.count')).toBeNull();
     expect(screen.getByText('npm test')).toBeTruthy();
+  });
+
+  it('opens file detail links with the containing session context', () => {
+    render(
+      <ToolGroupBlock
+        collapsed={false}
+        linkContext={{
+          origin: 'session',
+          sessionPath: '/sessions/main.jsonl',
+          messageId: 'assistant-1',
+          blockIdx: 2,
+        }}
+        tools={[{
+          name: 'read',
+          args: { file_path: '/root/.hanako/session-files/hash/image_mr0cz6nw_53e6e95e.png' },
+          done: true,
+          success: true,
+        }]}
+      />,
+    );
+
+    fireEvent.click(screen.getByText(/image_mr0cz6nw_53e6e95e\.png$/));
+
+    expect(mocks.openInternalLink).toHaveBeenCalledWith(
+      '/root/.hanako/session-files/hash/image_mr0cz6nw_53e6e95e.png',
+      {
+        origin: 'session',
+        sessionPath: '/sessions/main.jsonl',
+        messageId: 'assistant-1',
+        blockIdx: 2,
+      },
+    );
   });
 
   it('hides automation create/update tools because the suggestion card is the UI', () => {

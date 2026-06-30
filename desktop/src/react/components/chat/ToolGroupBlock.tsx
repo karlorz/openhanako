@@ -8,6 +8,7 @@ import styles from './Chat.module.css';
 import { extractToolDetail } from '../../utils/message-parser';
 import type { ToolDetail } from '../../utils/message-parser';
 import { openInternalLink } from '../../utils/link-open';
+import type { LinkOpenContext } from '../../utils/link-open';
 import { isToolCallHiddenFromProcessUi } from '../../utils/tool-call-visibility';
 import { LinkContextMenu, type LinkContextMenuState } from '../shared/LinkContextMenu';
 
@@ -17,6 +18,7 @@ interface Props {
   tools: ToolCall[];
   collapsed: boolean;
   agentName?: string;
+  linkContext?: LinkOpenContext;
 }
 
 function getToolLabel(name: string, phase: string, agentName: string): string {
@@ -27,7 +29,12 @@ function getToolLabel(name: string, phase: string, agentName: string): string {
   return t?.(`tool._fallback.${phase}`, vars) || name;
 }
 
-export const ToolGroupBlock = memo(function ToolGroupBlock({ tools: rawTools, collapsed: initialCollapsed, agentName = 'Hanako' }: Props) {
+export const ToolGroupBlock = memo(function ToolGroupBlock({
+  tools: rawTools,
+  collapsed: initialCollapsed,
+  agentName = 'Hanako',
+  linkContext = { origin: 'session' },
+}: Props) {
   // 独立卡片或产物块承接状态的工具，不在工具组里重复显示。
   const tools = rawTools.filter(t => !isToolCallHiddenFromProcessUi(t));
   const [collapsed, setCollapsed] = useState(initialCollapsed);
@@ -73,14 +80,14 @@ export const ToolGroupBlock = memo(function ToolGroupBlock({ tools: rawTools, co
       {isSingle ? (
         <div className={styles.toolGroupContent}>
           {tools.map((tool, i) => (
-            <ToolIndicator key={tool.id || `${tool.name}-${i}`} tool={tool} agentName={agentName} />
+            <ToolIndicator key={tool.id || `${tool.name}-${i}`} tool={tool} agentName={agentName} linkContext={linkContext} />
           ))}
         </div>
       ) : (
         <Collapse open={!collapsed}>
           <div className={styles.toolGroupContent}>
             {tools.map((tool, i) => (
-              <ToolIndicator key={tool.id || `${tool.name}-${i}`} tool={tool} agentName={agentName} />
+              <ToolIndicator key={tool.id || `${tool.name}-${i}`} tool={tool} agentName={agentName} linkContext={linkContext} />
             ))}
           </div>
         </Collapse>
@@ -91,14 +98,14 @@ export const ToolGroupBlock = memo(function ToolGroupBlock({ tools: rawTools, co
 
 // ── ToolIndicator ──
 
-function handleDetailClick(e: React.MouseEvent, detail: ToolDetail) {
+function handleDetailClick(e: React.MouseEvent, detail: ToolDetail, linkContext: LinkOpenContext) {
   e.preventDefault();
   e.stopPropagation();
   if (!detail.href) return;
-  void openInternalLink(detail.href, { origin: 'session' });
+  void openInternalLink(detail.href, linkContext);
 }
 
-const ToolIndicator = memo(function ToolIndicator({ tool, agentName }: { tool: ToolCall; agentName: string }) {
+const ToolIndicator = memo(function ToolIndicator({ tool, agentName, linkContext }: { tool: ToolCall; agentName: string; linkContext: LinkOpenContext }) {
   const [linkMenu, setLinkMenu] = useState<LinkContextMenuState | null>(null);
 
   const detail = extractToolDetail(tool.name, tool.args);
@@ -117,14 +124,14 @@ const ToolIndicator = memo(function ToolIndicator({ tool, agentName }: { tool: T
             <span
               className={`${styles.toolDetail} ${styles.toolDetailLink}`}
               title={detailTitle}
-              onClick={(e) => handleDetailClick(e, detail)}
+              onClick={(e) => handleDetailClick(e, detail, linkContext)}
               onContextMenu={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 if (!detail.href) return;
                 setLinkMenu({
                   href: detail.href,
-                  context: { origin: 'session', label: detail.text },
+                  context: { ...linkContext, label: detail.text },
                   position: { x: e.clientX, y: e.clientY },
                 });
               }}
