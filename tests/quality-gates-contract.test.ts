@@ -85,6 +85,62 @@ describe("quality gates", () => {
     );
   });
 
+  it("builds release targets on runner architectures that can execute the target Node runtime", () => {
+    const build = readYaml(".github/workflows/build.yml");
+    const installerBuilds = build.jobs.build.strategy.matrix.include;
+    const serverBundles = build.jobs["server-bundles"];
+    const bundleBuilds = serverBundles.strategy.matrix.include;
+
+    expect(build.jobs.build["runs-on"]).toBe("${{ matrix.runner }}");
+    expect(installerBuilds).toEqual(expect.arrayContaining([
+      expect.objectContaining({ os: "macos-15", arch: "arm64" }),
+      expect.objectContaining({ os: "macos-15-intel", arch: "x64" }),
+      expect.objectContaining({ os: "windows-latest", arch: "x64" }),
+      expect.objectContaining({ os: "ubuntu-latest", arch: "x64" }),
+    ]));
+
+    expect(serverBundles["runs-on"]).toBe("${{ matrix.runner }}");
+    expect(bundleBuilds).toEqual(expect.arrayContaining([
+      expect.objectContaining({ plat: "linux", os: "linux", arch: "arm64", runner: "ubuntu-24.04-arm" }),
+      expect.objectContaining({ plat: "linux", os: "linux", arch: "x64", runner: "ubuntu-latest" }),
+      expect.objectContaining({ plat: "darwin", os: "mac", arch: "arm64", runner: "macos-15" }),
+      expect.objectContaining({ plat: "darwin", os: "mac", arch: "x64", runner: "macos-15-intel" }),
+      expect.objectContaining({ plat: "win32", os: "win", arch: "x64", runner: "windows-latest" }),
+    ]));
+  });
+
+  it("release verification requires server bundle checksum sidecars", () => {
+    const buildWorkflow = readText(".github/workflows/build.yml");
+
+    for (const target of [
+      "linux-arm64",
+      "linux-x64",
+      "mac-arm64",
+      "mac-x64",
+      "win-x64",
+    ]) {
+      expect(buildWorkflow).toContain(`hanaagent-server-\${{ github.ref_name }}-${target}.tar.gz`);
+      expect(buildWorkflow).toContain(`hanaagent-server-\${{ github.ref_name }}-${target}.tar.gz.sha256`);
+    }
+  });
+
+  it("standalone server bundle release jobs build client runtime assets first", () => {
+    const build = readYaml(".github/workflows/build.yml");
+    const runSteps = build.jobs["server-bundles"].steps
+      .map((step) => step.run)
+      .filter(Boolean);
+
+    const clientBuildIndex = runSteps.indexOf("npm run build:client");
+    const serverBuildIndex = runSteps.findIndex((run) => (
+      typeof run === "string"
+      && run.includes("node scripts/build-server.mjs ${{ matrix.plat }} ${{ matrix.arch }}")
+    ));
+
+    expect(clientBuildIndex).toBeGreaterThan(-1);
+    expect(serverBuildIndex).toBeGreaterThan(-1);
+    expect(clientBuildIndex).toBeLessThan(serverBuildIndex);
+  });
+
   it("verifies downloaded Node runtime archives before extraction", () => {
     const buildServer = readText("scripts/build-server.mjs");
 

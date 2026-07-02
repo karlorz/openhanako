@@ -112,7 +112,7 @@ export function selectSessionFiles(
   if (cached && cached.items === items && cached.registryFiles === registryFiles) return cached.result;
 
   const result: FileRef[] = [];
-  const seen = new Set<string>();
+  const seen = new Map<string, number>();
 
   for (const file of registryFiles) {
     if (file.isDirectory) continue;
@@ -174,6 +174,7 @@ export function selectSessionFiles(
           mime: att.mimeType,
           status: att.status,
           missingAt: att.missingAt,
+          resource: compactResourceRef(att.resource),
           presentation: presentationOf(att),
           listed: listedOf(att),
           timestamp: msg.timestamp,
@@ -321,7 +322,9 @@ function isFileVersion(value: unknown): value is FileVersion {
     && Number.isFinite(candidate.size);
 }
 
-function compactResourceRef(resource: ResourceEnvelope | undefined): FileRef['resource'] | undefined {
+type CompactResourceRef = NonNullable<FileRef['resource']>;
+
+function compactResourceRef(resource: ResourceEnvelope | CompactResourceRef | undefined): FileRef['resource'] | undefined {
   if (!resource?.resourceId || !resource.studioId || !resource.links?.self) return undefined;
   return {
     resourceId: resource.resourceId,
@@ -340,9 +343,34 @@ function fileIdentityKeys(fileId?: string, filePath?: string): string[] {
   return keys;
 }
 
-function pushUniqueFile(result: FileRef[], seen: Set<string>, ref: FileRef): void {
+function pushUniqueFile(result: FileRef[], seen: Map<string, number>, ref: FileRef): void {
   const keys = fileIdentityKeys(ref.fileId, ref.path);
-  if (keys.some(key => seen.has(key))) return;
-  for (const key of keys) seen.add(key);
+  const existingIdx = keys
+    .map(key => seen.get(key))
+    .find((idx): idx is number => idx !== undefined);
+  if (existingIdx !== undefined) {
+    result[existingIdx] = mergeFileRefs(result[existingIdx], ref);
+    for (const key of keys) seen.set(key, existingIdx);
+    return;
+  }
+  const idx = result.length;
+  for (const key of keys) seen.set(key, idx);
   result.push(ref);
+}
+
+function mergeFileRefs(existing: FileRef, incoming: FileRef): FileRef {
+  let next = existing;
+  if (!next.inlineData && incoming.inlineData) {
+    next = { ...next, inlineData: incoming.inlineData };
+  }
+  if (!next.resource?.links.content && incoming.resource?.links.content) {
+    next = { ...next, resource: incoming.resource };
+  }
+  if (!next.mime && incoming.mime) {
+    next = { ...next, mime: incoming.mime };
+  }
+  if (!next.version && incoming.version) {
+    next = { ...next, version: incoming.version };
+  }
+  return next;
 }

@@ -801,6 +801,28 @@ describe("model sync related routes", () => {
     expect(engine.emitEvent).toHaveBeenCalledTimes(1);
   });
 
+  it("provider model delete decodes slash-bearing model ids left encoded by the HTTP adapter", async () => {
+    const { createProvidersRoute } = await import("../server/routes/providers.ts");
+    const app = new Hono();
+    const removeModel = vi.fn();
+    const engine = {
+      currentAgentId: "hana",
+      onProviderChanged: vi.fn().mockResolvedValue(undefined),
+      emitEvent: vi.fn(),
+      providerRegistry: { removeModel },
+      hanakoHome: "/tmp",
+    };
+
+    app.route("/api", createProvidersRoute(engine));
+
+    const res = await app.request("/api/providers/openrouter/models/openrouter%252Fqwen%252Fqwen-vl-plus", {
+      method: "DELETE",
+    });
+
+    expect(res.status).toBe(200);
+    expect(removeModel).toHaveBeenCalledWith("openrouter", "openrouter/qwen/qwen-vl-plus");
+  });
+
   it("provider model update refreshes runtime models and notifies the app", async () => {
     const { createProvidersRoute } = await import("../server/routes/providers.ts");
     const app = new Hono();

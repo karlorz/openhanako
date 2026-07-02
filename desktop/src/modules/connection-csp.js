@@ -1,9 +1,17 @@
 (function installConnectionCsp() {
   var STORAGE_KEY = "hana-server-connections-v1";
+
+  function httpSourcesOnly(sources) {
+    return Object.keys(sources).filter(function (source) {
+      return /^(http|https):\/\//.test(source);
+    });
+  }
+
   var BASE_CSP = {
     "default-src": ["'self'"],
     "connect-src": ["'self'", "ws://127.0.0.1:*", "http://127.0.0.1:*"],
     "img-src": ["'self'", "data:", "file:", "http://127.0.0.1:*"],
+    "media-src": ["'self'", "data:", "blob:", "file:", "http://127.0.0.1:*"],
     "style-src": ["'self'", "'unsafe-inline'"],
     "script-src": ["'self'"],
     "font-src": ["'self'", "data:"],
@@ -55,7 +63,12 @@
   var scopedSources = readPersistedConnectionSources();
   addDevSources(scopedSources);
   var connectSources = BASE_CSP["connect-src"].concat(Object.keys(scopedSources));
-  var directives = Object.assign({}, BASE_CSP, { "connect-src": connectSources });
+  var resourceSources = httpSourcesOnly(scopedSources);
+  var directives = Object.assign({}, BASE_CSP, {
+    "connect-src": connectSources,
+    "img-src": BASE_CSP["img-src"].concat(resourceSources),
+    "media-src": BASE_CSP["media-src"].concat(resourceSources),
+  });
   var content = Object.keys(directives)
     .map(function (key) { return key + " " + directives[key].join(" "); })
     .join("; ");

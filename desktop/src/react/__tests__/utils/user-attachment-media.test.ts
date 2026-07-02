@@ -1,7 +1,20 @@
-import { describe, expect, it, vi } from 'vitest';
+/**
+ * @vitest-environment jsdom
+ */
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { useStore } from '../../stores';
 import { getUserAttachmentImageSrc } from '../../utils/user-attachment-media';
 
 describe('getUserAttachmentImageSrc', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    useStore.setState({
+      serverConnections: {},
+      activeServerConnectionId: null,
+      activeServerConnection: null,
+    } as never);
+  });
+
   it('优先使用已有 base64 inline 数据', () => {
     const platform = { getFileUrl: vi.fn(() => 'file:///tmp/pic.png') };
 
@@ -19,5 +32,83 @@ describe('getUserAttachmentImageSrc', () => {
     expect(getUserAttachmentImageSrc({
       path: '/Users/test/.hanako/attachments/upload-abc.png',
     }, platform)).toBe('file:///Users/test/.hanako/attachments/upload-abc.png');
+  });
+
+  it('remote session image attachments use resource URLs after inline bytes are gone', () => {
+    const platform = { getFileUrl: vi.fn((p: string) => `file://${p}`) };
+    const remoteConnection = {
+      connectionId: 'lan:remote:studio',
+      kind: 'lan',
+      serverId: 'remote',
+      studioId: 'studio_remote',
+      label: 'Remote Hana',
+      baseUrl: 'http://100.125.173.118:14500',
+      wsUrl: 'ws://100.125.173.118:14500',
+      token: 'remote-token',
+      authState: 'paired',
+      trustState: 'lan',
+      credentialKind: 'device_credential',
+      platformAccountId: null,
+      officialServiceKind: null,
+      capabilities: ['chat', 'resources'],
+    };
+    useStore.setState({
+      serverConnections: { [remoteConnection.connectionId]: remoteConnection },
+      activeServerConnectionId: remoteConnection.connectionId,
+      activeServerConnection: remoteConnection,
+    } as never);
+
+    expect(getUserAttachmentImageSrc({
+      fileId: 'sf_pasted_image',
+      path: '/hana/session-files/pasted.png',
+      name: 'pasted.png',
+      mimeType: 'image/png',
+    } as never, platform)).toBe(
+      'http://100.125.173.118:14500/api/resources/res_sf_pasted_image/content?token=remote-token',
+    );
+    expect(platform.getFileUrl).not.toHaveBeenCalled();
+  });
+
+  it('remote image attachments prefer explicit resource content links over synthetic file ids', () => {
+    const platform = { getFileUrl: vi.fn((p: string) => `file://${p}`) };
+    const remoteConnection = {
+      connectionId: 'lan:remote:studio',
+      kind: 'lan',
+      serverId: 'remote',
+      studioId: 'studio_remote',
+      label: 'Remote Hana',
+      baseUrl: 'http://100.125.173.118:14500',
+      wsUrl: 'ws://100.125.173.118:14500',
+      token: 'remote-token',
+      authState: 'paired',
+      trustState: 'lan',
+      credentialKind: 'device_credential',
+      platformAccountId: null,
+      officialServiceKind: null,
+      capabilities: ['chat', 'resources'],
+    };
+    useStore.setState({
+      serverConnections: { [remoteConnection.connectionId]: remoteConnection },
+      activeServerConnectionId: remoteConnection.connectionId,
+      activeServerConnection: remoteConnection,
+    } as never);
+
+    expect(getUserAttachmentImageSrc({
+      fileId: 'client_upload_image',
+      path: '/root/.hanako/session-files/image.png',
+      name: 'image.png',
+      mimeType: 'image/png',
+      resource: {
+        resourceId: 'res_custom_image',
+        studioId: 'studio_remote',
+        links: {
+          self: '/api/resources/res_custom_image',
+          content: '/api/resources/res_custom_image/content',
+        },
+      },
+    } as never, platform)).toBe(
+      'http://100.125.173.118:14500/api/resources/res_custom_image/content?token=remote-token',
+    );
+    expect(platform.getFileUrl).not.toHaveBeenCalled();
   });
 });

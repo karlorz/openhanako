@@ -171,6 +171,67 @@ describe('chat-slice', () => {
     });
   });
 
+  describe('confirmOptimisticUserMessage', () => {
+    it('preserves optimistic attachment inline bytes when the server echo omits them', () => {
+      slice.initSession('/a', [], false);
+      slice.appendOptimisticUserMessage('/a', {
+        id: 'client-1',
+        role: 'user',
+        text: '',
+        attachments: [{
+          fileId: 'sf_image',
+          path: '/cache/pasted.png',
+          name: 'pasted.png',
+          isDir: false,
+          mimeType: 'image/png',
+          base64Data: 'IMAGE_BASE64',
+          resource: {
+            resourceId: 'res_sf_image',
+            studioId: 'studio_remote',
+            links: {
+              self: '/api/resources/res_sf_image',
+              content: '/api/resources/res_sf_image/content',
+            },
+          },
+        }],
+        sendStatus: 'pending',
+      });
+
+      const consumed = slice.confirmOptimisticUserMessage('/a', 'client-1', {
+        id: 'server-1',
+        role: 'user',
+        text: '',
+        sourceEntryId: 'entry-1',
+        attachments: [{
+          fileId: 'sf_image',
+          path: '/cache/pasted.png',
+          name: 'pasted.png',
+          isDir: false,
+          mimeType: 'image/png',
+        }],
+      });
+
+      expect(consumed).toBe(true);
+      const item = slice.chatSessions['/a']?.items[0];
+      expect(item?.type).toBe('message');
+      if (item?.type !== 'message') throw new Error('expected message item');
+      expect(item.data.attachments?.[0]).toMatchObject({
+        fileId: 'sf_image',
+        base64Data: 'IMAGE_BASE64',
+        mimeType: 'image/png',
+        resource: {
+          resourceId: 'res_sf_image',
+          studioId: 'studio_remote',
+          links: {
+            self: '/api/resources/res_sf_image',
+            content: '/api/resources/res_sf_image/content',
+          },
+        },
+      });
+      expect(item.data.sendStatus).toBeUndefined();
+    });
+  });
+
   describe('clearSession', () => {
     it('同时清掉 chatSessions / sessionModelsByPath / _loadMessagesVersion', () => {
       slice.updateSessionModel('/a', MODEL);

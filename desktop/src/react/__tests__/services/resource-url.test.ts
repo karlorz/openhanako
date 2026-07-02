@@ -35,6 +35,19 @@ const remoteConnection: ServerConnection = {
   credentialKind: 'device_credential',
 };
 
+const lanDeviceConnection: ServerConnection = {
+  ...localConnection,
+  connectionId: 'lan:device',
+  serverId: 'server_lan',
+  studioId: 'studio_lan',
+  label: 'LAN Hana',
+  baseUrl: 'http://100.125.173.118:14500',
+  wsUrl: 'ws://100.125.173.118:14500',
+  token: 'lan token',
+  trustState: 'lan',
+  credentialKind: 'device_credential',
+};
+
 function fileRef(patch: Partial<FileRef> = {}): FileRef {
   return {
     id: 'session-registry:/workspace/asset.png',
@@ -72,6 +85,24 @@ describe('resolveFileRefUrl', () => {
     expect(platform.getFileUrl).toHaveBeenCalledWith('/workspace/asset.png');
   });
 
+  it('treats LAN device-credential local-kind connections as local transport', () => {
+    const platform = { getFileUrl: vi.fn((p: string) => `file:///mock${p}`) };
+
+    const result = resolveFileRefUrl(fileRef({
+      resource: undefined,
+      version: { mtimeMs: 11, size: 22 },
+    }), {
+      connection: lanDeviceConnection,
+      platform,
+    });
+
+    expect(result).toEqual({
+      mode: 'local-file',
+      url: 'file:///mock/workspace/asset.png?v=11-22',
+    });
+    expect(platform.getFileUrl).toHaveBeenCalledWith('/workspace/asset.png');
+  });
+
   it('uses the resource content URL for a remote connection instead of exposing local paths', () => {
     const platform = { getFileUrl: vi.fn((p: string) => `file:///mock${p}`) };
 
@@ -83,6 +114,25 @@ describe('resolveFileRefUrl', () => {
     expect(result).toEqual({
       mode: 'resource-content',
       url: 'https://hana.example/api/resources/res_sf_asset/content?v=11-22',
+    });
+    expect(platform.getFileUrl).not.toHaveBeenCalled();
+  });
+
+  it('synthesizes a session-file resource URL for older remote refs that only have fileId', () => {
+    const platform = { getFileUrl: vi.fn((p: string) => `file:///mock${p}`) };
+
+    const result = resolveFileRefUrl(fileRef({
+      fileId: 'sf_uploaded_image',
+      resource: undefined,
+      version: { mtimeMs: 11, size: 22 },
+    }), {
+      connection: remoteConnection,
+      platform,
+    });
+
+    expect(result).toEqual({
+      mode: 'resource-content',
+      url: 'https://hana.example/api/resources/res_sf_uploaded_image/content?v=11-22',
     });
     expect(platform.getFileUrl).not.toHaveBeenCalled();
   });

@@ -1,5 +1,5 @@
 import type { FileRef } from '../types/file-ref';
-import { buildConnectionUrl, isLocalOwnerConnection, type ServerConnection } from './server-connection';
+import { buildConnectionUrl, type ServerConnection } from './server-connection';
 
 export type FileRefUrlMode = 'local-file' | 'resource-content' | 'inline-data';
 
@@ -21,7 +21,7 @@ export function resolveFileRefUrl(ref: FileRef, {
   platform?: ResourceUrlPlatform | null;
   preferLocalFile?: boolean;
 }): FileRefUrlResult {
-  const isLocalTransport = !connection || isLocalOwnerConnection(connection);
+  const isLocalTransport = !connection || connection.kind === 'local';
   const getFileUrl = platform?.getFileUrl;
   const canUseLocalFile = preferLocalFile
     && isLocalTransport
@@ -51,6 +51,19 @@ export function resolveFileRefUrl(ref: FileRef, {
     };
   }
 
+  const syntheticSessionFileContentPath = !isLocalTransport
+    ? resourceContentPathForSessionFileId(ref.fileId)
+    : null;
+  if (syntheticSessionFileContentPath && connection) {
+    return {
+      mode: 'resource-content',
+      url: appendFileRefVersion(
+        buildConnectionUrl(connection, syntheticSessionFileContentPath, { includeTokenQuery: true }),
+        ref,
+      ),
+    };
+  }
+
   if (ref.path && isLocalTransport) {
     if (typeof getFileUrl !== 'function') {
       throw new Error('platform.getFileUrl not available and resource content link missing');
@@ -63,6 +76,11 @@ export function resolveFileRefUrl(ref: FileRef, {
   }
 
   throw new Error(`file ref lacks local path, resource content link, and inline data: ${ref.id}`);
+}
+
+function resourceContentPathForSessionFileId(fileId: string | undefined): string | null {
+  if (!fileId || !/^sf_[A-Za-z0-9][A-Za-z0-9_-]*$/.test(fileId)) return null;
+  return `/api/resources/${encodeURIComponent(`res_${fileId}`)}/content`;
 }
 
 export function fileRefVersionToken(ref: Pick<FileRef, 'version'>): string | null {

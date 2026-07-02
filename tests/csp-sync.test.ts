@@ -9,9 +9,19 @@ import * as vm from 'node:vm';
  * 如果测试失败，说明有人改了 CSP_PROFILES 但忘了同步 HTML 源文件（或反之）。
  */
 
+type EnvLike = Record<string, string | undefined>;
+type CspConnectionFixture = {
+  baseUrl: string;
+  wsUrl: string;
+};
+
+const ROOT_DIR = path.resolve(__dirname, '..');
+const DEFAULT_REMOTE_URL = 'http://100.125.173.118:14500';
+const DEFAULT_SAVED_REMOTE_URL = 'http://192.168.1.9:14500';
+
 // 从 vite.config.ts 源码中提取 CSP_PROFILES（不 import，避免引入 Vite 依赖）
 function extractCspProfiles(): Record<string, string> {
-  const src = fs.readFileSync(path.resolve(__dirname, '..', 'vite.config.ts'), 'utf-8');
+  const src = fs.readFileSync(path.join(ROOT_DIR, 'vite.config.ts'), 'utf-8');
   const profiles: Record<string, string> = {};
 
   // 匹配 'filename.html': "csp-value" 或 'filename.html':\n    "csp-value"
@@ -40,9 +50,112 @@ function normalizeCsp(csp: string): string {
     .join('; ');
 }
 
+function parseCsp(csp: string): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  for (const directive of csp.split(';')) {
+    const parts = directive.trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) continue;
+    out[parts[0]] = parts.slice(1);
+  }
+  return out;
+}
+
+function parseDotEnv(content: string): EnvLike {
+  const out: EnvLike = {};
+  for (const rawLine of content.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#')) continue;
+    const match = line.match(/^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
+    if (!match) continue;
+    const [, key, rawValue] = match;
+    let value = rawValue.trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    out[key] = value;
+  }
+  return out;
+}
+
+function readRootDotEnv(): string {
+  try {
+    return fs.readFileSync(path.join(ROOT_DIR, '.env'), 'utf-8');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return '';
+    throw error;
+  }
+}
+
+function envValue(env: EnvLike, key: string): string | undefined {
+  const value = env[key]?.trim();
+  return value || undefined;
+}
+
+function deriveWsUrl(baseUrl: string): string {
+  const url = new URL(baseUrl);
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${url.protocol}//${url.host}`;
+}
+
+function resolveConnectionFixture(env: EnvLike, prefix: string, defaultUrl: string): CspConnectionFixture {
+  const baseUrl = envValue(env, `${prefix}_URL`) ||
+    envValue(env, `${prefix}_BASE_URL`) ||
+    (envValue(env, `${prefix}_IP`)
+      ? `${envValue(env, `${prefix}_PROTOCOL`) || 'http'}://${envValue(env, `${prefix}_IP`)}:${envValue(env, `${prefix}_PORT`) || '14500'}`
+      : defaultUrl);
+
+  return {
+    baseUrl,
+    wsUrl: envValue(env, `${prefix}_WS_URL`) || deriveWsUrl(baseUrl),
+  };
+}
+
+function resolveCspFixtureConfig(env: EnvLike = process.env, dotEnvText = readRootDotEnv()) {
+  const mergedEnv = { ...parseDotEnv(dotEnvText), ...env };
+  return {
+    remote: resolveConnectionFixture(mergedEnv, 'HANA_CSP_TEST_REMOTE', DEFAULT_REMOTE_URL),
+    savedRemote: resolveConnectionFixture(mergedEnv, 'HANA_CSP_TEST_SAVED_REMOTE', DEFAULT_SAVED_REMOTE_URL),
+  };
+}
+
+function renderRuntimeConnectionCsp(storageValue: unknown): string {
+  const src = fs.readFileSync(
+    path.join(ROOT_DIR, 'desktop', 'src', 'modules', 'connection-csp.js'),
+    'utf-8',
+  );
+  let written = '';
+  const context = vm.createContext({
+    URL,
+    localStorage: {
+      getItem: (key: string) => key === 'hana-server-connections-v1'
+        ? JSON.stringify(storageValue)
+        : null,
+    },
+    window: {
+      location: {
+        host: '',
+        hostname: '',
+      },
+    },
+    document: {
+      write: (html: string) => {
+        written += html;
+      },
+    },
+  });
+  vm.runInContext(src, context);
+  const match = written.match(/content="([^"]+)"/);
+  if (!match) throw new Error(`CSP meta not written: ${written}`);
+  return match[1].replace(/&quot;/g, '"');
+}
+
 describe('CSP sync', () => {
   const profiles = extractCspProfiles();
-  const htmlDir = path.resolve(__dirname, '..', 'desktop', 'src');
+  const htmlDir = path.join(ROOT_DIR, 'desktop', 'src');
+  const cspFixture = resolveCspFixtureConfig();
 
   it('should have extracted all 8 profiles', () => {
     expect(Object.keys(profiles)).toHaveLength(8);
@@ -77,6 +190,68 @@ describe('CSP sync', () => {
     expect(runtimeCsp).not.toMatch(/connect-src[^;]*\shttps:(?:\s|;|$)/);
     expect(runtimeCsp).not.toMatch(/connect-src[^;]*\sws:(?:\s|;|$)/);
     expect(runtimeCsp).not.toMatch(/connect-src[^;]*\swss:(?:\s|;|$)/);
+    const csp = parseCsp(renderRuntimeConnectionCsp({
+      activeServerConnectionId: 'lan:remote:studio',
+      serverConnections: {
+        'lan:remote:studio': {
+          connectionId: 'lan:remote:studio',
+          kind: 'lan',
+          baseUrl: cspFixture.remote.baseUrl,
+          wsUrl: cspFixture.remote.wsUrl,
+        },
+      },
+    }));
+
+    expect(csp['connect-src']).toContain(cspFixture.remote.baseUrl);
+    expect(csp['connect-src']).toContain(cspFixture.remote.wsUrl);
+    expect(csp['img-src']).toContain(cspFixture.remote.baseUrl);
+    expect(csp['media-src']).toContain(cspFixture.remote.baseUrl);
+    expect(csp['img-src']).not.toContain('http:');
+    expect(csp['media-src']).not.toContain('http:');
+
+    const savedCsp = parseCsp(renderRuntimeConnectionCsp({
+      schemaVersion: 1,
+      activeServerConnectionId: null,
+      serverConnections: {
+        'lan:node:studio': {
+          connectionId: 'lan:node:studio',
+          kind: 'lan',
+          baseUrl: cspFixture.savedRemote.baseUrl,
+          wsUrl: cspFixture.savedRemote.wsUrl,
+        },
+      },
+    }));
+
+    expect(savedCsp['connect-src']).toContain(cspFixture.savedRemote.baseUrl);
+    expect(savedCsp['connect-src']).toContain(cspFixture.savedRemote.wsUrl);
+    expect(savedCsp['img-src']).toContain(cspFixture.savedRemote.baseUrl);
+    expect(savedCsp['media-src']).toContain(cspFixture.savedRemote.baseUrl);
+
+    const envFixture = resolveCspFixtureConfig({}, [
+      'HANA_CSP_TEST_REMOTE_URL=http://10.0.0.2:18080',
+      'HANA_CSP_TEST_REMOTE_WS_URL=ws://10.0.0.2:18080',
+      'HANA_CSP_TEST_SAVED_REMOTE_URL=http://10.0.0.3:19090',
+      'HANA_CSP_TEST_SAVED_REMOTE_WS_URL=ws://10.0.0.3:19090',
+    ].join('\n'));
+
+    expect(envFixture.remote).toEqual({
+      baseUrl: 'http://10.0.0.2:18080',
+      wsUrl: 'ws://10.0.0.2:18080',
+    });
+    expect(envFixture.savedRemote).toEqual({
+      baseUrl: 'http://10.0.0.3:19090',
+      wsUrl: 'ws://10.0.0.3:19090',
+    });
+
+    const ipFixture = resolveCspFixtureConfig({}, [
+      'HANA_CSP_TEST_REMOTE_IP=10.0.0.4',
+      'HANA_CSP_TEST_REMOTE_PORT=17070',
+    ].join('\n'));
+
+    expect(ipFixture.remote).toEqual({
+      baseUrl: 'http://10.0.0.4:17070',
+      wsUrl: 'ws://10.0.0.4:17070',
+    });
   });
 
   it('desktop index CSP allows local PDF iframe sources without widening connections', () => {

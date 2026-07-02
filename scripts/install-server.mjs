@@ -1,0 +1,2515 @@
+#!/usr/bin/env node
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { createHash } from "node:crypto";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+
+const __filename = fileURLToPath(import.meta.url);
+
+const LATEST_FULL_STATE_BACKUP_ALIAS = "latest-full-state";
+const FULL_STATE_RESTORE_CLASS = "full-state-before-operational-reinit";
+
+const REINIT_OPERATIONAL_PRESERVE_ENTRIES = Object.freeze([
+  "auth.json",
+  "added-models.yaml",
+  "models.json",
+  "models-cache.json",
+  "provider-catalog.json",
+  "provider-plugins",
+  "user/preferences.json",
+  "server-network.json",
+  "server-node.json",
+  "users.json",
+  "studios.json",
+  "studio-mounts.json",
+  "devices.json",
+  "device-credentials.json",
+  "pairing-sessions.json",
+  "local-user-auth.json",
+  "security/grants.json",
+]);
+
+export const DEFAULT_PATHS = Object.freeze({
+  installRoot: "/opt/hanaagent",
+  installBin: "/usr/local/bin/install-server",
+  installImpl: "/opt/hanaagent/install/install-server.mjs",
+  releasesDir: "/opt/hanaagent/releases",
+  currentLink: "/opt/hanaagent/current",
+  dataDir: "/var/lib/hanaagent",
+  configDir: "/etc/hanaagent",
+  serviceUnit: "/etc/systemd/system/hanaagent.service",
+  serviceName: "hanaagent",
+});
+
+function fail(message) {
+  throw new Error(message);
+}
+
+export function resolvePrivilegeModel({ uid = typeof process.getuid === "function" ? process.getuid() : 0, hasSudo = commandExists("sudo") } = {}) {
+  if (uid === 0) {
+    return { mode: "root", commandPrefix: [] };
+  }
+  if (!hasSudo) {
+    fail("sudo is required for non-root install-server operations. Re-run as root or install sudo first.");
+  }
+  return { mode: "sudo", commandPrefix: ["sudo"] };
+}
+
+export function resolveLinuxAsset(metadata, { platform = process.platform, arch = process.arch } = {}) {
+  if (platform !== "linux") {
+    fail(`install-server supports Linux only; got ${platform}`);
+  }
+  const normalizedArch = normalizeArch(arch);
+  const asset = (metadata.assets ?? []).find((item) => {
+    return item.platform === "linux" && normalizeArch(item.arch) === normalizedArch;
+  });
+  if (!asset) {
+    fail(`No Linux ${normalizedArch} server asset found in release metadata`);
+  }
+  if (!/^[a-fA-F0-9]{64}$/.test(asset.sha256 ?? "")) {
+    fail(`Release asset ${asset.name ?? asset.url ?? normalizedArch} is missing a valid sha256`);
+  }
+  return asset;
+}
+
+export function normalizeArch(arch) {
+  switch (arch) {
+    case "x64":
+    case "amd64":
+      return "x64";
+    case "arm64":
+    case "aarch64":
+      return "arm64";
+    default:
+      fail(`Unsupported Linux architecture: ${arch}`);
+  }
+}
+
+// Selects the host's Linux server asset from normalized release metadata.
+// Reused by buildUpgradePlan so resolution and plan-building share one path.
+export function selectServerAsset(metadata, { platform = process.platform, arch = process.arch } = {}) {
+  if (platform !== "linux") {
+    fail(`install-server supports Linux only; got ${platform}`);
+  }
+  const normalizedArch = normalizeArch(arch);
+  const asset = (metadata.assets ?? []).find((item) => {
+    return item.platform === "linux" && normalizeArch(item.arch) === normalizedArch;
+  });
+  if (!asset) {
+    fail(`No Linux ${normalizedArch} server asset found in release ${metadata.tag ?? "(no tag)"}`);
+  }
+  return asset;
+}
+
+// Matches hanaagent-server-<tag>-<os>-<arch>.tar.gz asset names published by
+// scripts/pack-server-bundle.mjs. os uses the dist-server mapping (mac/win/linux).
+const SERVER_ASSET_NAME_RE = /^hanaagent-server-(.+)-(linux|mac|win)-(arm64|x64)\.tar\.gz$/;
+
+function assetFromGithubAsset(g) {
+  const m = SERVER_ASSET_NAME_RE.exec(g.name ?? "");
+  if (!m) return null;
+  return { platform: m[2], arch: m[3], name: g.name, url: g.browser_download_url, sha256: null };
+}
+
+// Resolves release metadata for upgrade/install. httpClient is injected so this
+// is unit-testable without network; createGithubReleasesClient provides the real
+// one for the CLI. Returns { tag, prerelease, assets[] } with only Linux assets.
+// GitHub Releases does not expose asset sha256, so assets carry sha256: null —
+// the download op verifies against the <asset>.sha256 sidecar at install time.
+export async function resolveRelease({ version, channel = "stable", repo = "karlorz/openhanako" } = {}, httpClient) {
+  if (!httpClient) fail("resolveRelease requires an injected httpClient");
+  let gh;
+  if (version) {
+    gh = await httpClient.getRelease(version);
+    if (!gh) fail(`Release not found: ${version}`);
+  } else {
+    const all = await httpClient.listReleases();
+    gh = channel === "prerelease"
+      ? all[0] ?? null
+      : all.find((r) => !r.prerelease) ?? null;
+    if (!gh) {
+      fail(channel === "prerelease"
+        ? "No release found; pass --version"
+        : "No stable release found; pass --version or --channel prerelease");
+    }
+  }
+  if (gh.prerelease && channel !== "prerelease") {
+    fail(`Release ${gh.tag_name} is a prerelease; re-run with --channel prerelease`);
+  }
+  const assets = (gh.assets ?? []).map(assetFromGithubAsset).filter((a) => a && a.platform === "linux");
+  if (assets.length === 0) {
+    fail(`Release ${gh.tag_name} has no Linux server bundle asset`);
+  }
+  return { tag: gh.tag_name, prerelease: !!gh.prerelease, repo, assets };
+}
+
+export function buildUpgradePlan({
+  metadata,
+  currentVersion,
+  previousReleaseDir,
+  platform = process.platform,
+  arch = process.arch,
+  uid = typeof process.getuid === "function" ? process.getuid() : 0,
+  hasSudo = commandExists("sudo"),
+  dryRun = true,
+  channel = "stable",
+  paths = {},
+  serviceUser = "hanaagent",
+  serviceGroup = serviceUser,
+  serviceEnvironment = {},
+  preserve = { unit: {}, service: {} },
+} = {}) {
+  if (!metadata?.tag) {
+    fail("Release metadata must include a tag");
+  }
+  if (metadata.prerelease && channel !== "prerelease") {
+    fail("Prerelease upgrade requires --channel prerelease");
+  }
+  if (!currentVersion) {
+    fail("Current installed version is required before planning an upgrade");
+  }
+
+  const resolvedPaths = { ...DEFAULT_PATHS, ...paths };
+  const normalizedArch = normalizeArch(arch);
+  const targetReleaseDir = path.posix.join(resolvedPaths.releasesDir, `${metadata.tag}-linux-${normalizedArch}`);
+  const resolvedPreviousReleaseDir = previousReleaseDir
+    || path.posix.join(resolvedPaths.releasesDir, currentVersion);
+  const privilege = resolvePrivilegeModel({ uid, hasSudo });
+  const asset = selectServerAsset(metadata, { platform, arch: normalizedArch });
+  if (asset.sha256 != null && !/^[a-fA-F0-9]{64}$/.test(asset.sha256)) {
+    fail(`Release asset ${asset.name ?? asset.url ?? normalizedArch} has an invalid sha256`);
+  }
+
+  const steps = [
+    {
+      id: "preflight",
+      mutatesService: false,
+      command: "verify linux host, systemd, existing install, data directory, and service state",
+    },
+    {
+      id: "backup",
+      mutatesService: false,
+      command: `create and verify backup of ${resolvedPaths.configDir} and ${resolvedPaths.dataDir}`,
+    },
+    {
+      id: "download",
+      mutatesService: false,
+      command: `download ${asset.url} to staging`,
+    },
+    {
+      id: "verify-checksum",
+      mutatesService: false,
+      command: asset.sha256
+        ? `verify sha256 ${asset.sha256}`
+        : `verify sha256 from ${asset.name ?? "server artifact"}.sha256 sidecar`,
+    },
+    {
+      id: "extract-release",
+      mutatesService: false,
+      command: `extract ${asset.name ?? "server artifact"} to ${targetReleaseDir}`,
+    },
+    {
+      id: "switch-current",
+      mutatesService: true,
+      command: `atomically switch ${resolvedPaths.currentLink} to ${targetReleaseDir}`,
+    },
+    {
+      id: "write-systemd-unit",
+      mutatesService: true,
+      command: `write ${resolvedPaths.serviceUnit} for ${resolvedPaths.serviceName}`,
+    },
+    {
+      id: "restart-service",
+      mutatesService: true,
+      command: `systemctl restart ${resolvedPaths.serviceName}`,
+    },
+    {
+      id: "health-check",
+      mutatesService: false,
+      command: "verify local server health endpoint",
+    },
+  ];
+
+  assertNoDestructiveDataSteps(steps);
+
+  return {
+    kind: "install-server-upgrade-plan",
+    dryRun,
+    tag: metadata.tag,
+    currentVersion,
+    platform: "linux",
+    arch: normalizedArch,
+    asset,
+    paths: resolvedPaths,
+    privilege,
+    serviceUser,
+    serviceGroup,
+    serviceEnvironment: {
+      HANA_HOME: resolvedPaths.dataDir,
+      ...serviceEnvironment,
+    },
+    preserve: {
+      unit: { ...(preserve?.unit ?? {}) },
+      service: { ...(preserve?.service ?? {}) },
+    },
+    targetReleaseDir,
+    previousReleaseDir: resolvedPreviousReleaseDir,
+    steps,
+  };
+}
+
+export function buildInstallPlan({
+  metadata,
+  platform = process.platform,
+  arch = process.arch,
+  uid = typeof process.getuid === "function" ? process.getuid() : 0,
+  hasSudo = commandExists("sudo"),
+  dryRun = true,
+  channel = "stable",
+  hostProfile = "default",
+  paths = {},
+  serviceUser = "hanaagent",
+  serviceGroup = serviceUser,
+  serviceEnvironment = {},
+} = {}) {
+  if (!metadata?.tag) {
+    fail("Release metadata must include a tag");
+  }
+  if (metadata.prerelease && channel !== "prerelease") {
+    fail("Prerelease install requires --channel prerelease");
+  }
+
+  const resolvedPaths = { ...DEFAULT_PATHS, ...paths };
+  const normalizedArch = normalizeArch(arch);
+  const targetReleaseDir = path.posix.join(resolvedPaths.releasesDir, `${metadata.tag}-linux-${normalizedArch}`);
+  const privilege = resolvePrivilegeModel({ uid, hasSudo });
+  const asset = selectServerAsset(metadata, { platform, arch: normalizedArch });
+  if (asset.sha256 != null && !/^[a-fA-F0-9]{64}$/.test(asset.sha256)) {
+    fail(`Release asset ${asset.name ?? asset.url ?? normalizedArch} has an invalid sha256`);
+  }
+  const steps = [
+    {
+      id: "preflight",
+      command: "verify linux host, systemd, artifact metadata, and target paths",
+    },
+    {
+      id: "assert-no-existing-install",
+      command: `refuse install if ${resolvedPaths.currentLink} already exists; use upgrade instead`,
+    },
+    {
+      id: "create-user",
+      command: "create hanaagent system user and group if missing",
+    },
+    {
+      id: "create-directories",
+      command: `create ${resolvedPaths.installRoot}, ${resolvedPaths.releasesDir}, ${resolvedPaths.configDir}, and ${resolvedPaths.dataDir}`,
+    },
+    {
+      id: "download",
+      command: `download ${asset.url} to staging`,
+    },
+    {
+      id: "verify-checksum",
+      command: asset.sha256
+        ? `verify sha256 ${asset.sha256}`
+        : `verify sha256 from ${asset.name ?? "server artifact"}.sha256 sidecar`,
+    },
+    {
+      id: "extract-release",
+      command: `extract ${asset.name ?? "server artifact"} to ${targetReleaseDir}`,
+    },
+    {
+      id: "write-systemd-unit",
+      command: `write ${resolvedPaths.serviceUnit} for ${resolvedPaths.serviceName}`,
+    },
+    {
+      id: "switch-current",
+      command: `atomically switch ${resolvedPaths.currentLink} to ${targetReleaseDir}`,
+    },
+    {
+      id: "install-cli",
+      command: `install durable ${resolvedPaths.installBin} shim and ${resolvedPaths.installImpl}`,
+    },
+    {
+      id: "enable-service",
+      command: `systemctl enable ${resolvedPaths.serviceName}`,
+    },
+    {
+      id: "restart-service",
+      command: `systemctl restart ${resolvedPaths.serviceName}`,
+    },
+    {
+      id: "health-check",
+      command: "verify local server health endpoint",
+    },
+  ];
+
+  assertNoDestructiveDataSteps(steps);
+
+  return {
+    kind: "install-server-install-plan",
+    dryRun,
+    hostProfile,
+    tag: metadata.tag,
+    platform: "linux",
+    arch: normalizedArch,
+    asset,
+    paths: resolvedPaths,
+    privilege,
+    serviceUser,
+    serviceGroup,
+    serviceEnvironment: {
+      HANA_HOME: resolvedPaths.dataDir,
+      ...serviceEnvironment,
+    },
+    targetReleaseDir,
+    steps,
+  };
+}
+
+export function buildStatusPlan({ hostProfile = "default", paths = {} } = {}) {
+  const resolvedPaths = { ...DEFAULT_PATHS, ...paths };
+  return {
+    kind: "install-server-status-plan",
+    hostProfile,
+    paths: resolvedPaths,
+    steps: [
+      {
+        id: "read-current-link",
+        readOnly: true,
+        command: `readlink ${resolvedPaths.currentLink}`,
+      },
+      {
+        id: "read-service-state",
+        readOnly: true,
+        command: `systemctl is-active ${resolvedPaths.serviceName}`,
+      },
+      {
+        id: "read-service-enabled",
+        readOnly: true,
+        command: `systemctl is-enabled ${resolvedPaths.serviceName}`,
+      },
+      {
+        id: "read-listening-address",
+        readOnly: true,
+        command: "inspect configured bind address and listening port",
+      },
+      {
+        id: "read-last-backup",
+        readOnly: true,
+        command: `list latest backup under ${path.posix.join(resolvedPaths.installRoot, "backups")}`,
+      },
+    ],
+  };
+}
+
+export function resolveHanaDataRoot({
+  env = process.env,
+  homeDir = os.homedir(),
+} = {}) {
+  const configured = typeof env.HANA_HOME === "string" ? env.HANA_HOME.trim() : "";
+  // install-server is a Linux-only tool; its data root is always a POSIX path
+  // regardless of the host running the tests.
+  return configured || path.posix.join(homeDir.replace(/\\/g, "/"), ".hanako");
+}
+
+export function buildReinitDataDryRunPlan({
+  dataRoot = resolveHanaDataRoot(),
+  planDir = "/var/lib/hanaagent/reinit-plans",
+  now = new Date(),
+  serviceName = DEFAULT_PATHS.serviceName,
+  serviceState = {},
+  paths = {},
+  resetPairing = false,
+} = {}) {
+  const resolvedPaths = { ...DEFAULT_PATHS, ...paths };
+  const createdAt = now.toISOString();
+  const expiresAt = new Date(now.getTime() + 60 * 60 * 1000).toISOString();
+  const stamp = formatPlanTimestamp(now);
+  const preserveMode = resetPairing ? "reset_pairing" : "operational";
+  const shortHash = createHash("sha256")
+    .update(`${createdAt}\n${dataRoot}\n${serviceName}\n${preserveMode}`)
+    .digest("hex")
+    .slice(0, 8);
+  const planId = `reinit-${stamp}-${shortHash}`;
+  const backupDestination = path.join(resolvedPaths.installRoot, "backups", `${planId}.tar.gz`);
+  const preserveArchive = path.join(resolvedPaths.installRoot, "backups", `${planId}.preserve.tar.gz`);
+  const planFile = path.join(planDir, `${planId}.json`);
+  const preserve = resetPairing
+    ? {
+      schemaVersion: 1,
+      mode: "reset_pairing",
+      enabled: false,
+      entries: [],
+      archive: null,
+      manifest: null,
+      description: "Explicit full-clear mode. Provider, identity, device credentials, and LAN/network bootstrap are not preserved.",
+    }
+    : {
+      schemaVersion: 1,
+      mode: "operational",
+      enabled: true,
+      archive: preserveArchive,
+      manifest: `${preserveArchive}.manifest.json`,
+      entries: [...REINIT_OPERATIONAL_PRESERVE_ENTRIES],
+      description: "Default reset mode. Preserves provider/model setup and Connected Remote Hana bootstrap while clearing sessions, memories, uploads, and workspace state.",
+    };
+
+  return {
+    kind: "install-server-reinit-data-dry-run-plan",
+    dryRun: true,
+    mutatesData: false,
+    planId,
+    createdAt,
+    expiresAt,
+    dataRoot,
+    planFile,
+    service: {
+      name: serviceName,
+      active: serviceState.active ?? null,
+      enabled: serviceState.enabled ?? null,
+      mainPid: serviceState.mainPid ?? null,
+    },
+    backup: {
+      destination: backupDestination,
+      manifest: `${backupDestination}.manifest.json`,
+      includes: [
+        dataRoot,
+        resolvedPaths.serviceUnit,
+        planFile,
+      ],
+      restoreCommand: `node scripts/install-server.mjs reinit-data --restore ${backupDestination}`,
+    },
+    preserve,
+    exportCategories: resetPairing ? [] : [
+      {
+        id: "providers_llm",
+        description: "Provider credentials, model catalog, provider catalog, and LLM preferences required for calls after reinit.",
+        candidateFiles: [
+          "auth.json",
+          "added-models.yaml",
+          "models.json",
+          "models-cache.json",
+          "provider-catalog.json",
+          "provider-plugins",
+          "user/preferences.json",
+        ],
+      },
+      {
+        id: "connected_remote_hana",
+        description: "Access, device, and server network settings required for a paired desktop client to reconnect.",
+        candidateFiles: [
+          "server-network.json",
+          "server-node.json",
+          "devices.json",
+          "device-credentials.json",
+          "pairing-sessions.json",
+          "users.json",
+          "studios.json",
+          "studio-mounts.json",
+          "local-user-auth.json",
+          "security/grants.json",
+        ],
+      },
+    ],
+    notPreserved: [
+      "persona",
+      "agents",
+      "memories",
+      "sessions",
+      "workspaces",
+      "desk_content",
+      "plugins",
+      "plugin_state",
+      "uploaded_files",
+      "generated_media",
+      "server_runtime_info",
+      ...(resetPairing ? [
+        "providers_llm",
+        "connected_remote_hana",
+        "device_credentials",
+        "server_network",
+        "studio_mounts",
+        "security_grants",
+      ] : []),
+    ],
+    wouldRemoveOrReplace: [
+      path.join(dataRoot, "agents"),
+      path.join(dataRoot, "sessions"),
+      path.join(dataRoot, "workspaces"),
+      path.join(dataRoot, "uploads"),
+      path.join(dataRoot, "session-files"),
+      ...(resetPairing ? [path.join(dataRoot, "provider-plugins")] : []),
+    ],
+    healthChecks: [
+      `systemctl is-active ${serviceName}`,
+      "authenticated GET /api/health",
+      "paired desktop LAN reconnect smoke",
+    ],
+    confirmation: {
+      confirmCommand: `node scripts/install-server.mjs reinit-data --confirm ${planId}`,
+      status: "requires-confirm",
+      reason: "Run this command only after reviewing the plan; confirmation creates and verifies a backup before moving the data root aside.",
+    },
+    audit: {
+      reportPath: path.join(resolvedPaths.installRoot, "backups", `${planId}.audit.json`),
+      redactSecrets: true,
+    },
+  };
+}
+
+export function writeReinitDataDryRunPlan(plan) {
+  if (!plan?.planFile) {
+    fail("reinit-data dry-run plan requires planFile");
+  }
+  fs.mkdirSync(path.dirname(plan.planFile), { recursive: true });
+  fs.writeFileSync(plan.planFile, `${JSON.stringify(plan, null, 2)}\n`);
+  return plan;
+}
+
+export function loadReinitDataPlan(planIdOrFile, { planDir = "/var/lib/hanaagent/reinit-plans" } = {}) {
+  const planFile = resolveReinitPlanFile(planIdOrFile, { planDir });
+  if (!fs.existsSync(planFile)) {
+    fail(`reinit-data plan not found: ${planFile}`);
+  }
+  const plan = readJson(planFile);
+  if (plan?.kind !== "install-server-reinit-data-dry-run-plan") {
+    fail(`reinit-data plan has unsupported kind: ${plan?.kind ?? "missing"}`);
+  }
+  return plan;
+}
+
+export function buildReinitDataConfirmPlan({
+  plan,
+  now = new Date(),
+  dataRoot = resolveHanaDataRoot(),
+  paths = {},
+  uid = typeof process.getuid === "function" ? process.getuid() : 0,
+  hasSudo = commandExists("sudo"),
+} = {}) {
+  if (plan?.kind !== "install-server-reinit-data-dry-run-plan") {
+    fail("reinit-data --confirm requires a dry-run plan");
+  }
+  const expiresAt = new Date(plan.expiresAt);
+  if (Number.isNaN(expiresAt.getTime())) {
+    fail(`reinit-data plan ${plan.planId ?? "(missing id)"} has invalid expiresAt`);
+  }
+  if (expiresAt.getTime() <= now.getTime()) {
+    fail(`reinit-data plan ${plan.planId} expired at ${plan.expiresAt}; run reinit-data --dry-run again`);
+  }
+  if (path.resolve(dataRoot) !== path.resolve(plan.dataRoot)) {
+    fail(`reinit-data data root mismatch: plan=${plan.dataRoot} current=${dataRoot}`);
+  }
+
+  const resolvedPaths = { ...DEFAULT_PATHS, ...(plan.paths ?? {}), ...paths };
+  const backupDestination = plan.backup?.destination
+    ?? path.join(resolvedPaths.installRoot, "backups", `${plan.planId}.tar.gz`);
+  const confirmedAt = now.toISOString();
+  const auditPath = plan.audit?.reportPath
+    ?? path.join(resolvedPaths.installRoot, "backups", `${plan.planId}.audit.json`);
+  const asidePath = `${dataRoot}.aside-${formatPlanTimestamp(now)}`;
+
+  return {
+    ...plan,
+    kind: "install-server-reinit-data-confirm-plan",
+    dryRun: false,
+    mutatesData: true,
+    confirmedAt,
+    sourcePlanFile: plan.planFile,
+    platform: "linux",
+    dataRoot,
+    paths: resolvedPaths,
+    privilege: resolvePrivilegeModel({ uid, hasSudo }),
+    backup: {
+      ...(plan.backup ?? {}),
+      destination: backupDestination,
+      manifest: plan.backup?.manifest ?? `${backupDestination}.manifest.json`,
+      restoreCommand: `node scripts/install-server.mjs reinit-data --restore ${backupDestination}`,
+    },
+    asidePath,
+    audit: {
+      ...(plan.audit ?? {}),
+      reportPath: auditPath,
+      redactSecrets: true,
+    },
+  };
+}
+
+export async function executeReinitDataPlan(plan, ops = {}) {
+  const requiredOps = [
+    "preflight",
+    "stopService",
+    "createBackup",
+    "verifyBackup",
+    ...(plan?.preserve?.enabled ? ["exportPreservedData", "importPreservedData"] : []),
+    "moveDataRootAside",
+    "startService",
+    "healthCheck",
+    "writeAudit",
+  ];
+  for (const op of requiredOps) {
+    if (typeof ops[op] !== "function") {
+      fail(`executeReinitDataPlan requires ops.${op}`);
+    }
+  }
+
+  let resetStarted = false;
+  let serviceStopped = false;
+  let serviceRestarted = false;
+  let startAttempted = false;
+  let backupResult = null;
+  let asideResult = null;
+  try {
+    await ops.preflight(plan);
+    await ops.stopService(plan);
+    serviceStopped = true;
+    backupResult = await ops.createBackup(plan);
+    await ops.verifyBackup(plan, backupResult);
+    if (plan.preserve?.enabled) {
+      await ops.exportPreservedData(plan);
+    }
+    resetStarted = true;
+    asideResult = await ops.moveDataRootAside(plan);
+    if (plan.preserve?.enabled) {
+      await ops.importPreservedData(plan);
+    }
+    startAttempted = true;
+    await ops.startService(plan);
+    serviceRestarted = true;
+    await ops.healthCheck(plan);
+    const auditResult = await ops.writeAudit({
+      action: "reinit-data-confirm",
+      ok: true,
+      plan,
+      backup: backupResult,
+      asidePath: asideResult?.asidePath ?? plan.asidePath,
+    });
+    return {
+      ok: true,
+      resetStarted,
+      serviceRestarted,
+      backupPath: backupResult?.backupPath ?? plan.backup?.destination,
+      manifestPath: backupResult?.manifestPath ?? plan.backup?.manifest,
+      asidePath: asideResult?.asidePath ?? plan.asidePath,
+      auditPath: auditResult?.auditPath ?? plan.audit?.reportPath,
+      restoreCommand: plan.backup?.restoreCommand,
+      preserveMode: plan.preserve?.mode ?? null,
+    };
+  } catch (error) {
+    let restartError = null;
+    if (serviceStopped && !serviceRestarted && !startAttempted) {
+      startAttempted = true;
+      try {
+        await ops.startService(plan);
+        serviceRestarted = true;
+      } catch (serviceError) {
+        restartError = serviceError instanceof Error ? serviceError.message : String(serviceError);
+      }
+    }
+    return {
+      ok: false,
+      resetStarted,
+      serviceRestarted,
+      backupPath: backupResult?.backupPath ?? plan.backup?.destination,
+      manifestPath: backupResult?.manifestPath ?? plan.backup?.manifest,
+      restoreCommand: plan.backup?.restoreCommand,
+      error: error instanceof Error ? error.message : String(error),
+      ...(restartError ? { restartError } : {}),
+    };
+  }
+}
+
+export async function executeReinitDataRestore(options, ops = {}) {
+  const requiredOps = [
+    "verifyBackup",
+    "stopService",
+    "moveDataRootAside",
+    "restoreBackup",
+    "startService",
+    "healthCheck",
+    "writeAudit",
+  ];
+  for (const op of requiredOps) {
+    if (typeof ops[op] !== "function") {
+      fail(`executeReinitDataRestore requires ops.${op}`);
+    }
+  }
+  if (!options?.backupPath) {
+    fail("reinit-data --restore requires backupPath");
+  }
+
+  const dataRoot = options.dataRoot ?? resolveHanaDataRoot();
+  const resolvedPaths = { ...DEFAULT_PATHS, ...(options.paths ?? {}) };
+  const backupPath = resolveReinitRestoreBackupPath(options.backupPath, {
+    dataRoot,
+    paths: resolvedPaths,
+  });
+
+  const restorePlan = {
+    kind: "install-server-reinit-data-restore-plan",
+    platform: "linux",
+    backupPath,
+    requestedBackupPath: options.backupPath,
+    dataRoot,
+    service: { name: options.serviceName ?? DEFAULT_PATHS.serviceName },
+    paths: resolvedPaths,
+    privilege: options.privilege ?? resolvePrivilegeModel({
+      uid: options.uid,
+      hasSudo: options.hasSudo,
+    }),
+    audit: {
+      reportPath: options.auditPath ?? `${backupPath}.restore-audit.json`,
+      redactSecrets: true,
+    },
+    asidePath: options.asidePath ?? `${dataRoot}.pre-restore-${defaultTimestamp()}`,
+  };
+
+  let restoreStarted = false;
+  let serviceStopped = false;
+  let serviceRestarted = false;
+  let startAttempted = false;
+  let backupVerification = null;
+  let asideResult = null;
+  try {
+    backupVerification = await ops.verifyBackup(restorePlan);
+    await ops.stopService(restorePlan);
+    serviceStopped = true;
+    restoreStarted = true;
+    asideResult = await ops.moveDataRootAside(restorePlan);
+    await ops.restoreBackup(restorePlan, backupVerification);
+    startAttempted = true;
+    await ops.startService(restorePlan);
+    serviceRestarted = true;
+    await ops.healthCheck(restorePlan);
+    const auditResult = await ops.writeAudit({
+      action: "reinit-data-restore",
+      ok: true,
+      plan: restorePlan,
+      backup: backupVerification,
+      asidePath: asideResult?.asidePath ?? restorePlan.asidePath,
+    });
+    return {
+      ok: true,
+      restoreStarted,
+      serviceRestarted,
+      backupPath: restorePlan.backupPath,
+      asidePath: asideResult?.asidePath ?? restorePlan.asidePath,
+      auditPath: auditResult?.auditPath ?? restorePlan.audit.reportPath,
+    };
+  } catch (error) {
+    let restartError = null;
+    if (serviceStopped && !serviceRestarted && !startAttempted) {
+      startAttempted = true;
+      try {
+        await ops.startService(restorePlan);
+        serviceRestarted = true;
+      } catch (serviceError) {
+        restartError = serviceError instanceof Error ? serviceError.message : String(serviceError);
+      }
+    }
+    return {
+      ok: false,
+      restoreStarted,
+      serviceRestarted,
+      backupPath: restorePlan.backupPath,
+      error: error instanceof Error ? error.message : String(error),
+      ...(restartError ? { restartError } : {}),
+    };
+  }
+}
+
+export async function executeReinitDataBackup(options, ops = {}) {
+  const requiredOps = ["stopService", "createBackup", "verifyBackup", "startService"];
+  for (const op of requiredOps) {
+    if (typeof ops[op] !== "function") {
+      fail(`executeReinitDataBackup requires ops.${op}`);
+    }
+  }
+  if (!options?.outputPath) {
+    fail("backup requires --output <path>");
+  }
+  const backupPlan = {
+    kind: "install-server-reinit-data-backup-plan",
+    platform: "linux",
+    dataRoot: options.dataRoot ?? resolveHanaDataRoot(),
+    service: { name: options.serviceName ?? DEFAULT_PATHS.serviceName },
+    paths: { ...DEFAULT_PATHS, ...(options.paths ?? {}) },
+    privilege: options.privilege ?? resolvePrivilegeModel({
+      uid: options.uid,
+      hasSudo: options.hasSudo,
+    }),
+    backup: {
+      destination: options.outputPath,
+      manifest: options.manifestPath ?? `${options.outputPath}.manifest.json`,
+      restoreCommand: `node scripts/install-server.mjs reinit-data --restore ${options.outputPath}`,
+    },
+  };
+  let serviceStopped = false;
+  let serviceRestarted = false;
+  let backupResult = null;
+  try {
+    await ops.stopService(backupPlan);
+    serviceStopped = true;
+    backupResult = await ops.createBackup(backupPlan);
+    const verification = await ops.verifyBackup(backupPlan, backupResult);
+    await ops.startService(backupPlan);
+    serviceRestarted = true;
+    return {
+      ok: true,
+      serviceRestarted,
+      backupPath: backupResult.backupPath,
+      manifestPath: backupResult.manifestPath,
+      archiveSha256: verification.archiveSha256,
+      restoreCommand: backupPlan.backup.restoreCommand,
+    };
+  } catch (error) {
+    let restartError = null;
+    if (serviceStopped && !serviceRestarted) {
+      try {
+        await ops.startService(backupPlan);
+        serviceRestarted = true;
+      } catch (serviceError) {
+        restartError = serviceError instanceof Error ? serviceError.message : String(serviceError);
+      }
+    }
+    return {
+      ok: false,
+      serviceRestarted,
+      backupPath: backupResult?.backupPath ?? backupPlan.backup.destination,
+      manifestPath: backupResult?.manifestPath ?? backupPlan.backup.manifest,
+      error: error instanceof Error ? error.message : String(error),
+      ...(restartError ? { restartError } : {}),
+    };
+  }
+}
+
+export function inspectReinitDataBackups({
+  backupDir = path.join(DEFAULT_PATHS.installRoot, "backups"),
+  dataRoot = resolveHanaDataRoot(),
+  readArchiveListing = readArchiveListingWithTar,
+  readArchiveEntry = readArchiveEntryWithTar,
+  statArchive = (archivePath) => fs.statSync(archivePath),
+} = {}) {
+  const archives = safeReadDir(backupDir)
+    .filter((name) => name.endsWith(".tar.gz") || name.endsWith(".tgz"))
+    .sort()
+    .map((name) => path.join(backupDir, name));
+  const inspectedBackups = archives.map((archivePath) => inspectReinitDataBackupArchive({
+    archivePath,
+    dataRoot,
+    readArchiveListing,
+    readArchiveEntry,
+    statArchive,
+  }));
+  const latestFullState = resolveLatestFullStateInspection(inspectedBackups, dataRoot);
+  const backups = annotateLatestFullStateInspection(inspectedBackups, latestFullState);
+
+  return {
+    kind: "install-server-reinit-data-backup-inspection",
+    backupDir,
+    dataRoot,
+    latestFullState,
+    backups,
+  };
+}
+
+function inspectReinitDataBackupArchive({
+  archivePath,
+  dataRoot,
+  readArchiveListing,
+  readArchiveEntry,
+  statArchive,
+}) {
+  const manifestPath = `${archivePath}.manifest.json`;
+  const manifest = fs.existsSync(manifestPath) ? safeReadJson(manifestPath) : null;
+  const warnings = [];
+  let entries = Array.isArray(manifest?.entries) ? normalizeTarEntries(manifest.entries) : null;
+  if (!entries) {
+    try {
+      entries = normalizeTarEntries(readArchiveListing(archivePath));
+    } catch (error) {
+      entries = [];
+      warnings.push(`archive listing failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  const counts = countReinitDataBackupEntries(entries, { archivePath, readArchiveEntry, warnings });
+  let archiveSizeBytes = null;
+  try {
+    archiveSizeBytes = statArchive(archivePath)?.size ?? null;
+  } catch (error) {
+    warnings.push(`archive stat failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  return {
+    backupPath: archivePath,
+    manifestPath,
+    manifestStatus: manifest ? "present" : "missing",
+    manifestKind: manifest?.kind ?? null,
+    createdAt: manifest?.createdAt ?? null,
+    dataRoot: manifest?.dataRoot ?? null,
+    archiveSizeBytes,
+    archiveSha256: manifest?.archiveSha256 ?? null,
+    restoreClass: manifest?.restoreClass ?? null,
+    restoreAlias: manifest?.restoreAlias ?? null,
+    preserveMode: manifest?.preserveMode ?? manifest?.mode ?? null,
+    planId: manifest?.planId ?? null,
+    rootShape: detectReinitBackupRootShape(entries, dataRoot),
+    counts,
+    hasRecoverableState: counts.sessionJsonl > 0 || counts.cronStores > 0 || counts.sessionFiles > 0,
+    isLatestFullState: false,
+    warnings,
+  };
+}
+
+function resolveLatestFullStateInspection(backups, dataRoot) {
+  const candidates = backups
+    .filter((backup) => backup.manifestKind === "hanaagent-reinit-data-backup-manifest")
+    .filter((backup) => backup.restoreClass === FULL_STATE_RESTORE_CLASS)
+    .filter((backup) => backup.preserveMode === "operational")
+    .filter((backup) => !backup.dataRoot || !dataRoot || path.resolve(backup.dataRoot) === path.resolve(dataRoot))
+    .map((backup) => ({
+      backup,
+      createdMs: Date.parse(backup.createdAt ?? ""),
+    }))
+    .sort((a, b) => {
+      const aCreated = Number.isFinite(a.createdMs) ? a.createdMs : 0;
+      const bCreated = Number.isFinite(b.createdMs) ? b.createdMs : 0;
+      return bCreated - aCreated || b.backup.manifestPath.localeCompare(a.backup.manifestPath);
+    });
+  if (candidates.length === 0) return null;
+  const selected = candidates[0].backup;
+  const warning = selected.counts.sessionJsonl === 0 && selected.counts.cronStores === 0
+    ? `${LATEST_FULL_STATE_BACKUP_ALIAS} currently points to a backup with no session JSONL files or cron stores; inspect older explicit backup paths before full-state recovery.`
+    : null;
+  return {
+    alias: LATEST_FULL_STATE_BACKUP_ALIAS,
+    backupPath: selected.backupPath,
+    manifestPath: selected.manifestPath,
+    createdAt: selected.createdAt,
+    counts: selected.counts,
+    warning,
+  };
+}
+
+function annotateLatestFullStateInspection(backups, latestFullState) {
+  if (!latestFullState) return backups;
+  return backups.map((backup) => {
+    if (backup.backupPath !== latestFullState.backupPath) return backup;
+    return {
+      ...backup,
+      isLatestFullState: true,
+      warnings: latestFullState.warning
+        ? [...backup.warnings, latestFullState.warning]
+        : backup.warnings,
+    };
+  });
+}
+
+function countReinitDataBackupEntries(entries, { archivePath, readArchiveEntry, warnings }) {
+  const sessionJsonl = entries.filter((entry) => /(^|\/)agents\/[^/]+\/sessions\/[^/]+\.jsonl$/.test(entry)).length;
+  const cronStoreEntries = entries.filter((entry) => /(^|\/)(agents|studios)\/[^/]+\/desk\/cron-jobs\.json$/.test(entry));
+  const sessionFiles = entries.filter((entry) => /(^|\/)session-files\/.+/.test(entry)).length;
+  let storedCronJobs = 0;
+  let enabledCronJobs = 0;
+  let cronStoresRead = 0;
+  for (const entry of cronStoreEntries) {
+    try {
+      const raw = readArchiveEntry(archivePath, entry);
+      if (typeof raw !== "string" || raw.length === 0) continue;
+      const parsed = JSON.parse(raw);
+      const jobs = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.jobs) ? parsed.jobs : [];
+      storedCronJobs += jobs.length;
+      enabledCronJobs += jobs.filter((job) => job?.enabled !== false).length;
+      cronStoresRead += 1;
+    } catch (error) {
+      warnings.push(`cron store ${entry} unreadable: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  return {
+    sessionJsonl,
+    cronStores: cronStoreEntries.length,
+    storedCronJobs,
+    enabledCronJobs,
+    cronStoresRead,
+    sessionFiles,
+  };
+}
+
+function detectReinitBackupRootShape(entries, dataRoot) {
+  const normalizedRoot = String(dataRoot || "").replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/+$/, "");
+  const basename = path.posix.basename(normalizedRoot || path.posix.basename(String(dataRoot || "")));
+  const rootParts = normalizedRoot.split("/").filter(Boolean);
+  const relativeRootTail = rootParts.length >= 2 ? rootParts.slice(-2).join("/") : "";
+  if (normalizedRoot && entries.some((entry) => entry === normalizedRoot || entry.startsWith(`${normalizedRoot}/`))) {
+    return "data-root-path";
+  }
+  if (relativeRootTail && entries.some((entry) => entry === relativeRootTail || entry.startsWith(`${relativeRootTail}/`))) {
+    return "data-root-path";
+  }
+  if (basename && entries.some((entry) => entry === basename || entry.startsWith(`${basename}/`))) {
+    return "data-root-basename";
+  }
+  return entries.length > 0 ? "unknown" : "empty";
+}
+
+function readArchiveListingWithTar(archivePath) {
+  const result = spawnSync("tar", ["-tzf", archivePath], { encoding: "utf8" });
+  if (result.status !== 0) {
+    fail(`tar listing failed for ${archivePath}: ${result.stderr || result.stdout || `exit ${result.status}`}`);
+  }
+  return normalizeTarEntries(result.stdout);
+}
+
+function readArchiveEntryWithTar(archivePath, entry) {
+  const result = spawnSync("tar", ["-xOzf", archivePath, "--", entry], { encoding: "utf8" });
+  if (result.status !== 0) {
+    fail(`tar read failed for ${entry} in ${archivePath}: ${result.stderr || result.stdout || `exit ${result.status}`}`);
+  }
+  return result.stdout;
+}
+
+const SAFE_REINIT_COMMANDS = new Set(["systemctl", "tar", "sha256sum", "mkdir", "mv", "chown", "test"]);
+
+export function createShellReinitDataOps({
+  run = runCommand,
+  now = defaultTimestamp,
+  owner = "root:root",
+} = {}) {
+  async function checked(cmd, args, options = {}) {
+    if (!SAFE_REINIT_COMMANDS.has(cmd)) {
+      fail(`Unexpected reinit-data operation command: ${cmd}`);
+    }
+    const prefix = options.privileged ? (options.plan?.privilege?.commandPrefix ?? []) : [];
+    const commandArgs = [...prefix, cmd, ...args];
+    const command = commandArgs.shift();
+    const result = await run(command, commandArgs);
+    if (result.status !== 0) {
+      fail(`${cmd} failed: ${result.stderr || result.stdout || `exit ${result.status}`}`);
+    }
+    return result;
+  }
+
+  return {
+    async preflight(plan) {
+      if ((plan.platform ?? "linux") !== "linux") {
+        fail(`reinit-data execution supports Linux only; got ${plan.platform}`);
+      }
+      await checked("test", ["-d", plan.dataRoot], { plan, privileged: true });
+      return true;
+    },
+    async stopService(plan) {
+      await checked("systemctl", ["stop", resolvePlanServiceName(plan)], { plan, privileged: true });
+      return true;
+    },
+    async createBackup(plan) {
+      const backupPath = resolvePlanBackupPath(plan);
+      const manifestPath = resolvePlanManifestPath(plan);
+      const parent = path.dirname(plan.dataRoot);
+      const basename = path.basename(plan.dataRoot);
+      await checked("mkdir", ["-p", path.dirname(backupPath)], { plan, privileged: true });
+      await checked("tar", ["-czpf", backupPath, "-C", parent, basename], { plan, privileged: true });
+      const listing = await checked("tar", ["-tzf", backupPath], { plan, privileged: true });
+      const checksum = await checked("sha256sum", [backupPath], { plan, privileged: true });
+      const archiveSha256 = parseSha256sum(checksum.stdout, backupPath);
+      writeBackupManifest(manifestPath, {
+        kind: "hanaagent-reinit-data-backup-manifest",
+        createdAt: new Date().toISOString(),
+        backupPath,
+        dataRoot: plan.dataRoot,
+        archiveSha256,
+        entries: parseTarListing(listing.stdout),
+        planId: plan.planId ?? null,
+        planKind: plan.kind ?? null,
+        preserveMode: plan.preserve?.mode ?? null,
+        ...(plan.preserve?.mode === "operational" ? {
+          restoreClass: FULL_STATE_RESTORE_CLASS,
+          restoreAlias: LATEST_FULL_STATE_BACKUP_ALIAS,
+        } : {}),
+        sourcePlanFile: plan.sourcePlanFile ?? plan.planFile ?? null,
+      });
+      return { backupPath, manifestPath, archiveSha256 };
+    },
+    async verifyBackup(plan) {
+      const backupPath = resolvePlanBackupPath(plan);
+      const manifestPath = resolvePlanManifestPath(plan);
+      const listing = await checked("tar", ["-tzf", backupPath], { plan, privileged: true });
+      const checksum = await checked("sha256sum", [backupPath], { plan, privileged: true });
+      const archiveSha256 = parseSha256sum(checksum.stdout, backupPath);
+      const entries = parseTarListing(listing.stdout);
+      if (fs.existsSync(manifestPath)) {
+        const manifest = readJson(manifestPath);
+        if (manifest.archiveSha256 && manifest.archiveSha256 !== archiveSha256) {
+          fail(`backup sha256 mismatch for ${backupPath}: expected ${manifest.archiveSha256}, got ${archiveSha256}`);
+        }
+        if (manifest.dataRoot && plan.dataRoot && path.resolve(manifest.dataRoot) !== path.resolve(plan.dataRoot)) {
+          fail(`backup data root mismatch for ${backupPath}: manifest=${manifest.dataRoot} requested=${plan.dataRoot}`);
+        }
+      }
+      const expectedRoot = path.basename(path.resolve(plan.dataRoot));
+      const rootEntries = entries.filter((entry) => tarEntryIsUnderRoot(entry, expectedRoot));
+      if (expectedRoot && rootEntries.length === 0) {
+        fail(`backup archive ${backupPath} does not contain expected data root ${expectedRoot}`);
+      }
+      const unsafeEntries = entries.filter((entry) => tarEntryIsUnsafe(entry));
+      if (unsafeEntries.length > 0) {
+        fail(`backup archive ${backupPath} contains unsafe entries: ${unsafeEntries.slice(0, 5).join(", ")}`);
+      }
+      const unexpectedEntries = entries.filter((entry) => !tarEntryIsUnderRoot(entry, expectedRoot));
+      if (unexpectedEntries.length > 0) {
+        fail(`backup archive ${backupPath} contains entries outside expected data root ${expectedRoot}: ${unexpectedEntries.slice(0, 5).join(", ")}`);
+      }
+      return {
+        backupPath,
+        manifestPath,
+        archiveSha256,
+        entries,
+      };
+    },
+    async exportPreservedData(plan) {
+      if (!plan.preserve?.enabled) return { skipped: true };
+      const archivePath = resolvePlanPreserveArchive(plan);
+      const manifestPath = resolvePlanPreserveManifest(plan);
+      const requestedEntries = resolvePlanPreserveEntries(plan);
+      const entries = requestedEntries.filter((entry) => fs.existsSync(path.join(plan.dataRoot, entry)));
+      await checked("mkdir", ["-p", path.dirname(archivePath)], { plan, privileged: true });
+      if (entries.length === 0) {
+        writeBackupManifest(manifestPath, {
+          kind: "hanaagent-reinit-data-preserve-manifest",
+          createdAt: new Date().toISOString(),
+          archivePath,
+          dataRoot: plan.dataRoot,
+          mode: plan.preserve.mode,
+          archiveSha256: null,
+          requestedEntries,
+          entries: [],
+          skipped: true,
+          skipReason: "no-preserve-entries-found",
+          planId: plan.planId ?? null,
+        });
+        return { archivePath: null, manifestPath, skipped: true };
+      }
+      await checked("tar", [
+        "-czpf",
+        archivePath,
+        "-C",
+        plan.dataRoot,
+        ...entries,
+      ], { plan, privileged: true });
+      const listing = await checked("tar", ["-tzf", archivePath], { plan, privileged: true });
+      const checksum = await checked("sha256sum", [archivePath], { plan, privileged: true });
+      const archiveSha256 = parseSha256sum(checksum.stdout, archivePath);
+      writeBackupManifest(manifestPath, {
+        kind: "hanaagent-reinit-data-preserve-manifest",
+        createdAt: new Date().toISOString(),
+        archivePath,
+        dataRoot: plan.dataRoot,
+        mode: plan.preserve.mode,
+        archiveSha256,
+        requestedEntries,
+        entries: parseTarListing(listing.stdout),
+        planId: plan.planId ?? null,
+      });
+      return { archivePath, manifestPath, archiveSha256 };
+    },
+    async moveDataRootAside(plan) {
+      const asidePath = plan.asidePath ?? `${plan.dataRoot}.aside-${now()}`;
+      if (!fs.existsSync(plan.dataRoot)) {
+        return { asidePath: null, skipped: true };
+      }
+      await checked("mkdir", ["-p", path.dirname(asidePath)], { plan, privileged: true });
+      await checked("mv", [plan.dataRoot, asidePath], { plan, privileged: true });
+      return { asidePath };
+    },
+    async importPreservedData(plan) {
+      if (!plan.preserve?.enabled) return { skipped: true };
+      const archivePath = resolvePlanPreserveArchive(plan);
+      const manifestPath = resolvePlanPreserveManifest(plan);
+      await checked("mkdir", ["-p", plan.dataRoot], { plan, privileged: true });
+      if (!fs.existsSync(archivePath) && fs.existsSync(manifestPath)) {
+        const manifest = readJson(manifestPath);
+        if (manifest?.skipped === true && manifest?.skipReason === "no-preserve-entries-found") {
+          await checked("chown", ["-R", owner, plan.dataRoot], { plan, privileged: true });
+          return { archivePath: null, dataRoot: plan.dataRoot, skipped: true };
+        }
+      }
+      await checked("tar", ["-xzpf", archivePath, "-C", plan.dataRoot], { plan, privileged: true });
+      await checked("chown", ["-R", owner, plan.dataRoot], { plan, privileged: true });
+      return { archivePath, dataRoot: plan.dataRoot };
+    },
+    async restoreBackup(plan) {
+      const backupPath = resolvePlanBackupPath(plan);
+      await checked("mkdir", ["-p", path.dirname(plan.dataRoot)], { plan, privileged: true });
+      await checked("tar", ["-xzpf", backupPath, "-C", path.dirname(plan.dataRoot)], { plan, privileged: true });
+      await checked("chown", ["-R", owner, plan.dataRoot], { plan, privileged: true });
+      return { dataRoot: plan.dataRoot };
+    },
+    async startService(plan) {
+      await checked("systemctl", ["start", resolvePlanServiceName(plan)], { plan, privileged: true });
+      return true;
+    },
+    async healthCheck(plan) {
+      await checked("systemctl", ["is-active", "--quiet", resolvePlanServiceName(plan)], { plan, privileged: true });
+      return true;
+    },
+    async writeAudit(event) {
+      const plan = event.plan ?? event;
+      const auditPath = plan.audit?.reportPath ?? `${resolvePlanBackupPath(plan)}.audit.json`;
+      const audit = {
+        kind: "hanaagent-reinit-data-audit",
+        action: event.action ?? "reinit-data",
+        ok: event.ok ?? true,
+        writtenAt: new Date().toISOString(),
+        planId: plan.planId ?? null,
+        dataRoot: plan.dataRoot,
+        backupPath: event.backup?.backupPath ?? plan.backupPath ?? plan.backup?.destination ?? null,
+        manifestPath: event.backup?.manifestPath ?? plan.backup?.manifest ?? null,
+        asidePath: event.asidePath ?? plan.asidePath ?? null,
+        restoreCommand: plan.backup?.restoreCommand ?? (plan.backupPath
+          ? `node scripts/install-server.mjs reinit-data --restore ${plan.backupPath}`
+          : null),
+        preserve: plan.preserve ? {
+          mode: plan.preserve.mode,
+          enabled: plan.preserve.enabled === true,
+          archive: plan.preserve.archive ?? null,
+          entries: Array.isArray(plan.preserve.entries) ? [...plan.preserve.entries] : [],
+        } : null,
+        redacted: true,
+      };
+      fs.mkdirSync(path.dirname(auditPath), { recursive: true });
+      fs.writeFileSync(auditPath, `${JSON.stringify(audit, null, 2)}\n`);
+      return { auditPath };
+    },
+  };
+}
+
+function assertNoDestructiveDataSteps(steps) {
+  // Plan descriptions are part of the dry-run contract; executable upgrade ops
+  // are separately constrained by SAFE_UPGRADE_COMMANDS below.
+  const unsafe = steps.find((step) => /rm -rf|delete data|clear data|reinit-data|wipe|truncate/i.test(step.command));
+  if (unsafe) {
+    fail(`Unsafe upgrade step is not allowed: ${unsafe.command}`);
+  }
+}
+
+function parseSystemdEnvironment(rawValue) {
+  const env = {};
+  for (const token of String(rawValue || "").match(/"[^"]*"|'[^']*'|\S+/g) ?? []) {
+    const unquoted = ((token.startsWith("\"") && token.endsWith("\""))
+      || (token.startsWith("'") && token.endsWith("'")))
+      ? token.slice(1, -1)
+      : token;
+    const eq = unquoted.indexOf("=");
+    if (eq <= 0) continue;
+    env[unquoted.slice(0, eq)] = unquoted.slice(eq + 1);
+  }
+  return env;
+}
+
+export function parseSystemdServiceHints(unitText = "") {
+  const hints = {
+    environment: {},
+    execStart: null,
+    workingDirectory: null,
+    user: null,
+    group: null,
+    // Non-managed directives the installer must carry through an upgrade.
+    // Keyed by directive name without the `=` so createSystemdUnit can re-emit
+    // them verbatim; collected in first-seen order per section.
+    unitPreserve: {},
+    servicePreserve: {},
+  };
+
+  let section = null;
+  for (const rawLine of String(unitText).split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+    if (line.startsWith("[") && line.endsWith("]")) {
+      section = line.slice(1, -1);
+      continue;
+    }
+    const eq = line.indexOf("=");
+    if (eq <= 0) continue;
+    const key = line.slice(0, eq).trim();
+    const value = line.slice(eq + 1).trim();
+    if (key.startsWith("Environment")) {
+      hints.environment = {
+        ...hints.environment,
+        ...parseSystemdEnvironment(value),
+      };
+    } else if (key === "ExecStart") {
+      hints.execStart = value || null;
+    } else if (key === "WorkingDirectory") {
+      hints.workingDirectory = value || null;
+    } else if (key === "User") {
+      hints.user = value || null;
+    } else if (key === "Group") {
+      hints.group = value || null;
+    } else if (PRESERVABLE_DIRECTIVES.has(key)) {
+      if (section === "Unit") {
+        if (!(key in hints.unitPreserve)) hints.unitPreserve[key] = value;
+      } else if (section === "Service") {
+        if (!(key in hints.servicePreserve)) hints.servicePreserve[key] = value;
+      }
+    }
+  }
+
+  return hints;
+}
+
+// Directives the installer does not own but must preserve across an upgrade.
+// Managed set (always rewritten): User, Group, WorkingDirectory, ExecStart,
+// Environment*, Type, Restart, RestartSec (unless a prior RestartSec exists),
+// Description/After/Wants (the [Unit] defaults), WantedBy. Everything listed
+// here is carried through verbatim from the prior unit.
+const PRESERVABLE_DIRECTIVES = new Set([
+  "Documentation",
+  "TimeoutStopSec",
+  "StandardOutput",
+  "StandardError",
+  "StandardInput",
+  "SyslogIdentifier",
+  "SyslogLevel",
+  "PrivateTmp",
+  "ProtectSystem",
+  "ProtectHome",
+  "NoNewPrivileges",
+  "ReadWritePaths",
+  "BindReadOnlyPaths",
+  "BindPaths",
+  "CapabilityBoundingSet",
+  "AmbientCapabilities",
+  "SystemCallFilter",
+  "LimitNOFILE",
+  "LimitNPROC",
+  "OOMScoreAdjust",
+  "Nice",
+  // RestartSec is managed (template default 3) but a prior custom value wins,
+  // so an operator's tuned restart backoff survives upgrade.
+  "RestartSec",
+]);
+
+function dirnameIfHanaServer(execStart) {
+  if (!execStart) return null;
+  const command = String(execStart).trim().split(/\s+/)[0];
+  return path.posix.basename(command) === "hana-server" ? path.posix.dirname(command) : null;
+}
+
+export function deriveUpgradeHostDefaults({
+  unitText = "",
+  currentLinkTarget = null,
+  paths = DEFAULT_PATHS,
+} = {}) {
+  const hints = parseSystemdServiceHints(unitText);
+  const resolvedPaths = { ...paths };
+  if (hints.environment.HANA_HOME) {
+    resolvedPaths.dataDir = hints.environment.HANA_HOME;
+  }
+
+  const servicePreserve = { ...hints.servicePreserve };
+
+  return {
+    paths: resolvedPaths,
+    previousReleaseDir: currentLinkTarget
+      || dirnameIfHanaServer(hints.execStart)
+      || hints.workingDirectory
+      || null,
+    serviceUser: hints.user || "hanaagent",
+    serviceGroup: hints.group || hints.user || "hanaagent",
+    serviceEnvironment: Object.fromEntries(
+      Object.entries(hints.environment).filter(([key]) => key.startsWith("HANA_")),
+    ),
+    preserve: {
+      unit: { ...hints.unitPreserve },
+      service: servicePreserve,
+    },
+  };
+}
+
+function formatSystemdEnvironmentLine([key, value]) {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
+    fail(`Invalid systemd environment key: ${key}`);
+  }
+  const text = String(value);
+  if (/^[A-Za-z0-9_./:@%+=,-]+$/.test(text)) {
+    return `Environment=${key}=${text}`;
+  }
+  return `Environment="${key}=${text.replace(/\\/g, "\\\\").replace(/"/g, "\\\"")}"`;
+}
+
+function formatPreservedDirective([key, value]) {
+  if (value == null || String(value).length === 0) return null;
+  const text = String(value);
+  // Values that contain whitespace, shell metacharacters, or quotes need quoting
+  // per systemd.unit(5). Keep it conservative: quote unless it's a bare token.
+  if (/^[A-Za-z0-9_./:@%+=,-]+$/.test(text)) {
+    return `${key}=${text}`;
+  }
+  return `${key}="${text.replace(/\\/g, "\\\\").replace(/"/g, "\\\"")}"`;
+}
+
+function preserveLines(preserve, section) {
+  if (!preserve?.[section]) return [];
+  return Object.entries(preserve[section])
+    .map(formatPreservedDirective)
+    .filter((line) => line != null);
+}
+
+export function createSystemdUnit({
+  user = "hanaagent",
+  group = "hanaagent",
+  paths = DEFAULT_PATHS,
+  environment = {},
+  preserve = { unit: {}, service: {} },
+} = {}) {
+  const serviceEnvironment = {
+    HANA_HOME: paths.dataDir,
+    ...environment,
+  };
+  const environmentLines = Object.entries(serviceEnvironment)
+    .filter(([, value]) => value != null && String(value).length > 0)
+    .map(formatSystemdEnvironmentLine)
+    .join("\n");
+
+  const unitPreserve = preserveLines(preserve, "unit");
+  const servicePreserve = preserveLines(preserve, "service");
+  // RestartSec is managed (template default 3) but a preserved custom value wins.
+  const restartSec = servicePreserve.find((line) => line.startsWith("RestartSec="))
+    ?? "RestartSec=3";
+  const extraServicePreserve = servicePreserve.filter((line) => !line.startsWith("RestartSec="));
+
+  const unitSection = [
+    "[Unit]",
+    "Description=HanaAgent Server",
+    "After=network-online.target",
+    "Wants=network-online.target",
+    ...unitPreserve,
+  ].join("\n");
+
+  const serviceSection = [
+    "[Service]",
+    "Type=simple",
+    `User=${user}`,
+    `Group=${group}`,
+    environmentLines,
+    `WorkingDirectory=${paths.currentLink}`,
+    `ExecStart=${paths.currentLink}/hana-server`,
+    "Restart=on-failure",
+    restartSec,
+    ...extraServicePreserve,
+  ].join("\n");
+
+  return `${unitSection}
+
+${serviceSection}
+
+[Install]
+WantedBy=multi-user.target
+`;
+}
+
+export async function executeUpgradePlan(plan, ops = {}) {
+  if (plan.dryRun) {
+    return { ok: true, dryRun: true, plan };
+  }
+  const requiredOps = [
+    "preflight",
+    "backup",
+    "download",
+    "verifyChecksum",
+    "extractRelease",
+    "writeSystemdUnit",
+    "switchCurrent",
+    "restartService",
+    "healthCheck",
+    "rollback",
+  ];
+  for (const op of requiredOps) {
+    if (typeof ops[op] !== "function") {
+      fail(`executeUpgradePlan requires ops.${op}`);
+    }
+  }
+
+  let switchedCurrent = false;
+  try {
+    await ops.preflight(plan);
+    await ops.backup(plan);
+    await ops.download(plan);
+    await ops.verifyChecksum(plan);
+    await ops.extractRelease(plan);
+    switchedCurrent = true;
+    await ops.switchCurrent(plan.targetReleaseDir, plan);
+    await ops.writeSystemdUnit(plan);
+    await ops.restartService(plan);
+    await ops.healthCheck(plan);
+    return { ok: true, rolledBack: false };
+  } catch (error) {
+    if (switchedCurrent) {
+      await ops.rollback(plan.previousReleaseDir, plan);
+    }
+    return {
+      ok: false,
+      rolledBack: switchedCurrent,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+export async function executeInstallPlan(plan, ops = {}) {
+  if (plan.dryRun) {
+    return { ok: true, dryRun: true, plan };
+  }
+  const requiredOps = [
+    "preflight",
+    "assertNoExistingInstall",
+    "createUser",
+    "createDirectories",
+    "download",
+    "verifyChecksum",
+    "extractRelease",
+    "writeSystemdUnit",
+    "switchCurrent",
+    "installCli",
+    "enableService",
+    "restartService",
+    "healthCheck",
+  ];
+  for (const op of requiredOps) {
+    if (typeof ops[op] !== "function") {
+      fail(`executeInstallPlan requires ops.${op}`);
+    }
+  }
+
+  try {
+    await ops.preflight(plan);
+    await ops.assertNoExistingInstall(plan);
+    await ops.createUser(plan);
+    await ops.createDirectories(plan);
+    await ops.download(plan);
+    await ops.verifyChecksum(plan);
+    await ops.extractRelease(plan);
+    await ops.writeSystemdUnit(plan);
+    await ops.switchCurrent(plan.targetReleaseDir, plan);
+    await ops.installCli(plan);
+    await ops.enableService(plan);
+    await ops.restartService(plan);
+    await ops.healthCheck(plan);
+    return { ok: true };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+const SAFE_UPGRADE_COMMANDS = new Set(["systemctl", "tar", "sha256sum", "curl", "mkdir", "ln", "cp"]);
+const SAFE_INSTALL_COMMANDS = new Set(["systemctl", "tar", "sha256sum", "curl", "mkdir", "ln", "cp", "chmod", "id", "getent", "useradd", "groupadd", "test"]);
+
+export function createShellUpgradeOps({
+  run = runCommand,
+  now = defaultTimestamp,
+  stagingDir = path.posix.join(os.tmpdir(), "hanaagent-upgrade"),
+  backupDir = path.posix.join(DEFAULT_PATHS.installRoot, "backups"),
+} = {}) {
+  let downloadedArchive = null;
+  let downloadedSidecar = null;
+  let backupArchive = null;
+  let localWriteDir = null;
+
+  function writableTempDir() {
+    localWriteDir ??= fs.mkdtempSync(path.join(os.tmpdir(), "hanaagent-upgrade-local-"));
+    return localWriteDir;
+  }
+
+  async function checked(cmd, args, options = {}) {
+    if (!SAFE_UPGRADE_COMMANDS.has(cmd)) {
+      fail(`Unexpected upgrade operation command: ${cmd}`);
+    }
+    const commandArgs = options.privileged ? [...options.plan.privilege.commandPrefix, cmd, ...args] : [cmd, ...args];
+    const command = commandArgs.shift();
+    const result = await run(command, commandArgs);
+    if (result.status !== 0) {
+      fail(`${cmd} failed: ${result.stderr || result.stdout || `exit ${result.status}`}`);
+    }
+    return result;
+  }
+
+  return {
+    async preflight(plan) {
+      if (plan.platform !== "linux") fail("install-server upgrade can only execute on Linux");
+      for (const command of ["systemctl", "tar", "sha256sum", "curl", "mkdir", "ln", "cp"]) {
+        await checked(command, ["--version"], { plan });
+      }
+      return true;
+    },
+    async backup(plan) {
+      const stamp = now();
+      backupArchive = path.posix.join(backupDir, `hanaagent-backup-${stamp}.tar.gz`);
+      await checked("mkdir", ["-p", backupDir], { plan, privileged: true });
+      await checked(
+        "tar",
+        [
+          "-czf",
+          backupArchive,
+          "--ignore-failed-read",
+          plan.paths.configDir,
+          plan.paths.dataDir,
+          plan.paths.currentLink,
+        ],
+        { plan, privileged: true },
+      );
+      await checked("tar", ["-tzf", backupArchive], { plan, privileged: true });
+      return { backupArchive };
+    },
+    async download(plan) {
+      await checked("mkdir", ["-p", stagingDir], { plan, privileged: true });
+      downloadedArchive = path.posix.join(stagingDir, safeAssetArchiveName(plan));
+      await checked("curl", ["-fL", plan.asset.url, "-o", downloadedArchive], { plan, privileged: true });
+      // When the release metadata has no inline sha256 (GitHub Releases never
+      // exposes one), fetch the <asset>.sha256 sidecar published alongside it
+      // so verifyChecksum has an expected value to compare against.
+      if (plan.asset.sha256 == null) {
+        downloadedSidecar = `${downloadedArchive}.sha256`;
+        await checked("curl", ["-fL", `${plan.asset.url}.sha256`, "-o", downloadedSidecar], {
+          plan,
+          privileged: true,
+        });
+      }
+      return { downloadedArchive };
+    },
+    async verifyChecksum(plan) {
+      if (!downloadedArchive) fail("download must run before verifyChecksum");
+      const result = await checked("sha256sum", [downloadedArchive], {
+        plan,
+        privileged: true,
+      });
+      const actual = String(result.stdout || "").trim().split(/\s+/)[0]?.toLowerCase();
+      let expected;
+      if (plan.asset.sha256) {
+        expected = String(plan.asset.sha256).toLowerCase();
+      } else {
+        if (!downloadedSidecar || !fs.existsSync(downloadedSidecar)) {
+          fail(`sha256 sidecar missing for ${downloadedArchive}; expected ${plan.asset.name ?? ""}.sha256 alongside the asset`);
+        }
+        // sidecar is "<sha256>  <name>" (sha256sum format) — first token is the hash
+        expected = String(fs.readFileSync(downloadedSidecar, "utf8")).trim().split(/\s+/)[0]?.toLowerCase();
+      }
+      if (!expected || actual !== expected) {
+        fail(`sha256 mismatch for ${downloadedArchive}: expected ${expected || "unknown"}, got ${actual || "unknown"}`);
+      }
+      return true;
+    },
+    async extractRelease(plan) {
+      if (!downloadedArchive) fail("download must run before extractRelease");
+      await checked("mkdir", ["-p", plan.targetReleaseDir], { plan, privileged: true });
+      await checked("tar", ["-xzf", downloadedArchive, "-C", plan.targetReleaseDir, "--strip-components=1"], {
+        plan,
+        privileged: true,
+      });
+      return true;
+    },
+    async switchCurrent(targetReleaseDir, plan) {
+      await checked("ln", ["-sfn", targetReleaseDir, plan.paths.currentLink], { plan, privileged: true });
+      return true;
+    },
+    async writeSystemdUnit(plan) {
+      const stagedUnit = path.join(writableTempDir(), `${plan.paths.serviceName}.service`);
+      fs.writeFileSync(stagedUnit, createSystemdUnit({
+        paths: plan.paths,
+        user: plan.serviceUser,
+        group: plan.serviceGroup,
+        environment: plan.serviceEnvironment,
+        preserve: plan.preserve,
+      }));
+      await checked("mkdir", ["-p", path.posix.dirname(plan.paths.serviceUnit)], { plan, privileged: true });
+      await checked("cp", [stagedUnit, plan.paths.serviceUnit], { plan, privileged: true });
+      return { serviceUnit: plan.paths.serviceUnit };
+    },
+    async restartService(plan) {
+      await checked("systemctl", ["daemon-reload"], { plan, privileged: true });
+      await checked("systemctl", ["restart", plan.paths.serviceName], { plan, privileged: true });
+      return true;
+    },
+    async healthCheck(plan) {
+      await checked("systemctl", ["is-active", "--quiet", plan.paths.serviceName], { plan, privileged: true });
+      return true;
+    },
+    async rollback(previousReleaseDir, plan) {
+      await checked("ln", ["-sfn", previousReleaseDir, plan.paths.currentLink], { plan, privileged: true });
+      await checked("systemctl", ["restart", plan.paths.serviceName], { plan, privileged: true });
+      return true;
+    },
+  };
+}
+
+export function createShellInstallOps({
+  run = runCommand,
+  stagingDir = path.posix.join(os.tmpdir(), "hanaagent-install"),
+} = {}) {
+  let downloadedArchive = null;
+  let downloadedSidecar = null;
+  let localWriteDir = null;
+
+  function writableTempDir() {
+    localWriteDir ??= fs.mkdtempSync(path.join(os.tmpdir(), "hanaagent-install-local-"));
+    return localWriteDir;
+  }
+
+  async function runInstallCommand(cmd, args, options = {}) {
+    if (!SAFE_INSTALL_COMMANDS.has(cmd)) {
+      fail(`Unexpected install operation command: ${cmd}`);
+    }
+    const commandArgs = options.privileged ? [...options.plan.privilege.commandPrefix, cmd, ...args] : [cmd, ...args];
+    const command = commandArgs.shift();
+    return await run(command, commandArgs);
+  }
+
+  async function checked(cmd, args, options = {}) {
+    const result = await runInstallCommand(cmd, args, options);
+    if (result.status !== 0) {
+      fail(`${cmd} failed: ${result.stderr || result.stdout || `exit ${result.status}`}`);
+    }
+    return result;
+  }
+
+  return {
+    async preflight(plan) {
+      if (plan.platform !== "linux") fail("install-server install can only execute on Linux");
+      for (const [command, args] of [
+        ["systemctl", ["--version"]],
+        ["tar", ["--version"]],
+        ["sha256sum", ["--version"]],
+        ["curl", ["--version"]],
+        ["mkdir", ["--version"]],
+        ["ln", ["--version"]],
+        ["cp", ["--version"]],
+        ["chmod", ["--version"]],
+      ]) {
+        await checked(command, args, { plan });
+      }
+      return true;
+    },
+    async assertNoExistingInstall(plan) {
+      const pathResult = await runInstallCommand("test", ["-e", plan.paths.currentLink], { plan, privileged: true });
+      const symlinkResult = await runInstallCommand("test", ["-L", plan.paths.currentLink], { plan, privileged: true });
+      if (pathResult.status === 0 || symlinkResult.status === 0) {
+        fail(`${plan.paths.currentLink} already exists; use install-server upgrade instead of install`);
+      }
+      return true;
+    },
+    async createUser(plan) {
+      const group = await runInstallCommand("getent", ["group", plan.serviceGroup], { plan });
+      if (group.status !== 0) {
+        await checked("groupadd", ["--system", plan.serviceGroup], { plan, privileged: true });
+      }
+      const user = await runInstallCommand("id", ["-u", plan.serviceUser], { plan });
+      if (user.status !== 0) {
+        await checked("useradd", [
+          "--system",
+          "--gid",
+          plan.serviceGroup,
+          "--home-dir",
+          plan.paths.dataDir,
+          "--shell",
+          "/usr/sbin/nologin",
+          plan.serviceUser,
+        ], { plan, privileged: true });
+      }
+      return true;
+    },
+    async createDirectories(plan) {
+      await checked("mkdir", [
+        "-p",
+        plan.paths.installRoot,
+        path.posix.dirname(plan.paths.installImpl),
+        plan.paths.releasesDir,
+        plan.paths.configDir,
+        plan.paths.dataDir,
+        stagingDir,
+      ], { plan, privileged: true });
+      return true;
+    },
+    async download(plan) {
+      await checked("mkdir", ["-p", stagingDir], { plan, privileged: true });
+      downloadedArchive = path.posix.join(stagingDir, safeAssetArchiveName(plan));
+      await checked("curl", ["-fL", plan.asset.url, "-o", downloadedArchive], { plan, privileged: true });
+      if (plan.asset.sha256 == null) {
+        downloadedSidecar = `${downloadedArchive}.sha256`;
+        await checked("curl", ["-fL", `${plan.asset.url}.sha256`, "-o", downloadedSidecar], {
+          plan,
+          privileged: true,
+        });
+      }
+      return { downloadedArchive };
+    },
+    async verifyChecksum(plan) {
+      if (!downloadedArchive) fail("download must run before verifyChecksum");
+      const result = await checked("sha256sum", [downloadedArchive], { plan, privileged: true });
+      const actual = String(result.stdout || "").trim().split(/\s+/)[0]?.toLowerCase();
+      let expected;
+      if (plan.asset.sha256) {
+        expected = String(plan.asset.sha256).toLowerCase();
+      } else {
+        if (!downloadedSidecar || !fs.existsSync(downloadedSidecar)) {
+          fail(`sha256 sidecar missing for ${downloadedArchive}; expected ${plan.asset.name ?? ""}.sha256 alongside the asset`);
+        }
+        expected = String(fs.readFileSync(downloadedSidecar, "utf8")).trim().split(/\s+/)[0]?.toLowerCase();
+      }
+      if (!expected || actual !== expected) {
+        fail(`sha256 mismatch for ${downloadedArchive}: expected ${expected || "unknown"}, got ${actual || "unknown"}`);
+      }
+      return true;
+    },
+    async extractRelease(plan) {
+      if (!downloadedArchive) fail("download must run before extractRelease");
+      await checked("mkdir", ["-p", plan.targetReleaseDir], { plan, privileged: true });
+      await checked("tar", ["-xzf", downloadedArchive, "-C", plan.targetReleaseDir, "--strip-components=1"], {
+        plan,
+        privileged: true,
+      });
+      return true;
+    },
+    async writeSystemdUnit(plan) {
+      const stagedUnit = path.join(writableTempDir(), `${plan.paths.serviceName}.service`);
+      fs.writeFileSync(stagedUnit, createSystemdUnit({
+        paths: plan.paths,
+        user: plan.serviceUser,
+        group: plan.serviceGroup,
+        environment: plan.serviceEnvironment,
+      }));
+      await checked("mkdir", ["-p", path.posix.dirname(plan.paths.serviceUnit)], { plan, privileged: true });
+      await checked("cp", [stagedUnit, plan.paths.serviceUnit], { plan, privileged: true });
+      return { serviceUnit: plan.paths.serviceUnit };
+    },
+    async switchCurrent(targetReleaseDir, plan) {
+      await checked("ln", ["-sfn", targetReleaseDir, plan.paths.currentLink], { plan, privileged: true });
+      return true;
+    },
+    async installCli(plan) {
+      const shimPath = path.join(writableTempDir(), "install-server");
+      fs.writeFileSync(shimPath, createInstallServerShim(plan.paths.installImpl), { mode: 0o755 });
+      await checked("mkdir", ["-p", path.posix.dirname(plan.paths.installImpl), path.posix.dirname(plan.paths.installBin)], {
+        plan,
+        privileged: true,
+      });
+      if (!isSameLocalFilePath(__filename, plan.paths.installImpl)) {
+        await checked("cp", [__filename, plan.paths.installImpl], { plan, privileged: true });
+      }
+      await checked("chmod", ["0755", plan.paths.installImpl], { plan, privileged: true });
+      await checked("cp", [shimPath, plan.paths.installBin], { plan, privileged: true });
+      await checked("chmod", ["0755", plan.paths.installBin], { plan, privileged: true });
+      return { installBin: plan.paths.installBin, installImpl: plan.paths.installImpl };
+    },
+    async enableService(plan) {
+      await checked("systemctl", ["daemon-reload"], { plan, privileged: true });
+      await checked("systemctl", ["enable", plan.paths.serviceName], { plan, privileged: true });
+      return true;
+    },
+    async restartService(plan) {
+      await checked("systemctl", ["restart", plan.paths.serviceName], { plan, privileged: true });
+      return true;
+    },
+    async healthCheck(plan) {
+      await checked("systemctl", ["is-active", "--quiet", plan.paths.serviceName], { plan, privileged: true });
+      return true;
+    },
+  };
+}
+
+function createInstallServerShim(installImpl) {
+  return `#!/usr/bin/env sh
+set -eu
+exec node "${installImpl}" "$@"
+`;
+}
+
+function isSameLocalFilePath(left, right) {
+  if (path.resolve(left) === path.resolve(right)) return true;
+  try {
+    if (!fs.existsSync(left) || !fs.existsSync(right)) return false;
+    return fs.realpathSync(left) === fs.realpathSync(right);
+  } catch {
+    return false;
+  }
+}
+
+function safeAssetArchiveName(plan) {
+  const fallback = `hanaagent-${plan.tag}.tar.gz`;
+  const name = typeof plan.asset?.name === "string" && plan.asset.name.trim()
+    ? plan.asset.name.trim()
+    : fallback;
+  if (name.includes("/") || name.includes("\\") || name === "." || name === "..") {
+    fail(`Release asset name must be a filename: ${name}`);
+  }
+  return name;
+}
+
+function resolveReinitPlanFile(planIdOrFile, { planDir }) {
+  if (typeof planIdOrFile !== "string" || !planIdOrFile.trim()) {
+    fail("reinit-data plan id or file path is required");
+  }
+  const value = planIdOrFile.trim();
+  const looksLikePath = path.isAbsolute(value)
+    || value.endsWith(".json")
+    || value.includes("/")
+    || value.includes("\\");
+  if (looksLikePath) {
+    return value;
+  }
+  if (!/^[A-Za-z0-9._-]+$/.test(value)) {
+    fail(`reinit-data plan id contains unsupported characters: ${value}`);
+  }
+  return path.join(planDir, `${value}.json`);
+}
+
+function resolvePlanServiceName(plan) {
+  return plan.service?.name ?? plan.paths?.serviceName ?? DEFAULT_PATHS.serviceName;
+}
+
+function resolvePlanBackupPath(plan) {
+  const backupPath = plan.backupPath ?? plan.backup?.destination;
+  if (typeof backupPath !== "string" || !backupPath.trim()) {
+    fail("reinit-data operation requires a backup path");
+  }
+  return backupPath;
+}
+
+function resolveReinitRestoreBackupPath(backupPath, {
+  dataRoot,
+  paths = DEFAULT_PATHS,
+} = {}) {
+  if (backupPath !== LATEST_FULL_STATE_BACKUP_ALIAS) {
+    return backupPath;
+  }
+  const backupDir = path.join(paths.installRoot ?? DEFAULT_PATHS.installRoot, "backups");
+  const candidates = [];
+  for (const name of safeReadDir(backupDir)) {
+    if (!name.endsWith(".manifest.json")) continue;
+    const manifestPath = path.join(backupDir, name);
+    const manifest = safeReadJson(manifestPath);
+    if (!manifest || manifest.kind !== "hanaagent-reinit-data-backup-manifest") continue;
+    if (manifest.restoreClass !== FULL_STATE_RESTORE_CLASS) continue;
+    if (manifest.preserveMode !== "operational") continue;
+    if (dataRoot && manifest.dataRoot && path.resolve(manifest.dataRoot) !== path.resolve(dataRoot)) continue;
+    const resolvedBackupPath = typeof manifest.backupPath === "string" && manifest.backupPath.trim()
+      ? manifest.backupPath.trim()
+      : manifestPath.slice(0, -".manifest.json".length);
+    const createdMs = Date.parse(manifest.createdAt ?? "");
+    candidates.push({
+      backupPath: resolvedBackupPath,
+      manifestPath,
+      createdMs: Number.isFinite(createdMs) ? createdMs : 0,
+    });
+  }
+  candidates.sort((a, b) => b.createdMs - a.createdMs || b.manifestPath.localeCompare(a.manifestPath));
+  if (candidates.length === 0) {
+    fail(`No ${LATEST_FULL_STATE_BACKUP_ALIAS} backup found under ${backupDir}; run Path B first or restore an explicit backup path.`);
+  }
+  return candidates[0].backupPath;
+}
+
+function resolvePlanManifestPath(plan) {
+  return plan.manifestPath ?? plan.backup?.manifest ?? `${resolvePlanBackupPath(plan)}.manifest.json`;
+}
+
+function resolvePlanPreserveArchive(plan) {
+  const archivePath = plan.preserve?.archive;
+  if (typeof archivePath !== "string" || !archivePath.trim()) {
+    fail("reinit-data operational preserve requires a preserve archive path");
+  }
+  return archivePath;
+}
+
+function resolvePlanPreserveManifest(plan) {
+  return plan.preserve?.manifest ?? `${resolvePlanPreserveArchive(plan)}.manifest.json`;
+}
+
+function resolvePlanPreserveEntries(plan) {
+  const entries = Array.isArray(plan.preserve?.entries) ? plan.preserve.entries : [];
+  const normalized = entries
+    .filter((entry) => typeof entry === "string" && entry.trim())
+    .map((entry) => entry.trim().replace(/\\/g, "/").replace(/\/+$/, ""));
+  if (normalized.length === 0) {
+    fail("reinit-data operational preserve requires at least one preserve entry");
+  }
+  for (const entry of normalized) {
+    if (entry.startsWith("/") || entry === "." || entry === ".." || entry.includes("../") || entry.includes("/..")) {
+      fail(`invalid reinit-data preserve entry: ${entry}`);
+    }
+  }
+  return [...new Set(normalized)];
+}
+
+function parseSha256sum(stdout, backupPath) {
+  const digest = String(stdout || "").trim().split(/\s+/)[0]?.toLowerCase();
+  if (!/^[a-f0-9]{64}$/.test(digest ?? "")) {
+    fail(`sha256sum did not return a valid digest for ${backupPath}`);
+  }
+  return digest;
+}
+
+function parseTarListing(stdout) {
+  return String(stdout || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim().replace(/\\/g, "/").replace(/^\.\/+/, "").replace(/\/+$/, ""))
+    .filter(Boolean);
+}
+
+function normalizeTarEntries(listing) {
+  return parseTarListing(Array.isArray(listing) ? listing.join("\n") : listing);
+}
+
+function tarEntryIsUnderRoot(entry, expectedRoot) {
+  return Boolean(expectedRoot) && (entry === expectedRoot || entry.startsWith(`${expectedRoot}/`));
+}
+
+function tarEntryIsUnsafe(entry) {
+  return entry.startsWith("/") || entry.split("/").includes("..");
+}
+
+function writeBackupManifest(manifestPath, manifest) {
+  fs.mkdirSync(path.dirname(manifestPath), { recursive: true });
+  fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+}
+
+function safeReadDir(dirPath) {
+  try {
+    return fs.readdirSync(dirPath);
+  } catch (error) {
+    if (error?.code === "ENOENT") return [];
+    throw error;
+  }
+}
+
+function safeReadJson(filePath) {
+  try {
+    return readJson(filePath);
+  } catch {
+    return null;
+  }
+}
+
+function defaultTimestamp() {
+  return new Date().toISOString().replace(/[:.]/g, "-");
+}
+
+function formatPlanTimestamp(date) {
+  return date.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+}
+
+function runCommand(command, args) {
+  const result = spawnSync(command, args, { encoding: "utf8", stdio: "pipe" });
+  if (result.error) {
+    return { status: 1, stdout: "", stderr: result.error.message };
+  }
+  return result;
+}
+
+function commandExists(command) {
+  return spawnSync("sh", ["-c", `command -v ${command}`], { stdio: "ignore" }).status === 0;
+}
+
+function readJson(filePath) {
+  return JSON.parse(fs.readFileSync(filePath, "utf8"));
+}
+
+function readTextIfExists(filePath) {
+  try {
+    return fs.readFileSync(filePath, "utf8");
+  } catch {
+    return "";
+  }
+}
+
+function readCurrentLinkTarget(paths = DEFAULT_PATHS) {
+  try {
+    return fs.realpathSync(paths.currentLink);
+  } catch {
+    return null;
+  }
+}
+
+function readUpgradeHostDefaults(paths = DEFAULT_PATHS) {
+  return deriveUpgradeHostDefaults({
+    unitText: readTextIfExists(paths.serviceUnit),
+    currentLinkTarget: readCurrentLinkTarget(paths),
+    paths,
+  });
+}
+
+function inspectServiceState(serviceName = DEFAULT_PATHS.serviceName) {
+  const active = runCommand("systemctl", ["is-active", serviceName]);
+  const enabled = runCommand("systemctl", ["is-enabled", serviceName]);
+  const mainPid = runCommand("systemctl", ["show", "-p", "MainPID", "--value", serviceName]);
+  return {
+    active: active.status === 0 ? active.stdout.trim() : null,
+    enabled: enabled.status === 0 ? enabled.stdout.trim() : null,
+    mainPid: mainPid.status === 0 ? mainPid.stdout.trim() : null,
+  };
+}
+
+const DEFAULT_GITHUB_REPO = "karlorz/openhanako";
+
+// Real GitHub releases API client used by the CLI. Returns the same shape
+// resolveRelease's injected mock does: { listReleases(), getRelease(tag) }.
+// Auth is optional (GITHUB_TOKEN/GH_TOKEN) — unauthenticated calls work but
+// are rate-limited harder.
+export function createGithubReleasesClient(env = process.env, repo = DEFAULT_GITHUB_REPO) {
+  const auth = env.GITHUB_TOKEN || env.GH_TOKEN;
+  const headers = {
+    Accept: "application/vnd.github+json",
+    "User-Agent": "install-server",
+    ...(auth ? { Authorization: `Bearer ${auth}` } : {}),
+  };
+  async function api(p) {
+    const res = await fetch(`https://api.github.com/repos/${repo}/${p}`, { headers });
+    if (!res.ok) fail(`GitHub API ${p} failed: ${res.status}`);
+    return res.json();
+  }
+  return {
+    async listReleases() {
+      return api("releases?per_page=30");
+    },
+    async getRelease(tag) {
+      const res = await fetch(`https://api.github.com/repos/${repo}/releases/tags/${tag}`, { headers });
+      return res.status === 404 ? null : res.json();
+    },
+  };
+}
+
+// Best-effort current installed version: read the current symlink basename.
+// Fails closed (requiring --current-version) if the link can't be resolved.
+function readCurrentVersion() {
+  try {
+    const target = fs.readlinkSync(DEFAULT_PATHS.currentLink);
+    return path.basename(target);
+  } catch {
+    fail(`upgrade requires --current-version (could not read ${DEFAULT_PATHS.currentLink}); run 'install-server status' first`);
+  }
+}
+
+// Testable resolution+plan wrapper for the upgrade command. Parses argv with
+// the shared parseArgs, resolves metadata (explicit --metadata file, injected
+// metadata object, or GitHub via httpClient), then builds the upgrade plan.
+// No host mutation — dry-run only. main() adds the --execute execution path.
+export async function runUpgrade(argv, {
+  httpClient,
+  currentVersion,
+  metadata: explicitMetadata = null,
+  platform = process.platform,
+  arch = process.arch,
+  uid = typeof process.getuid === "function" ? process.getuid() : 0,
+  hasSudo = commandExists("sudo"),
+  paths = {},
+  previousReleaseDir = null,
+  serviceUser = "hanaagent",
+  serviceGroup = serviceUser,
+  serviceEnvironment = {},
+  preserve = { unit: {}, service: {} },
+} = {}) {
+  const options = parseArgs(["upgrade", ...argv]);
+  let metadata = explicitMetadata;
+  if (!metadata && options.metadataPath) {
+    metadata = readJson(options.metadataPath);
+  }
+  if (!metadata && !options.metadataPath) {
+    metadata = await resolveRelease({ version: options.version, channel: options.channel ?? "stable" }, httpClient);
+  }
+  const plan = buildUpgradePlan({
+    metadata,
+    currentVersion,
+    platform,
+    arch,
+    uid,
+    hasSudo,
+    dryRun: options.dryRun,
+    channel: options.channel ?? "stable",
+    paths,
+    previousReleaseDir,
+    serviceUser,
+    serviceGroup,
+    serviceEnvironment,
+    preserve,
+  });
+  return plan;
+}
+
+export async function runInstall(argv, {
+  httpClient,
+  metadata: explicitMetadata = null,
+  platform = process.platform,
+  arch = process.arch,
+  uid = typeof process.getuid === "function" ? process.getuid() : 0,
+  hasSudo = commandExists("sudo"),
+  paths = {},
+  serviceUser = "hanaagent",
+  serviceGroup = serviceUser,
+  serviceEnvironment = {},
+} = {}) {
+  const options = parseArgs(["install", ...argv]);
+  let metadata = explicitMetadata;
+  if (!metadata && options.metadataPath) {
+    metadata = readJson(options.metadataPath);
+  }
+  if (!metadata && !options.metadataPath) {
+    metadata = await resolveRelease({ version: options.version, channel: options.channel ?? "stable" }, httpClient);
+  }
+  return buildInstallPlan({
+    metadata,
+    platform: options.platform ?? platform,
+    arch: options.arch ?? arch,
+    uid,
+    hasSudo,
+    dryRun: options.dryRun,
+    channel: options.channel ?? "stable",
+    paths,
+    serviceUser,
+    serviceGroup,
+    serviceEnvironment,
+  });
+}
+
+function usage() {
+  return `install-server - HanaAgent Linux server installer
+
+Usage:
+  node scripts/install-server.mjs upgrade [--current-version <version>] [--dry-run]
+    resolve latest stable release from GitHub (no --metadata needed)
+  node scripts/install-server.mjs upgrade --version <tag> [--channel prerelease] [--current-version <version>] [--dry-run]
+    pin an exact release tag (use --channel prerelease for pre-releases)
+  node scripts/install-server.mjs upgrade --metadata <release.json> --current-version <version> [--dry-run]
+    use explicit local metadata instead of GitHub
+  node scripts/install-server.mjs install [--version <tag>] [--channel prerelease] [--dry-run]
+    resolve latest stable release from GitHub for a fresh host install
+  node scripts/install-server.mjs install --version <tag> [--channel prerelease] --execute
+    pin an exact release tag and execute a fresh host install
+  node scripts/install-server.mjs install --metadata <release.json> --platform linux --arch arm64 [--dry-run|--execute]
+    use explicit local metadata instead of GitHub for fresh host install
+  node scripts/install-server.mjs status
+  node scripts/install-server.mjs backup --output <path> [--data-root <path>]
+  node scripts/install-server.mjs reinit-data [--dry-run] [--reset-pairing] [--data-root <path>] [--plan-dir <path>]
+  node scripts/install-server.mjs reinit-data --list-backups [--data-root <path>] [--backup-dir <path>]
+  node scripts/install-server.mjs reinit-data --confirm <plan-id> [--data-root <path>] [--plan-dir <path>]
+  node scripts/install-server.mjs reinit-data --restore <backup-path|latest-full-state> [--data-root <path>]
+
+Notes:
+  upgrade resolves latest stable by default; prereleases require --channel prerelease.
+  upgrade --execute is host-mutating (stops service, swaps /opt/hanaagent/current); --dry-run is safe.
+  reinit-data preserves provider/model and LAN device bootstrap by default; --reset-pairing requests a fully fresh root.
+  reinit-data --list-backups inspects existing backup archives without mutating service or data state.
+  reinit-data --confirm requires a non-expired dry-run plan and creates a verified backup before moving data aside.
+  reinit-data --restore latest-full-state selects the newest full backup created before a default operational reinit.
+  reinit-data --restore verifies the backup archive before replacing the current data root.`;
+}
+
+function parseArgs(argv) {
+  if (argv[0] === "--help" || argv[0] === "-h") {
+    return { help: true, dryRun: true };
+  }
+  const [command, ...rest] = argv;
+  const options = { command, dryRun: true };
+  for (let i = 0; i < rest.length; i += 1) {
+    const arg = rest[i];
+    switch (arg) {
+      case "--metadata":
+        options.metadataPath = rest[++i];
+        break;
+      case "--current-version":
+        options.currentVersion = rest[++i];
+        break;
+      case "--version":
+        options.version = rest[++i];
+        break;
+      case "--channel":
+        options.channel = rest[++i];
+        break;
+      case "--platform":
+        options.platform = rest[++i];
+        break;
+      case "--arch":
+        options.arch = rest[++i];
+        break;
+      case "--data-root":
+        options.dataRoot = rest[++i];
+        break;
+      case "--plan-dir":
+        options.planDir = rest[++i];
+        break;
+      case "--backup-dir":
+        options.backupDir = rest[++i];
+        break;
+      case "--output":
+        options.outputPath = rest[++i];
+        break;
+      case "--list-backups":
+        options.listBackups = true;
+        break;
+      case "--confirm":
+        options.confirmPlanId = rest[++i];
+        break;
+      case "--restore":
+        options.restorePath = rest[++i];
+        break;
+      case "--reset-pairing":
+        options.resetPairing = true;
+        break;
+      case "--execute":
+        options.dryRun = false;
+        break;
+      case "--dry-run":
+        options.dryRun = true;
+        break;
+      case "--help":
+      case "-h":
+        options.help = true;
+        break;
+      default:
+        fail(`Unknown argument: ${arg}`);
+    }
+  }
+  return options;
+}
+
+function main(argv = process.argv.slice(2)) {
+  const options = parseArgs(argv);
+  if (!options.command || options.help) {
+    console.log(usage());
+    return;
+  }
+  if (options.command === "upgrade") {
+    const planPromise = (async () => {
+      let metadata;
+      if (options.metadataPath) {
+        metadata = readJson(options.metadataPath);
+      } else {
+        metadata = await resolveRelease(
+          { version: options.version, channel: options.channel ?? "stable" },
+          createGithubReleasesClient(),
+        );
+      }
+      const currentVersion = options.currentVersion || readCurrentVersion();
+      const hostDefaults = readUpgradeHostDefaults();
+      return buildUpgradePlan({
+        metadata,
+        currentVersion,
+        platform: options.platform,
+        arch: options.arch,
+        dryRun: options.dryRun,
+        channel: options.channel ?? "stable",
+        paths: hostDefaults.paths,
+        previousReleaseDir: hostDefaults.previousReleaseDir,
+        serviceUser: hostDefaults.serviceUser,
+        serviceGroup: hostDefaults.serviceGroup,
+        serviceEnvironment: hostDefaults.serviceEnvironment,
+        preserve: hostDefaults.preserve,
+      });
+    })();
+    planPromise.then((plan) => {
+      if (options.dryRun) {
+        console.log(JSON.stringify(plan, null, 2));
+        return;
+      }
+      return executeUpgradePlan(plan, createShellUpgradeOps()).then((result) => {
+        console.log(JSON.stringify(result, null, 2));
+        if (!result.ok) process.exitCode = 1;
+      });
+    }).catch((error) => {
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exitCode = 1;
+    });
+    return;
+  }
+  if (options.command === "install") {
+    const planPromise = runInstall(argv.slice(1), {
+      httpClient: createGithubReleasesClient(),
+    });
+    planPromise.then((plan) => {
+      if (options.dryRun) {
+        console.log(JSON.stringify(plan, null, 2));
+        return;
+      }
+      return executeInstallPlan(plan, createShellInstallOps()).then((result) => {
+        console.log(JSON.stringify(result, null, 2));
+        if (!result.ok) process.exitCode = 1;
+      });
+    }).catch((error) => {
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exitCode = 1;
+    });
+    return;
+  }
+  if (options.command === "status") {
+    console.log(JSON.stringify(buildStatusPlan(), null, 2));
+    return;
+  }
+  if (options.command === "reinit-data") {
+    if (options.listBackups) {
+      const dataRoot = options.dataRoot || resolveHanaDataRoot();
+      const backupDir = options.backupDir || path.join(DEFAULT_PATHS.installRoot, "backups");
+      console.log(JSON.stringify(inspectReinitDataBackups({ backupDir, dataRoot }), null, 2));
+      return;
+    }
+    if (options.confirmPlanId) {
+      const dryRunPlan = loadReinitDataPlan(options.confirmPlanId, { planDir: options.planDir });
+      const confirmPlan = buildReinitDataConfirmPlan({
+        plan: dryRunPlan,
+        dataRoot: options.dataRoot || resolveHanaDataRoot(),
+      });
+      executeReinitDataPlan(confirmPlan, createShellReinitDataOps()).then((result) => {
+        console.log(JSON.stringify(result, null, 2));
+        if (!result.ok) process.exitCode = 1;
+      }).catch((error) => {
+        console.error(error instanceof Error ? error.message : String(error));
+        process.exitCode = 1;
+      });
+      return;
+    }
+    if (options.restorePath) {
+      executeReinitDataRestore({
+        backupPath: options.restorePath,
+        dataRoot: options.dataRoot || resolveHanaDataRoot(),
+        serviceName: DEFAULT_PATHS.serviceName,
+      }, createShellReinitDataOps()).then((result) => {
+        console.log(JSON.stringify(result, null, 2));
+        if (!result.ok) process.exitCode = 1;
+      }).catch((error) => {
+        console.error(error instanceof Error ? error.message : String(error));
+        process.exitCode = 1;
+      });
+      return;
+    }
+    if (!options.dryRun) {
+      fail("reinit-data execution requires --confirm <plan-id>; run reinit-data --dry-run first.");
+    }
+    const plan = buildReinitDataDryRunPlan({
+      dataRoot: options.dataRoot || resolveHanaDataRoot(),
+      planDir: options.planDir,
+      serviceState: inspectServiceState(DEFAULT_PATHS.serviceName),
+      resetPairing: options.resetPairing === true,
+    });
+    console.log(JSON.stringify(writeReinitDataDryRunPlan(plan), null, 2));
+    return;
+  }
+  if (options.command === "backup") {
+    if (!options.outputPath) fail("backup requires --output <path>");
+    executeReinitDataBackup({
+      outputPath: options.outputPath,
+      dataRoot: options.dataRoot || resolveHanaDataRoot(),
+      serviceName: DEFAULT_PATHS.serviceName,
+    }, createShellReinitDataOps()).then((result) => {
+      console.log(JSON.stringify(result, null, 2));
+      if (!result.ok) process.exitCode = 1;
+    }).catch((error) => {
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exitCode = 1;
+    });
+    return;
+  }
+  fail(`Unknown command: ${options.command}`);
+}
+
+if (process.argv[1] === __filename) {
+  main();
+}

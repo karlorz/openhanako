@@ -305,6 +305,46 @@ describe('selectSessionFiles', () => {
     expect(refs[1].mime).toBe('video/mp4');
   });
 
+  it('把 user attachment 的 resource envelope 带入 FileRef', () => {
+    const items: ChatListItem[] = [{
+      type: 'message',
+      data: {
+        id: 'm-resource-att',
+        role: 'user',
+        attachments: [{
+          fileId: 'sf_uploaded_image',
+          path: '/root/.hanako/session-files/image.png',
+          name: 'image.png',
+          isDir: false,
+          mimeType: 'image/png',
+          resource: {
+            resourceId: 'res_sf_uploaded_image',
+            studioId: 'studio_remote',
+            links: {
+              self: '/api/resources/res_sf_uploaded_image',
+              content: '/api/resources/res_sf_uploaded_image/content',
+            },
+          },
+        }],
+        timestamp: 1000,
+      },
+    }];
+    const refs = selectSessionFiles(sessionState(items), '/s/1');
+
+    expect(refs[0]).toMatchObject({
+      fileId: 'sf_uploaded_image',
+      source: 'session-attachment',
+      resource: {
+        resourceId: 'res_sf_uploaded_image',
+        studioId: 'studio_remote',
+        links: {
+          self: '/api/resources/res_sf_uploaded_image',
+          content: '/api/resources/res_sf_uploaded_image/content',
+        },
+      },
+    });
+  });
+
   it('保留 attachment 的 session file lifecycle 状态', () => {
     const items: ChatListItem[] = [{
       type: 'message',
@@ -523,6 +563,43 @@ describe('selectSessionFiles', () => {
       name: '录音 6.wav',
       path: '/cache/录音 6_mpyhzdno_0ad8830b.wav',
       kind: 'audio',
+    });
+  });
+
+  it('registry 文件和消息附件重复时保留附件里的 inline preview 数据', () => {
+    const items: ChatListItem[] = [{
+      type: 'message',
+      data: {
+        id: 'image-msg',
+        role: 'user',
+        attachments: [{
+          fileId: 'sf_image',
+          path: '/cache/pasted.png',
+          name: 'pasted.png',
+          isDir: false,
+          mimeType: 'image/png',
+          base64Data: 'IMAGE_BASE64',
+        }],
+      },
+    }];
+    const refs = selectSessionFiles(sessionState(items, '/s/image', [{
+      fileId: 'sf_image',
+      filePath: '/cache/pasted.png',
+      label: 'pasted.png',
+      ext: 'png',
+      mime: 'image/png',
+      kind: 'image',
+      status: 'available',
+    }]), '/s/image');
+
+    expect(refs).toHaveLength(1);
+    expect(refs[0]).toMatchObject({
+      fileId: 'sf_image',
+      source: 'session-registry',
+      name: 'pasted.png',
+      path: '/cache/pasted.png',
+      kind: 'image',
+      inlineData: { base64: 'IMAGE_BASE64', mimeType: 'image/png' },
     });
   });
 

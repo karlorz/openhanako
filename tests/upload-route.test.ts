@@ -255,6 +255,70 @@ describe("upload route", () => {
     });
   });
 
+  it("upload-blob stores session-owned generic attachment blobs under session file cache", async () => {
+    tmpDir = mktemp();
+    const hanakoHome = path.join(tmpDir, "hana-home");
+    const sessionPath = "/sessions/pdf-blob.jsonl";
+    const pdfBytes = Buffer.from("%PDF-1.7\nhello\n");
+    const registerSessionFile = vi.fn(({ sessionPath, filePath, label, origin, storageKind, presentation, listed }) => ({
+      id: "sf_pdf",
+      sessionPath,
+      filePath,
+      realPath: filePath,
+      displayName: label,
+      filename: path.basename(filePath),
+      label,
+      ext: "pdf",
+      mime: "application/pdf",
+      size: pdfBytes.length,
+      kind: "pdf",
+      origin,
+      storageKind,
+      presentation,
+      listed,
+      createdAt: 1,
+    }));
+    const app = new Hono();
+    app.route("/api", createUploadRoute({ hanakoHome, registerSessionFile }));
+
+    const res = await app.request("/api/upload-blob", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sessionPath,
+        name: "report.pdf",
+        base64Data: pdfBytes.toString("base64"),
+        mimeType: "application/pdf",
+      }),
+    });
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data.uploads[0].error).toBeUndefined();
+    expect(data.uploads[0].name).toBe("report.pdf");
+    expect(data.uploads[0].dest.startsWith(path.join(hanakoHome, "session-files"))).toBe(true);
+    expect(fs.readFileSync(data.uploads[0].dest).equals(pdfBytes)).toBe(true);
+    expect(registerSessionFile).toHaveBeenCalledWith({
+      sessionPath,
+      filePath: data.uploads[0].dest,
+      label: "report.pdf",
+      origin: "user_upload",
+      storageKind: "managed_cache",
+      presentation: "attachment",
+      listed: true,
+      sourceKey: expect.stringMatching(/^upload:blob-content:v1:[a-f0-9]{64}$/),
+    });
+    expect(data.uploads[0]).toMatchObject({
+      fileId: "sf_pdf",
+      sessionPath,
+      mime: "application/pdf",
+      kind: "pdf",
+      storageKind: "managed_cache",
+      presentation: "attachment",
+      listed: true,
+    });
+  });
+
   it("reuses one session file for repeated blob uploads with the same bytes", async () => {
     tmpDir = mktemp();
     const hanakoHome = path.join(tmpDir, "hana-home");

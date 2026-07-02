@@ -8,7 +8,7 @@
  * 4. 关闭 splash，显示主窗口
  * 5. 优雅关闭
  */
-const { app, BrowserWindow, WebContentsView, globalShortcut, ipcMain, dialog, session, shell, nativeTheme, Tray, Menu, nativeImage, systemPreferences, Notification, webContents, screen, powerSaveBlocker } = require("electron");
+const { app, BrowserWindow, WebContentsView, globalShortcut, ipcMain, dialog, session, shell, nativeTheme, Tray, Menu, nativeImage, systemPreferences, Notification, webContents, screen, powerSaveBlocker, net } = require("electron");
 const os = require("os");
 const path = require("path");
 const crypto = require("crypto");
@@ -29,6 +29,7 @@ const { readTextFileSnapshot, writeTextFileIfUnchanged } = require("./file-text-
 const chokidar = require("chokidar");
 const { wrapIpcHandler, wrapIpcBestEffortHandler, wrapIpcOn } = require('./ipc-wrapper.cjs');
 const themeRegistry = require('./src/shared/theme-registry.cjs');
+const { readBuildInfo } = require("./src/shared/build-info.cjs");
 const {
   completeOnboardingAndOpenMain,
   submitOnboardingCompleteIntent,
@@ -3875,6 +3876,13 @@ wrapIpcHandler("run-edit-command", (event, command) => {
   return true;
 });
 wrapIpcHandler("get-app-version", () => app.getVersion());
+wrapIpcHandler("get-build-info", () => {
+  const info = readBuildInfo();
+  return {
+    ...info,
+    appVersion: info.appVersion || app.getVersion(),
+  };
+});
 // 旧版兼容：check-update 返回 auto-updater 状态中的可用版本信息
 wrapIpcHandler("check-update", () => {
   const s = getUpdateState();
@@ -4604,6 +4612,55 @@ wrapIpcHandler("onboarding-complete", async () => {
     createMainWindow,
   });
   registerQuickChatShortcutBestEffort();
+});
+
+// ── LAN 连接探测（绕过 renderer CSP 的初始验证 fetch）──
+// Browsers cannot set Authorization headers on WebSocket(), but more critically
+// here: the renderer's CSP <meta> is built from the already-active connection,
+// so the initial /api/web-auth/login fetch to a NEW remote URL is blocked before
+// the connection can become active (chicken-and-egg). This handler runs in the
+// main process via net.fetch, which is NOT subject to renderer CSP. On success
+// the renderer persists the connection and reloads so CSP picks up the origin.
+wrapIpcHandler("connect:probe", async (event, payload) => {
+  const baseUrl = String(payload && payload.baseUrl || "").replace(/\/+$/, "");
+  const credential = String(payload && payload.credential || "");
+  if (!baseUrl) return { ok: false, error: "baseUrl required" };
+  if (!credential) return { ok: false, error: "credential required" };
+  // SSRF guard: a compromised renderer could call this channel directly with an
+  // arbitrary URL. Keep the scheme narrow here and reject redirects below so
+  // net.fetch cannot silently expand the probed network boundary.
+  if (!/^https?:\/\//i.test(baseUrl)) {
+    return { ok: false, error: "baseUrl must be http(s)" };
+  }
+  // Sender validation (Electron Security §17): only accept probes from our own
+  // renderer (file:// origin). Prevents cross-origin invoke exploitation.
+  const senderUrl = event.senderFrame && event.senderFrame.url;
+  if (!senderUrl || !senderUrl.startsWith("file://")) {
+    return { ok: false, error: "forbidden sender" };
+  }
+  try {
+    const loginRes = await net.fetch(`${baseUrl}/api/web-auth/login`, {
+      method: "POST",
+      redirect: "manual",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ credential }),
+    });
+    if (loginRes.status >= 300 && loginRes.status < 400) return { ok: false, error: "login redirect blocked" };
+    if (!loginRes.ok) return { ok: false, error: `login HTTP ${loginRes.status}` };
+    const idRes = await net.fetch(`${baseUrl}/api/server/identity`, {
+      redirect: "manual",
+      headers: { Authorization: `Bearer ${credential}` },
+    });
+    if (idRes.status >= 300 && idRes.status < 400) return { ok: false, error: "identity redirect blocked" };
+    if (!idRes.ok) return { ok: false, error: `identity HTTP ${idRes.status}` };
+    const identity = await idRes.json();
+    return { ok: true, identity };
+  } catch (e) {
+    // Expected network errors (DNS, connection refused, TLS) surface here as
+    // {ok:false} rather than ipc rejections — gives the renderer a clean error
+    // message without tripping wrapIpcHandler's error logger.
+    return { ok: false, error: String((e && e.message) || e) };
+  }
 });
 
 // ── 窗口控制 IPC（Windows/Linux 自绘标题栏用）──

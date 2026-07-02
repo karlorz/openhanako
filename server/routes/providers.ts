@@ -45,6 +45,14 @@ function writeModelsCache(engine: any, cache: any) {
 export function createProvidersRoute(engine: any) {
   const route = new Hono();
 
+  function decodeRouteParam(value: string) {
+    try {
+      return decodeURIComponent(value);
+    } catch {
+      return value;
+    }
+  }
+
   // ── Cache helper: persist discovered models per-provider ──
   function saveToCache(providerName: any, models: any) {
     if (!providerName || !models?.length) return;
@@ -526,7 +534,7 @@ export function createProvidersRoute(engine: any) {
     const scopeDenied = denyWithoutScope(c, "providers.manage");
     if (scopeDenied) return scopeDenied;
     const providerName = c.req.param("name");
-    const modelId = c.req.param("modelId");
+    const modelId = decodeRouteParam(c.req.param("modelId"));
     const body = await safeJson(c);
     if (!body || typeof body !== "object") {
       return c.json({ error: "invalid body" }, 400);
@@ -549,7 +557,7 @@ export function createProvidersRoute(engine: any) {
     const scopeDenied = denyWithoutScope(c, "providers.manage");
     if (scopeDenied) return scopeDenied;
     const providerName = c.req.param("name");
-    const modelId = c.req.param("modelId");
+    const modelId = decodeRouteParam(c.req.param("modelId"));
     try {
       engine.providerRegistry.removeModel(providerName, modelId);
       await refreshProviderModels();

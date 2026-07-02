@@ -13,20 +13,24 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-latest
+          - os: macos-15
             target: dmg
             arch: arm64
-          - os: macos-latest
+            runner: macos-15
+          - os: macos-15-intel
             target: dmg
             arch: x64
+            runner: macos-15-intel
           - os: windows-latest
             target: nsis
             arch: x64
+            runner: windows-latest
           - os: ubuntu-latest
             target: AppImage
             arch: x64
+            runner: ubuntu-latest
 
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.runner }}
 
     steps:
       - uses: actions/checkout@v4
@@ -85,6 +89,17 @@ jobs:
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
         run: |
+          if [ -z "${CSC_LINK:-}" ] || [ -z "${CSC_KEY_PASSWORD:-}" ]; then
+            echo "::warning::CSC_LINK or CSC_KEY_PASSWORD is missing; building unsigned macOS artifacts"
+            {
+              echo "HANA_MAC_SIGNING_ENABLED=false"
+              echo "CSC_IDENTITY_AUTO_DISCOVERY=false"
+              echo "SKIP_NOTARIZE=true"
+            } >> "$GITHUB_ENV"
+            exit 0
+          fi
+
+          echo "HANA_MAC_SIGNING_ENABLED=true" >> "$GITHUB_ENV"
           KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
           KEYCHAIN_PASSWORD="ci-$(openssl rand -hex 12)"
 
@@ -100,7 +115,14 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: \
             -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
 
-          security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
+          existing_keychains=()
+          while IFS= read -r keychain; do
+            keychain="${keychain//\"/}"
+            if [ -n "$keychain" ]; then
+              existing_keychains+=("$keychain")
+            fi
+          done < <(security list-keychains -d user)
+          security list-keychains -d user -s "$KEYCHAIN_PATH" "${existing_keychains[@]}"
           security default-keychain -s "$KEYCHAIN_PATH"
 
           # 传给 electron-builder：CSC_KEYCHAIN 让它复用这个 keychain，不再自己创建
@@ -114,7 +136,7 @@ jobs:
       # identity 不硬编码进本 public 文件，证书是唯一来源，保证 mask 串与 electron-builder
       # 实际打印的串一致、永不漏配；读取不到就 fail（report，不静默降级）。
       - name: Mask signing identity in logs
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && env.HANA_MAC_SIGNING_ENABLED == 'true'
         run: |
           IDENTITY=$(security find-identity -v -p codesigning | grep "Developer ID Application" | head -1 | sed 's/.*"\(.*\)"/\1/')
           if [ -z "$IDENTITY" ]; then
@@ -135,16 +157,16 @@ jobs:
       # @electron/osx-sign 在签名大量文件时会卡死（原因不明），
       # 手动先签好 dist-server 里的 native 二进制，electron-builder 只签 Electron 框架。
       - name: Pre-sign server binaries
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && env.HANA_MAC_SIGNING_ENABLED == 'true'
         run: |
           IDENTITY=$(security find-identity -v -p codesigning | grep "Developer ID Application" | head -1 | sed 's/.*"\(.*\)"/\1/')
           echo "Using code-signing identity (masked in logs)"
 
           DIST_SERVER="dist-server/mac-${{ matrix.arch }}"
           echo "Signing .node files..."
-          find "$DIST_SERVER/node_modules" -name "*.node" | while read f; do
+          find "$DIST_SERVER/node_modules" -name "*.node" -print0 | while IFS= read -r -d '' f; do
             codesign --sign "$IDENTITY" --timestamp --force "$f"
-            echo "  ✓ $(basename $f)"
+            echo "  ✓ $(basename "$f")"
           done
 
           echo "Signing node binary..."
@@ -160,12 +182,15 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           ulimit -n 65536
-          npx electron-builder --mac dmg zip --${{ matrix.arch }} --publish never
+          if [ "${HANA_MAC_SIGNING_ENABLED:-}" = "true" ]; then
+            npx electron-builder --mac dmg zip --${{ matrix.arch }} --publish never
+          else
+            npx electron-builder --mac dmg zip --${{ matrix.arch }} --publish never \
+              -c.mac.identity=null \
+              -c.mac.hardenedRuntime=false
+          fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-          CSC_KEYCHAIN: ${{ env.CSC_KEYCHAIN }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
@@ -205,8 +230,61 @@ jobs:
             dist/latest*.yml
           if-no-files-found: error
 
+  server-bundles:
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: read
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { plat: linux,  os: linux, arch: arm64, runner: ubuntu-24.04-arm }
+          - { plat: linux,  os: linux, arch: x64,   runner: ubuntu-latest }
+          - { plat: darwin, os: mac,   arch: arm64, runner: macos-15 }
+          - { plat: darwin, os: mac,   arch: x64,   runner: macos-15-intel }
+          - { plat: win32,  os: win,   arch: x64,   runner: windows-latest }
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24.15.0"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build client bundles (main + preload + renderer)
+        run: npm run build:client
+
+      - name: Build server bundle (${{ matrix.plat }} ${{ matrix.arch }})
+        run: node scripts/build-server.mjs ${{ matrix.plat }} ${{ matrix.arch }}
+
+      - name: Pack release asset
+        id: pack
+        shell: bash
+        run: |
+          set -e
+          DIST="dist-server/${{ matrix.os }}-${{ matrix.arch }}"
+          OUT=$(node scripts/pack-server-bundle.mjs "$DIST" "${{ github.ref_name }}" "${{ matrix.os }}" "${{ matrix.arch }}")
+          echo "$OUT"
+          echo "asset_path=$(node -e 'console.log(JSON.parse(process.argv[1]).assetPath)' "$OUT")" >> "$GITHUB_OUTPUT"
+          echo "sidecar_path=$(node -e 'console.log(JSON.parse(process.argv[1]).sidecarPath)' "$OUT")" >> "$GITHUB_OUTPUT"
+
+      - name: Upload server-bundle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-bundle-${{ matrix.os }}-${{ matrix.arch }}
+          path: |
+            ${{ steps.pack.outputs.asset_path }}
+            ${{ steps.pack.outputs.sidecar_path }}
+          if-no-files-found: error
+
   release:
-    needs: build
+    needs: [build, server-bundles]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
@@ -264,6 +342,13 @@ jobs:
               gh release upload "${{ github.ref_name }}" "$f" --clobber
             done
 
+          echo "=== Uploading server bundles ==="
+          find artifacts -type f \( -name 'hanaagent-server-*.tar.gz' -o -name 'hanaagent-server-*.tar.gz.sha256' \) -print0 |
+            while IFS= read -r -d '' f; do
+              echo "  $f"
+              gh release upload "${{ github.ref_name }}" "$f" --clobber
+            done
+
           echo "=== Uploading latest.yml (Windows) ==="
           WIN_YML=$(find artifacts -name 'latest.yml' | head -1)
           if [ -n "$WIN_YML" ]; then
@@ -308,6 +393,17 @@ jobs:
           echo "$ASSETS" | grep -qE '^HanaAgent-.*-Windows-x64\.exe$' || MISSING+=("Windows-x64.exe")
           echo "$ASSETS" | grep -qE '^HanaAgent-.*-Linux-(x64|x86_64)\.AppImage$' || MISSING+=("Linux AppImage")
           echo "$ASSETS" | grep -qE '^HanaAgent-.*-Linux-(x64|amd64)\.deb$' || MISSING+=("Linux deb")
+
+          echo "$ASSETS" | grep -qx 'hanaagent-server-${{ github.ref_name }}-linux-arm64.tar.gz' || MISSING+=("server-linux-arm64")
+          echo "$ASSETS" | grep -qx 'hanaagent-server-${{ github.ref_name }}-linux-arm64.tar.gz.sha256' || MISSING+=("server-linux-arm64.sha256")
+          echo "$ASSETS" | grep -qx 'hanaagent-server-${{ github.ref_name }}-linux-x64.tar.gz'   || MISSING+=("server-linux-x64")
+          echo "$ASSETS" | grep -qx 'hanaagent-server-${{ github.ref_name }}-linux-x64.tar.gz.sha256'   || MISSING+=("server-linux-x64.sha256")
+          echo "$ASSETS" | grep -qx 'hanaagent-server-${{ github.ref_name }}-mac-arm64.tar.gz'  || MISSING+=("server-mac-arm64")
+          echo "$ASSETS" | grep -qx 'hanaagent-server-${{ github.ref_name }}-mac-arm64.tar.gz.sha256'  || MISSING+=("server-mac-arm64.sha256")
+          echo "$ASSETS" | grep -qx 'hanaagent-server-${{ github.ref_name }}-mac-x64.tar.gz'    || MISSING+=("server-mac-x64")
+          echo "$ASSETS" | grep -qx 'hanaagent-server-${{ github.ref_name }}-mac-x64.tar.gz.sha256'    || MISSING+=("server-mac-x64.sha256")
+          echo "$ASSETS" | grep -qx 'hanaagent-server-${{ github.ref_name }}-win-x64.tar.gz'    || MISSING+=("server-win-x64")
+          echo "$ASSETS" | grep -qx 'hanaagent-server-${{ github.ref_name }}-win-x64.tar.gz.sha256'    || MISSING+=("server-win-x64.sha256")
 
           # 清洁性检查：不应该有 blockmap 漏进来
           if echo "$ASSETS" | grep -qE '\.blockmap$'; then

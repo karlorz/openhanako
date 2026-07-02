@@ -415,6 +415,86 @@ describe('server connection helpers', () => {
     expect(connection.connectionId).toBe('lan:node_lan:studio_lan');
   });
 
+  it('uses main-process probeConnection when available and persists+reloads on success (CSP bootstrapping fix)', async () => {
+    const storageData = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => storageData.get(key) ?? null,
+      setItem: (key: string, value: string) => { storageData.set(key, value); },
+      removeItem: (key: string) => { storageData.delete(key); },
+    };
+    const originalWindow = globalThis.window;
+    const originalLocation = globalThis.location;
+    const reloadSpy = vi.fn();
+    const probeSpy = vi.fn().mockResolvedValue({
+      ok: true,
+      identity: {
+        connectionKind: 'lan',
+        serverId: 'server_lan',
+        serverNodeId: 'node_lan',
+        userId: 'user_lan',
+        studioId: 'studio_lan',
+        label: 'LAN Server',
+        trustState: 'lan',
+        capabilities: ['chat'],
+      },
+    });
+    try {
+      // persistServerConnectionSelection reads via getDefaultStorage() which
+      // returns window.localStorage — so the mock must live on window.
+      (globalThis as any).window = { hana: { probeConnection: probeSpy }, localStorage: storage };
+      (globalThis as any).location = { reload: reloadSpy };
+
+      const connection = await connectDeviceServerConnection({
+        baseUrl: 'http://100.125.173.118:14500',
+        credential: 'hana_dev_test_key',
+      });
+
+      expect(probeSpy).toHaveBeenCalledWith({
+        baseUrl: 'http://100.125.173.118:14500',
+        credential: 'hana_dev_test_key',
+      });
+      expect(reloadSpy).toHaveBeenCalledTimes(1);
+      expect(connection.connectionId).toBe('lan:node_lan:studio_lan');
+      // Connection persisted as active so CSP picks up the origin on reload.
+      const stored = JSON.parse(storage.getItem('hana-server-connections-v1') || '{}');
+      expect(stored.activeServerConnectionId).toBe('lan:node_lan:studio_lan');
+      expect(stored.serverConnections['lan:node_lan:studio_lan'].baseUrl).toBe('http://100.125.173.118:14500');
+    } finally {
+      (globalThis as any).window = originalWindow;
+      (globalThis as any).location = originalLocation;
+    }
+  });
+
+  it('throws when probe fails and does NOT persist or reload', async () => {
+    const storageData = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => storageData.get(key) ?? null,
+      setItem: (key: string, value: string) => { storageData.set(key, value); },
+      removeItem: (key: string) => { storageData.delete(key); },
+    };
+    const originalWindow = globalThis.window;
+    const originalLocation = globalThis.location;
+    const reloadSpy = vi.fn();
+    const probeSpy = vi.fn().mockResolvedValue({ ok: false, error: 'login HTTP 401' });
+    try {
+      (globalThis as any).window = { hana: { probeConnection: probeSpy }, localStorage: storage };
+      (globalThis as any).location = { reload: reloadSpy };
+
+      await expect(
+        connectDeviceServerConnection({
+          baseUrl: 'http://100.125.173.118:14500',
+          credential: 'wrong-key',
+        }),
+      ).rejects.toThrow(/connect probe failed: login HTTP 401/);
+
+      expect(reloadSpy).not.toHaveBeenCalled();
+      expect(storage.getItem('hana-server-connections-v1')).toBeNull();
+    } finally {
+      (globalThis as any).window = originalWindow;
+      (globalThis as any).location = originalLocation;
+    }
+  });
+
   it('persists only non-local ServerConnections and the active remote selection', () => {
     const storageData = new Map<string, string>();
     const storage = {
@@ -487,6 +567,24 @@ describe('server connection helpers', () => {
     expect(connection).not.toBeNull();
 
     expect(buildConnectionWsUrl(connection!, '/ws')).toBe('ws://127.0.0.1:3210/ws?token=test-token-123');
+  });
+
+  it('appends query token to WebSocket URL for LAN device-credential connections (B1 fix)', () => {
+    const local = createLocalServerConnection({
+      serverPort: '3210',
+      serverToken: 'local-token',
+    })!;
+    const lan = {
+      ...local,
+      connectionId: 'lan:node_lan:studio_lan',
+      kind: 'lan' as const,
+      baseUrl: 'http://100.125.173.118:14500',
+      wsUrl: 'ws://100.125.173.118:14500',
+      token: 'hana_dev_test-key',
+      credentialKind: 'device_credential' as const,
+    };
+
+    expect(buildConnectionWsUrl(lan, '/ws')).toBe('ws://100.125.173.118:14500/ws?token=hana_dev_test-key');
   });
 
   it('merges stable server identity without changing transport details', () => {

@@ -22,8 +22,12 @@ function resolveTheme() {
 contextBridge.exposeInMainWorld("hana", {
   getServerPort: () => ipcRenderer.invoke("get-server-port"),
   getServerToken: () => ipcRenderer.invoke("get-server-token"),
+  // LAN connect probe — runs in main process via net.fetch, bypasses renderer CSP.
+  // See desktop/main.cjs "connect:probe" handler.
+  probeConnection: (payload) => ipcRenderer.invoke("connect:probe", payload),
   runEditCommand: (command) => ipcRenderer.invoke("run-edit-command", command),
   getAppVersion: () => ipcRenderer.invoke("get-app-version"),
+  getBuildInfo: () => ipcRenderer.invoke("get-build-info"),
   checkUpdate: () => ipcRenderer.invoke("check-update"),
   // Auto-update (Windows)
   autoUpdateCheck: () => ipcRenderer.invoke("auto-update-check"),
