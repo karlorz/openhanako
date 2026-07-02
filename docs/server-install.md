@@ -183,13 +183,13 @@ target from the GitHub releases API:
 
 ```sh
 # latest stable (auto-resolved from karlorz/openhanako)
-node scripts/install-server.mjs upgrade --current-version v0.345.3-karlorz.3 --dry-run
+node scripts/install-server.mjs upgrade --current-version v0.346.18-karlorz.1 --dry-run
 # pinned fork release tag
-node scripts/install-server.mjs upgrade --version v0.346.18-karlorz.1 --current-version v0.345.3-karlorz.3 --dry-run
+node scripts/install-server.mjs upgrade --version v0.349.5-karlorz.1 --channel prerelease --current-version v0.346.18-karlorz.1 --dry-run
 # apply
-node scripts/install-server.mjs upgrade --version v0.346.18-karlorz.1 --current-version v0.345.3-karlorz.3 --execute
+node scripts/install-server.mjs upgrade --version v0.349.5-karlorz.1 --channel prerelease --current-version v0.346.18-karlorz.1 --execute
 # explicit metadata still accepted (skips the GitHub fetch)
-node scripts/install-server.mjs upgrade --metadata release.json --current-version v0.345.3-karlorz.3 --execute
+node scripts/install-server.mjs upgrade --metadata release.json --current-version v0.346.18-karlorz.1 --execute
 ```
 
 `--current-version` is required unless `/opt/hanaagent/current` resolves a
@@ -199,11 +199,12 @@ Releases does not expose asset sha256, so the download step fetches the
 `<asset>.sha256` sidecar published alongside each server bundle and verifies
 the archive against it before extraction.
 
-Current verified pinned example: `v0.346.18-karlorz.1` was published by
-GitHub Actions run `28293195697` with all required desktop installers,
-update metadata, and server bundles. The workflow publishes fork tags as
-prereleases by default, so unattended "latest stable" resolution may skip that
-tag until an operator explicitly promotes it; use `--version` to pin it.
+Current verified pinned example: `v0.349.5-karlorz.1` was published by
+GitHub Actions run `28586662807` with all required desktop installers, update
+metadata, and server bundles. The workflow publishes fork tags as prereleases
+by default, so unattended "latest stable" resolution may skip that tag until
+an operator explicitly promotes it; use `--version` with `--channel prerelease`
+to pin it.
 
 When upgrading a host with an existing `hanaagent.service`, the executable
 upgrade preserves the unit's `User=`, `Group=`, and `HANA_*` environment
@@ -249,9 +250,9 @@ Fresh install resolution uses the same GitHub release API path as upgrade:
 # latest stable from karlorz/openhanako
 install-server install --dry-run
 # pinned fork prerelease tag
-install-server install --version v0.346.18-karlorz.1 --channel prerelease --dry-run
+install-server install --version v0.349.5-karlorz.1 --channel prerelease --dry-run
 # apply on a fresh host
-install-server install --version v0.346.18-karlorz.1 --channel prerelease --execute
+install-server install --version v0.349.5-karlorz.1 --channel prerelease --execute
 ```
 
 Upgrade sequence:

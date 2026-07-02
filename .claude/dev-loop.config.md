@@ -73,7 +73,7 @@ release_policy:
   upstream_tag_format: "v{version}"
   tag_format: "v{version}-karlorz.N"
   tag_namespace_rule: "Plain v{version} tags belong to upstream sync targets; fork release tags must use the -karlorz.N suffix."
-  latest_verified_fork_tag: v0.346.18-karlorz.6
+  latest_verified_fork_tag: v0.349.5-karlorz.1
   fork_release_channel: prerelease
   verify_after_push: true
 
@@ -87,7 +87,7 @@ server_deploy:
   service: hanaagent
   url: http://100.125.173.118:14500
   release_asset_arch: linux-arm64
-  current_verified_target: v0.346.18-karlorz.6
+  current_verified_target: v0.349.5-karlorz.1
   install_server:
     bootstrap_cli_only_command: "curl -fsSL https://raw.githubusercontent.com/karlorz/openhanako/<ref>/scripts/install-server-bootstrap.sh | sudo bash -s -- --repo karlorz/openhanako --ref <ref> --install-cli-only"
     status_command: "install-server status"
@@ -113,7 +113,7 @@ server_deploy:
   policy:
     - "Run release asset check before touching sg01."
     - "Run upgrade dry-run before execute."
-    - "Use --channel prerelease for fork tags such as v0.346.18-karlorz.5."
+    - "Use --channel prerelease for fork tags such as v0.349.5-karlorz.1."
     - "Do not use or recreate the retired sg01 SSH deploy helper."
     - "Do not set deploy_script unless an attended release explicitly approves automatic host deployment."
     - "If install-server is missing on sg01, run the CLI-only bootstrap command as a separate attended host mutation before upgrade."
@@ -310,6 +310,7 @@ notes:
   sg01_post_upgrade_release_observed: "2026-06-28 after attended temp-script upgrade: /opt/hanaagent/current -> /opt/hanaagent/releases/v0.346.18-karlorz.1-linux-arm64; service active; install-server was still not installed in PATH at upgrade time because the bootstrap script had not yet been added to a released ref."
   sg01_replay_patch_release_target: "2026-06-30 patch target: v0.346.18-karlorz.5 includes marker-only image replay, ToolGroup file-detail link context, and code-review hardening follow-ups; deploy with install-server upgrade --channel prerelease."
   sg01_model_removal_patch_release_target: "2026-07-01 patch target: v0.346.18-karlorz.6 includes provider model-removal persistence for slash-bearing local provider models; deploy with install-server upgrade --channel prerelease."
+  sg01_stable_sync_release_target: "2026-07-02 stable target: v0.349.5-karlorz.1 includes upstream v0.349.5 plus replay, ToolGroup link-context, provider model-removal, LAN auth, scoped CSP, and remote resource-preview fork behavior; deploy with install-server upgrade --version v0.349.5-karlorz.1 --channel prerelease after release asset checks and host dry-run."
   sg01_mobile_pwa_diagnosis: "Raw mobile.auth.* text was deployment drift from the old v0.323 server bundle. After upgrading to v0.346.18-karlorz.1, the live MobileApp chunk preloads the auth locale before login and zh.json returns translated mobile.auth labels."
   gh_default_repo_hint: "Run `gh repo set-default karlorz/openhanako` if gh resolves to upstream."
 ```

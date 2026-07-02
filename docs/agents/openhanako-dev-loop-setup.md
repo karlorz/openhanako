@@ -1,6 +1,6 @@
 # OpenHanako Dev-Loop Setup Notes
 
-Generated during the 2026-06-15 remote attachment preview fix closeout. Last revised during the 2026-07-01 provider model-removal patch closeout on the upstream `v0.346.18` fork line.
+Generated during the 2026-06-15 remote attachment preview fix closeout. Last revised during the 2026-07-02 stable `v0.349.5` sync closeout.
 
 ## Discovery
 
@@ -8,14 +8,14 @@ Generated during the 2026-06-15 remote attachment preview fix closeout. Last rev
 - Upstream: `liliMozi/openhanako`
 - Current branch: `dev`
 - GitHub CLI default repo: `karlorz/openhanako`
-- App version: `0.346.18` after the stable sync rebase. Tier 3A local desktop install/version verification and Tier 3B sg01 desktop smoke passed on 2026-06-27 before the fork release tag was published.
+- App version: `0.349.5` after the stable sync rebase. Tier 3A local desktop install/version verification and Tier 3B sg01 desktop smoke passed on 2026-07-02 before the fork release tag was published.
 - SkillWiki vault: resolved by `skillwiki path`; project wiki path `projects/openhanako`
 - SkillWiki doctor: 32 pass, 6 info, 0 warn, 0 errors
 - Dev-loop dependency probe: usable; required dependencies present
 - Missing optional dependency: `claude-mem` only
 - Existing CI: `.github/workflows/ci.yml`, targets `main` and `dev`
 - Release workflow: `.github/workflows/build.yml`, tag-triggered `v*`
-- Latest fork release tag: `v0.346.18-karlorz.6`; this patch line includes the marker-only image replay fix, ToolGroup file-detail link context propagation, code-review hardening follow-ups, and provider model-removal persistence fixes.
+- Latest fork release tag: `v0.349.5-karlorz.1`; this stable sync includes upstream `v0.349.5` plus the replay, ToolGroup link-context, provider model-removal, LAN auth, scoped CSP, and remote resource-preview fork behavior.
 - Upstream sync workflow: `node scripts/sync-upstream.mjs --check` checks stable upstream releases by default; prerelease candidate review requires `--include-prerelease`
 - Fork sync rules: `docs/fork-sync/rules.yml` is the machine-readable policy used by `scripts/sync-upstream.mjs`.
 - Post-rebase fork sync verification: `node scripts/sync-upstream.mjs --post-rebase` prints Tier 3A local desktop install/version verification before Tier 3B sg01 live smoke. The installed `/Applications/HanaAgent.app` bundle metadata, `build-info.json`, and Settings → About must match `package.json` before the live smoke counts.
@@ -99,8 +99,8 @@ Ran a manual core `/dev-loop` cycle audit on 2026-06-15 after the remote preview
 - Vault sync caveat: installed SkillWiki v0.9.4 exposes `skillwiki sync lock/unlock`, while dev-loop v1.24.4 probes for the older `--acquire-lock` flag. `vault_sync.peer_aware` is set to `false` until that probe is updated; launchd vault-sync remains active outside dev-loop.
 - Doctor caveat: `skillwiki doctor` reports `32 pass`, `1 warn`, `0 errors`, but exits non-zero with the warning. Treat the JSON summary as authoritative for blocking decisions, not the exit code alone.
 - GitHub CLI caveat: plain `gh repo view` initially resolved to upstream `liliMozi/openhanako`. Ran `gh repo set-default karlorz/openhanako`; future CI/PR checks should still prefer explicit `--repo karlorz/openhanako` when scripted.
-- CI health: the `dev` branch trigger is proven by the 2026-06-27 UTC post-force-push runs for docs closeout commit `7628f54f`: push run `28295481409` and PR dashboard run `28295481912` both completed successfully on macOS and Windows.
-- Upstream release check: the 2026-06-27 stable sync rebased local `dev` from the `v0.345.3` baseline onto upstream `v0.346.18`. `node scripts/sync-upstream.mjs` and `node scripts/sync-upstream.mjs --post-rebase` passed Tier 0 through Tier 2. Tier 3A local desktop install/version verification and Tier 3B sg01 desktop live smoke both passed. `--include-prerelease --check` remains only for explicit prerelease candidate review.
+- CI health: the `dev` branch trigger remains valid; after the 2026-07-02 stable sync, release workflow run `28586662807` for tag `v0.349.5-karlorz.1` completed successfully and published the prerelease assets.
+- Upstream release check: the 2026-07-02 stable sync rebased local `dev` from the `v0.346.18` baseline onto upstream `v0.349.5`. `node scripts/sync-upstream.mjs --post-rebase` passed Tier 0 through Tier 2. Tier 3A local desktop install/version verification and Tier 3B sg01 desktop live smoke both passed. `--include-prerelease --check` remains only for explicit prerelease candidate review.
 - Codex cache caveat: dev-loop's cached skill copy references `skills/dev-loop/scripts/preflight-inventory.js`, but the Codex plugin package currently stores that helper at plugin root `scripts/preflight-inventory.js`. Use the plugin-root script as the fallback until the packaging layout is repaired upstream.
 
 ## Claude Review Follow-Up
@@ -147,3 +147,15 @@ After the 2026-06-16 maintenance cycle, the compact config now treats fork-sync 
 - Regression coverage: `ProviderModelList` verifies DELETE endpoint usage and no broad `/api/config` rewrite; provider route tests cover encoded slash model ids; provider registry tests cover slash-bearing local provider plugin model removal.
 - sg01 live validation: a temp provider/model with model id `codex/smoke-delete-*` was created through the remote server, removed through `DELETE /api/providers/:provider/models/:modelId`, verified absent, and cleaned up.
 - sg01 memory diagnosis: high memory was tmpfs pressure from stale `/tmp/openhanako-*` and `/tmp/hanaagent-*` build/upgrade directories, not CPU saturation. Future attended hotfix builds should stage under disk-backed `/opt/hanaagent/build` and clean it after install.
+
+## Stable Sync Closeout - 2026-07-02
+
+- Sync target: upstream stable `v0.349.5`; previous fork stable baseline was `v0.346.18`.
+- Local closeout commit: `5aae7ce1` (`docs(sync): close out v0.349.5 stable sync`) on branch `dev`.
+- Branch/tag publication: `origin/dev` and fork tag `v0.349.5-karlorz.1` both resolve to `5aae7ce16c08fe89398ad999213f7130d36a84cf`; the plain upstream tag `v0.349.5` was not pushed to `origin`.
+- Conflict resolution preserved upstream aggregate `session-meta` budget externalization and discovered provider-model metadata while keeping fork forced legacy sidecar externalization, memory-reflection sidecar hydration, replacement-list model deletion, and encoded provider-model DELETE routing.
+- Verification passed: `node scripts/sync-upstream.mjs --post-rebase`, the conflict-focused Vitest set with 167 tests, `npm run typecheck`, `git diff --check`, and `node scripts/sync-upstream.mjs --conflict-plan --json --local-only`.
+- Tier 3A installed/codesigned local HanaAgent `0.349.5`; bundle metadata and `build-info.json` matched `package.json`, with `sourceRepo: karlorz/openhanako`, `baseTag: v0.349.5`, `dirty: false`, and local updates disabled.
+- Tier 3B sg01 desktop smoke passed against `http://100.125.173.118:14500`: helper identity returned HTTP 200, WebSocket opened, a generated image was pasted/sent, chat switch/return preserved the transcript thumbnail, and Conversation Files MediaViewer loaded the scoped remote resource URL without CSP or WebSocket regressions.
+- Fork release tag `v0.349.5-karlorz.1` published as a GitHub prerelease from workflow run `28586662807`; the run completed successfully and published 20 assets, including the macOS, Windows, Linux, update metadata, and five server bundle plus `.sha256` pairs.
+- Permanent dashboard PR #1 remained open, draft, and unmerged.
