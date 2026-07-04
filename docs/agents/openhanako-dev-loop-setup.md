@@ -148,14 +148,13 @@ After the 2026-06-16 maintenance cycle, the compact config now treats fork-sync 
 - sg01 live validation: a temp provider/model with model id `codex/smoke-delete-*` was created through the remote server, removed through `DELETE /api/providers/:provider/models/:modelId`, verified absent, and cleaned up.
 - sg01 memory diagnosis: high memory was tmpfs pressure from stale `/tmp/openhanako-*` and `/tmp/hanaagent-*` build/upgrade directories, not CPU saturation. Future attended hotfix builds should stage under disk-backed `/opt/hanaagent/build` and clean it after install.
 
-## Stable Sync Closeout - 2026-07-02
+## Stable Sync Closeout - 2026-07-04
 
-- Sync target: upstream stable `v0.349.5`; previous fork stable baseline was `v0.346.18`.
-- Local closeout commit: `5aae7ce1` (`docs(sync): close out v0.349.5 stable sync`) on branch `dev`.
-- Branch/tag publication: `origin/dev` and fork tag `v0.349.5-karlorz.1` both resolve to `5aae7ce16c08fe89398ad999213f7130d36a84cf`; the plain upstream tag `v0.349.5` was not pushed to `origin`.
-- Conflict resolution preserved upstream aggregate `session-meta` budget externalization and discovered provider-model metadata while keeping fork forced legacy sidecar externalization, memory-reflection sidecar hydration, replacement-list model deletion, and encoded provider-model DELETE routing.
-- Verification passed: `node scripts/sync-upstream.mjs --post-rebase`, the conflict-focused Vitest set with 167 tests, `npm run typecheck`, `git diff --check`, and `node scripts/sync-upstream.mjs --conflict-plan --json --local-only`.
-- Tier 3A installed/codesigned local HanaAgent `0.349.5`; bundle metadata and `build-info.json` matched `package.json`, with `sourceRepo: karlorz/openhanako`, `baseTag: v0.349.5`, `dirty: false`, and local updates disabled.
-- Tier 3B sg01 desktop smoke passed against `http://100.125.173.118:14500`: helper identity returned HTTP 200, WebSocket opened, a generated image was pasted/sent, chat switch/return preserved the transcript thumbnail, and Conversation Files MediaViewer loaded the scoped remote resource URL without CSP or WebSocket regressions.
-- Fork release tag `v0.349.5-karlorz.1` published as a GitHub prerelease from workflow run `28586662807`; the run completed successfully and published 20 assets, including the macOS, Windows, Linux, update metadata, and five server bundle plus `.sha256` pairs.
-- Permanent dashboard PR #1 remained open, draft, and unmerged.
+- Sync target: upstream stable `v0.350.2`; previous fork stable baseline was `v0.349.5`.
+- The rebased `dev` branch now carries upstream package metadata aligned to `0.350.2`.
+- The upstream delta from `v0.349.5..v0.350.2` absorbed 8 non-merge commits across 48 files, including the MinGit runtime switch, desktop slash-command wiring, text-surface spellcheck disablement, MCP capability drift preservation, and stream-end stabilization.
+- Verification passed: `node scripts/sync-upstream.mjs --post-rebase`, `npx vitest run tests/sync-upstream.test.mjs`, `npm run typecheck`, `git diff --check`, and `node scripts/sync-upstream.mjs --conflict-plan --json --local-only`.
+- Tier 3A installed/codesigned local HanaAgent `0.350.2`; bundle metadata and `build-info.json` matched `package.json`, with `sourceRepo: karlorz/openhanako`, `baseTag: v0.350.2`, `dirty: false`, and local updates disabled.
+- Tier 3B sg01 desktop smoke passed against `http://100.125.173.118:14500`: helper identity returned HTTP 200, WebSocket opened, a generated image was uploaded/sent, chat switch/return preserved the new smoke turn and Conversation Files row, and MediaViewer loaded the scoped remote resource URL at `1024x1024` without CSP or WebSocket regressions.
+- Fork release target for this sync is `v0.350.2-karlorz.1`; the plain upstream tag `v0.350.2` remains unpushed to `origin`.
+- Permanent dashboard PR #1 remains open, draft, and unmerged.
