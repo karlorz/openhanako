@@ -73,7 +73,7 @@ release_policy:
   upstream_tag_format: "v{version}"
   tag_format: "v{version}-karlorz.N"
   tag_namespace_rule: "Plain v{version} tags belong to upstream sync targets; fork release tags must use the -karlorz.N suffix."
-  latest_verified_fork_tag: v0.349.5-karlorz.1
+  latest_verified_fork_tag: v0.350.2-karlorz.1
   fork_release_channel: prerelease
   verify_after_push: true
 
@@ -87,7 +87,7 @@ server_deploy:
   service: hanaagent
   url: http://100.125.173.118:14500
   release_asset_arch: linux-arm64
-  current_verified_target: v0.349.5-karlorz.1
+  current_verified_target: v0.350.2-karlorz.1
   install_server:
     bootstrap_cli_only_command: "curl -fsSL https://raw.githubusercontent.com/karlorz/openhanako/<ref>/scripts/install-server-bootstrap.sh | sudo bash -s -- --repo karlorz/openhanako --ref <ref> --install-cli-only"
     status_command: "install-server status"
