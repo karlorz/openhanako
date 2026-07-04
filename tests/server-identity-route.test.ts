@@ -235,9 +235,18 @@ describe("server identity route", () => {
       authState: "paired",
       credentialKind: "device_credential",
       serverId: "server_route",
+      serverNodeId: "server_route",
       userId: "user_route",
       studioId: "studio_route",
       capabilities: ["chat", "resources.read", "resources", "files.read", "files", "files.write"],
+      executionBoundary: {
+        kind: "local_process",
+        serverNodeId: "server_route",
+        studioId: "studio_route",
+        workbench: {
+          kind: "legacy_agent_workbench",
+        },
+      },
     });
   });
 });

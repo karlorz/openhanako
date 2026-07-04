@@ -29,12 +29,20 @@ import {
   LOCAL_CONNECTION_ID,
   createLocalServerConnection,
   hasServerConnection,
+  isLocalOwnerConnection,
   mergeServerIdentity,
   readPersistedServerConnectionState,
   refreshLocalServerConnectionState,
   upsertServerConnection,
   type ServerConnection,
 } from './services/server-connection';
+import {
+  RemoteBoundaryContractError,
+  remoteRecoveryForStartupFailure,
+} from './services/remote-connection-recovery';
+import {
+  validateRemoteBoundaryContract,
+} from './services/remote-boundary-contract';
 import { persistAppearancePreferences } from './services/appearance-sync';
 import { errorBus as _errorBus } from '../../../shared/error-bus.ts';
 import { AppError as _AppError } from '../../../shared/errors.ts';
@@ -147,29 +155,21 @@ export async function initApp(): Promise<void> {
       serverConnections: upsertServerConnection(useStore.getState().serverConnections, mergedConnection),
       activeServerConnectionId: mergedConnection.connectionId,
       activeServerConnection: mergedConnection,
+      remoteConnectionRecovery: null,
     });
   } catch (err) {
-    if (activeServerConnection.connectionId !== LOCAL_CONNECTION_ID && localServerConnection) {
-      console.warn('[init] remote server identity failed, returning to local server:', err);
+    const recovery = remoteRecoveryForStartupFailure(activeServerConnection, err);
+    if (recovery) {
+      console.warn('[init] remote server identity failed; showing recovery UI');
       useStore.setState({
-        activeServerConnectionId: localServerConnection.connectionId,
-        activeServerConnection: localServerConnection,
+        activeServerConnectionId: activeServerConnection.connectionId,
+        activeServerConnection,
+        remoteConnectionRecovery: recovery,
       });
-      try {
-        await refreshDeviceWebSession(localServerConnection);
-        const mergedConnection = await loadIdentityForActiveConnection(localServerConnection);
-        useStore.setState({
-          serverConnections: upsertServerConnection(useStore.getState().serverConnections, mergedConnection),
-          activeServerConnectionId: mergedConnection.connectionId,
-          activeServerConnection: mergedConnection,
-        });
-      } catch (localErr) {
-        console.error('[init] server identity failed:', localErr);
-        setStatus('status.serverNotReady', false);
-        markRendererLaunch('app-ready', JSON.stringify({ reason: 'local-server-identity-failed' }));
-        platform.appReady();
-        return;
-      }
+      setStatus('status.serverNotReady', false);
+      markRendererLaunch('app-ready', JSON.stringify({ reason: 'remote-server-recovery' }));
+      platform.appReady();
+      return;
     } else {
       console.error('[init] server identity failed:', err);
       setStatus('status.serverNotReady', false);
@@ -306,6 +306,10 @@ export async function initApp(): Promise<void> {
 async function loadIdentityForActiveConnection(connection: ServerConnection): Promise<ServerConnection> {
   const identityRes = await hanaFetch('/api/server/identity');
   const identityData = await identityRes.json();
+  if (!isLocalOwnerConnection(connection)) {
+    const compatibility = validateRemoteBoundaryContract(connection, identityData);
+    if (!compatibility.ok) throw new RemoteBoundaryContractError(compatibility);
+  }
   return mergeServerIdentity(connection, identityData);
 }
 

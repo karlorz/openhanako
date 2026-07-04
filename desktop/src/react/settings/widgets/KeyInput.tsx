@@ -8,12 +8,13 @@ interface KeyInputProps {
   value: string;
   onChange: (val: string) => void;
   placeholder?: string;
+  ariaLabel?: string;
   onBlur?: () => void;
   onReveal?: () => Promise<string | null | undefined>;
   onRevealError?: (err: unknown) => void;
 }
 
-export function KeyInput({ value, onChange, placeholder, onBlur, onReveal, onRevealError }: KeyInputProps) {
+export function KeyInput({ value, onChange, placeholder, ariaLabel, onBlur, onReveal, onRevealError }: KeyInputProps) {
   const t = window.t || ((k: string) => k);
   const [visible, setVisible] = useState(false);
   const [revealing, setRevealing] = useState(false);
@@ -107,6 +108,7 @@ export function KeyInput({ value, onChange, placeholder, onBlur, onReveal, onRev
             replaceTransientSecret('');
           }
         }}
+        aria-label={ariaLabel}
         placeholder={placeholder}
         onBlur={onBlur}
       />

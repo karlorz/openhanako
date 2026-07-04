@@ -1,4 +1,5 @@
 import type { FileRef } from '../types/file-ref';
+import { canUseNativeResourcePath } from './resource-access';
 import { buildConnectionUrl, type ServerConnection } from './server-connection';
 
 export type FileRefUrlMode = 'local-file' | 'resource-content' | 'inline-data';
@@ -21,10 +22,11 @@ export function resolveFileRefUrl(ref: FileRef, {
   platform?: ResourceUrlPlatform | null;
   preferLocalFile?: boolean;
 }): FileRefUrlResult {
-  const isLocalTransport = !connection || connection.kind === 'local';
+  const canUseNativePath = canUseNativeResourcePath({ connection });
+  const isRemoteResourceOwner = !!connection && !canUseNativePath;
   const getFileUrl = platform?.getFileUrl;
   const canUseLocalFile = preferLocalFile
-    && isLocalTransport
+    && canUseNativePath
     && !!ref.path
     && typeof getFileUrl === 'function';
 
@@ -51,7 +53,7 @@ export function resolveFileRefUrl(ref: FileRef, {
     };
   }
 
-  const syntheticSessionFileContentPath = !isLocalTransport
+  const syntheticSessionFileContentPath = isRemoteResourceOwner
     ? resourceContentPathForSessionFileId(ref.fileId)
     : null;
   if (syntheticSessionFileContentPath && connection) {
@@ -64,7 +66,7 @@ export function resolveFileRefUrl(ref: FileRef, {
     };
   }
 
-  if (ref.path && isLocalTransport) {
+  if (ref.path && canUseNativePath) {
     if (typeof getFileUrl !== 'function') {
       throw new Error('platform.getFileUrl not available and resource content link missing');
     }

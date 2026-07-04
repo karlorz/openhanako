@@ -200,6 +200,23 @@ describe('server connection helpers', () => {
     expect(isLocalOwnerConnection(null)).toBe(false);
   });
 
+  it('does not treat malformed local-ish persisted state as a local owner', () => {
+    const local = createLocalServerConnection({
+      serverPort: '3210',
+      serverToken: 'local-token',
+    })!;
+
+    expect(isLocalOwnerConnection({
+      ...local,
+      credentialKind: 'device_credential',
+    })).toBe(false);
+    expect(isLocalOwnerConnection({
+      ...local,
+      baseUrl: 'http://100.125.173.118:14500',
+      wsUrl: 'ws://100.125.173.118:14500',
+    })).toBe(false);
+  });
+
   it('builds scoped CSP connect sources for only the active configured remote origin', () => {
     const local = createLocalServerConnection({
       serverPort: '3210',
@@ -660,6 +677,63 @@ describe('server connection helpers', () => {
         boundaryId: 'execb_node_stable_studio_stable',
         serverNodeId: 'node_stable',
         studioId: 'studio_stable',
+      },
+    });
+  });
+
+  it('preserves remote identity metadata when merging a refreshed server identity', () => {
+    const connection = createDeviceServerConnection({
+      baseUrl: 'https://hana.example',
+      credential: 'remote-token',
+      identity: {
+        connectionKind: 'custom_remote',
+        serverId: 'server_remote',
+        serverNodeId: 'node_remote',
+        userId: 'user_remote',
+        studioId: 'studio_remote',
+        label: 'Remote Studio',
+        trustState: 'tunnel',
+        capabilities: ['chat'],
+      },
+    });
+
+    const merged = mergeServerIdentity(connection, {
+      connectionKind: 'custom_remote',
+      serverId: 'server_remote',
+      serverNodeId: 'node_remote_refresh',
+      userId: 'user_remote',
+      studioId: 'studio_remote',
+      label: 'Remote Studio',
+      trustState: 'tunnel',
+      credentialKind: 'device_credential',
+      capabilities: ['chat', 'resources', 'tools', 'identity'],
+      executionBoundary: {
+        schemaVersion: 1,
+        boundaryId: 'execb_node_remote_refresh_studio_remote',
+        kind: 'remote_process',
+        serverNodeId: 'node_remote_refresh',
+        studioId: 'studio_remote',
+        workbench: {
+          kind: 'server_managed',
+          root: null,
+        },
+      },
+    });
+
+    expect(merged).toMatchObject({
+      kind: 'custom_remote',
+      trustState: 'tunnel',
+      credentialKind: 'device_credential',
+      serverNodeId: 'node_remote_refresh',
+      capabilities: ['chat', 'resources', 'tools', 'identity'],
+      executionBoundary: {
+        boundaryId: 'execb_node_remote_refresh_studio_remote',
+        kind: 'remote_process',
+        serverNodeId: 'node_remote_refresh',
+        studioId: 'studio_remote',
+        workbench: {
+          kind: 'server_managed',
+        },
       },
     });
   });

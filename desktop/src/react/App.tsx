@@ -32,6 +32,7 @@ import { openSettingsModal } from './stores/settings-modal-actions';
 import { AppTitlebar } from './components/app/AppTitlebar';
 import { ChatSidebar } from './components/app/ChatSidebar';
 import { AppPages } from './components/app/AppPages';
+import { RemoteConnectionRecovery } from './components/app/RemoteConnectionRecovery';
 
 declare function t(key: string, vars?: Record<string, string | number>): string;
 
@@ -115,6 +116,7 @@ function App() {
           />
 
           <RegionalErrorBoundary region="app-pages" resetKeys={[currentTab]}>
+            <RemoteConnectionRecovery />
             <AppPages />
           </RegionalErrorBoundary>
         </div>

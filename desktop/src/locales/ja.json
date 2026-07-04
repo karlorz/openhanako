@@ -28,6 +28,22 @@
     "createSessionFailed": "会話の作成に失敗しました",
     "sendFailed": "送信に失敗しました"
   },
+  "app": {
+    "remoteRecovery": {
+      "title": "リモートサーバーの確認が必要です",
+      "subtitle": "保存済みのリモートサーバー接続は維持しましたが、互換性チェックを完了できませんでした。",
+      "serverUrl": "サーバー URL",
+      "accessKey": "アクセスキー",
+      "retryRemote": "リモートを再試行",
+      "retrying": "再試行中...",
+      "switchLocal": "ローカルに切り替え",
+      "localUnavailable": "ローカルサーバーはまだ準備できていません",
+      "status": {
+        "identity_failed": "ID チェックに失敗しました",
+        "compatibility_failed": "互換性チェックに失敗しました"
+      }
+    }
+  },
   "channel": {
     "tab": "チャンネル",
     "chatTab": "チャット",
@@ -1171,15 +1187,15 @@
       "desktopKeyOnce": "キーは生成直後に一度だけ表示されます",
       "desktopKeyCreated": "コンピューターアクセスキーを生成しました",
       "desktopKeyFailed": "生成に失敗しました",
-      "connectLanServer": "LAN サーバーに接続",
+      "connectLanServer": "リモートサーバーに接続",
       "remoteServerUrl": "サーバー URL",
       "remoteServerUrlHint": "別のコンピューターまたは NAS の HanaAgent Server URL を入力します",
       "remoteServerKey": "アクセスキー",
       "remoteServerKeyHint": "そのサーバーの設定ページで生成したコンピューターアクセスキーを入力します",
-      "remoteServerConnected": "LAN サーバーに接続しました",
+      "remoteServerConnected": "リモートサーバーに接続しました",
       "remoteServerFailed": "接続に失敗しました",
-      "remoteConnection": "リモート Hana に接続中",
-      "remoteConnectionDesc": "アクセスとデバイス内のローカルアカウント、パスワード、LAN スイッチ、アクセスキーはローカル Hana だけに属します。",
+      "remoteConnection": "リモートサーバーに接続中",
+      "remoteConnectionDesc": "このデスクトップはリモートサーバーを使用しています。ローカルアカウント、パスワード、LAN スイッチ、アクセスキー生成はローカルサーバーだけに属します。",
       "remoteConnectionName": "接続名",
       "remoteConnectionKind": "接続タイプ",
       "remoteConnectionUrl": "サーバー URL",
@@ -1194,11 +1210,29 @@
       "remoteStudioLabel": "スタジオ",
       "remoteExecutionBoundary": "実行境界",
       "remoteRuntime": "実行先",
+      "remoteCompatibilityStatus": "互換性",
+      "remoteCompatibilityReady": "準備完了",
+      "remoteCompatibilityWarning": "互換性に制限あり",
+      "remoteCompatibilityProblem": "リモートサーバーの問題",
+      "remoteCompatibilityReason": "問題",
+      "remoteCompatibilityWarningLabel": "警告",
+      "remoteReason": {
+        "invalid_identity": "サーバー ID を確認できませんでした",
+        "invalid_capabilities": "サーバー機能がないか無効です",
+        "missing_core_capability": "必須のチャット機能がありません",
+        "missing_optional_capability": "一部の任意リモートサーバー機能がありません",
+        "invalid_execution_boundary": "サーバー実行境界が不完全です",
+        "identity_transport_contradiction": "保存済み接続がサーバー ID と一致しません"
+      },
+      "remoteWarning": {
+        "missing_optional_capability": "一部の任意リモートサーバー機能を利用できません"
+      },
       "remoteConnectionKindLocal": "ローカル接続",
-      "remoteConnectionKindLan": "LAN サーバー",
+      "remoteConnectionKindRemote": "リモートサーバー",
+      "remoteConnectionKindLan": "リモートサーバー",
       "remoteConnectionKindCustom": "リモートサーバー",
-      "remoteConnectionKindRelay": "リレーサーバー",
-      "remoteConnectionKindCloud": "クラウドサーバー",
+      "remoteConnectionKindRelay": "リモートサーバー",
+      "remoteConnectionKindCloud": "リモートサーバー",
       "remoteTrustLocal": "ローカル信頼済み",
       "remoteTrustLan": "LAN 信頼済み",
       "remoteTrustTunnel": "トンネル信頼済み",
@@ -1220,10 +1254,14 @@
       "remoteCapabilityProviders": "プロバイダー",
       "remoteRuntimeServerProcess": "リモート Hana サーバープロセス",
       "remoteRuntimeServer": "リモート Hana サーバー",
-      "remoteLocalOnlyNote": "このコンピューターの LAN アクセス、デバイスキー、ローカルアカウントを管理するには、先にローカル Hana に戻ってください。",
-      "returnToLocal": "ローカル Hana に戻る",
-      "returnedToLocal": "ローカル Hana に戻りました",
-      "localConnectionUnavailable": "ローカル Hana 接続はまだ準備できていません",
+      "remoteLocalOnlyNote": "このコンピューターの LAN アクセス、デバイスキー、ローカルアカウントを管理するには、先にローカルへ切り替えてください。",
+      "remoteConnectionActions": "リモートサーバー接続",
+      "remoteConnectionActionsDesc": "このリモートサーバーを再試行するか、別のサーバー URL とアクセスキーを入力します。",
+      "retryRemote": "リモートを再試行",
+      "connectAnotherRemote": "別のリモートサーバーに接続",
+      "returnToLocal": "ローカルに切り替え",
+      "returnedToLocal": "ローカルに切り替えました",
+      "localConnectionUnavailable": "ローカルサーバーはまだ準備できていません",
       "pairedDevices": "ペアリング済みデバイス",
       "noDevices": "ペアリング済みデバイスはありません",
       "revoke": "取り消す",
@@ -1935,12 +1973,12 @@
       "next": "はじめる"
     },
     "remote": {
-      "link": "既存のサーバーがありますか？LAN で接続",
+      "link": "既存のサーバーがありますか？リモートサーバーに接続",
       "url": "サーバー URL",
       "key": "アクセスキー",
       "connect": "接続",
       "connecting": "接続中...",
-      "failed": "LAN サーバーへの接続に失敗しました"
+      "failed": "リモートサーバーへの接続に失敗しました"
     },
     "name": {
       "title": "名前とメモリ",

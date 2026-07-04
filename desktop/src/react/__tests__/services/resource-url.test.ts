@@ -38,6 +38,7 @@ const remoteConnection: ServerConnection = {
 const lanDeviceConnection: ServerConnection = {
   ...localConnection,
   connectionId: 'lan:device',
+  kind: 'lan',
   serverId: 'server_lan',
   studioId: 'studio_lan',
   label: 'LAN Hana',
@@ -46,6 +47,34 @@ const lanDeviceConnection: ServerConnection = {
   token: 'lan token',
   trustState: 'lan',
   credentialKind: 'device_credential',
+};
+
+const malformedLocalishConnection: ServerConnection = {
+  ...localConnection,
+  connectionId: 'bad:localish',
+  kind: 'local',
+  serverId: 'server_bad',
+  studioId: 'studio_bad',
+  label: 'Bad Localish Hana',
+  baseUrl: 'http://100.125.173.118:14500',
+  wsUrl: 'ws://100.125.173.118:14500',
+  token: 'bad token',
+  trustState: 'lan',
+  credentialKind: 'device_credential',
+};
+
+const nonLoopbackLocalishConnection: ServerConnection = {
+  ...localConnection,
+  connectionId: 'bad:nonloopback',
+  kind: 'local',
+  serverId: 'server_bad_nonloopback',
+  studioId: 'studio_bad_nonloopback',
+  label: 'Bad Non-loopback Hana',
+  baseUrl: 'http://100.125.173.118:14500',
+  wsUrl: 'ws://100.125.173.118:14500',
+  token: 'bad token',
+  trustState: 'local',
+  credentialKind: 'loopback_token',
 };
 
 function fileRef(patch: Partial<FileRef> = {}): FileRef {
@@ -85,14 +114,14 @@ describe('resolveFileRefUrl', () => {
     expect(platform.getFileUrl).toHaveBeenCalledWith('/workspace/asset.png');
   });
 
-  it('treats LAN device-credential local-kind connections as local transport', () => {
+  it('keeps existing local-owner behavior when no connection is available', () => {
     const platform = { getFileUrl: vi.fn((p: string) => `file:///mock${p}`) };
 
     const result = resolveFileRefUrl(fileRef({
       resource: undefined,
       version: { mtimeMs: 11, size: 22 },
     }), {
-      connection: lanDeviceConnection,
+      connection: null,
       platform,
     });
 
@@ -101,6 +130,62 @@ describe('resolveFileRefUrl', () => {
       url: 'file:///mock/workspace/asset.png?v=11-22',
     });
     expect(platform.getFileUrl).toHaveBeenCalledWith('/workspace/asset.png');
+  });
+
+  it('rejects a LAN path-only ref that has no resource content link', () => {
+    const platform = { getFileUrl: vi.fn((p: string) => `file:///mock${p}`) };
+
+    expect(() => resolveFileRefUrl(fileRef({
+      fileId: 'uploaded_image',
+      resource: undefined,
+    }), {
+      connection: lanDeviceConnection,
+      platform,
+    })).toThrow('remote file ref requires resource content link');
+
+    expect(platform.getFileUrl).not.toHaveBeenCalled();
+  });
+
+  it('rejects a custom remote path-only ref that has no resource content link', () => {
+    const platform = { getFileUrl: vi.fn((p: string) => `file:///mock${p}`) };
+
+    expect(() => resolveFileRefUrl(fileRef({
+      fileId: 'uploaded_image',
+      resource: undefined,
+    }), {
+      connection: remoteConnection,
+      platform,
+    })).toThrow('remote file ref requires resource content link');
+
+    expect(platform.getFileUrl).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed local-ish device credentials instead of using the local file bridge', () => {
+    const platform = { getFileUrl: vi.fn((p: string) => `file:///mock${p}`) };
+
+    expect(() => resolveFileRefUrl(fileRef({
+      fileId: 'uploaded_image',
+      resource: undefined,
+    }), {
+      connection: malformedLocalishConnection,
+      platform,
+    })).toThrow('remote file ref requires resource content link');
+
+    expect(platform.getFileUrl).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed local-ish non-loopback URLs instead of using the local file bridge', () => {
+    const platform = { getFileUrl: vi.fn((p: string) => `file:///mock${p}`) };
+
+    expect(() => resolveFileRefUrl(fileRef({
+      fileId: 'uploaded_image',
+      resource: undefined,
+    }), {
+      connection: nonLoopbackLocalishConnection,
+      platform,
+    })).toThrow('remote file ref requires resource content link');
+
+    expect(platform.getFileUrl).not.toHaveBeenCalled();
   });
 
   it('uses the resource content URL for a remote connection instead of exposing local paths', () => {
@@ -134,6 +219,19 @@ describe('resolveFileRefUrl', () => {
       mode: 'resource-content',
       url: 'https://hana.example/api/resources/res_sf_uploaded_image/content?v=11-22',
     });
+    expect(platform.getFileUrl).not.toHaveBeenCalled();
+  });
+
+  it('does not synthesize a resource URL for non-session-file ids', () => {
+    const platform = { getFileUrl: vi.fn((p: string) => `file:///mock${p}`) };
+
+    expect(() => resolveFileRefUrl(fileRef({
+      fileId: 'uploaded_image',
+      resource: undefined,
+    }), {
+      connection: remoteConnection,
+      platform,
+    })).toThrow('remote file ref requires resource content link');
     expect(platform.getFileUrl).not.toHaveBeenCalled();
   });
 
