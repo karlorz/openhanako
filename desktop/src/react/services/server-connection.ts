@@ -1,7 +1,5 @@
 import { validateStudioConnectionTrust } from './studio-access';
-import { SERVER_PROTOCOL_VERSION } from '../../../../shared/contract-versions.ts';
 import { assertRemoteBoundaryContract } from './remote-boundary-contract';
-import type { RemoteServerAssessment } from '../../../../shared/remote-server-assessment';
 
 export type StudioConnectionKind = 'local' | 'lan' | 'custom_remote' | 'relay' | 'cloud';
 export type ServerTrustState = 'local' | 'lan' | 'tunnel' | 'cloud';
@@ -75,26 +73,6 @@ export interface ServerIdentity {
   executionBoundary?: ExecutionBoundary;
   capabilities?: string[];
   version?: string;
-  /** Server build's runtime protocol version (see shared/contract-versions.cjs).
-   *  Optional so an older server that predates this field is read-time
-   *  compatible: absence means "don't know", not "mismatch". */
-  serverProtocol?: number;
-  runtimeBuild?: {
-    schemaVersion?: number;
-    runtimeVersion?: string;
-    releaseTag?: string | null;
-    gitSha?: string | null;
-    sourceRepository?: string | null;
-  };
-  featureContracts?: {
-    schemaVersion?: number;
-    complete?: boolean;
-    entries?: Record<string, number>;
-  };
-  runtimeFacts?: {
-    platform?: string;
-    arch?: string;
-  };
 }
 
 export interface ServerConnectionSource {
@@ -691,32 +669,6 @@ export function mergeServerIdentity(
   return next;
 }
 
-/**
- * Diagnostic-only runtime handshake: this build's renderer and server are
- * always shipped together, so a mismatch here can only mean the running
- * install got into an inconsistent state (a botched manual copy, a
- * self-hosted server pinned to a different release, an update that only
- * landed on one side). It is NOT a gate — the activation-time preload
- * contract check (shared/contract-versions.cjs, artifact-ota.cjs) is what
- * actually keeps that from happening during normal updates; this function
- * only makes an already-running mismatch visible instead of silent. Never
- * call this to decide whether to block or retry anything.
- *
- * An identity response with no `serverProtocol` field (a server built
- * before this handshake existed) is read-time compatible: silently skip
- * the comparison rather than warning about an old server that was never
- * wrong to begin with.
- */
-export function warnIfServerProtocolMismatch(identity: ServerIdentity, log: (message: string) => void = console.error): void {
-  if (typeof identity.serverProtocol !== 'number') return;
-  if (identity.serverProtocol === SERVER_PROTOCOL_VERSION) return;
-  log(
-    `[server-identity] 界面与服务进程版本偏斜：界面期望的运行时协议版本是 ${SERVER_PROTOCOL_VERSION}，`
-      + `但当前连接的服务进程返回的是 ${identity.serverProtocol}。这通常发生在自动更新只更新了`
-      + '一侧（界面或服务进程），或者连接的是版本不同的自托管服务；仅记录该信息用于排查，不会中断当前运行。',
-  );
-}
-
 export function buildConnectionUrl(
   connection: ServerConnection,
   path: string,
@@ -736,87 +688,15 @@ export function buildConnectionWsUrl(
   assertRoutePath(path);
   const url = `${trimTrailingSlash(connection.wsUrl)}${path}`;
   if (opts.wsTicket) return appendQueryParam(url, 'wsTicket', opts.wsTicket);
-  if (connection.kind !== 'local' && connection.kind !== 'lan') return url;
   if (!connection.token || !canUseQueryToken(connection)) return url;
   return appendQueryParam(url, 'token', connection.token);
-}
-
-export type ConnectionWsAuth =
-  | { mode: 'local-query-token'; ticket: null; warningCode: null }
-  | { mode: 'ticket'; ticket: string; warningCode: null }
-  | {
-      mode: 'legacy-query-token';
-      ticket: null;
-      warningCode: 'legacy_websocket_query_token' | 'websocket_ticket_contract_missing' | 'ticket_request_failed_legacy_fallback';
-    }
-  | { mode: 'unsupported'; ticket: null; warningCode: 'websocket_ticket_required' };
-
-function assessmentForConnection(
-  connection: ServerConnection,
-  assessment: RemoteServerAssessment | null | undefined,
-): RemoteServerAssessment | null {
-  return assessment?.schemaVersion === 1 && assessment.connectionId === connection.connectionId
-    ? assessment
-    : null;
-}
-
-export async function resolveConnectionWsAuth(
-  connection: ServerConnection,
-  assessment: RemoteServerAssessment | null | undefined,
-  fetchImpl: typeof fetch = fetch,
-): Promise<ConnectionWsAuth> {
-  if (isLocalOwnerConnection(connection)) {
-    return { mode: 'local-query-token', ticket: null, warningCode: null };
-  }
-
-  const currentAssessment = assessmentForConnection(connection, assessment);
-  const transport = currentAssessment?.transport;
-  const hasDeclaredTicket = transport?.status === 'ticket-ready'
-    || (transport?.status === 'legacy-query-token'
-      && transport.reportedTicketContractVersion !== null
-      && transport.reasonCodes.includes('ticket_request_failed_legacy_fallback'));
-
-  if (hasDeclaredTicket) {
-    try {
-      const ticket = await requestConnectionWsTicket(connection, fetchImpl);
-      if (ticket) return { mode: 'ticket', ticket, warningCode: null };
-      if (connection.kind !== 'lan') {
-        return { mode: 'unsupported', ticket: null, warningCode: 'websocket_ticket_required' };
-      }
-    } catch {
-      if (connection.kind !== 'lan') {
-        return { mode: 'unsupported', ticket: null, warningCode: 'websocket_ticket_required' };
-      }
-      return {
-        mode: 'legacy-query-token',
-        ticket: null,
-        warningCode: 'ticket_request_failed_legacy_fallback',
-      };
-    }
-    if (connection.kind === 'lan') {
-      return {
-        mode: 'legacy-query-token',
-        ticket: null,
-        warningCode: 'ticket_request_failed_legacy_fallback',
-      };
-    }
-  }
-
-  if (connection.kind === 'lan') {
-    const warningCode = transport?.reasonCodes.includes('websocket_ticket_contract_missing')
-      ? 'websocket_ticket_contract_missing'
-      : 'legacy_websocket_query_token';
-    return { mode: 'legacy-query-token', ticket: null, warningCode };
-  }
-
-  return { mode: 'unsupported', ticket: null, warningCode: 'websocket_ticket_required' };
 }
 
 export async function requestConnectionWsTicket(
   connection: ServerConnection,
   fetchImpl: typeof fetch = fetch,
 ): Promise<string | null> {
-  if (isLocalOwnerConnection(connection)) return null;
+  if (canUseQueryToken(connection)) return null;
   const res = await fetchImpl(buildConnectionUrl(connection, '/api/ws-ticket'), {
     method: 'POST',
     headers: appendConnectionAuth(connection, { 'Content-Type': 'application/json' }),
