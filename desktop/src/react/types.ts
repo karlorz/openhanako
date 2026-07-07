@@ -465,6 +465,8 @@ export interface PlatformApi {
   getSplashInfo?(): Promise<{ agentName?: string; locale?: string; yuan?: string } | null>;
   reloadMainWindow?(): Promise<void>;
   onboardingComplete?(): Promise<void>;
+  debugOpenOnboarding?(): Promise<void>;
+  debugOpenOnboardingPreview?(): Promise<void>;
 
   // ── Notification ──
   showNotification?(title: string, body: string, agentId?: string | null, options?: DesktopNotificationOptions): void;

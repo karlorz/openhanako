@@ -1,4 +1,5 @@
 import { validateStudioConnectionTrust } from './studio-access';
+import { assertRemoteBoundaryContract } from './remote-boundary-contract';
 
 export type StudioConnectionKind = 'local' | 'lan' | 'custom_remote' | 'relay' | 'cloud';
 export type ServerTrustState = 'local' | 'lan' | 'tunnel' | 'cloud';
@@ -333,6 +334,7 @@ export async function connectDeviceServerConnection({
       credential: token,
       identity,
     });
+    assertRemoteBoundaryContract(connection, identity);
     // Persist as active so the next page load's CSP includes the origin.
     persistServerConnectionSelection(connection);
     if (typeof location !== 'undefined') location.reload();
@@ -352,11 +354,13 @@ export async function connectDeviceServerConnection({
     credentials: 'include',
   }) as ServerIdentity;
 
-  return createDeviceServerConnection({
+  const connection = createDeviceServerConnection({
     baseUrl: normalizedBaseUrl,
     credential: token,
     identity,
   });
+  assertRemoteBoundaryContract(connection, identity);
+  return connection;
 }
 
 
@@ -543,7 +547,18 @@ export function hasServerConnection(source: ServerConnectionSource): boolean {
 }
 
 export function isLocalOwnerConnection(connection: ServerConnection | null | undefined): boolean {
-  return connection?.kind === 'local' && connection.credentialKind === 'loopback_token';
+  return connection?.kind === 'local'
+    && connection.credentialKind === 'loopback_token'
+    && isLoopbackConnectionUrl(connection.baseUrl);
+}
+
+export function isLoopbackConnectionUrl(value: string | null | undefined): boolean {
+  if (!value) return false;
+  try {
+    return isLoopbackHost(new URL(value).hostname);
+  } catch {
+    return false;
+  }
 }
 
 export function upsertServerConnection(

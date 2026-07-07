@@ -20,6 +20,13 @@ import {
   writePersistedServerConnectionState,
 } from '../../services/server-connection';
 
+const remoteExecutionBoundary = {
+  kind: 'remote_process',
+  serverNodeId: 'node_lan',
+  studioId: 'studio_lan',
+  workbench: { kind: 'legacy_agent_workbench', root: null },
+};
+
 describe('server connection helpers', () => {
   it('creates the local default ServerConnection from port and token', () => {
     expect(createLocalServerConnection({
@@ -198,6 +205,23 @@ describe('server connection helpers', () => {
     expect(isLocalOwnerConnection(local)).toBe(true);
     expect(isLocalOwnerConnection(remote)).toBe(false);
     expect(isLocalOwnerConnection(null)).toBe(false);
+  });
+
+  it('does not treat malformed local-ish persisted state as a local owner', () => {
+    const local = createLocalServerConnection({
+      serverPort: '3210',
+      serverToken: 'local-token',
+    })!;
+
+    expect(isLocalOwnerConnection({
+      ...local,
+      credentialKind: 'device_credential',
+    })).toBe(false);
+    expect(isLocalOwnerConnection({
+      ...local,
+      baseUrl: 'http://100.125.173.118:14500',
+      wsUrl: 'ws://100.125.173.118:14500',
+    })).toBe(false);
   });
 
   it('builds scoped CSP connect sources for only the active configured remote origin', () => {
@@ -390,7 +414,8 @@ describe('server connection helpers', () => {
             trustState: 'lan',
             authState: 'paired',
             credentialKind: 'device_credential',
-            capabilities: ['chat', 'resources', 'files'],
+            capabilities: ['chat', 'resources', 'files', 'tools', 'settings'],
+            executionBoundary: remoteExecutionBoundary,
           }),
         } as Response;
       }
@@ -415,6 +440,45 @@ describe('server connection helpers', () => {
     expect(connection.connectionId).toBe('lan:node_lan:studio_lan');
   });
 
+  it('rejects manual Remote Server connect before persistence when the boundary contract fails', async () => {
+    const fetchImpl = vi.fn(async (url: string) => {
+      if (url === 'http://192.168.31.75:14500/api/web-auth/login') {
+        return { ok: true, json: async () => ({ ok: true }) } as Response;
+      }
+      if (url === 'http://192.168.31.75:14500/api/server/identity') {
+        return {
+          ok: true,
+          json: async () => ({
+            connectionKind: 'lan',
+            serverId: 'server_lan',
+            serverNodeId: 'node_lan',
+            userId: 'user_lan',
+            studioId: 'studio_lan',
+            label: 'LAN Server',
+            trustState: 'lan',
+            authState: 'paired',
+            credentialKind: 'device_credential',
+            capabilities: ['resources', 'files', 'tools', 'settings'],
+            executionBoundary: remoteExecutionBoundary,
+          }),
+        } as Response;
+      }
+      throw new Error(`unexpected URL ${url}`);
+    });
+
+    await expect(connectDeviceServerConnection({
+      baseUrl: 'http://192.168.31.75:14500',
+      credential: 'fixture-key',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    })).rejects.toMatchObject({
+      name: 'RemoteBoundaryContractError',
+      compatibility: {
+        ok: false,
+        reasonCodes: ['missing_core_capability'],
+      },
+    });
+  });
+
   it('uses main-process probeConnection when available and persists+reloads on success (CSP bootstrapping fix)', async () => {
     const storageData = new Map<string, string>();
     const storage = {
@@ -435,7 +499,8 @@ describe('server connection helpers', () => {
         studioId: 'studio_lan',
         label: 'LAN Server',
         trustState: 'lan',
-        capabilities: ['chat'],
+        capabilities: ['chat', 'resources', 'files', 'tools', 'settings'],
+        executionBoundary: remoteExecutionBoundary,
       },
     });
     try {
@@ -660,6 +725,63 @@ describe('server connection helpers', () => {
         boundaryId: 'execb_node_stable_studio_stable',
         serverNodeId: 'node_stable',
         studioId: 'studio_stable',
+      },
+    });
+  });
+
+  it('preserves remote identity metadata when merging a refreshed server identity', () => {
+    const connection = createDeviceServerConnection({
+      baseUrl: 'https://hana.example',
+      credential: 'remote-token',
+      identity: {
+        connectionKind: 'custom_remote',
+        serverId: 'server_remote',
+        serverNodeId: 'node_remote',
+        userId: 'user_remote',
+        studioId: 'studio_remote',
+        label: 'Remote Studio',
+        trustState: 'tunnel',
+        capabilities: ['chat'],
+      },
+    });
+
+    const merged = mergeServerIdentity(connection, {
+      connectionKind: 'custom_remote',
+      serverId: 'server_remote',
+      serverNodeId: 'node_remote_refresh',
+      userId: 'user_remote',
+      studioId: 'studio_remote',
+      label: 'Remote Studio',
+      trustState: 'tunnel',
+      credentialKind: 'device_credential',
+      capabilities: ['chat', 'resources', 'tools', 'identity'],
+      executionBoundary: {
+        schemaVersion: 1,
+        boundaryId: 'execb_node_remote_refresh_studio_remote',
+        kind: 'remote_process',
+        serverNodeId: 'node_remote_refresh',
+        studioId: 'studio_remote',
+        workbench: {
+          kind: 'server_managed',
+          root: null,
+        },
+      },
+    });
+
+    expect(merged).toMatchObject({
+      kind: 'custom_remote',
+      trustState: 'tunnel',
+      credentialKind: 'device_credential',
+      serverNodeId: 'node_remote_refresh',
+      capabilities: ['chat', 'resources', 'tools', 'identity'],
+      executionBoundary: {
+        boundaryId: 'execb_node_remote_refresh_studio_remote',
+        kind: 'remote_process',
+        serverNodeId: 'node_remote_refresh',
+        studioId: 'studio_remote',
+        workbench: {
+          kind: 'server_managed',
+        },
       },
     });
   });

@@ -9,6 +9,7 @@
 
 import { useStore } from './stores';
 import { hanaFetch } from './hooks/use-hana-fetch';
+import { fetchConfig } from './hooks/use-config';
 import { applyAgentIdentity, loadAgents, loadAvatars } from './stores/agent-actions';
 import { loadPendingNewSessionPermissionDefault, loadSessions, switchSession } from './stores/session-actions';
 import { initSessionProjectCatalog } from './stores/session-project-actions';
@@ -35,6 +36,14 @@ import {
   upsertServerConnection,
   type ServerConnection,
 } from './services/server-connection';
+import {
+  clearRemoteConnectionRecoveryState,
+  remoteRecoveryForStartupFailure,
+  writeRemoteConnectionRecoveryState,
+} from './services/remote-connection-recovery';
+import {
+  assertRemoteBoundaryContract,
+} from './services/remote-boundary-contract';
 import { persistAppearancePreferences } from './services/appearance-sync';
 import { errorBus as _errorBus } from '../../../shared/error-bus.ts';
 import { AppError as _AppError } from '../../../shared/errors.ts';
@@ -53,6 +62,31 @@ function markRendererLaunch(event: string, details?: unknown) {
     console.info(`[hana-launch] ${event}`);
   } else {
     console.info(`[hana-launch] ${event}`, details);
+  }
+}
+
+async function loadRecoveryI18n(): Promise<void> {
+  const loader = typeof i18n === 'undefined'
+    ? (window as unknown as { i18n?: typeof i18n }).i18n
+    : i18n;
+  if (!loader?.load) return;
+  const applyLocale = async (locale: string) => {
+    await loader.load(locale);
+    useStore.setState({ locale: loader.locale || locale });
+  };
+  try {
+    const configData = await fetchConfig();
+    const locale = typeof configData?.locale === 'string' && configData.locale.trim()
+      ? configData.locale
+      : 'zh-CN';
+    await applyLocale(locale);
+  } catch (err) {
+    console.warn('[init] recovery i18n config load failed; falling back to zh-CN:', err);
+    try {
+      await applyLocale('zh-CN');
+    } catch (fallbackErr) {
+      console.warn('[init] recovery i18n fallback failed:', fallbackErr);
+    }
   }
 }
 
@@ -147,29 +181,24 @@ export async function initApp(): Promise<void> {
       serverConnections: upsertServerConnection(useStore.getState().serverConnections, mergedConnection),
       activeServerConnectionId: mergedConnection.connectionId,
       activeServerConnection: mergedConnection,
+      remoteConnectionRecovery: null,
     });
+    clearRemoteConnectionRecoveryState();
   } catch (err) {
-    if (activeServerConnection.connectionId !== LOCAL_CONNECTION_ID && localServerConnection) {
-      console.warn('[init] remote server identity failed, returning to local server:', err);
+    const recovery = remoteRecoveryForStartupFailure(activeServerConnection, err);
+    if (recovery) {
+      console.warn('[init] remote server identity failed; showing recovery UI');
+      await loadRecoveryI18n();
+      writeRemoteConnectionRecoveryState(recovery);
       useStore.setState({
-        activeServerConnectionId: localServerConnection.connectionId,
-        activeServerConnection: localServerConnection,
+        activeServerConnectionId: activeServerConnection.connectionId,
+        activeServerConnection,
+        remoteConnectionRecovery: recovery,
       });
-      try {
-        await refreshDeviceWebSession(localServerConnection);
-        const mergedConnection = await loadIdentityForActiveConnection(localServerConnection);
-        useStore.setState({
-          serverConnections: upsertServerConnection(useStore.getState().serverConnections, mergedConnection),
-          activeServerConnectionId: mergedConnection.connectionId,
-          activeServerConnection: mergedConnection,
-        });
-      } catch (localErr) {
-        console.error('[init] server identity failed:', localErr);
-        setStatus('status.serverNotReady', false);
-        markRendererLaunch('app-ready', JSON.stringify({ reason: 'local-server-identity-failed' }));
-        platform.appReady();
-        return;
-      }
+      setStatus('status.serverNotReady', false);
+      markRendererLaunch('app-ready', JSON.stringify({ reason: 'remote-server-recovery' }));
+      platform.appReady();
+      return;
     } else {
       console.error('[init] server identity failed:', err);
       setStatus('status.serverNotReady', false);
@@ -306,6 +335,7 @@ export async function initApp(): Promise<void> {
 async function loadIdentityForActiveConnection(connection: ServerConnection): Promise<ServerConnection> {
   const identityRes = await hanaFetch('/api/server/identity');
   const identityData = await identityRes.json();
+  assertRemoteBoundaryContract(connection, identityData);
   return mergeServerIdentity(connection, identityData);
 }
 
