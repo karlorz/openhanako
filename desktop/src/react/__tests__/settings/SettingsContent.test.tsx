@@ -313,4 +313,55 @@ describe('SettingsContent title placement', () => {
       [remoteConnection.connectionId]: remoteConnection,
     });
   });
+
+  it('hydrates matching remote recovery state into the settings store', async () => {
+    const { writePersistedServerConnectionState } = await import('../../services/server-connection');
+    const { REMOTE_CONNECTION_RECOVERY_STORAGE_KEY } = await import('../../services/remote-connection-recovery');
+    const remoteConnection: ServerConnection = {
+      connectionId: 'lan:node_lan:studio_lan',
+      kind: 'lan',
+      serverId: 'server_lan',
+      serverNodeId: 'node_lan',
+      userId: 'user_lan',
+      studioId: 'studio_lan',
+      label: 'LAN Studio',
+      baseUrl: 'http://192.168.31.75:14500',
+      wsUrl: 'ws://192.168.31.75:14500',
+      token: 'hana_dev_remote',
+      authState: 'paired',
+      trustState: 'lan',
+      credentialKind: 'device_credential',
+      platformAccountId: null,
+      officialServiceKind: null,
+      capabilities: ['chat', 'resources', 'files', 'settings'],
+    };
+    writePersistedServerConnectionState({
+      serverConnections: { [remoteConnection.connectionId]: remoteConnection },
+      activeServerConnectionId: remoteConnection.connectionId,
+    });
+    window.localStorage.setItem(REMOTE_CONNECTION_RECOVERY_STORAGE_KEY, JSON.stringify({
+      status: 'compatibility_failed',
+      connectionId: remoteConnection.connectionId,
+      baseUrl: remoteConnection.baseUrl,
+      reasonCodes: ['missing_core_capability'],
+      warningCodes: ['missing_optional_capability'],
+    }));
+    window.platform = {
+      getServerPort: vi.fn(async () => 62950),
+      getServerToken: vi.fn(async () => 'local-token'),
+    } as unknown as typeof window.platform;
+    const { SettingsContent } = await import('../../settings/SettingsContent');
+
+    render(<SettingsContent variant="window" />);
+
+    await waitFor(() => {
+      expect(mockState.remoteConnectionRecovery).toEqual({
+        status: 'compatibility_failed',
+        connectionId: remoteConnection.connectionId,
+        baseUrl: remoteConnection.baseUrl,
+        reasonCodes: ['missing_core_capability'],
+        warningCodes: ['missing_optional_capability'],
+      });
+    });
+  });
 });

@@ -1,31 +1,46 @@
 /**
  * API Key 输入框 — password/text 切换
  */
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import styles from '../Settings.module.css';
 
 interface KeyInputProps {
   value: string;
   onChange: (val: string) => void;
   placeholder?: string;
+  ariaLabel?: string;
   onBlur?: () => void;
   onReveal?: () => Promise<string | null | undefined>;
   onRevealError?: (err: unknown) => void;
 }
 
-export function KeyInput({ value, onChange, placeholder, onBlur, onReveal, onRevealError }: KeyInputProps) {
+export function KeyInput({ value, onChange, placeholder, ariaLabel, onBlur, onReveal, onRevealError }: KeyInputProps) {
   const t = window.t || ((k: string) => k);
   const [visible, setVisible] = useState(false);
   const [revealing, setRevealing] = useState(false);
   const [revealedValue, setRevealedValue] = useState<string | null>(null);
+  const previousValueRef = useRef(value);
+  const internalChangeRef = useRef(false);
   const isTransientSecretVisible = visible && revealedValue !== null;
   const displayValue = isTransientSecretVisible ? revealedValue : value;
+
+  useEffect(() => {
+    if (previousValueRef.current === value) return;
+    previousValueRef.current = value;
+    if (internalChangeRef.current) {
+      internalChangeRef.current = false;
+      return;
+    }
+    setVisible(false);
+    setRevealedValue(null);
+  }, [value]);
 
   const replaceTransientSecret = (nextValue: string) => {
     const safeValue = revealedValue && nextValue.includes(revealedValue)
       ? nextValue.replace(revealedValue, '')
       : nextValue;
     setRevealedValue(null);
+    internalChangeRef.current = true;
     onChange(safeValue);
   };
 
@@ -68,6 +83,7 @@ export function KeyInput({ value, onChange, placeholder, onBlur, onReveal, onRev
             replaceTransientSecret(e.target.value);
             return;
           }
+          internalChangeRef.current = true;
           onChange(e.target.value);
         }}
         onCopy={(e) => {
@@ -107,6 +123,7 @@ export function KeyInput({ value, onChange, placeholder, onBlur, onReveal, onRev
             replaceTransientSecret('');
           }
         }}
+        aria-label={ariaLabel}
         placeholder={placeholder}
         onBlur={onBlur}
       />

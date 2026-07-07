@@ -111,6 +111,7 @@ function serverIdentityResponse(partial: Record<string, unknown> = {}): Response
   return jsonResponse({
     connectionKind: 'local',
     serverId: 'server_test',
+    serverNodeId: 'server_test',
     userId: 'user_test',
     studioId: 'studio_test',
     label: 'Test Server',
@@ -121,6 +122,17 @@ function serverIdentityResponse(partial: Record<string, unknown> = {}): Response
     credentialKind: 'loopback_token',
     platformAccountId: null,
     officialServiceKind: null,
+    executionBoundary: {
+      schemaVersion: 1,
+      boundaryId: 'execb_server_test_studio_test',
+      kind: 'local_process',
+      serverNodeId: 'server_test',
+      studioId: 'studio_test',
+      workbench: {
+        kind: 'legacy_agent_workbench',
+        root: null,
+      },
+    },
     capabilities: ['chat', 'resources', 'tools'],
     version: '0.test',
     ...partial,
@@ -233,6 +245,7 @@ describe('initApp bridge indicator', () => {
       connectionId: 'local',
       kind: 'local',
       serverId: 'server_test',
+      serverNodeId: 'server_test',
       userId: 'user_test',
       studioId: 'studio_test',
       label: 'Test Server',
@@ -247,6 +260,17 @@ describe('initApp bridge indicator', () => {
       credentialKind: 'loopback_token',
       platformAccountId: null,
       officialServiceKind: null,
+      executionBoundary: {
+        schemaVersion: 1,
+        boundaryId: 'execb_server_test_studio_test',
+        kind: 'local_process',
+        serverNodeId: 'server_test',
+        studioId: 'studio_test',
+        workbench: {
+          kind: 'legacy_agent_workbench',
+          root: null,
+        },
+      },
       capabilities: ['chat', 'resources', 'tools'],
     });
     expect(mockState.activeServerConnectionId).toBe('local');
@@ -300,6 +324,17 @@ describe('initApp bridge indicator', () => {
         authState: 'paired',
         credentialKind: 'device_credential',
         capabilities: ['chat', 'resources', 'files'],
+        executionBoundary: {
+          schemaVersion: 1,
+          boundaryId: 'execb_node_lan_studio_lan',
+          kind: 'remote_process',
+          serverNodeId: 'node_lan',
+          studioId: 'studio_lan',
+          workbench: {
+            kind: 'server_managed',
+            root: null,
+          },
+        },
       }))
       .mockResolvedValueOnce(jsonResponse({ agent: 'Hanako', user: 'User', avatars: {} }))
       .mockResolvedValueOnce(jsonResponse({ locale: 'zh-CN', desk: { home_folder: null }, cwd_history: [] }))
@@ -328,6 +363,140 @@ describe('initApp bridge indicator', () => {
     }));
     expect(mockConnectWebSocket).toHaveBeenCalledTimes(1);
     expect((mockHanaFetch.mock.invocationCallOrder[0] ?? 0)).toBeLessThan(mockConnectWebSocket.mock.invocationCallOrder[0] ?? 0);
+  });
+
+  it('keeps a saved Remote Server active and records recovery state when identity load fails', async () => {
+    (globalThis as Record<string, unknown>).window = {
+      addEventListener: vi.fn(),
+      localStorage: {
+        getItem: vi.fn((key: string) => key === 'hana-server-connections-v1' ? persistedLanConnectionJson() : null),
+        setItem: vi.fn(),
+        removeItem: vi.fn(),
+      },
+      platform: {
+        getServerPort: vi.fn(async () => 62950),
+        getServerToken: vi.fn(async () => 'token'),
+        appReady: vi.fn(),
+        onSettingsChanged: vi.fn(),
+        openSettings: vi.fn(),
+      },
+      dispatchEvent: vi.fn(),
+    };
+    (globalThis as Record<string, unknown>).document = {
+      addEventListener: vi.fn(),
+    };
+    const mockI18n = {
+      locale: 'zh-CN',
+      defaultName: 'Hanako',
+      load: vi.fn(async (locale: string) => {
+        mockI18n.locale = locale;
+      }),
+    };
+    (globalThis as Record<string, unknown>).i18n = mockI18n;
+    (globalThis as Record<string, unknown>).t = vi.fn((key: string) => key);
+
+    mockHanaFetch
+      .mockResolvedValueOnce(jsonResponse({ ok: true }))
+      .mockRejectedValueOnce(new Error('identity unavailable'))
+      .mockResolvedValueOnce(jsonResponse({ locale: 'en' }));
+
+    const { initApp } = await import('../app-init');
+    await initApp();
+
+    expect(mockState.activeServerConnectionId).toBe('lan:node_lan:studio_lan');
+    expect(mockState.activeServerConnection).toEqual(expect.objectContaining({
+      connectionId: 'lan:node_lan:studio_lan',
+      kind: 'lan',
+      baseUrl: 'http://192.168.31.75:14500',
+      credentialKind: 'device_credential',
+    }));
+    expect(mockState.remoteConnectionRecovery).toEqual({
+      status: 'identity_failed',
+      connectionId: 'lan:node_lan:studio_lan',
+      baseUrl: 'http://192.168.31.75:14500',
+      reasonCodes: ['invalid_identity'],
+      warningCodes: [],
+    });
+    expect(mockConnectWebSocket).not.toHaveBeenCalled();
+    expect(mockLoadModels).not.toHaveBeenCalled();
+    expect(mockLoadSessions).not.toHaveBeenCalled();
+    expect(mockI18n.load).toHaveBeenCalledWith('en');
+    expect(mockState.locale).toBe('en');
+    expect(mockI18n.load.mock.invocationCallOrder[0]).toBeLessThan(
+      (window.platform.appReady as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0],
+    );
+    expect((window.platform.appReady as ReturnType<typeof vi.fn>)).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a saved Remote Server active and records recovery state when the boundary contract fails', async () => {
+    (globalThis as Record<string, unknown>).window = {
+      addEventListener: vi.fn(),
+      localStorage: {
+        getItem: vi.fn((key: string) => key === 'hana-server-connections-v1' ? persistedLanConnectionJson() : null),
+        setItem: vi.fn(),
+        removeItem: vi.fn(),
+      },
+      platform: {
+        getServerPort: vi.fn(async () => 62950),
+        getServerToken: vi.fn(async () => 'token'),
+        appReady: vi.fn(),
+        onSettingsChanged: vi.fn(),
+        openSettings: vi.fn(),
+      },
+      dispatchEvent: vi.fn(),
+    };
+    (globalThis as Record<string, unknown>).document = {
+      addEventListener: vi.fn(),
+    };
+    (globalThis as Record<string, unknown>).i18n = {
+      locale: 'zh-CN',
+      defaultName: 'Hanako',
+      load: vi.fn(async () => {}),
+    };
+    (globalThis as Record<string, unknown>).t = vi.fn((key: string) => key);
+
+    mockHanaFetch
+      .mockResolvedValueOnce(jsonResponse({ ok: true }))
+      .mockResolvedValueOnce(serverIdentityResponse({
+        connectionKind: 'lan',
+        serverId: 'server_lan',
+        serverNodeId: 'node_lan',
+        userId: 'user_lan',
+        studioId: 'studio_lan',
+        label: 'LAN Studio',
+        trustState: 'lan',
+        authState: 'paired',
+        credentialKind: 'device_credential',
+        capabilities: ['resources', 'files'],
+        executionBoundary: {
+          schemaVersion: 1,
+          boundaryId: 'execb_node_lan_studio_lan',
+          kind: 'remote_process',
+          serverNodeId: 'node_lan',
+          studioId: 'studio_lan',
+          workbench: {
+            kind: 'server_managed',
+            root: null,
+          },
+        },
+      }))
+      .mockResolvedValueOnce(jsonResponse({ locale: 'zh-CN' }));
+
+    const { initApp } = await import('../app-init');
+    await initApp();
+
+    expect(mockState.activeServerConnectionId).toBe('lan:node_lan:studio_lan');
+    expect(mockState.remoteConnectionRecovery).toEqual({
+      status: 'compatibility_failed',
+      connectionId: 'lan:node_lan:studio_lan',
+      baseUrl: 'http://192.168.31.75:14500',
+      reasonCodes: ['missing_core_capability'],
+      warningCodes: ['missing_optional_capability'],
+    });
+    expect(mockConnectWebSocket).not.toHaveBeenCalled();
+    expect(mockLoadModels).not.toHaveBeenCalled();
+    expect(mockLoadSessions).not.toHaveBeenCalled();
+    expect((window.platform.appReady as ReturnType<typeof vi.fn>)).toHaveBeenCalledTimes(1);
   });
 
   it('stops startup explicitly when server identity cannot be loaded', async () => {
