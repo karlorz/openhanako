@@ -111,4 +111,37 @@ describe('getUserAttachmentImageSrc', () => {
     );
     expect(platform.getFileUrl).not.toHaveBeenCalled();
   });
+
+  it('remote path-only image attachments without resource links do not fall back to file URLs', () => {
+    const platform = { getFileUrl: vi.fn((p: string) => `file://${p}`) };
+    const remoteConnection = {
+      connectionId: 'lan:remote:studio',
+      kind: 'lan',
+      serverId: 'remote',
+      studioId: 'studio_remote',
+      label: 'Remote Hana',
+      baseUrl: 'http://100.125.173.118:14500',
+      wsUrl: 'ws://100.125.173.118:14500',
+      token: 'remote-token',
+      authState: 'paired',
+      trustState: 'lan',
+      credentialKind: 'device_credential',
+      platformAccountId: null,
+      officialServiceKind: null,
+      capabilities: ['chat', 'resources'],
+    };
+    useStore.setState({
+      serverConnections: { [remoteConnection.connectionId]: remoteConnection },
+      activeServerConnectionId: remoteConnection.connectionId,
+      activeServerConnection: remoteConnection,
+    } as never);
+
+    expect(getUserAttachmentImageSrc({
+      fileId: 'client_upload_image',
+      path: '/root/.hanako/session-files/image.png',
+      name: 'image.png',
+      mimeType: 'image/png',
+    } as never, platform)).toBeNull();
+    expect(platform.getFileUrl).not.toHaveBeenCalled();
+  });
 });
