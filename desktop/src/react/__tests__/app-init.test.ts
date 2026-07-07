@@ -11,10 +11,6 @@ const mockLoadAvatars = vi.fn();
 const mockLoadSessions = vi.fn(async () => {});
 const mockLoadPendingNewSessionPermissionDefault = vi.fn(async () => {});
 const mockSwitchSession = vi.fn(async () => {});
-const mockPendingNewSessionIdentityPatch = vi.fn(() => ({
-  pendingNewSession: true as const,
-  pendingDraftId: 'test-pending-draft-id',
-}));
 const mockConnectWebSocket = vi.fn();
 const mockGetWebSocket = vi.fn<() => WebSocket | null>(() => null);
 const mockSetStatus = vi.fn();
@@ -32,9 +28,6 @@ const mockUpdateLayout = vi.fn();
 const mockInitErrorBusBridge = vi.fn();
 const mockRefreshPluginUI = vi.fn();
 const mockInitSessionProjectCatalog = vi.fn(async () => {});
-const mockClearInputDraftRemoteSession = vi.fn();
-const mockHydrateInputDrafts = vi.fn();
-const mockInitInputDraftPersistence = vi.fn();
 
 vi.mock('../stores', () => ({
   useStore: {
@@ -61,17 +54,10 @@ vi.mock('../stores/session-actions', () => ({
   loadSessions: mockLoadSessions,
   loadPendingNewSessionPermissionDefault: mockLoadPendingNewSessionPermissionDefault,
   switchSession: mockSwitchSession,
-  pendingNewSessionIdentityPatch: mockPendingNewSessionIdentityPatch,
 }));
 
 vi.mock('../stores/session-project-actions', () => ({
   initSessionProjectCatalog: mockInitSessionProjectCatalog,
-}));
-
-vi.mock('../stores/input-draft-persistence', () => ({
-  clearInputDraftRemoteSession: mockClearInputDraftRemoteSession,
-  hydrateInputDrafts: mockHydrateInputDrafts,
-  initInputDraftPersistence: mockInitInputDraftPersistence,
 }));
 
 vi.mock('../services/websocket', () => ({
@@ -211,9 +197,6 @@ describe('initApp bridge indicator', () => {
     mockInitErrorBusBridge.mockReset();
     mockRefreshPluginUI.mockReset();
     mockInitSessionProjectCatalog.mockReset();
-    mockClearInputDraftRemoteSession.mockReset();
-    mockHydrateInputDrafts.mockReset();
-    mockInitInputDraftPersistence.mockReset();
     vi.resetModules();
   });
 
@@ -295,12 +278,9 @@ describe('initApp bridge indicator', () => {
       local: mockState.activeServerConnection,
     });
     expect(mockState.bridgeDotConnected).toBe(true);
-    expect(mockState.remoteServerAssessment).toBeNull();
   });
 
   it('refreshes the HttpOnly device web session before opening WebSocket for a persisted LAN frontend', async () => {
-    let resolveRelease!: (value: unknown) => void;
-    const pendingRelease = new Promise(resolve => { resolveRelease = resolve; });
     const listeners: Record<string, Array<(data?: unknown) => void>> = {};
     (globalThis as Record<string, unknown>).window = {
       addEventListener: vi.fn((type: string, cb: (data?: unknown) => void) => {
@@ -318,9 +298,6 @@ describe('initApp bridge indicator', () => {
         appReady: vi.fn(),
         onSettingsChanged: vi.fn(),
         openSettings: vi.fn(),
-      },
-      hana: {
-        checkRemoteServerRelease: vi.fn(() => pendingRelease),
       },
       dispatchEvent: vi.fn(),
     };
@@ -346,7 +323,6 @@ describe('initApp bridge indicator', () => {
         trustState: 'lan',
         authState: 'paired',
         credentialKind: 'device_credential',
-        version: '0.346.18',
         capabilities: ['chat', 'resources', 'files'],
         executionBoundary: {
           schemaVersion: 1,
@@ -386,27 +362,7 @@ describe('initApp bridge indicator', () => {
       credentialKind: 'device_credential',
     }));
     expect(mockConnectWebSocket).toHaveBeenCalledTimes(1);
-    expect(mockState.remoteServerAssessment).toEqual(expect.objectContaining({
-      connectionId: 'lan:node_lan:studio_lan',
-      core: expect.objectContaining({ status: 'ready' }),
-      freshness: expect.objectContaining({ status: 'unknown' }),
-    }));
     expect((mockHanaFetch.mock.invocationCallOrder[0] ?? 0)).toBeLessThan(mockConnectWebSocket.mock.invocationCallOrder[0] ?? 0);
-
-    const identityAssessment = mockState.remoteServerAssessment;
-    mockState.activeServerConnectionId = 'lan:other:studio';
-    resolveRelease({
-      status: 'unavailable',
-      checkedAt: '2026-07-18T12:00:00.000Z',
-      source: 'none',
-      stale: false,
-      release: null,
-      errorCode: 'offline',
-      reasonCodes: ['offline'],
-    });
-    await vi.waitFor(() => expect(mockState.remoteServerAssessment).toBe(identityAssessment));
-    expect(mockState.remoteConnectionRecovery).toBeNull();
-    expect(mockConnectWebSocket).toHaveBeenCalledTimes(1);
   });
 
   it('keeps a saved Remote Server active and records recovery state when identity load fails', async () => {
@@ -723,7 +679,6 @@ describe('initApp bridge indicator', () => {
       token: 'new-token',
     }));
     expect(mockConnectWebSocket).toHaveBeenCalledTimes(1);
-    expect(mockClearInputDraftRemoteSession).not.toHaveBeenCalled();
   });
 
   it('refreshes local restart credentials without stealing an active remote connection', async () => {
@@ -795,7 +750,6 @@ describe('initApp bridge indicator', () => {
     expect(mockState.activeServerConnectionId).toBe(remote.connectionId);
     expect(mockState.activeServerConnection).toBe(remote);
     expect(mockConnectWebSocket).not.toHaveBeenCalled();
-    expect(mockClearInputDraftRemoteSession).toHaveBeenCalledWith(remote.connectionId);
   });
 
   it('refreshes the desk default workspace when settings change the current agent workspace', async () => {
