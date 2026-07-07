@@ -18,6 +18,7 @@ import {
   persistServerConnectionSelection,
   type ServerConnection,
 } from '../services/server-connection';
+import { clearRemoteConnectionRecoveryState } from '../services/remote-connection-recovery';
 
 interface OnboardingAppProps { preview: boolean; skipToTutorial: boolean }
 export function OnboardingApp({ preview, skipToTutorial }: OnboardingAppProps) {
@@ -88,6 +89,7 @@ export function OnboardingApp({ preview, skipToTutorial }: OnboardingAppProps) {
   const connectLanServer = useCallback(async (baseUrl: string, credential: string) => {
     const connection = await connectDeviceServerConnection({ baseUrl, credential });
     persistServerConnectionSelection(connection);
+    clearRemoteConnectionRecoveryState();
     setServerConnection(connection);
     if (!preview) {
       await window.hana.onboardingComplete?.();

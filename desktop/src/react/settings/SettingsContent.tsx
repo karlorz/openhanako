@@ -9,6 +9,7 @@ import {
   upsertServerConnection,
   type ServerConnection,
 } from '../services/server-connection';
+import { readRemoteConnectionRecoveryState, remoteRecoveryForActiveConnection } from '../services/remote-connection-recovery';
 import { t } from './helpers';
 import { loadAgents, loadAvatars, loadSettingsSnapshot } from './actions';
 import { ErrorBoundary } from '../components/ErrorBoundary';
@@ -74,10 +75,15 @@ function connectionState(connection: ServerConnection | null) {
     ? serverConnections[persisted.activeServerConnectionId] || null
     : null;
   const activeServerConnection = persistedActive || connection || null;
+  const recovery = readRemoteConnectionRecoveryState();
+  const remoteConnectionRecovery = remoteRecoveryForActiveConnection(recovery, activeServerConnection?.connectionId)
+    ? recovery
+    : null;
   return {
     serverConnections,
     activeServerConnectionId: activeServerConnection?.connectionId ?? null,
     activeServerConnection,
+    remoteConnectionRecovery,
   };
 }
 

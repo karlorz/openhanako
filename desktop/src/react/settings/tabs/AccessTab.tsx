@@ -14,9 +14,11 @@ import {
   upsertServerConnection,
   writePersistedServerConnectionState,
 } from '../../services/server-connection';
+import { clearRemoteConnectionRecoveryState, remoteRecoveryCodesForConnection } from '../../services/remote-connection-recovery';
 import { Toggle } from '@/ui';
 import { SettingsSection } from '../components/SettingsSection';
 import { SettingsRow } from '../components/SettingsRow';
+import { KeyInput } from '../widgets/KeyInput';
 import styles from '../Settings.module.css';
 
 type AccessMode = 'loopback' | 'lan';
@@ -95,6 +97,7 @@ export function AccessTab() {
   const showToast = useSettingsStore(s => s.showToast);
   const activeConnection = useSettingsStore(s => s.activeServerConnection);
   const serverConnections = useSettingsStore(s => s.serverConnections);
+  const remoteConnectionRecovery = useSettingsStore(s => s.remoteConnectionRecovery);
   const snapshotAccess = useSettingsStore(s => s.settingsSnapshot.data?.access as AccessSummary | null | undefined);
   const localConnection = serverConnections[LOCAL_CONNECTION_ID] ?? null;
   const effectiveConnection = activeConnection ?? localConnection;
@@ -177,6 +180,12 @@ export function AccessTab() {
       });
     return () => { cancelled = true; };
   }, [effectiveConnection?.connectionId, isLocalOwner]);
+
+  useEffect(() => {
+    if (isLocalOwner || !effectiveConnection) return;
+    setRemoteServerUrl(effectiveConnection.baseUrl || '');
+    setRemoteServerKey(effectiveConnection.token || '');
+  }, [effectiveConnection?.baseUrl, effectiveConnection?.connectionId, effectiveConnection?.token, isLocalOwner]);
 
   const mobileUrl = useMemo(() => {
     if (!summary) return '';
@@ -314,7 +323,9 @@ export function AccessTab() {
         serverConnections: upsertServerConnection(current.serverConnections, connection),
         activeServerConnectionId: connection.connectionId,
         activeServerConnection: connection,
+        remoteConnectionRecovery: null,
       });
+      clearRemoteConnectionRecoveryState();
       setRemoteServerKey('');
       showToast(t('settings.access.remoteServerConnected'), 'success');
       window.hana?.reloadMainWindow?.();
@@ -324,6 +335,24 @@ export function AccessTab() {
       setConnectingRemoteServer(false);
     }
   }, [remoteServerKey, remoteServerUrl, showToast]);
+
+  const prepareAnotherRemoteServer = useCallback(() => {
+    setRemoteServerUrl('');
+    setRemoteServerKey('');
+  }, []);
+
+  const openOnboarding = useCallback(async () => {
+    try {
+      const opener = window.hana?.debugOpenOnboarding;
+      if (typeof opener !== 'function') {
+        throw new Error(t('settings.access.openOnboardingUnavailable'));
+      }
+      await opener();
+      showToast(t('devtools.onboardingOpened'), 'success');
+    } catch (err: any) {
+      showToast(`${t('settings.access.openOnboardingFailed')}: ${err.message}`, 'error');
+    }
+  }, [showToast]);
 
   const returnToLocalServer = useCallback(() => {
     const current = useSettingsStore.getState();
@@ -335,7 +364,9 @@ export function AccessTab() {
     current.set({
       activeServerConnectionId: local.connectionId,
       activeServerConnection: local,
+      remoteConnectionRecovery: null,
     });
+    clearRemoteConnectionRecoveryState();
     writePersistedServerConnectionState({
       serverConnections: current.serverConnections,
       activeServerConnectionId: null,
@@ -419,6 +450,15 @@ export function AccessTab() {
     const remoteCapabilities = remoteCapabilitySummary(remoteIdentity?.capabilities || effectiveConnection?.capabilities, remoteUnknown);
     const remoteStudioLabel = remoteValue(remoteIdentity?.studioLabel, effectiveConnection?.studioLabel, remoteIdentity?.studioId, effectiveConnection?.studioId, remoteUnknown);
     const remoteRuntime = remoteRuntimeLabel(remoteIdentity?.executionBoundary || effectiveConnection?.executionBoundary, remoteUnknown);
+    const { reasonCodes: recoveryReasonCodes, warningCodes: recoveryWarningCodes } = remoteRecoveryCodesForConnection(
+      remoteConnectionRecovery,
+      effectiveConnection?.connectionId,
+    );
+    const compatibilityStatus = recoveryReasonCodes.length > 0
+      ? t('settings.access.remoteCompatibilityProblem')
+      : recoveryWarningCodes.length > 0
+        ? t('settings.access.remoteCompatibilityWarning')
+        : t('settings.access.remoteCompatibilityReady');
     return (
       <div className={`${styles['settings-tab-content']} ${styles.active}`} data-tab="access">
         <SettingsSection
@@ -467,10 +507,85 @@ export function AccessTab() {
                 <span>{t('settings.access.remoteRuntime')}</span>
                 <strong>{remoteRuntime}</strong>
               </div>
+              <div className={styles['access-status-item']}>
+                <span>{t('settings.access.remoteCompatibilityStatus')}</span>
+                <strong>{compatibilityStatus}</strong>
+              </div>
             </div>
+            {(recoveryReasonCodes.length > 0 || recoveryWarningCodes.length > 0) && (
+              <div className={styles['access-status-grid']}>
+                {recoveryReasonCodes.map((code: string) => (
+                  <div className={styles['access-status-item']} key={`reason:${code}`}>
+                    <span>{t('settings.access.remoteCompatibilityReason')}</span>
+                    <strong>{t(`settings.access.remoteReason.${code}`)}</strong>
+                  </div>
+                ))}
+                {recoveryWarningCodes.map((code: string) => (
+                  <div className={styles['access-status-item']} key={`warning:${code}`}>
+                    <span>{t('settings.access.remoteCompatibilityWarningLabel')}</span>
+                    <strong>{t(`settings.access.remoteWarning.${code}`)}</strong>
+                  </div>
+                ))}
+              </div>
+            )}
             <SettingsSection.Note>{t('settings.access.remoteLocalOnlyNote')}</SettingsSection.Note>
           </div>
+        </SettingsSection>
+
+        <SettingsSection
+          title={t('settings.access.remoteConnectionActions')}
+          description={t('settings.access.remoteConnectionActionsDesc')}
+        >
+          <SettingsRow
+            label={t('settings.access.remoteServerUrl')}
+            hint={t('settings.access.remoteServerUrlHint')}
+            layout="stacked"
+            control={
+              <label className={styles['access-field']}>
+                <span>{t('settings.access.remoteServerUrl')}</span>
+                <input
+                  aria-label={t('settings.access.remoteServerUrl')}
+                  className={styles['settings-input']}
+                  value={remoteServerUrl}
+                  placeholder="http://192.168.31.75:14500"
+                  onChange={(event) => setRemoteServerUrl(event.target.value)}
+                />
+              </label>
+            }
+          />
+          <SettingsRow
+            label={t('settings.access.remoteServerKey')}
+            hint={t('settings.access.remoteServerKeyHint')}
+            layout="stacked"
+            control={
+              <label className={styles['access-field']}>
+                <span>{t('settings.access.remoteServerKey')}</span>
+                <KeyInput
+                  ariaLabel={t('settings.access.remoteServerKey')}
+                  value={remoteServerKey}
+                  placeholder="hana_dev_..."
+                  onChange={setRemoteServerKey}
+                />
+              </label>
+            }
+          />
           <SettingsSection.Footer>
+            <button
+              className={styles['settings-btn-primary']}
+              type="button"
+              onClick={connectRemoteServer}
+              disabled={connectingRemoteServer || !remoteServerUrl.trim() || !remoteServerKey.trim()}
+            >
+              {t('settings.access.retryRemote')}
+            </button>
+            <button
+              className={styles['settings-btn-secondary']}
+              type="button"
+              onClick={prepareAnotherRemoteServer}
+              disabled={connectingRemoteServer}
+            >
+              {t('settings.access.connectAnotherRemote')}
+            </button>
             <button
               className={styles['settings-btn-secondary']}
               type="button"
@@ -645,6 +760,22 @@ export function AccessTab() {
         )}
       </SettingsSection>
 
+      <SettingsSection title={t('settings.access.onboarding')}>
+        <SettingsRow
+          label={t('settings.access.openOnboarding')}
+          hint={t('settings.access.openOnboardingHint')}
+          control={
+            <button
+              className={styles['settings-btn-secondary']}
+              type="button"
+              onClick={() => { void openOnboarding(); }}
+            >
+              {t('settings.access.openOnboarding')}
+            </button>
+          }
+        />
+      </SettingsSection>
+
       <SettingsSection title={t('settings.access.connectLanServer')}>
         <SettingsRow
           label={t('settings.access.remoteServerUrl')}
@@ -670,13 +801,11 @@ export function AccessTab() {
           control={
             <label className={styles['access-field']}>
               <span>{t('settings.access.remoteServerKey')}</span>
-              <input
-                aria-label={t('settings.access.remoteServerKey')}
-                className={styles['settings-input']}
+              <KeyInput
+                ariaLabel={t('settings.access.remoteServerKey')}
                 value={remoteServerKey}
-                type="password"
                 placeholder="hana_dev_..."
-                onChange={(event) => setRemoteServerKey(event.target.value)}
+                onChange={setRemoteServerKey}
               />
             </label>
           }
@@ -823,10 +952,11 @@ function remoteList(values: string[] | null | undefined, fallback: string): stri
 function remoteConnectionKindLabel(value: string | null | undefined, fallback: string): string {
   switch (value) {
     case 'local': return t('settings.access.remoteConnectionKindLocal');
-    case 'lan': return t('settings.access.remoteConnectionKindLan');
-    case 'custom_remote': return t('settings.access.remoteConnectionKindCustom');
-    case 'relay': return t('settings.access.remoteConnectionKindRelay');
-    case 'cloud': return t('settings.access.remoteConnectionKindCloud');
+    case 'lan':
+    case 'custom_remote':
+    case 'relay':
+    case 'cloud':
+      return t('settings.access.remoteConnectionKindRemote');
     default: return fallback;
   }
 }

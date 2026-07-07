@@ -1,5 +1,14 @@
+import type { RemoteCompatibilityReasonCode } from '../services/remote-boundary-contract';
 import type { ServerConnection, ServerConnectionRegistry } from '../services/server-connection';
 import { LOCAL_CONNECTION_ID, refreshLocalServerConnection, upsertServerConnection } from '../services/server-connection';
+
+export interface RemoteConnectionRecoveryState {
+  status: 'identity_failed' | 'compatibility_failed';
+  connectionId: string;
+  baseUrl: string;
+  reasonCodes: RemoteCompatibilityReasonCode[];
+  warningCodes: RemoteCompatibilityReasonCode[];
+}
 
 export interface ConnectionSlice {
   serverPort: string | null;
@@ -7,6 +16,7 @@ export interface ConnectionSlice {
   serverConnections: ServerConnectionRegistry;
   activeServerConnectionId: string | null;
   activeServerConnection: ServerConnection | null;
+  remoteConnectionRecovery: RemoteConnectionRecoveryState | null;
   connected: boolean;
   statusKey: string;
   statusVars: Record<string, string | number>;
@@ -32,6 +42,7 @@ export const createConnectionSlice = (
   serverConnections: {},
   activeServerConnectionId: null,
   activeServerConnection: null,
+  remoteConnectionRecovery: null,
   connected: false,
   statusKey: 'status.connecting',
   statusVars: {},
@@ -55,10 +66,12 @@ export const createConnectionSlice = (
             serverConnections: upsertServerConnection(get?.().serverConnections, activeServerConnection),
             activeServerConnectionId: activeServerConnection.connectionId,
             activeServerConnection,
+            remoteConnectionRecovery: null,
           }
         : {
             activeServerConnectionId: null,
             activeServerConnection: null,
+            remoteConnectionRecovery: null,
           }),
     });
   },
@@ -78,10 +91,12 @@ export const createConnectionSlice = (
             serverConnections: upsertServerConnection(get?.().serverConnections, activeServerConnection),
             activeServerConnectionId: activeServerConnection.connectionId,
             activeServerConnection,
+            remoteConnectionRecovery: null,
           }
         : {
             activeServerConnectionId: null,
             activeServerConnection: null,
+            remoteConnectionRecovery: null,
           }),
     });
   },
@@ -90,10 +105,12 @@ export const createConnectionSlice = (
         serverConnections: upsertServerConnection(get?.().serverConnections, connection),
         activeServerConnectionId: connection.connectionId,
         activeServerConnection: connection,
+        remoteConnectionRecovery: null,
       }
     : {
         activeServerConnectionId: null,
         activeServerConnection: null,
+        remoteConnectionRecovery: null,
       }),
   setLocalServerConnection: (port, token) => {
     const serverPort = port === null || port === undefined ? null : String(port);
@@ -112,10 +129,12 @@ export const createConnectionSlice = (
             serverConnections: upsertServerConnection(get?.().serverConnections, activeServerConnection),
             activeServerConnectionId: activeServerConnection.connectionId,
             activeServerConnection,
+            remoteConnectionRecovery: null,
           }
         : {
             activeServerConnectionId: null,
             activeServerConnection: null,
+            remoteConnectionRecovery: null,
           }),
     });
   },
@@ -128,6 +147,7 @@ export const createConnectionSlice = (
     set({
       activeServerConnectionId: connectionId,
       activeServerConnection: connection,
+      remoteConnectionRecovery: null,
     });
   },
   setConnected: (connected) => set({ connected }),
