@@ -24,6 +24,12 @@ research/
 handoff-*.md
 TODO.md
 
+# UAT keeps Markdown checklists/indexes in git; generated screenshots,
+# recordings, and machine evidence stay local or in the wiki/artifact store.
+docs/uat/assets/**
+!docs/uat/assets/**/
+!docs/uat/assets/**/*.md
+
 # ═══════════════════════════════════════════
 # AI 生图原始素材
 # ═══════════════════════════════════════════

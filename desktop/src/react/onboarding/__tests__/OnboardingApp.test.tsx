@@ -29,24 +29,24 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     'onboarding.welcome.title': '欢迎',
     'onboarding.welcome.subtitle': '开始设置',
     'onboarding.welcome.next': '下一步',
-    'onboarding.remote.link': '已有服务器？使用局域网连接',
+    'onboarding.remote.link': '已有服务器？连接到远程服务器',
     'onboarding.remote.url': '服务器地址',
     'onboarding.remote.key': '访问密钥',
     'onboarding.remote.connect': '连接',
     'onboarding.remote.connecting': '连接中...',
-    'onboarding.remote.failed': '连接局域网服务器失败',
+    'onboarding.remote.failed': '连接远程服务器失败',
     'common.cancel': '取消',
   },
   en: {
     'onboarding.welcome.title': 'Welcome',
     'onboarding.welcome.subtitle': 'Start setup',
     'onboarding.welcome.next': 'Next',
-    'onboarding.remote.link': 'Already have a server? Connect over LAN',
+    'onboarding.remote.link': 'Already have a server? Connect to a Remote Server',
     'onboarding.remote.url': 'Server URL',
     'onboarding.remote.key': 'Access key',
     'onboarding.remote.connect': 'Connect',
     'onboarding.remote.connecting': 'Connecting...',
-    'onboarding.remote.failed': 'Failed to connect to LAN server',
+    'onboarding.remote.failed': 'Failed to connect to Remote Server',
     'common.cancel': 'Cancel',
   },
 };
@@ -121,7 +121,7 @@ describe('OnboardingApp locale switching', () => {
     });
   });
 
-  it('lets first-run users connect to an existing LAN server from the welcome page', async () => {
+  it('lets first-run users connect to an existing Remote Server from the welcome page', async () => {
     const fetchMock = vi.fn(async (url: string) => {
       if (url === 'http://192.168.31.75:14500/api/web-auth/login') {
         return { ok: true, json: async () => ({ ok: true }) } as Response;
@@ -139,7 +139,13 @@ describe('OnboardingApp locale switching', () => {
             trustState: 'lan',
             authState: 'paired',
             credentialKind: 'device_credential',
-            capabilities: ['chat', 'resources', 'files'],
+            capabilities: ['chat', 'resources', 'files', 'tools', 'settings'],
+            executionBoundary: {
+              kind: 'remote_process',
+              serverNodeId: 'node_lan',
+              studioId: 'studio_lan',
+              workbench: { kind: 'legacy_agent_workbench', root: null },
+            },
           }),
         } as Response;
       }
@@ -149,13 +155,16 @@ describe('OnboardingApp locale switching', () => {
 
     render(<OnboardingApp preview={false} skipToTutorial={false} />);
 
-    fireEvent.click(await screen.findByRole('button', { name: '已有服务器？使用局域网连接' }));
+    fireEvent.click(await screen.findByRole('button', { name: '已有服务器？连接到远程服务器' }));
     fireEvent.change(screen.getByLabelText('服务器地址'), {
       target: { value: 'http://192.168.31.75:14500' },
     });
     fireEvent.change(screen.getByLabelText('访问密钥'), {
       target: { value: 'fixture-key' },
     });
+    expect(screen.getByLabelText('访问密钥')).toHaveAttribute('type', 'password');
+    fireEvent.click(screen.getByRole('button', { name: 'settings.api.showKey' }));
+    expect(screen.getByLabelText('访问密钥')).toHaveAttribute('type', 'text');
     fireEvent.click(screen.getByRole('button', { name: '连接' }));
 
     await waitFor(() => {
