@@ -128,6 +128,8 @@ export function buildPluginSurfaceUrl({
   surfaceSession?: string | null;
   theme: string;
 }): string {
+  // Credential planes stay separate: active connection auth requests the ticket,
+  // iframe ticket loads the document, surface session authenticates plugin routes.
   const includeTokenQuery = isLocalOwnerConnection(connection);
   const cssUrl = buildConnectionUrl(
     connection,

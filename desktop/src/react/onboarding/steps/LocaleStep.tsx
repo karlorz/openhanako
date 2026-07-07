@@ -7,6 +7,7 @@ import { LOCALES } from '../constants';
 import { saveLocale } from '../onboarding-actions';
 import type { HanaFetch } from '../onboarding-actions';
 import { StepContainer, Multiline } from '../onboarding-ui';
+import { KeyInput } from '../../settings/widgets/KeyInput';
 
 interface LocaleStepProps {
   preview: boolean;
@@ -93,14 +94,14 @@ export function LocaleStep({
               placeholder="http://192.168.31.75:14500"
               onChange={event => setServerUrl(event.target.value)}
             />
-            <input
-              className="ob-input"
-              aria-label={t('onboarding.remote.key')}
-              value={serverKey}
-              type="password"
-              placeholder="hana_dev_..."
-              onChange={event => setServerKey(event.target.value)}
-            />
+            <div className="ob-remote-key-row">
+              <KeyInput
+                ariaLabel={t('onboarding.remote.key')}
+                value={serverKey}
+                placeholder="hana_dev_..."
+                onChange={setServerKey}
+              />
+            </div>
             <div className="ob-remote-connect-actions">
               <button type="button" className="ob-btn ob-btn-secondary" onClick={() => setShowLanConnect(false)}>
                 {t('common.cancel')}
