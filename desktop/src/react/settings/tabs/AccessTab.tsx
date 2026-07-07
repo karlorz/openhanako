@@ -14,7 +14,7 @@ import {
   upsertServerConnection,
   writePersistedServerConnectionState,
 } from '../../services/server-connection';
-import { remoteRecoveryCodesForConnection } from '../../services/remote-connection-recovery';
+import { clearRemoteConnectionRecoveryState, remoteRecoveryCodesForConnection } from '../../services/remote-connection-recovery';
 import { Toggle } from '../widgets/Toggle';
 import { SettingsSection } from '../components/SettingsSection';
 import { SettingsRow } from '../components/SettingsRow';
@@ -325,6 +325,7 @@ export function AccessTab() {
         activeServerConnection: connection,
         remoteConnectionRecovery: null,
       });
+      clearRemoteConnectionRecoveryState();
       setRemoteServerKey('');
       showToast(t('settings.access.remoteServerConnected'), 'success');
       window.hana?.reloadMainWindow?.();
@@ -334,6 +335,24 @@ export function AccessTab() {
       setConnectingRemoteServer(false);
     }
   }, [remoteServerKey, remoteServerUrl, showToast]);
+
+  const prepareAnotherRemoteServer = useCallback(() => {
+    setRemoteServerUrl('');
+    setRemoteServerKey('');
+  }, []);
+
+  const openOnboarding = useCallback(async () => {
+    try {
+      const opener = window.hana?.debugOpenOnboarding;
+      if (typeof opener !== 'function') {
+        throw new Error(t('settings.access.openOnboardingUnavailable'));
+      }
+      await opener();
+      showToast(t('devtools.onboardingOpened'), 'success');
+    } catch (err: any) {
+      showToast(`${t('settings.access.openOnboardingFailed')}: ${err.message}`, 'error');
+    }
+  }, [showToast]);
 
   const returnToLocalServer = useCallback(() => {
     const current = useSettingsStore.getState();
@@ -347,6 +366,7 @@ export function AccessTab() {
       activeServerConnection: local,
       remoteConnectionRecovery: null,
     });
+    clearRemoteConnectionRecoveryState();
     writePersistedServerConnectionState({
       serverConnections: current.serverConnections,
       activeServerConnectionId: null,
@@ -561,8 +581,8 @@ export function AccessTab() {
             <button
               className={styles['settings-btn-secondary']}
               type="button"
-              onClick={connectRemoteServer}
-              disabled={connectingRemoteServer || !remoteServerUrl.trim() || !remoteServerKey.trim()}
+              onClick={prepareAnotherRemoteServer}
+              disabled={connectingRemoteServer}
             >
               {t('settings.access.connectAnotherRemote')}
             </button>
@@ -738,6 +758,22 @@ export function AccessTab() {
             }
           />
         )}
+      </SettingsSection>
+
+      <SettingsSection title={t('settings.access.onboarding')}>
+        <SettingsRow
+          label={t('settings.access.openOnboarding')}
+          hint={t('settings.access.openOnboardingHint')}
+          control={
+            <button
+              className={styles['settings-btn-secondary']}
+              type="button"
+              onClick={() => { void openOnboarding(); }}
+            >
+              {t('settings.access.openOnboarding')}
+            </button>
+          }
+        />
       </SettingsSection>
 
       <SettingsSection title={t('settings.access.connectLanServer')}>

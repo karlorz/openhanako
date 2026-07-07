@@ -8,6 +8,7 @@ import {
 
 export type RemoteCompatibilityReasonCode =
   | 'invalid_identity'
+  | 'auth_failed'
   | 'invalid_capabilities'
   | 'missing_core_capability'
   | 'missing_optional_capability'
@@ -18,6 +19,16 @@ export interface RemoteBoundaryCompatibility {
   ok: boolean;
   reasonCodes: RemoteCompatibilityReasonCode[];
   warningCodes: RemoteCompatibilityReasonCode[];
+}
+
+export class RemoteBoundaryContractError extends Error {
+  readonly compatibility: RemoteBoundaryCompatibility;
+
+  constructor(compatibility: RemoteBoundaryCompatibility) {
+    super('remote boundary contract failed');
+    this.name = 'RemoteBoundaryContractError';
+    this.compatibility = compatibility;
+  }
 }
 
 const CORE_BOOTSTRAP_CAPABILITIES = ['chat'];
@@ -60,6 +71,17 @@ export function validateRemoteBoundaryContract(
   }
 
   return toCompatibility(reasonCodes, warningCodes);
+}
+
+export function assertRemoteBoundaryContract(
+  connection: ServerConnection,
+  identity: ServerIdentity,
+): void {
+  if (isLocalOwnerConnection(connection)) return;
+  const compatibility = validateRemoteBoundaryContract(connection, identity);
+  if (!compatibility.ok) {
+    throw new RemoteBoundaryContractError(compatibility);
+  }
 }
 
 function toCompatibility(

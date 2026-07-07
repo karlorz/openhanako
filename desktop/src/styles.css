@@ -3300,15 +3300,7 @@ html[data-platform="linux"] .onboarding {
 }
 
 .ob-remote-key-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 8px;
-    align-items: center;
-}
-
-.ob-remote-key-row .ob-btn {
-    padding-inline: 0.8rem;
-    white-space: nowrap;
+    display: block;
 }
 
 .ob-btn {

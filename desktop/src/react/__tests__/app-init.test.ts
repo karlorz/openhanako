@@ -385,16 +385,20 @@ describe('initApp bridge indicator', () => {
     (globalThis as Record<string, unknown>).document = {
       addEventListener: vi.fn(),
     };
-    (globalThis as Record<string, unknown>).i18n = {
+    const mockI18n = {
       locale: 'zh-CN',
       defaultName: 'Hanako',
-      load: vi.fn(async () => {}),
+      load: vi.fn(async (locale: string) => {
+        mockI18n.locale = locale;
+      }),
     };
+    (globalThis as Record<string, unknown>).i18n = mockI18n;
     (globalThis as Record<string, unknown>).t = vi.fn((key: string) => key);
 
     mockHanaFetch
       .mockResolvedValueOnce(jsonResponse({ ok: true }))
-      .mockRejectedValueOnce(new Error('identity unavailable'));
+      .mockRejectedValueOnce(new Error('identity unavailable'))
+      .mockResolvedValueOnce(jsonResponse({ locale: 'en' }));
 
     const { initApp } = await import('../app-init');
     await initApp();
@@ -416,6 +420,11 @@ describe('initApp bridge indicator', () => {
     expect(mockConnectWebSocket).not.toHaveBeenCalled();
     expect(mockLoadModels).not.toHaveBeenCalled();
     expect(mockLoadSessions).not.toHaveBeenCalled();
+    expect(mockI18n.load).toHaveBeenCalledWith('en');
+    expect(mockState.locale).toBe('en');
+    expect(mockI18n.load.mock.invocationCallOrder[0]).toBeLessThan(
+      (window.platform.appReady as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0],
+    );
     expect((window.platform.appReady as ReturnType<typeof vi.fn>)).toHaveBeenCalledTimes(1);
   });
 
@@ -470,7 +479,8 @@ describe('initApp bridge indicator', () => {
             root: null,
           },
         },
-      }));
+      }))
+      .mockResolvedValueOnce(jsonResponse({ locale: 'zh-CN' }));
 
     const { initApp } = await import('../app-init');
     await initApp();

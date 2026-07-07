@@ -9,6 +9,7 @@
 
 import { useStore } from './stores';
 import { hanaFetch } from './hooks/use-hana-fetch';
+import { fetchConfig } from './hooks/use-config';
 import { applyAgentIdentity, loadAgents, loadAvatars } from './stores/agent-actions';
 import { loadPendingNewSessionPermissionDefault, loadSessions, switchSession } from './stores/session-actions';
 import { initSessionProjectCatalog } from './stores/session-project-actions';
@@ -29,7 +30,6 @@ import {
   LOCAL_CONNECTION_ID,
   createLocalServerConnection,
   hasServerConnection,
-  isLocalOwnerConnection,
   mergeServerIdentity,
   readPersistedServerConnectionState,
   refreshLocalServerConnectionState,
@@ -37,11 +37,12 @@ import {
   type ServerConnection,
 } from './services/server-connection';
 import {
-  RemoteBoundaryContractError,
+  clearRemoteConnectionRecoveryState,
   remoteRecoveryForStartupFailure,
+  writeRemoteConnectionRecoveryState,
 } from './services/remote-connection-recovery';
 import {
-  validateRemoteBoundaryContract,
+  assertRemoteBoundaryContract,
 } from './services/remote-boundary-contract';
 import { persistAppearancePreferences } from './services/appearance-sync';
 import { errorBus as _errorBus } from '../../../shared/error-bus.ts';
@@ -61,6 +62,31 @@ function markRendererLaunch(event: string, details?: unknown) {
     console.info(`[hana-launch] ${event}`);
   } else {
     console.info(`[hana-launch] ${event}`, details);
+  }
+}
+
+async function loadRecoveryI18n(): Promise<void> {
+  const loader = typeof i18n === 'undefined'
+    ? (window as unknown as { i18n?: typeof i18n }).i18n
+    : i18n;
+  if (!loader?.load) return;
+  const applyLocale = async (locale: string) => {
+    await loader.load(locale);
+    useStore.setState({ locale: loader.locale || locale });
+  };
+  try {
+    const configData = await fetchConfig();
+    const locale = typeof configData?.locale === 'string' && configData.locale.trim()
+      ? configData.locale
+      : 'zh-CN';
+    await applyLocale(locale);
+  } catch (err) {
+    console.warn('[init] recovery i18n config load failed; falling back to zh-CN:', err);
+    try {
+      await applyLocale('zh-CN');
+    } catch (fallbackErr) {
+      console.warn('[init] recovery i18n fallback failed:', fallbackErr);
+    }
   }
 }
 
@@ -157,10 +183,13 @@ export async function initApp(): Promise<void> {
       activeServerConnection: mergedConnection,
       remoteConnectionRecovery: null,
     });
+    clearRemoteConnectionRecoveryState();
   } catch (err) {
     const recovery = remoteRecoveryForStartupFailure(activeServerConnection, err);
     if (recovery) {
       console.warn('[init] remote server identity failed; showing recovery UI');
+      await loadRecoveryI18n();
+      writeRemoteConnectionRecoveryState(recovery);
       useStore.setState({
         activeServerConnectionId: activeServerConnection.connectionId,
         activeServerConnection,
@@ -306,10 +335,7 @@ export async function initApp(): Promise<void> {
 async function loadIdentityForActiveConnection(connection: ServerConnection): Promise<ServerConnection> {
   const identityRes = await hanaFetch('/api/server/identity');
   const identityData = await identityRes.json();
-  if (!isLocalOwnerConnection(connection)) {
-    const compatibility = validateRemoteBoundaryContract(connection, identityData);
-    if (!compatibility.ok) throw new RemoteBoundaryContractError(compatibility);
-  }
+  assertRemoteBoundaryContract(connection, identityData);
   return mergeServerIdentity(connection, identityData);
 }
 

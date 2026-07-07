@@ -51,7 +51,19 @@ const remoteConnection = {
 
 describe('RemoteConnectionRecovery', () => {
   beforeEach(() => {
-    vi.stubGlobal('t', (key: string) => key);
+    const copy: Record<string, string> = {
+      'app.remoteRecovery.title': 'Remote Server needs attention',
+      'app.remoteRecovery.subtitle': 'The saved Remote Server stayed selected, but this app could not finish compatibility checks.',
+      'app.remoteRecovery.serverUrl': 'Server URL',
+      'app.remoteRecovery.accessKey': 'Access key',
+      'app.remoteRecovery.retryRemote': 'Retry remote',
+      'app.remoteRecovery.switchLocal': 'Switch to local',
+      'app.remoteRecovery.status.compatibility_failed': 'Compatibility check failed',
+      'settings.access.remoteReason.missing_core_capability': 'Required chat capability is missing',
+      'settings.access.remoteWarning.missing_optional_capability': 'Some optional Remote Server capabilities are unavailable',
+      'settings.api.showKey': 'Show',
+    };
+    vi.stubGlobal('t', (key: string) => copy[key] || key);
     Object.assign(window, {
       hana: { reloadMainWindow: vi.fn(async () => {}) },
     });
@@ -89,15 +101,17 @@ describe('RemoteConnectionRecovery', () => {
 
     render(<RemoteConnectionRecovery />);
 
-    expect(screen.getByText('app.remoteRecovery.title')).toBeInTheDocument();
+    expect(screen.getByText('Remote Server needs attention')).toBeInTheDocument();
+    expect(screen.getByText('Compatibility check failed')).toBeInTheDocument();
+    expect(screen.queryByText('app.remoteRecovery.title')).not.toBeInTheDocument();
     expect(screen.getByDisplayValue('http://192.168.31.75:14500')).toBeInTheDocument();
-    const key = screen.getByLabelText('app.remoteRecovery.accessKey');
+    const key = screen.getByLabelText('Access key');
     expect(key).toHaveAttribute('type', 'password');
     expect(key).toHaveValue('fixture-key');
-    fireEvent.click(screen.getByRole('button', { name: 'settings.api.showKey' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Show' }));
     expect(key).toHaveAttribute('type', 'text');
 
-    fireEvent.click(screen.getByRole('button', { name: 'app.remoteRecovery.switchLocal' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Switch to local' }));
 
     expect(useStore.getState().activeServerConnectionId).toBe('local');
     expect(useStore.getState().remoteConnectionRecovery).toBeNull();
@@ -116,13 +130,13 @@ describe('RemoteConnectionRecovery', () => {
 
     render(<RemoteConnectionRecovery />);
 
-    fireEvent.change(screen.getByLabelText('app.remoteRecovery.serverUrl'), {
+    fireEvent.change(screen.getByLabelText('Server URL'), {
       target: { value: 'http://192.168.31.80:14500' },
     });
-    fireEvent.change(screen.getByLabelText('app.remoteRecovery.accessKey'), {
+    fireEvent.change(screen.getByLabelText('Access key'), {
       target: { value: 'edited-key' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'app.remoteRecovery.retryRemote' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry remote' }));
 
     await waitFor(() => {
       expect(mockConnectDeviceServerConnection).toHaveBeenCalledWith({
@@ -133,5 +147,26 @@ describe('RemoteConnectionRecovery', () => {
     expect(useStore.getState().activeServerConnectionId).toBe(retried.connectionId);
     expect(useStore.getState().remoteConnectionRecovery).toBeNull();
     expect(window.hana.reloadMainWindow).toHaveBeenCalledTimes(1);
+  });
+
+  it('masks a replacement key after the revealed key value changes', async () => {
+    const { RemoteConnectionRecovery } = await import('../../components/app/RemoteConnectionRecovery');
+
+    const { rerender } = render(<RemoteConnectionRecovery />);
+
+    const key = screen.getByLabelText('Access key');
+    fireEvent.click(screen.getByRole('button', { name: 'Show' }));
+    expect(key).toHaveAttribute('type', 'text');
+
+    useStore.setState({
+      activeServerConnection: {
+        ...remoteConnection,
+        token: 'replacement-key',
+      },
+    } as never);
+    rerender(<RemoteConnectionRecovery />);
+
+    expect(screen.getByLabelText('Access key')).toHaveAttribute('type', 'password');
+    expect(screen.getByLabelText('Access key')).toHaveValue('replacement-key');
   });
 });

@@ -243,14 +243,23 @@ describe('AccessTab', () => {
             trustState: 'lan',
             authState: 'paired',
             credentialKind: 'device_credential',
-            capabilities: ['chat', 'resources', 'files'],
+            capabilities: ['chat', 'resources', 'files', 'tools', 'settings'],
+            executionBoundary: {
+              kind: 'remote_process',
+              serverNodeId: 'node_lan',
+              studioId: 'studio_lan',
+              workbench: { kind: 'legacy_agent_workbench', root: null },
+            },
           }),
         } as Response;
       }
       throw new Error(`unexpected fetch URL: ${url}`);
     }));
     Object.assign(window, {
-      hana: { reloadMainWindow: vi.fn(async () => {}) },
+      hana: {
+        reloadMainWindow: vi.fn(async () => {}),
+        debugOpenOnboarding: vi.fn(async () => {}),
+      },
     });
   });
 
@@ -442,6 +451,19 @@ describe('AccessTab', () => {
       }));
       expect(window.hana.reloadMainWindow).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it('opens onboarding directly from the Access settings tab', async () => {
+    const { AccessTab } = await import('../../settings/tabs/AccessTab');
+
+    render(<AccessTab />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'settings.access.openOnboarding' }));
+
+    await waitFor(() => {
+      expect(window.hana.debugOpenOnboarding).toHaveBeenCalledTimes(1);
+    });
+    expect(mockState.showToast).toHaveBeenCalledWith('devtools.onboardingOpened', 'success');
   });
 
   it('renders remote connections as Remote Server connection management and can switch to local', async () => {

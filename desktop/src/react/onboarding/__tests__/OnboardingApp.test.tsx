@@ -139,7 +139,13 @@ describe('OnboardingApp locale switching', () => {
             trustState: 'lan',
             authState: 'paired',
             credentialKind: 'device_credential',
-            capabilities: ['chat', 'resources', 'files'],
+            capabilities: ['chat', 'resources', 'files', 'tools', 'settings'],
+            executionBoundary: {
+              kind: 'remote_process',
+              serverNodeId: 'node_lan',
+              studioId: 'studio_lan',
+              workbench: { kind: 'legacy_agent_workbench', root: null },
+            },
           }),
         } as Response;
       }

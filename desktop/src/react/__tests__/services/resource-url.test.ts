@@ -174,6 +174,20 @@ describe('resolveFileRefUrl', () => {
     expect(platform.getFileUrl).not.toHaveBeenCalled();
   });
 
+  it('does not synthesize session-file resource URLs for malformed local-ish device credentials', () => {
+    const platform = { getFileUrl: vi.fn((p: string) => `file:///mock${p}`) };
+
+    expect(() => resolveFileRefUrl(fileRef({
+      fileId: 'sf_uploaded_image',
+      resource: undefined,
+    }), {
+      connection: malformedLocalishConnection,
+      platform,
+    })).toThrow('remote file ref requires resource content link');
+
+    expect(platform.getFileUrl).not.toHaveBeenCalled();
+  });
+
   it('rejects malformed local-ish non-loopback URLs instead of using the local file bridge', () => {
     const platform = { getFileUrl: vi.fn((p: string) => `file:///mock${p}`) };
 

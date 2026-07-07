@@ -9,7 +9,7 @@ import {
   upsertServerConnection,
   writePersistedServerConnectionState,
 } from '../../services/server-connection';
-import { remoteRecoveryCodesForConnection } from '../../services/remote-connection-recovery';
+import { clearRemoteConnectionRecoveryState, remoteRecoveryCodesForConnection, remoteRecoveryForActiveConnection } from '../../services/remote-connection-recovery';
 import settingsStyles from '../../settings/Settings.module.css';
 
 declare function t(key: string, vars?: Record<string, string | number>): string;
@@ -25,7 +25,8 @@ export function RemoteConnectionRecovery() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (!recovery || !activeConnection || recovery.connectionId !== activeConnection.connectionId) return;
+    if (!recovery || !activeConnection) return;
+    if (!remoteRecoveryForActiveConnection(recovery, activeConnection.connectionId)) return;
     setServerUrl(activeConnection.baseUrl || recovery.baseUrl || '');
     setAccessKey(activeConnection.token || '');
   }, [activeConnection, recovery]);
@@ -46,6 +47,7 @@ export function RemoteConnectionRecovery() {
         activeServerConnection: connection,
         remoteConnectionRecovery: null,
       });
+      clearRemoteConnectionRecoveryState();
       window.hana?.reloadMainWindow?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -70,10 +72,13 @@ export function RemoteConnectionRecovery() {
       activeServerConnection: local,
       remoteConnectionRecovery: null,
     });
+    clearRemoteConnectionRecoveryState();
     window.hana?.reloadMainWindow?.();
   }, []);
 
-  if (!recovery || !activeConnection || recovery.connectionId !== activeConnectionId) return null;
+  if (!recovery || !activeConnection || !remoteRecoveryForActiveConnection(recovery, activeConnectionId)) {
+    return null;
+  }
 
   const { reasonCodes, warningCodes } = remoteRecoveryCodesForConnection(recovery, activeConnectionId);
 

@@ -23,7 +23,7 @@ export function resolveFileRefUrl(ref: FileRef, {
   preferLocalFile?: boolean;
 }): FileRefUrlResult {
   const canUseNativePath = canUseNativeResourcePath({ connection });
-  const isRemoteResourceOwner = !!connection && !canUseNativePath;
+  const isRemoteResourceOwner = !!connection && !canUseNativePath && connection.kind !== 'local';
   const getFileUrl = platform?.getFileUrl;
   const canUseLocalFile = preferLocalFile
     && canUseNativePath
