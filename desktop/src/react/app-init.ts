@@ -11,7 +11,7 @@ import { useStore } from './stores';
 import { hanaFetch } from './hooks/use-hana-fetch';
 import { fetchConfig } from './hooks/use-config';
 import { applyAgentIdentity, loadAgents, loadAvatars } from './stores/agent-actions';
-import { loadPendingNewSessionPermissionDefault, loadSessions, pendingNewSessionIdentityPatch, switchSession } from './stores/session-actions';
+import { loadPendingNewSessionPermissionDefault, loadSessions, switchSession } from './stores/session-actions';
 import { initSessionProjectCatalog } from './stores/session-project-actions';
 import { loadSidebarUiPrefs } from './stores/sidebar-ui-slice';
 import { connectWebSocket, getWebSocket } from './services/websocket';
@@ -23,7 +23,6 @@ import { initErrorBusBridge } from './errors/error-bus-bridge';
 import { refreshPluginUI } from './stores/plugin-ui-actions';
 import { openSettingsModal } from './stores/settings-modal-actions';
 import { initQuotedSelectionLifecycle } from './stores/selection-actions';
-import { clearInputDraftRemoteSession, hydrateInputDrafts, initInputDraftPersistence } from './stores/input-draft-persistence';
 import { configureAppEventActions, handleAppEvent, readConfigCwdHistory, readConfigHomeFolder, readConfigMemoryMasterEnabled } from './services/app-event-actions';
 import { configureWsMessageHandler } from './services/ws-message-handler';
 import { applyChatLayout } from './chat/layout';
@@ -33,14 +32,11 @@ import {
   LOCAL_CONNECTION_ID,
   createLocalServerConnection,
   hasServerConnection,
-  isLocalOwnerConnection,
   mergeServerIdentity,
   readPersistedServerConnectionState,
   refreshLocalServerConnectionState,
   upsertServerConnection,
-  warnIfServerProtocolMismatch,
   type ServerConnection,
-  type ServerIdentity,
 } from './services/server-connection';
 import {
   clearRemoteConnectionRecoveryState,
@@ -49,12 +45,7 @@ import {
 } from './services/remote-connection-recovery';
 import {
   assertRemoteBoundaryContract,
-  validateRemoteBoundaryContract,
-  type RemoteBoundaryCompatibility,
 } from './services/remote-boundary-contract';
-import { createRemoteServerAssessmentCoordinator } from './services/remote-server-assessment-coordinator';
-import { writeRemoteServerAssessment } from './services/remote-server-assessment-cache';
-import { assessRemoteServer } from '../../../shared/remote-server-assessment';
 import { persistAppearancePreferences } from './services/appearance-sync';
 import { errorBus as _errorBus } from '../../../shared/error-bus.ts';
 import { AppError as _AppError } from '../../../shared/errors.ts';
@@ -65,27 +56,6 @@ declare const i18n: {
   load(locale: string): Promise<void>;
 };
 declare function t(key: string, vars?: Record<string, string | number>): string;
-
-type LoadedIdentity = {
-  connection: ServerConnection;
-  identity: ServerIdentity;
-  boundary: RemoteBoundaryCompatibility;
-};
-
-const remoteServerAssessmentCoordinator = createRemoteServerAssessmentCoordinator({
-  getActiveConnectionId: () => useStore.getState().activeServerConnectionId,
-  fetchIdentity: async () => fetchServerIdentity(),
-  loadRelease: async (options) => {
-    if (typeof window.hana?.checkRemoteServerRelease !== 'function') {
-      throw new Error('remote server release bridge unavailable');
-    }
-    return window.hana.checkRemoteServerRelease(options);
-  },
-  evaluate: assessRemoteServer,
-  applyAssessment: (remoteServerAssessment) => useStore.setState({ remoteServerAssessment }),
-  persistAssessment: writeRemoteServerAssessment,
-  now: () => new Date(),
-});
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- 全局 bootstrap：platform/IPC callback 签名含 any */
 
@@ -147,7 +117,6 @@ window.addEventListener('unhandledrejection', (e) => {
 export async function initApp(): Promise<void> {
   const platform = window.platform;
   initQuotedSelectionLifecycle();
-  initInputDraftPersistence();
 
   const requestContextUsage = (sessionPath: string) => {
     const ws = getWebSocket();
@@ -163,9 +132,6 @@ export async function initApp(): Promise<void> {
     const serverPort = String(data.port);
     const serverToken = data.token ?? storeState.serverToken ?? null;
     const activeBeforeRestart = storeState.activeServerConnection;
-    if (activeBeforeRestart && !isLocalOwnerConnection(activeBeforeRestart)) {
-      clearInputDraftRemoteSession(activeBeforeRestart.connectionId);
-    }
     const nextConnectionState = refreshLocalServerConnectionState({
       serverConnections: storeState.serverConnections,
       activeServerConnectionId: storeState.activeServerConnectionId,
@@ -201,7 +167,6 @@ export async function initApp(): Promise<void> {
     serverConnections: initialRegistry,
     activeServerConnectionId: activeServerConnection?.connectionId ?? null,
     activeServerConnection,
-    remoteServerAssessment: null,
   });
 
   if (!activeServerConnection) {
@@ -213,18 +178,13 @@ export async function initApp(): Promise<void> {
 
   try {
     await refreshDeviceWebSession(activeServerConnection);
-    const loadedIdentity = await loadIdentityForActiveConnection(activeServerConnection);
-    const mergedConnection = loadedIdentity.connection;
+    const mergedConnection = await loadIdentityForActiveConnection(activeServerConnection);
     useStore.setState({
       serverConnections: upsertServerConnection(useStore.getState().serverConnections, mergedConnection),
       activeServerConnectionId: mergedConnection.connectionId,
       activeServerConnection: mergedConnection,
       remoteConnectionRecovery: null,
     });
-    void remoteServerAssessmentCoordinator.assessConnection(mergedConnection, {
-      initialIdentity: loadedIdentity.identity,
-      initialBoundary: loadedIdentity.boundary,
-    }).catch(err => console.warn('[init] remote server assessment skipped:', err));
     clearRemoteConnectionRecoveryState();
   } catch (err) {
     const recovery = remoteRecoveryForStartupFailure(activeServerConnection, err);
@@ -316,11 +276,10 @@ export async function initApp(): Promise<void> {
   await loadModels();
 
   // 10. 加载 agents + sessions
-  useStore.setState(pendingNewSessionIdentityPatch());
+  useStore.setState({ pendingNewSession: true });
   await loadPendingNewSessionPermissionDefault();
   await loadAgents();
   await loadSessions();
-  void hydrateInputDrafts();
 
   // 10b. 加载项目目录（带重试）。放在 sessions 之后：此时 server 已确认可用，
   // 避免项目目录像过去那样只靠 SessionList 挂载时一次性拉取、失败即长期空白，
@@ -411,21 +370,11 @@ export async function initApp(): Promise<void> {
   platform.appReady();
 }
 
-async function fetchServerIdentity(): Promise<ServerIdentity> {
+async function loadIdentityForActiveConnection(connection: ServerConnection): Promise<ServerConnection> {
   const identityRes = await hanaFetch('/api/server/identity');
-  return identityRes.json() as Promise<ServerIdentity>;
-}
-
-async function loadIdentityForActiveConnection(connection: ServerConnection): Promise<LoadedIdentity> {
-  const identityData = await fetchServerIdentity();
-  warnIfServerProtocolMismatch(identityData);
-  const boundary = validateRemoteBoundaryContract(connection, identityData);
+  const identityData = await identityRes.json();
   assertRemoteBoundaryContract(connection, identityData);
-  return {
-    connection: mergeServerIdentity(connection, identityData),
-    identity: identityData,
-    boundary,
-  };
+  return mergeServerIdentity(connection, identityData);
 }
 
 async function refreshDeviceWebSession(connection: ServerConnection): Promise<void> {

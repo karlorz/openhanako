@@ -9,7 +9,7 @@ interface KeyInputProps {
   onChange: (val: string) => void;
   placeholder?: string;
   ariaLabel?: string;
-  onBlur?: (event: React.FocusEvent<HTMLDivElement>) => void;
+  onBlur?: () => void;
   onReveal?: () => Promise<string | null | undefined>;
   onRevealError?: (err: unknown) => void;
 }
@@ -71,21 +71,13 @@ export function KeyInput({ value, onChange, placeholder, ariaLabel, onBlur, onRe
   };
 
   return (
-    <div
-      className={styles['settings-key-wrapper']}
-      onBlur={(event) => {
-        const nextTarget = event.relatedTarget;
-        if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) return;
-        onBlur?.(event);
-      }}
-    >
+    <div className={styles['settings-key-wrapper']}>
       <input
         className={`${styles['settings-input']} ${styles['settings-key-input']}`}
         type={visible ? 'text' : 'password'}
         value={displayValue}
         readOnly={isTransientSecretVisible}
         data-secret-visible={isTransientSecretVisible ? 'true' : undefined}
-        aria-label={ariaLabel}
         onChange={(e) => {
           if (isTransientSecretVisible) {
             replaceTransientSecret(e.target.value);
@@ -131,7 +123,9 @@ export function KeyInput({ value, onChange, placeholder, ariaLabel, onBlur, onRe
             replaceTransientSecret('');
           }
         }}
+        aria-label={ariaLabel}
         placeholder={placeholder}
+        onBlur={onBlur}
       />
       <button
         className={styles['settings-key-toggle']}
