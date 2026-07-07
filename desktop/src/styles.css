@@ -529,6 +529,93 @@ html[data-platform="linux"] .tb-toggle-right {
     position: relative; /* 给 drop overlay 定位 */
 }
 
+.remote-recovery {
+    margin: var(--space-16);
+    padding: var(--space-16);
+    border: 1px solid var(--overlay-light);
+    border-radius: var(--radius-md);
+    background: var(--bg);
+    box-shadow: var(--shadow-sm);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-12);
+    -webkit-app-region: no-drag;
+}
+
+.remote-recovery-header,
+.remote-recovery-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-12);
+}
+
+.remote-recovery-header h2 {
+    margin: 0;
+    font-size: var(--fs-title);
+}
+
+.remote-recovery-header p {
+    margin: var(--space-4) 0 0;
+    color: var(--text-secondary);
+    font-size: var(--fs-ui);
+}
+
+.remote-recovery-header > span {
+    flex-shrink: 0;
+    color: var(--text-secondary);
+    font-size: var(--fs-caption);
+}
+
+.remote-recovery-reasons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-8);
+}
+
+.remote-recovery-reasons span,
+.remote-recovery-error {
+    border: 1px solid var(--overlay-light);
+    border-radius: var(--radius-sm);
+    padding: var(--space-4) var(--space-8);
+    color: var(--text-secondary);
+    font-size: var(--fs-caption);
+}
+
+.remote-recovery-error {
+    color: var(--danger);
+}
+
+.remote-recovery-form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: var(--space-12);
+}
+
+.remote-recovery-form label {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
+    min-width: 0;
+}
+
+.remote-recovery-form label > span {
+    color: var(--text-secondary);
+    font-size: var(--fs-caption);
+}
+
+@media (max-width: 720px) {
+    .remote-recovery-header,
+    .remote-recovery-actions {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .remote-recovery-form {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
 /* ========================================
    侧边栏
    ======================================== */
@@ -3254,6 +3341,10 @@ html[data-platform="linux"] .onboarding {
     display: flex;
     justify-content: center;
     gap: 10px;
+}
+
+.ob-remote-key-row {
+    display: block;
 }
 
 .ob-btn {
