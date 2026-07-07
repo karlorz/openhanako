@@ -3,6 +3,7 @@
  * 独立于主窗口 store，设置窗口有自己的 BrowserWindow + JS context
  */
 import { create } from 'zustand';
+import type { RemoteConnectionRecoveryState } from '../stores/connection-slice';
 import type { ServerConnection, ServerConnectionRegistry } from '../services/server-connection';
 import { createRemoteResource, type RemoteResource, type RemoteResourceStatus } from './resource-state';
 
@@ -98,6 +99,7 @@ export interface SettingsState {
   serverConnections: ServerConnectionRegistry;
   activeServerConnectionId: string | null;
   activeServerConnection: ServerConnection | null;
+  remoteConnectionRecovery: RemoteConnectionRecoveryState | null;
 
   // agents
   agents: Agent[];
@@ -160,6 +162,7 @@ export const useSettingsStore = create<SettingsStore>()((set, get) => ({
   serverConnections: {},
   activeServerConnectionId: null,
   activeServerConnection: null,
+  remoteConnectionRecovery: null,
 
   // agents
   agents: [],
