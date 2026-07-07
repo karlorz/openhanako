@@ -1,5 +1,6 @@
 import type { UserAttachment } from '../stores/chat-types';
 import { useStore } from '../stores';
+import { canUseNativeResourcePath } from '../services/resource-access';
 import { resolveFileRefUrl } from '../services/resource-url';
 import { resolveServerConnection } from '../services/server-connection';
 import type { PlatformApi } from '../types';
@@ -17,6 +18,7 @@ export function getUserAttachmentImageSrc(
     return `data:${attachment.mimeType || 'image/png'};base64,${attachment.base64Data}`;
   }
   if (!attachment.path) return null;
+  const connection = resolveServerConnection(useStore.getState());
   try {
     const name = attachment.name || attachment.path.split(/[\\/]/).pop() || attachment.path;
     return resolveFileRefUrl({
@@ -30,11 +32,11 @@ export function getUserAttachmentImageSrc(
       mime: attachment.mimeType,
       resource: attachment.resource,
     }, {
-      connection: resolveServerConnection(useStore.getState()),
+      connection,
       platform,
     }).url;
   } catch {
-    if (typeof platform?.getFileUrl === 'function') {
+    if (canUseNativeResourcePath({ connection }) && typeof platform?.getFileUrl === 'function') {
       return platform.getFileUrl(attachment.path);
     }
   }
