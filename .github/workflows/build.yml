@@ -674,4 +674,8 @@ jobs:
           ATOMGIT_OWNER: liliMozi
           ATOMGIT_REPO: OpenHanako-Releases
         run: |
+          if [ -z "${ATOMGIT_TOKEN:-}" ]; then
+            echo "::notice::ATOMGIT_TOKEN is not configured; skipping AtomGit mirror"
+            exit 0
+          fi
           node scripts/mirror-release-to-atomgit.mjs --tag "${{ github.ref_name }}"
