@@ -18,6 +18,8 @@ This is a permanent personal fork unless upstream accepts equivalent fixes. See 
 
 Use release-tag syncs from upstream, not continuous upstream `main` tracking. Preserve local fixes by behavior and tests, not by blindly preferring either side during conflicts.
 
+Current pre-sync state (2026-07-10): upstream has published prerelease tags through `v0.374.3`, but the latest non-prerelease release remains `v0.357.17`, already synced by the fork. PR #1's refreshed dry-run dashboard predicts conflicts in `desktop/src/react/settings/widgets/KeyInput.tsx` and `release-digest.v1.json`. Do not start the production sync or bump package metadata until a new stable release exists; see `FORK_SYNC.md` for the planned preserve-both/take-stable resolutions.
+
 ## Core Terms
 
 - **Local owner connection**: Electron desktop owns and spawns its own local server; local file URLs can use `platform.getFileUrl`.

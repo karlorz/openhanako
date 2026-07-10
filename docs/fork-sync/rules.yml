@@ -30,6 +30,7 @@ issueTracking:
 criticalFileClasses:
   - lan_connect_auth
   - remote_attachment_preview
+  - remote_boundary_recovery
   - websocket_session_identity
   - desktop_packaging
   - fork_sync_maintenance
@@ -101,8 +102,10 @@ conflictRules:
     - desktop/src/react/__tests__/utils/user-attachment-media.test.ts
     - tests/plugin-sdk-examples.test.ts
     - tests/office-workflow-plugin.test.ts
+    - desktop/src/react/settings/widgets/KeyInput.tsx
     - package.json
     - package-lock.json
+    - release-digest.v1.json
   policies:
     core/server-auth.ts:
       class: lan_connect_auth
@@ -162,6 +165,12 @@ conflictRules:
       risk: high
       resolution: HUMAN REVIEW. Preserve fork session identity routing and optimistic attachment hydration while accepting upstream preview refresh behavior.
       plannedAction: Inspect production ws-message-handler behavior with the paired test expectations; do not let a test-only conflict reduction hide session identity regressions.
+    desktop/src/react/settings/widgets/KeyInput.tsx:
+      class: remote_boundary_recovery
+      risk: high
+      strategy: preserve-both
+      resolution: Preserve the fork external-value reset and secret re-hide behavior while accepting upstream wrapper-level blur handling and accessibility wiring.
+      plannedAction: Start from the upstream stable version, retain wrapper-level blur handling so focus moving to the reveal button does not commit Bridge credentials, then restore the fork previousValueRef/internalChangeRef behavior so an externally replaced remote credential clears any transient revealed secret. Run the remote recovery, Access settings, provider credential, and upstream Bridge credential tests together.
     package.json:
       class: desktop_packaging
       risk: medium
@@ -174,6 +183,12 @@ conflictRules:
       strategy: defer-to-stable-production-sync
       resolution: Defer lockfile root metadata changes until the attended stable production fork sync resolves package.json.
       plannedAction: Report only. Do not regenerate or pre-bump package-lock.json for the dashboard; stable production fork sync regenerates it after the package version decision.
+    release-digest.v1.json:
+      class: desktop_packaging
+      risk: medium
+      strategy: take-main
+      resolution: Accept the upstream stable release digest during the attended rebase; prerelease dashboard state is report-only.
+      plannedAction: Take the eventual upstream stable digest during the stable sync, do not copy the current prerelease digest into dev early, and align tag/version to the fork-scoped tag only after Tier 0-3 verification when publishing the fork release.
     tests/plugin-sdk-examples.test.ts:
       class: fork_sync_maintenance
       risk: medium

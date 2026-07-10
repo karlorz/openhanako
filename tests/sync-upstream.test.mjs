@@ -265,6 +265,32 @@ describe("sync-upstream rule engine", () => {
     expect(plan.conflicts[0].plannedAction).toContain("LAN device-credential");
   });
 
+  it("plans the next stable KeyInput and release digest conflicts explicitly", () => {
+    const rules = loadRules();
+
+    const plan = buildConflictPlan([
+      "desktop/src/react/settings/widgets/KeyInput.tsx",
+      "release-digest.v1.json",
+    ], rules);
+
+    expect(plan.conflicts).toEqual([
+      expect.objectContaining({
+        file: "desktop/src/react/settings/widgets/KeyInput.tsx",
+        strategy: "preserve-both",
+        source: "policy",
+        risk: "high",
+        plannedAction: expect.stringContaining("wrapper-level blur handling"),
+      }),
+      expect.objectContaining({
+        file: "release-digest.v1.json",
+        strategy: "take-main",
+        source: "policy",
+        risk: "medium",
+        plannedAction: expect.stringContaining("fork-scoped tag"),
+      }),
+    ]);
+  });
+
   it("parses conflicted files from git merge-tree output", () => {
     const output = [
       "100644 abc 1\tpackage.json",
