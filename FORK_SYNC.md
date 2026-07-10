@@ -29,12 +29,16 @@ Current status:
 | Fix | Status | Upstream issue state | Action |
 |-----|--------|----------------------|--------|
 | LAN/Tailscale CSP + WebSocket auth | `existing/open` | [#1749](https://github.com/liliMozi/openhanako/issues/1749) OPEN; [#1811](https://github.com/liliMozi/openhanako/issues/1811) CLOSED | Check during every sync; close or shrink divergence only if upstream accepts equivalent behavior. |
+| LAN query-token network hardening | `draft/pending-approval` | No exact issue found; related [#1749](https://github.com/liliMozi/openhanako/issues/1749) and [#1811](https://github.com/liliMozi/openhanako/issues/1811) | Review `docs/upstream-issues/drafts/lan-query-token-network-hardening.md`; normally fold into the LAN auth issue unless reviewed separately. |
 | Remote plugin iframe credential query leak | `draft/pending-approval` | No exact issue found; related [#1493](https://github.com/liliMozi/openhanako/issues/1493), [#1546](https://github.com/liliMozi/openhanako/issues/1546) | Review `docs/upstream-issues/drafts/plugin-iframe-remote-credential-query-leak.md`; submit only after owner approval. |
 | Remote attachment preview persistence | `draft/pending-approval` | No exact issue found | Review `docs/upstream-issues/drafts/remote-attachment-preview-persistence.md`; submit only after owner approval. |
+| Desktop temp upload session-cache materialization | `draft/pending-approval` | No exact issue found | Review `docs/upstream-issues/drafts/desktop-temp-upload-session-cache-materialization.md`; submit only after owner approval. |
 | Marker-only image replay regenerate 400 | `draft/pending-approval` | No exact issue found | Review `docs/upstream-issues/drafts/session-replay-marker-only-image-regenerate.md`; submit only after owner approval. |
 | ToolGroup file-detail link context | `draft/pending-approval` | No exact issue found | Review `docs/upstream-issues/drafts/toolgroup-file-detail-link-context.md`; submit only after owner approval. |
-| Local fork build identity + disabled local auto-update | `tracked/no-upstream-issue` | Fork-only | Keep local; no upstream issue unless this becomes a general local-build-channel feature request. |
-| Fork sync issue tracking + prerelease policy | `tracked/no-upstream-issue` | Fork-only | Keep local; documents and automates this fork's maintenance workflow. |
+| Provider model-removal persistence | `draft/pending-approval` | No exact issue found | Review `docs/upstream-issues/drafts/provider-model-removal-persistence.md`; submit only after owner approval. |
+| Remote skill viewer local-file IPC | `draft/pending-approval` | No exact issue found | Review `docs/upstream-issues/drafts/remote-skill-viewer-local-file-ipc.md`; submit only after owner approval. |
+| Remote skill install client-local path | `draft/pending-approval` | No exact issue found | Review `docs/upstream-issues/drafts/remote-skill-install-client-local-path.md`; submit only after owner approval. |
+| Fork-only maintenance | `tracked/no-upstream-issue` | Local build identity, fork-sync/dev-loop runbooks, office-workflow examples, server installer/reinit safety, and CI file-mode hygiene | Keep local. The complete generated inventory is `docs/upstream-issues/README.md`; do not create upstream issue noise for fork-only work. |
 
 ## Sync cadence
 
@@ -91,12 +95,19 @@ These files fix remote desktop attachment import and preview when the macOS desk
 |------|--------------------------|-------------------|
 | `desktop/src/react/services/ws-message-handler.ts` | **HIGH** — session-scoped browser status, preview refresh, and optimistic attachment hydration can interact across production code and test fixtures | **HUMAN REVIEW.** If upstream changes `desktop/src/react/__tests__/services/ws-message-handler.test.ts`, inspect the production service file too. A test-only dashboard conflict reduction must not hide regressions in fork session identity routing or replayed optimistic attachment hydration. |
 
+### Remote boundary credential UI
+
+| File | Risk if upstream touches | Resolution policy |
+|------|--------------------------|-------------------|
+| `desktop/src/react/settings/widgets/KeyInput.tsx` | **HIGH** — the fork uses external-value detection to clear a transient revealed remote credential, while upstream now uses wrapper-level blur handling for Bridge credential drafts | **PRESERVE BOTH.** Start from upstream's stable version and keep its wrapper blur/accessibility behavior, then restore the fork `previousValueRef` / `internalChangeRef` reset-and-rehide behavior. Verify remote recovery, Access settings, provider credentials, and Bridge credentials together. |
+
 ### Desktop packaging metadata
 
 | File | Risk if upstream touches | Resolution policy |
 |------|--------------------------|-------------------|
 | `package.json` | Medium | **DEFER.** Stable production fork sync owns package version alignment. Dashboard-only conflict reduction must not pre-bump the version; preserve the fork baseline and `install:local` behavior until the attended sync resolves both together. |
 | `package-lock.json` | Medium | **DEFER.** Do not regenerate or pre-bump lockfile root metadata for the dashboard. Regenerate only during the stable production fork sync after the package version decision. |
+| `release-digest.v1.json` | Medium | **TAKE UPSTREAM STABLE, THEN FORK-ALIGN AFTER VERIFICATION.** Do not copy a prerelease digest into `dev`. During the attended stable rebase, accept the upstream stable digest; only after Tier 0-3 succeeds should the fork release closeout align `tag` and `version` to `vX.Y.Z-karlorz.N`. |
 
 ## The fixed commits / divergence clusters
 
@@ -146,6 +157,7 @@ Dashboard rules:
 - Unknown conflicts default to `take-main` in the dry-run plan.
 - Fork exceptions live in `docs/fork-sync/rules.yml` and include explicit `plannedAction` text.
 - Package version and lockfile conflicts are reported as deferred; dashboard-only cleanup must not change them.
+- `KeyInput.tsx` is an explicit `preserve-both` exception; `release-digest.v1.json` takes the eventual upstream stable digest and is fork-aligned only after full verification.
 - PR #1 body is updated only inside the generated dashboard block.
 
 What the script does:
@@ -245,6 +257,16 @@ git reset --hard <pre-rebase-sha>
 ```
 
 The server on sg01 and the desktop app stay on the last-known-good bundles until we explicitly redeploy.
+
+## Next stable pre-sync readiness
+
+- 2026-07-10: upstream `main`, `origin/main`, and the prerelease tag `v0.374.3` all point at `39a46f5aca4e`; upstream GitHub marks `v0.374.3` as a prerelease. The latest non-prerelease release remains `v0.357.17`, which is already the fork baseline. No production sync is available yet.
+- `node scripts/sync-upstream.mjs --check` reported `Latest upstream tag: v0.357.17`, `Last synced tag: v0.357.17`, and exited without starting a rebase.
+- The refreshed permanent dashboard PR #1 predicts two textual conflicts against the current prerelease `main`: `desktop/src/react/settings/widgets/KeyInput.tsx` and `release-digest.v1.json`.
+- Planned conflict handling is explicit: preserve both KeyInput behaviors (upstream wrapper-level blur handling plus fork external-value reset/re-hide); accept the eventual upstream stable release digest during the attended rebase, then fork-align it only after Tier 0-3 verification.
+- Upstream has touched the LAN auth, Electron main/preload, scoped CSP, remote attachment/resource, WebSocket session identity, package metadata, upload route, and focused test surfaces since `v0.357.17`. These remain semantic-review risks even where merge-tree reports no textual conflict.
+- Upstream issue search/draft artifacts were refreshed. #1749 remains open, #1811 remains closed, and no exact matches were found for the other upstream-eligible fork fixes. The fork repository has GitHub Issues disabled, so the supported tracking surfaces are the local issue drafts, PR #1 dashboard, and SkillWiki work item.
+- Pre-sync boundary: do not rebase or merge `dev`; do not change `package.json` or `package-lock.json`; do not copy prerelease package or digest metadata into `dev`; do not install, deploy, tag, or publish. Re-run the detector after upstream publishes a new non-prerelease release.
 
 ## Latest sync closeout
 
