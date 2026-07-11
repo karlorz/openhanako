@@ -558,6 +558,63 @@ describe('AccessTab', () => {
     expect(window.hana.reloadMainWindow).toHaveBeenCalledTimes(1);
   });
 
+  it('re-hides a revealed remote recovery secret after connect-another clears the credential draft', async () => {
+    Object.assign(mockState, {
+      serverConnections: {
+        local: localConnection,
+        [remoteConnection.connectionId]: remoteConnection,
+      },
+      activeServerConnectionId: remoteConnection.connectionId,
+      activeServerConnection: remoteConnection,
+      remoteConnectionRecovery: {
+        status: 'compatibility_failed',
+        connectionId: remoteConnection.connectionId,
+        baseUrl: remoteConnection.baseUrl,
+        reasonCodes: ['missing_core_capability'],
+        warningCodes: ['missing_optional_capability'],
+      },
+    });
+    mockHanaFetch.mockImplementation((url: string) => {
+      if (url === '/api/server/identity') {
+        return Promise.resolve(jsonResponse({
+          connectionKind: 'lan',
+          serverId: 'server_lan',
+          serverNodeId: 'node_lan',
+          userId: 'user_lan',
+          studioId: 'studio_lan',
+          label: 'sg01 Hana',
+          userLabel: 'Karl',
+          studioLabel: 'Personal Studio',
+          trustState: 'lan',
+          authState: 'paired',
+          credentialKind: 'device_credential',
+          capabilities: ['chat', 'resources', 'files', 'settings.read'],
+          version: '0.348.11',
+          executionBoundary: {
+            kind: 'remote_process',
+            workbench: { kind: 'legacy_agent_workbench' },
+          },
+        }));
+      }
+      throw new Error(`unexpected request: ${url}`);
+    });
+    const { AccessTab } = await import('../../settings/tabs/AccessTab');
+
+    render(<AccessTab />);
+
+    const remoteKeyInput = await screen.findByLabelText('settings.access.remoteServerKey');
+    fireEvent.change(remoteKeyInput, { target: { value: 'old-remote-secret' } });
+    fireEvent.click(screen.getByRole('button', { name: 'settings.api.showKey' }));
+    expect(screen.getByDisplayValue('old-remote-secret')).toHaveAttribute('type', 'text');
+
+    fireEvent.click(screen.getByRole('button', { name: 'settings.access.connectAnotherRemote' }));
+
+    const replaced = screen.getByLabelText('settings.access.remoteServerKey');
+    expect(replaced).toHaveValue('');
+    expect(replaced).toHaveAttribute('type', 'password');
+    expect(screen.queryByDisplayValue('old-remote-secret')).not.toBeInTheDocument();
+  });
+
   it('saves the local owner profile and password from the account section', async () => {
     const { AccessTab } = await import('../../settings/tabs/AccessTab');
 
