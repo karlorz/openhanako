@@ -5,6 +5,7 @@ import {
   buildScopedConnectSources,
   buildConnectionUrl,
   buildConnectionWsUrl,
+  canUseQueryToken,
   connectDeviceServerConnection,
   createDeviceServerConnection,
   createLocalServerConnection,
@@ -15,12 +16,71 @@ import {
   readPersistedServerConnectionState,
   refreshLocalServerConnection,
   refreshLocalServerConnectionState,
+  requestConnectionWsTicket,
   resolveServerConnection,
   upsertServerConnection,
   warnIfServerProtocolMismatch,
   writePersistedServerConnectionState,
 } from '../../services/server-connection';
 import { SERVER_PROTOCOL_VERSION } from '../../../../../shared/contract-versions.ts';
+
+type WsAuthCapability = 'loopback-owner' | 'ticket' | 'legacy-query-token' | 'unsupported';
+
+/**
+ * Read-only capability probe for migration characterization.
+ * Classifies a server by probing POST /api/ws-ticket.
+ * Kept in test/support code; does not change runtime selection.
+ */
+async function probeWsAuthCapability(
+  baseUrl: string,
+  credential: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<WsAuthCapability> {
+  const trimmed = String(baseUrl || '').replace(/\/+$/, '');
+  if (!trimmed) return 'unsupported';
+  try {
+    const loopback = new URL(trimmed);
+    if (loopback.hostname === '127.0.0.1' || loopback.hostname === 'localhost') {
+      return 'loopback-owner';
+    }
+  } catch {
+    return 'unsupported';
+  }
+
+  let response: Response;
+  try {
+    response = await fetchImpl(`${trimmed}/api/ws-ticket`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${credential}`,
+        'Content-Type': 'application/json',
+      },
+    });
+  } catch {
+    return 'unsupported';
+  }
+
+  if (response.status === 200) return 'ticket';
+  if (response.status === 404) return 'legacy-query-token';
+  // Authenticated principal missing/forbidden still means the ticket surface exists.
+  if (response.status === 401 || response.status === 403) return 'ticket';
+  return 'unsupported';
+}
+
+/**
+ * Inventory-driven probe: preferred post-migration ticket path for LAN is
+ * active only when the websocket-ticket-auth contract is retained/adapted
+ * AND the client no longer embeds long-lived LAN credentials in WS URLs.
+ * Uses canUseQueryToken as the runtime signal of current fork selection.
+ */
+function preferredLanTicketPathActive(connection: {
+  kind: string;
+  credentialKind: string;
+}): boolean {
+  // Preferred migration shape: LAN device credentials request a ticket and
+  // do not put the long-lived credential into the websocket URL.
+  return !canUseQueryToken(connection as any);
+}
 
 const remoteExecutionBoundary = {
   kind: 'remote_process',
@@ -839,5 +899,142 @@ describe('server connection helpers', () => {
       platformAccountId: null,
       officialServiceKind: null,
     });
+  });
+});
+
+
+describe('websocket auth migration characterization', () => {
+  const localOwnerConnection = createLocalServerConnection({
+    serverPort: '3210',
+    serverToken: 'local-token',
+  })!;
+
+  const lanConnection = {
+    ...localOwnerConnection,
+    connectionId: 'lan:node_lan:studio_lan',
+    kind: 'lan' as const,
+    label: 'LAN Studio',
+    baseUrl: 'http://192.168.31.75:14500',
+    wsUrl: 'ws://192.168.31.75:14500',
+    token: 'hana_dev_test-key',
+    trustState: 'lan' as const,
+    credentialKind: 'device_credential' as const,
+  };
+
+  const tunnelConnection = {
+    ...localOwnerConnection,
+    connectionId: 'custom:remote',
+    kind: 'custom_remote' as const,
+    label: 'Remote Studio',
+    baseUrl: 'https://hana.example',
+    wsUrl: 'wss://hana.example',
+    token: 'remote-token',
+    trustState: 'tunnel' as const,
+    credentialKind: 'device_credential' as const,
+  };
+
+  it('does not request a ws ticket for loopback local-owner connections', async () => {
+    const fetchImpl = vi.fn();
+    await expect(requestConnectionWsTicket(localOwnerConnection, fetchImpl as unknown as typeof fetch))
+      .resolves.toBeNull();
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(canUseQueryToken(localOwnerConnection)).toBe(true);
+  });
+
+  it('characterizes current fork LAN query-token selection while preserving ticket URL builder', async () => {
+    // Current fork reality: LAN device credentials still use canUseQueryToken,
+    // so requestConnectionWsTicket short-circuits and WS URLs embed the token.
+    const fetchImpl = vi.fn();
+    await expect(requestConnectionWsTicket(lanConnection, fetchImpl as unknown as typeof fetch))
+      .resolves.toBeNull();
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(canUseQueryToken(lanConnection)).toBe(true);
+    expect(buildConnectionWsUrl(lanConnection, '/ws')).toContain(lanConnection.token!);
+    expect(buildConnectionWsUrl(lanConnection, '/ws')).toBe(
+      'ws://192.168.31.75:14500/ws?token=hana_dev_test-key',
+    );
+
+    // Preferred post-migration shape (ticket in URL, credential absent) is
+    // already supported by buildConnectionWsUrl when a ticket is supplied.
+    const ticketed = buildConnectionWsUrl(lanConnection, '/ws', { wsTicket: 'ticket-1' });
+    expect(ticketed).toBe('ws://192.168.31.75:14500/ws?wsTicket=ticket-1');
+    expect(ticketed).not.toContain(lanConnection.token!);
+  });
+
+  it('requests a ws ticket for tunnel device credentials without putting the credential in the ws URL', async () => {
+    const fetchImpl = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ ticket: 'ticket-1', expiresAt: '2026-06-20T00:00:30.000Z' }),
+    }));
+
+    const ticket = await requestConnectionWsTicket(
+      tunnelConnection,
+      fetchImpl as unknown as typeof fetch,
+    );
+    expect(ticket).toBe('ticket-1');
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'https://hana.example/api/ws-ticket',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer remote-token',
+        }),
+      }),
+    );
+    expect(buildConnectionWsUrl(tunnelConnection, '/ws', { wsTicket: ticket }))
+      .toBe('wss://hana.example/ws?wsTicket=ticket-1');
+    expect(buildConnectionWsUrl(tunnelConnection, '/ws', { wsTicket: ticket }))
+      .not.toContain(tunnelConnection.token!);
+  });
+
+  it('classifies servers with a read-only ws auth capability probe', async () => {
+    await expect(probeWsAuthCapability('http://127.0.0.1:3210', 'local-token', vi.fn() as any))
+      .resolves.toBe('loopback-owner');
+
+    const ticketFetch = vi.fn(async () => ({ status: 200 })) as unknown as typeof fetch;
+    await expect(probeWsAuthCapability('http://192.168.1.9:14500', 'device-key', ticketFetch))
+      .resolves.toBe('ticket');
+
+    const forbiddenTicketFetch = vi.fn(async () => ({ status: 403 })) as unknown as typeof fetch;
+    await expect(probeWsAuthCapability('http://192.168.1.9:14500', 'device-key', forbiddenTicketFetch))
+      .resolves.toBe('ticket');
+
+    const legacyFetch = vi.fn(async () => ({ status: 404 })) as unknown as typeof fetch;
+    await expect(probeWsAuthCapability('http://192.168.1.9:14500', 'device-key', legacyFetch))
+      .resolves.toBe('legacy-query-token');
+
+    const unsupportedFetch = vi.fn(async () => ({ status: 500 })) as unknown as typeof fetch;
+    await expect(probeWsAuthCapability('http://192.168.1.9:14500', 'device-key', unsupportedFetch))
+      .resolves.toBe('unsupported');
+  });
+
+  it('uses an inventory-driven probe for preferred LAN ticket path instead of it.skip', async () => {
+    // Current fork: preferred LAN ticket path is not active (query-token remains).
+    expect(preferredLanTicketPathActive(lanConnection)).toBe(false);
+
+    // When the preferred path is inactive, characterize the current behavior
+    // and only assert ticket-first LAN URL shape through the explicit ticket builder.
+    if (!preferredLanTicketPathActive(lanConnection)) {
+      expect(canUseQueryToken(lanConnection)).toBe(true);
+      expect(buildConnectionWsUrl(lanConnection, '/ws')).toContain('token=');
+      expect(buildConnectionWsUrl(lanConnection, '/ws', { wsTicket: 'ticket-1' }))
+        .not.toContain(lanConnection.token!);
+      return;
+    }
+
+    // Candidate/post-migration expectation path (inventory-driven; not it.skip).
+    const fetchImpl = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ ticket: 'ticket-1' }),
+    }));
+    const ticket = await requestConnectionWsTicket(
+      lanConnection,
+      fetchImpl as unknown as typeof fetch,
+    );
+    expect(ticket).toBe('ticket-1');
+    expect(buildConnectionWsUrl(lanConnection, '/ws', { wsTicket: ticket }))
+      .not.toContain(lanConnection.token!);
   });
 });
