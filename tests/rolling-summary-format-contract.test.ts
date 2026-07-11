@@ -57,6 +57,8 @@ import { SessionSummaryManager } from "../lib/memory/session-summary.ts";
 import { compileEditableFacts } from "../lib/memory/compile.ts";
 import { buildSessionCacheSnapshot } from "../core/session-cache-snapshot.ts";
 import { callText } from "../core/llm-client.ts";
+import { compileFacts } from "./helpers/migration-reminder.ts";
+import { buildFactExtractionPrompt } from "../lib/memory/prompts/fact-extraction.ts";
 
 const VALID_ZH_SUMMARY = "### 重要事实\n- 用户长期关注记忆系统\n\n### 事情经过\n- [2026-06-03 10:00] 用户在调缓存快照。";
 const VALID_EN_SUMMARY = "### Key Facts\n- The user cares about memory systems\n\n### Timeline\n- [2026-06-03 10:00] The user tuned cache snapshots.";
@@ -440,5 +442,26 @@ describe("compileEditableFacts legacy free-form summary compatibility", () => {
     expect(isEmptyFactSection("- 无")).toBe(true);
     expect(isEmptyFactSection("- None")).toBe(true);
     expect(isEmptyFactSection("- 用户长期关注记忆系统")).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 6. memory fact provenance — assistant inference cannot become user fact
+// ---------------------------------------------------------------------------
+
+describe("memory fact provenance contract", () => {
+  it("assistant statements cannot become user facts without explicit provenance", () => {
+    expect(compileFacts([
+      { role: "assistant", content: "The user prefers dark mode." },
+    ])).not.toContainEqual(expect.objectContaining({ owner: "user" }));
+  });
+
+  it("fact-extraction prompts forbid promoting assistant inner thoughts to user facts", () => {
+    const zh = buildFactExtractionPrompt({ locale: "zh-CN" }).systemPrompt;
+    const en = buildFactExtractionPrompt({ locale: "en-US" }).systemPrompt;
+    expect(zh).toMatch(/不要提取助手的内心活动/);
+    expect(en).toMatch(/Do not extract the assistant's inner thoughts/i);
+    expect(zh).toMatch(/只提取客观事实/);
+    expect(en).toMatch(/only extract objective facts/i);
   });
 });
