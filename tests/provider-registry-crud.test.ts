@@ -1104,11 +1104,14 @@ describe("saveProvider", () => {
 
     reg.saveProvider("custom-local", { models: [] });
 
+    // Runtime list is empty; disk intentionally omits models rather than writing [].
     expect(reg.getProviderModels("custom-local")).toEqual([]);
-    expect(readLocalProviderPlugin("custom-local").models || []).toEqual([]);
+    expect(readLocalProviderPlugin("custom-local")).not.toHaveProperty("models");
+    expect(reg.getAllProvidersRaw()["custom-local"]).not.toHaveProperty("models");
 
     const reloaded = new ProviderRegistry(tmpDir);
     expect(reloaded.getProviderModels("custom-local")).toEqual([]);
+    expect(readLocalProviderPlugin("custom-local")).not.toHaveProperty("models");
   });
 
   it("deletes a slash-bearing model id without repopulating it after reload", () => {
@@ -1133,9 +1136,8 @@ describe("saveProvider", () => {
 
     const reloaded = new ProviderRegistry(tmpDir);
     expect(reloaded.getProviderModels("custom-local")).toEqual(["keep-model"]);
-    expect(reloaded.getAllProvidersRaw()["custom-local"].models || []).not.toContainEqual(
-      expect.objectContaining({ id: "codex/model-x" }),
-    );
+    expect(reloaded.getAllProvidersRaw()["custom-local"].models).toEqual(["keep-model"]);
+    expect(reloaded.getAllProvidersRaw()["custom-local"].models).not.toContain("codex/model-x");
   });
 
   it("persists provider API type after save and reload", () => {
