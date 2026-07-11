@@ -184,4 +184,31 @@ describe("quality gates", () => {
 
     expect(missing).toEqual([]);
   });
+
+  it("keeps installer migration safety gates on the pre-stable activation path", () => {
+    const migrationContracts = readYaml("docs/fork-sync/migration-contracts.yml");
+    const installerContract = migrationContracts.migrationContracts.find(
+      (contract: { id: string }) => contract.id === "server-installer-artifact-activation",
+    );
+    const installServer = readText("scripts/install-server.mjs");
+    const runtimeAssets = readText("scripts/build-server-runtime-assets.mjs");
+
+    expect(installerContract).toMatchObject({
+      preliminaryDisposition: "retain",
+      activationGate: "next-stable-only",
+    });
+    expect(installerContract.focusedTests).toEqual(expect.arrayContaining([
+      "tests/artifact-activation-compatibility.test.mjs",
+      "tests/install-server-upgrade.test.mjs",
+      "tests/build-server-runtime-assets.test.ts",
+      "tests/quality-gates-contract.test.ts",
+    ]));
+    expect(installServer).toContain("export function buildArtifactActivationCompatibilityReport");
+    expect(installServer).toContain("export function probeInstallActivationState");
+    expect(installServer).toContain('productionBehaviorChanged: false');
+    expect(runtimeAssets).toContain("export function buildServerRuntimePackagingCompatibilityReport");
+    expect(runtimeAssets).toContain('productionBehaviorChanged: false');
+    expect(fs.existsSync(path.resolve(process.cwd(), "shared/artifact-core/index.cjs"))).toBe(true);
+    expect(installServer).not.toMatch(/(?:from|require\()\s*["'][^"']*shared\/artifact-core/);
+  });
 });
