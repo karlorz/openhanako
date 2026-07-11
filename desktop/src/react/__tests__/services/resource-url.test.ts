@@ -2,6 +2,11 @@ import { describe, expect, it, vi } from 'vitest';
 import { resolveFileRefUrl } from '../../services/resource-url';
 import type { ServerConnection } from '../../services/server-connection';
 import type { FileRef } from '../../types/file-ref';
+import {
+  legacySessionFileContentPath,
+  ownershipCase,
+  ownershipCases,
+} from '../../../../../tests/helpers/migration-resource-ownership.ts';
 
 const localConnection: ServerConnection = {
   connectionId: 'local',
@@ -273,5 +278,28 @@ describe('resolveFileRefUrl', () => {
       mode: 'inline-data',
       url: 'data:image/png;base64,ABC',
     });
+  });
+
+
+  it('locks ownership-matrix legacy session-file content URL synthesis for remote refs', () => {
+    const legacy = ownershipCase('persisted-legacy');
+    expect(ownershipCases.some((entry) => entry.kind === 'persisted-legacy')).toBe(true);
+    expect(legacySessionFileContentPath(legacy.fileId)).toBe(legacy.expectedUrl);
+
+    const platform = { getFileUrl: vi.fn((p: string) => `file:///mock${p}`) };
+    const result = resolveFileRefUrl(fileRef({
+      fileId: legacy.fileId,
+      resource: undefined,
+      path: '/srv/hana/session/legacy.png',
+    }), {
+      connection: remoteConnection,
+      platform,
+    });
+
+    expect(result).toEqual({
+      mode: 'resource-content',
+      url: `https://hana.example${legacy.expectedUrl}`,
+    });
+    expect(platform.getFileUrl).not.toHaveBeenCalled();
   });
 });

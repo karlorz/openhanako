@@ -5,6 +5,7 @@ import { Hono } from "hono";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createUploadRoute } from "../server/routes/upload.ts";
 import { SessionFileRegistry } from "../lib/session-files/session-file-registry.ts";
+import { ownershipCase } from "./helpers/migration-resource-ownership.ts";
 
 function mktemp() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "hana-upload-route-"));
@@ -322,6 +323,60 @@ describe("upload route", () => {
     expect(second.uploads[0].dest).toBe(first.uploads[0].dest);
     expect(registry.list(sessionPath)).toHaveLength(1);
     expect(fs.readdirSync(path.dirname(first.uploads[0].dest))).toHaveLength(1);
+  });
+
+
+  it("ownership matrix: client-owned remote paste bytes land as session-owned upload-blob", async () => {
+    const clientOwned = ownershipCase("client-owned");
+    tmpDir = mktemp();
+    const hanakoHome = path.join(tmpDir, "hana-home");
+    const sessionPath = "/sessions/ownership.jsonl";
+    const registerSessionFile = vi.fn(({ sessionPath, filePath, label, origin, storageKind }) => ({
+      id: "sf_client_owned",
+      sessionPath,
+      filePath,
+      realPath: filePath,
+      displayName: label,
+      filename: path.basename(filePath),
+      label,
+      ext: "png",
+      mime: clientOwned.mimeType,
+      size: 3,
+      kind: "image",
+      origin,
+      storageKind,
+      createdAt: 1,
+    }));
+    const app = new Hono();
+    app.route("/api", createUploadRoute({ hanakoHome, registerSessionFile }));
+    const png = Buffer.from([1, 2, 3]);
+
+    const res = await app.request("/api/upload-blob", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sessionPath,
+        name: clientOwned.name,
+        base64Data: png.toString("base64"),
+        mimeType: clientOwned.mimeType,
+      }),
+    });
+    const data = await res.json();
+
+    expect(clientOwned.shouldUpload).toBe(true);
+    expect(res.status).toBe(200);
+    expect(data.uploads[0].dest.startsWith(path.join(hanakoHome, "session-files"))).toBe(true);
+    expect(registerSessionFile).toHaveBeenCalledWith(expect.objectContaining({
+      sessionPath,
+      label: clientOwned.name,
+      origin: "user_upload",
+      storageKind: "managed_cache",
+    }));
+    expect(data.uploads[0]).toMatchObject({
+      fileId: "sf_client_owned",
+      sessionPath,
+      storageKind: "managed_cache",
+    });
   });
 
   it("upload-blob stores session-owned pasted images under session file cache", async () => {
