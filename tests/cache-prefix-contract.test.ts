@@ -3,6 +3,11 @@ import {
   buildLlmContextCachePrefixContract,
   diffCachePrefixContracts,
 } from "../lib/llm/cache-prefix-contract.ts";
+import {
+  assertSessionSnapshotRequest,
+  buildSessionCacheSnapshot,
+  buildSessionSnapshotRequestContract,
+} from "../core/session-cache-snapshot.ts";
 import { makeMigrationSession } from "./helpers/migration-session.ts";
 
 function tool(name, description = "desc") {
@@ -19,49 +24,23 @@ function tool(name, description = "desc") {
   };
 }
 
-async function snapshotSession({ tools }) {
-  const migration = makeMigrationSession();
-  const contract = buildLlmContextCachePrefixContract({
-    model: { id: "deepseek-v4-pro", provider: "deepseek", api: "openai-completions", baseUrl: "https://api.deepseek.com" },
-    systemPrompt: `session:${migration.sessionId}`,
-    tools: tools.map((name) => tool(name)),
-  } as any);
-  return {
-    sessionId: migration.sessionId,
-    sessionPath: migration.sessionPath,
-    cachePrefixHash: contract.cachePrefixHash,
-    toolSchemaHash: contract.toolSchemaHash,
-    error: null as string | null,
-  };
-}
-
-async function resumeSession({ previous, tools }) {
-  const contract = buildLlmContextCachePrefixContract({
-    model: { id: "deepseek-v4-pro", provider: "deepseek", api: "openai-completions", baseUrl: "https://api.deepseek.com" },
-    systemPrompt: `session:${previous.sessionId}`,
-    tools: tools.map((name) => tool(name)),
-  } as any);
-  // Characterize recovery: rebuild/invalidate the prefix after a user pause
-  // changes tool schema instead of leaving a dead session error.
-  return {
-    sessionId: previous.sessionId,
-    sessionPath: previous.sessionPath,
-    cachePrefixHash: contract.cachePrefixHash,
-    toolSchemaHash: contract.toolSchemaHash,
-    error: null as string | null,
-  };
-}
+const model = {
+  id: "deepseek-v4-pro",
+  provider: "deepseek",
+  api: "openai-completions",
+  baseUrl: "https://api.deepseek.com",
+};
 
 describe("LLM cache prefix contract", () => {
   it("keeps the contract stable when only conversation messages change", () => {
     const base = buildLlmContextCachePrefixContract({
-      model: { id: "deepseek-v4-pro", provider: "deepseek", api: "openai-completions", baseUrl: "https://api.deepseek.com" },
+      model,
       systemPrompt: "stable system prompt",
       tools: [tool("read"), tool("exec_command")],
       messages: [{ role: "user", content: "first turn" }],
     } as any);
     const afterToolCall = buildLlmContextCachePrefixContract({
-      model: { id: "deepseek-v4-pro", provider: "deepseek", api: "openai-completions", baseUrl: "https://api.deepseek.com" },
+      model,
       systemPrompt: "stable system prompt",
       tools: [tool("read"), tool("exec_command")],
       messages: [
@@ -77,40 +56,122 @@ describe("LLM cache prefix contract", () => {
 
   it("detects changes to system prompt, tool schema, and model route", () => {
     const base = buildLlmContextCachePrefixContract({
-      model: { id: "deepseek-v4-pro", provider: "deepseek", api: "openai-completions", baseUrl: "https://api.deepseek.com" },
+      model,
       systemPrompt: "stable system prompt",
       tools: [tool("read")],
     });
 
     expect(diffCachePrefixContracts(base, buildLlmContextCachePrefixContract({
-      model: { id: "deepseek-v4-pro", provider: "deepseek", api: "openai-completions", baseUrl: "https://api.deepseek.com" },
+      model,
       systemPrompt: "mutated system prompt",
       tools: [tool("read")],
     })).map((d) => d.field)).toContain("systemPromptHash");
 
     expect(diffCachePrefixContracts(base, buildLlmContextCachePrefixContract({
-      model: { id: "deepseek-v4-pro", provider: "deepseek", api: "openai-completions", baseUrl: "https://api.deepseek.com" },
+      model,
       systemPrompt: "stable system prompt",
       tools: [tool("read", "changed desc")],
     })).map((d) => d.field)).toContain("toolSchemaHash");
 
     expect(diffCachePrefixContracts(base, buildLlmContextCachePrefixContract({
-      model: { id: "deepseek-v4-flash", provider: "deepseek", api: "openai-completions", baseUrl: "https://api.deepseek.com" },
+      model: { ...model, id: "deepseek-v4-flash" },
       systemPrompt: "stable system prompt",
       tools: [tool("read")],
     })).map((d) => d.field)).toContain("modelHash");
   });
 
-  it("invalidates or rebuilds the cache prefix after a user pause changes tool schema", async () => {
-    const before = await snapshotSession({ tools: ["write_plugin"] });
-    const after = await resumeSession({
-      previous: before,
-      tools: ["write_plugin", "install_plugin"],
+  it("rebuilds session cache-prefix hashes after a pause-time tool schema change and recovers without a dead-session contract violation", () => {
+    const migration = makeMigrationSession({
+      sessionPath: "/sessions/sess_migration_a.jsonl",
+    });
+    const systemPrompt = `session:${migration.sessionId}`;
+    const messages = [{ role: "user", content: "pause-boundary turn" }];
+    const beforeTools = [tool("write_plugin")];
+    const afterTools = [tool("write_plugin"), tool("install_plugin")];
+
+    // Production path: session cache snapshots are rebuilt from the current
+    // provider-visible tool schema after intentional lifecycle changes.
+    const beforeSnapshot = buildSessionCacheSnapshot({
+      sessionPath: migration.sessionPath,
+      model,
+      cacheKeyParams: { thinkingLevel: "off" },
+      systemPrompt,
+      tools: beforeTools,
+      messages,
+      reason: "user_pause.before",
+    });
+    const afterSnapshot = buildSessionCacheSnapshot({
+      sessionPath: migration.sessionPath,
+      model,
+      cacheKeyParams: { thinkingLevel: "off" },
+      systemPrompt,
+      tools: afterTools,
+      messages,
+      reason: "user_pause.after",
     });
 
-    expect(after.cachePrefixHash).not.toBe(before.cachePrefixHash);
-    expect(after.toolSchemaHash).not.toBe(before.toolSchemaHash);
-    expect(after.error).toBeNull();
-    expect(String(after.error || "")).not.toMatch(/Cache prefix contract violated/);
+    expect(afterSnapshot.cachePrefixHash).not.toBe(beforeSnapshot.cachePrefixHash);
+    expect(afterSnapshot.toolSchemaHash).not.toBe(beforeSnapshot.toolSchemaHash);
+    expect(afterSnapshot.toolNames).toEqual(["write_plugin", "install_plugin"]);
+
+    // Without renew/rebuild, a request that carries the new tool schema against
+    // the old snapshot is a real contract mismatch (cache recovery path).
+    const staleRequest = buildSessionSnapshotRequestContract({
+      snapshot: beforeSnapshot,
+      model,
+      cacheKeyParams: { thinkingLevel: "off" },
+      systemPrompt,
+      tools: afterTools,
+      messages,
+      prefixMessageCount: messages.length,
+    });
+    const staleCheck = assertSessionSnapshotRequest(beforeSnapshot, staleRequest);
+    expect(staleCheck.ok).toBe(false);
+    expect(staleCheck.diffs.map((d) => d.field)).toEqual(
+      expect.arrayContaining(["toolSchemaHash", "cachePrefixHash"]),
+    );
+    expect(staleCheck.metadata).toMatchObject({
+      cacheStrategy: "cache_recovery",
+      degradeReason: "session_snapshot_contract_mismatch",
+    });
+
+    // After rebuild, the same request matches the renewed snapshot. That is the
+    // production recovery outcome: invalidate/rebuild rather than leave a dead
+    // session under a permanent "Cache prefix contract violated" failure.
+    const rebuiltRequest = buildSessionSnapshotRequestContract({
+      snapshot: afterSnapshot,
+      model,
+      cacheKeyParams: { thinkingLevel: "off" },
+      systemPrompt,
+      tools: afterTools,
+      messages,
+      prefixMessageCount: messages.length,
+    });
+    const rebuiltCheck = assertSessionSnapshotRequest(afterSnapshot, rebuiltRequest);
+    expect(rebuiltCheck).toMatchObject({
+      ok: true,
+      strict: true,
+      diffs: [],
+    });
+    expect(rebuiltCheck.metadata).toMatchObject({
+      cacheStrategy: "session_snapshot",
+      degradeReason: "",
+      cachePrefixHash: afterSnapshot.cachePrefixHash,
+    });
+
+    // LLM prefix contract follows the same rebuild boundary for tool schema.
+    const beforeContract = buildLlmContextCachePrefixContract({
+      model,
+      systemPrompt,
+      tools: beforeTools,
+    });
+    const afterContract = buildLlmContextCachePrefixContract({
+      model,
+      systemPrompt,
+      tools: afterTools,
+    });
+    expect(diffCachePrefixContracts(beforeContract, afterContract).map((d) => d.field))
+      .toEqual(expect.arrayContaining(["toolSchemaHash", "cachePrefixHash"]));
+    expect(afterContract.toolSchemaHash).toBe(afterSnapshot.toolSchemaHash);
   });
 });
