@@ -9,6 +9,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { InputArea } from '../../components/InputArea';
 import type { SlashItem } from '../../components/input/slash-commands';
 import { useStore } from '../../stores';
+import {
+  ownershipCase,
+  shouldUploadOwnedPath,
+} from '../../../../../tests/helpers/migration-resource-ownership.ts';
 
 const mocks = vi.hoisted(() => ({
   editorOptions: undefined as undefined | Record<string, unknown>,
@@ -682,6 +686,43 @@ describe('InputArea paste and slash menu behavior', () => {
     });
   });
 
+
+  it('ownership matrix: client-owned paste path requests upload while server-owned path does not', async () => {
+    const clientOwned = ownershipCase('client-owned');
+    const serverOwned = ownershipCase('server-owned');
+    expect(shouldUploadOwnedPath(clientOwned.path, 'client')).toBe(true);
+    expect(shouldUploadOwnedPath(serverOwned.path, 'server')).toBe(false);
+
+    const { attachFilesFromPaths } = await import('../../MainContent');
+    const file = new File(['image'], clientOwned.name, { type: clientOwned.mimeType });
+    const getFilePath = vi.fn(() => clientOwned.path);
+    window.platform = { getFilePath } as unknown as typeof window.platform;
+    render(React.createElement(InputArea));
+
+    const preventDefault = vi.fn();
+    const handled = tiptapPasteHandler()?.(null, {
+      preventDefault,
+      clipboardData: {
+        items: [{
+          kind: 'file',
+          type: clientOwned.mimeType,
+          getAsFile: () => file,
+        }],
+        getData: () => '',
+      },
+    } as unknown as ClipboardEvent);
+
+    expect(handled).toBe(true);
+    await waitFor(() => {
+      expect(attachFilesFromPaths).toHaveBeenCalledWith([clientOwned.path], {
+        [clientOwned.path]: clientOwned.name,
+      }, { pathOwner: 'client' });
+    });
+    // InputArea only owns the pathOwner decision here; MainContent is mocked so
+    // /api/upload-blob is exercised by MainContent.drag / media-send suites.
+    expect(mocks.hanaFetch).not.toHaveBeenCalledWith('/api/upload-blob', expect.anything());
+  });
+
   it('passes pasted clipboard files with filesystem paths through the drag attachment path', async () => {
     const { attachFilesFromPaths } = await import('../../MainContent');
     const file = new File(['report'], 'report.pdf', { type: 'application/pdf' });
@@ -780,7 +821,7 @@ describe('InputArea paste and slash menu behavior', () => {
         mimeType: 'image/png',
       }]);
     });
-    expect(useStore.getState().sessionRegistryFilesByPath['/session/input.jsonl']?.[0]).toMatchObject({
+    expect(useStore.getState().sessionRegistryFilesByPath.sess_input?.[0]).toMatchObject({
       fileId: 'sf_pasted_image',
       filePath: '/hana/session-files/pasted.png',
       resource: expect.objectContaining({
