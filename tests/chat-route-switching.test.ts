@@ -2421,7 +2421,10 @@ describe("chat route model switch guard", () => {
       sessionPath: created.sessionPath,
       clientMessageId: "client-user-new",
     }));
-    expect(hub.send.mock.calls[0][1].sessionPath).not.toBe(existing.sessionPath);
+    const firstSendArgs = (hub.send as ReturnType<typeof vi.fn>).mock.calls[0] as
+      | [string, { sessionPath?: string }]
+      | undefined;
+    expect(firstSendArgs?.[1]?.sessionPath).not.toBe(existing.sessionPath);
     expect(engine.getSessionIdForPath(created.sessionPath)).toBe(created.sessionId);
     expect(engine.getSessionIdForPath(existing.sessionPath)).toBe(existing.sessionId);
     expect(engine.getSessionIdForPath(created.sessionPath)).not.toBe(existing.sessionId);
