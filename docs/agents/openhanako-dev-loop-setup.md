@@ -1,6 +1,6 @@
 # OpenHanako Dev-Loop Setup Notes
 
-Generated during the 2026-06-15 remote attachment preview fix closeout. Last revised during the 2026-07-10 next-stable pre-sync review.
+Generated during the 2026-06-15 remote attachment preview fix closeout. Last revised during the 2026-07-11 main-refresh pre-sync review.
 
 ## Discovery
 
@@ -16,7 +16,7 @@ Generated during the 2026-06-15 remote attachment preview fix closeout. Last rev
 - Existing CI: `.github/workflows/ci.yml`, targets `main` and `dev`
 - Release workflow: `.github/workflows/build.yml`, tag-triggered `v*`
 - Latest fork release tag: `v0.357.17-karlorz.1`; this stable sync includes upstream `v0.357.17` plus the remote-boundary recovery, replay, ToolGroup link-context, provider model-removal, LAN auth, scoped CSP, remote skill, and remote resource-preview fork behavior.
-- Next stable status: upstream prereleases currently reach `v0.374.3`, but the latest non-prerelease release remains `v0.357.17`; do not start a stable sync or pre-bump package metadata yet.
+- Next stable status: upstream prereleases currently reach `v0.380.10`, but the latest non-prerelease release remains `v0.357.17`; do not start a stable sync or pre-bump package metadata yet. The current read-only outlook remains seven textual conflicts and 42 overlapping paths.
 - Upstream sync workflow: `node scripts/sync-upstream.mjs --check` checks stable upstream releases by default; prerelease candidate review requires `--include-prerelease`
 - Fork sync rules: `docs/fork-sync/rules.yml` is the machine-readable policy used by `scripts/sync-upstream.mjs`.
 - Post-rebase fork sync verification: `node scripts/sync-upstream.mjs --post-rebase` prints Tier 3A local desktop install/version verification before Tier 3B sg01 live smoke. The installed `/Applications/HanaAgent.app` bundle metadata, `build-info.json`, and Settings → About must match `package.json` before the live smoke counts.
@@ -101,7 +101,7 @@ Ran a manual core `/dev-loop` cycle audit on 2026-06-15 after the remote preview
 - Doctor caveat: `skillwiki doctor` reports `32 pass`, `1 warn`, `0 errors`, but exits non-zero with the warning. Treat the JSON summary as authoritative for blocking decisions, not the exit code alone.
 - GitHub CLI caveat: plain `gh repo view` initially resolved to upstream `liliMozi/openhanako`. Ran `gh repo set-default karlorz/openhanako`; future CI/PR checks should still prefer explicit `--repo karlorz/openhanako` when scripted.
 - CI health: the `dev` branch trigger remains valid; release workflow run `28843292226` for tag `v0.357.17-karlorz.1` completed successfully and published the prerelease assets.
-- Upstream release check: the 2026-07-07 stable sync rebased local `dev` from the `v0.350.2` baseline onto upstream `v0.357.17`. On 2026-07-10, the stable detector still reports `v0.357.17` as latest and already synced; upstream `v0.374.3` is prerelease-only. `--include-prerelease --check` remains review-only and must not activate production sync work.
+- Upstream release check: the 2026-07-07 stable sync rebased local `dev` from the `v0.350.2` baseline onto upstream `v0.357.17`. On 2026-07-11, the stable detector still reports `v0.357.17` as latest and already synced; upstream `v0.380.10` is prerelease-only. `--include-prerelease --check` remains review-only and must not activate production sync work.
 - Codex cache caveat: dev-loop's cached skill copy references `skills/dev-loop/scripts/preflight-inventory.js`, but the Codex plugin package currently stores that helper at plugin root `scripts/preflight-inventory.js`. Use the plugin-root script as the fallback until the packaging layout is repaired upstream.
 
 ## Claude Review Follow-Up
