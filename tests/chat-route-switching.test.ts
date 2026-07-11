@@ -5,6 +5,7 @@ import {
   resolveDisconnectAbortGraceMs,
 } from "../server/routes/chat.ts";
 import { TURN_INPUT_CONSUMPTION_EVENT_TYPE } from "../lib/turn-input-presentation.ts";
+import { makeMigrationSession } from "./helpers/migration-session.ts";
 
 describe("chat route model switch guard", () => {
   it("uses a minute-scale default WS disconnect abort grace and allows disabling it", () => {
@@ -2362,5 +2363,195 @@ describe("chat route model switch guard", () => {
     expect(closedWs.send).not.toHaveBeenCalled();
 
     handlers.onClose({}, closedWs);
+  });
+
+  it("does not deliver a new-conversation prompt into an existing session with a different sessionId", async () => {
+    const existing = makeMigrationSession();
+    const created = makeMigrationSession({
+      sessionId: "sess_migration_new",
+      sessionPath: "/tmp/sessions/sess_migration_new.jsonl",
+      sourceEntryId: "entry_user_new",
+    });
+    let createHandlers;
+    const upgradeWebSocket = vi.fn((factory) => {
+      createHandlers = factory;
+      return () => new Response(null);
+    });
+    const hub = {
+      subscribe: vi.fn(),
+      send: vi.fn(async () => {}),
+    };
+    const engine = {
+      agentName: "Hana",
+      abortAllStreaming: vi.fn(async () => {}),
+      getSessionByPath: vi.fn((sessionPath) => (
+        sessionPath === existing.sessionPath || sessionPath === created.sessionPath
+          ? { entries: [] }
+          : null
+      )),
+      getSessionIdForPath: vi.fn((sessionPath) => {
+        if (sessionPath === existing.sessionPath) return existing.sessionId;
+        if (sessionPath === created.sessionPath) return created.sessionId;
+        return null;
+      }),
+      isSessionStreaming: vi.fn(() => false),
+      isSessionSwitching: vi.fn(() => false),
+      steerSession: vi.fn(() => false),
+      slashDispatcher: null,
+    };
+
+    createChatRoute(engine, hub, { upgradeWebSocket });
+    const handlers = createHandlers({});
+    const ws = { readyState: 1, send: vi.fn() };
+    handlers.onOpen({}, ws);
+
+    handlers.onMessage({
+      data: JSON.stringify({
+        type: "prompt",
+        text: "brand new conversation",
+        sessionPath: created.sessionPath,
+        sessionId: created.sessionId,
+        clientMessageId: "client-user-new",
+      }),
+    }, ws);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(hub.send).toHaveBeenCalledTimes(1);
+    expect(hub.send).toHaveBeenCalledWith("brand new conversation", expect.objectContaining({
+      sessionPath: created.sessionPath,
+      clientMessageId: "client-user-new",
+    }));
+    expect(hub.send.mock.calls[0][1].sessionPath).not.toBe(existing.sessionPath);
+    expect(engine.getSessionIdForPath(created.sessionPath)).toBe(created.sessionId);
+    expect(engine.getSessionIdForPath(existing.sessionPath)).toBe(existing.sessionId);
+    expect(engine.getSessionIdForPath(created.sessionPath)).not.toBe(existing.sessionId);
+
+    handlers.onClose({}, ws);
+  });
+
+  it("keeps active response stream events on the source session after the client focuses another chat", () => {
+    const source = makeMigrationSession();
+    const destination = makeMigrationSession({
+      sessionId: "sess_migration_b",
+      sessionPath: "/tmp/sessions/sess_migration_b.jsonl",
+      sourceEntryId: "entry_user_b",
+    });
+    let createHandlers;
+    let subscriber;
+    const upgradeWebSocket = vi.fn((factory) => {
+      createHandlers = factory;
+      return () => new Response(null);
+    });
+    const hub = {
+      subscribe: vi.fn((fn) => {
+        subscriber = fn;
+      }),
+      send: vi.fn(async () => {}),
+    };
+    const engine = {
+      agentName: "Hana",
+      abortAllStreaming: vi.fn(async () => {}),
+      getSessionByPath: vi.fn(() => ({ entries: [] })),
+      getSessionIdForPath: vi.fn((sessionPath) => {
+        if (sessionPath === source.sessionPath) return source.sessionId;
+        if (sessionPath === destination.sessionPath) return destination.sessionId;
+        return null;
+      }),
+      isSessionStreaming: vi.fn((sessionPath) => sessionPath === source.sessionPath),
+      isSessionSwitching: vi.fn(() => false),
+      steerSession: vi.fn(() => false),
+      slashDispatcher: null,
+    };
+
+    createChatRoute(engine, hub, { upgradeWebSocket });
+    const handlers = createHandlers({});
+    const ws = { readyState: 1, send: vi.fn() };
+    handlers.onOpen({}, ws);
+
+    // Client is now focused on destination, but source is still generating.
+    subscriber?.({ type: "session_status", isStreaming: true }, source.sessionPath);
+    subscriber?.({
+      type: "message_update",
+      assistantMessageEvent: { type: "text_delta", delta: "still writing on source" },
+    }, source.sessionPath);
+    subscriber?.({ type: "turn_end" }, source.sessionPath);
+
+    const payloads = ws.send.mock.calls.map(([raw]) => JSON.parse(raw));
+    const sourceDeltas = payloads.filter((payload) => (
+      payload.type === "text_delta" && payload.sessionPath === source.sessionPath
+    ));
+    const destinationEvents = payloads.filter((payload) => payload.sessionPath === destination.sessionPath);
+
+    expect(sourceDeltas.map((payload) => payload.delta)).toEqual(["still writing on source"]);
+    expect(destinationEvents).toEqual([]);
+    expect(payloads.some((payload) => (
+      payload.type === "text_delta" && payload.sessionPath === destination.sessionPath
+    ))).toBe(false);
+
+    handlers.onClose({}, ws);
+  });
+
+  it("scopes session_branch_reset stream events to the addressed session only", () => {
+    const addressed = makeMigrationSession();
+    const neighbor = makeMigrationSession({
+      sessionId: "sess_migration_b",
+      sessionPath: "/tmp/sessions/sess_migration_b.jsonl",
+      sourceEntryId: "entry_user_b",
+    });
+    let createHandlers;
+    let subscriber;
+    const upgradeWebSocket = vi.fn((factory) => {
+      createHandlers = factory;
+      return () => new Response(null);
+    });
+    const hub = {
+      subscribe: vi.fn((fn) => {
+        subscriber = fn;
+      }),
+      send: vi.fn(async () => {}),
+    };
+    const engine = {
+      agentName: "Hana",
+      abortAllStreaming: vi.fn(async () => {}),
+      getSessionByPath: vi.fn(() => ({ entries: [] })),
+      getSessionIdForPath: vi.fn((sessionPath) => {
+        if (sessionPath === addressed.sessionPath) return addressed.sessionId;
+        if (sessionPath === neighbor.sessionPath) return neighbor.sessionId;
+        return null;
+      }),
+      isSessionStreaming: vi.fn(() => false),
+      isSessionSwitching: vi.fn(() => false),
+      steerSession: vi.fn(() => false),
+      slashDispatcher: null,
+    };
+
+    createChatRoute(engine, hub, { upgradeWebSocket });
+    const handlers = createHandlers({});
+    const ws = { readyState: 1, send: vi.fn() };
+    handlers.onOpen({}, ws);
+
+    // Warm stream state for both sessions so branch reset is not dropped.
+    subscriber?.({ type: "session_status", isStreaming: false }, addressed.sessionPath);
+    subscriber?.({ type: "session_status", isStreaming: false }, neighbor.sessionPath);
+    subscriber?.({
+      type: "session_branch_reset",
+      messageId: addressed.sourceEntryId,
+      clientMessageId: "client-user-1",
+    }, addressed.sessionPath);
+
+    const payloads = ws.send.mock.calls.map(([raw]) => JSON.parse(raw));
+    const branchResets = payloads.filter((payload) => payload.type === "session_branch_reset");
+    expect(branchResets).toEqual([
+      expect.objectContaining({
+        type: "session_branch_reset",
+        sessionPath: addressed.sessionPath,
+        sessionId: addressed.sessionId,
+        messageId: addressed.sourceEntryId,
+        clientMessageId: "client-user-1",
+      }),
+    ]);
+    expect(branchResets.every((payload) => payload.sessionPath !== neighbor.sessionPath)).toBe(true);
+
+    handlers.onClose({}, ws);
   });
 });
