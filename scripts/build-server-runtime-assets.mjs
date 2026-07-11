@@ -27,6 +27,34 @@ export const SERVER_RUNTIME_RENDERER_DIRS = [
   "locales",
 ];
 
+/**
+ * Read-only packaging compatibility surface for the installer migration gate.
+ * Reports upstream artifact-core source presence while confirming that the fork
+ * installer retains its current-symlink production activation model.
+ */
+export function buildServerRuntimePackagingCompatibilityReport({
+  rootDir = process.cwd(),
+  fsImpl = fs,
+} = {}) {
+  const artifactCorePaths = [
+    "shared/artifact-core/index.cjs",
+    "shared/artifact-core/activation.cjs",
+    "shared/artifact-core/manifest.cjs",
+    "shared/artifact-core/pointer-store.cjs",
+    "shared/artifact-core/ustar.cjs",
+  ];
+  const present = artifactCorePaths.filter((relative) => (
+    fsImpl.existsSync(path.join(rootDir, relative))
+  ));
+  return {
+    kind: "server-runtime-packaging-compatibility",
+    includesArtifactCore: present.length > 0,
+    artifactCorePathsPresent: present,
+    productionBehaviorChanged: false,
+    activationModel: "current-symlink",
+  };
+}
+
 function assertRequiredAssetExists(fsImpl, sourcePath, label) {
   if (!fsImpl.existsSync(sourcePath)) {
     throw new Error(`[build-server] required runtime asset missing: ${label}`);
