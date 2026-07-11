@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { createChatSlice, type ChatSlice } from '../../stores/chat-slice';
 import type { ChatListItem, SessionModel } from '../../stores/chat-types';
 import { registerStreamBufferInvalidator, registerStreamResumeMetaInvalidator } from '../../stores/stream-invalidator';
+import { ownershipCase } from '../../../../../tests/helpers/migration-resource-ownership.ts';
 
 function makeSlice(initial: Record<string, unknown> = {}): ChatSlice {
   let state: ChatSlice & Record<string, unknown>;
@@ -229,6 +230,75 @@ describe('chat-slice', () => {
         },
       });
       expect(item.data.sendStatus).toBeUndefined();
+    });
+
+    it('keeps optimistic ownership inline bytes until server echo supplies resource identity', () => {
+      const optimistic = ownershipCase('optimistic');
+      slice.initSession('/a', [], false);
+      slice.appendOptimisticUserMessage('/a', {
+        id: 'client-optimistic',
+        role: 'user',
+        text: '',
+        attachments: [{
+          fileId: optimistic.fileId,
+          path: optimistic.path,
+          name: optimistic.name,
+          isDir: false,
+          mimeType: optimistic.mimeType,
+          base64Data: optimistic.base64Data,
+        }],
+        sendStatus: 'pending',
+      });
+
+      const before = slice.chatSessions['/a']?.items[0];
+      expect(before?.type).toBe('message');
+      if (before?.type !== 'message') throw new Error('expected optimistic message');
+      expect(before.data.attachments?.[0]).toMatchObject({
+        fileId: optimistic.fileId,
+        base64Data: optimistic.base64Data,
+        mimeType: optimistic.mimeType,
+      });
+
+      const consumed = slice.confirmOptimisticUserMessage('/a', 'client-optimistic', {
+        id: 'server-optimistic',
+        role: 'user',
+        text: '',
+        sourceEntryId: 'entry-optimistic',
+        attachments: [{
+          fileId: optimistic.fileId,
+          path: optimistic.path,
+          name: optimistic.name,
+          isDir: false,
+          mimeType: optimistic.mimeType,
+          resource: {
+            resourceId: `res_${optimistic.fileId}`,
+            studioId: 'studio_remote',
+            links: {
+              self: `/api/resources/res_${optimistic.fileId}`,
+              content: `/api/resources/res_${optimistic.fileId}/content`,
+            },
+          },
+        }],
+      });
+
+      expect(consumed).toBe(true);
+      const item = slice.chatSessions['/a']?.items[0];
+      expect(item?.type).toBe('message');
+      if (item?.type !== 'message') throw new Error('expected message item');
+      expect(item.data.attachments?.[0]).toMatchObject({
+        fileId: optimistic.fileId,
+        base64Data: optimistic.base64Data,
+        mimeType: optimistic.mimeType,
+        resource: {
+          resourceId: `res_${optimistic.fileId}`,
+          studioId: 'studio_remote',
+          links: {
+            self: `/api/resources/res_${optimistic.fileId}`,
+            content: `/api/resources/res_${optimistic.fileId}/content`,
+          },
+        },
+      });
+      expect(optimistic.keepInlineUntilServerEcho).toBe(true);
     });
   });
 
