@@ -21,6 +21,7 @@ import {
   executeUpgradePlan,
   inspectReinitDataBackups,
   loadReinitDataPlan,
+  probeInstallActivationState,
   resolveHanaDataRoot,
   resolveLinuxAsset,
   resolvePrivilegeModel,
@@ -28,8 +29,10 @@ import {
   runInstall,
   selectServerAsset,
   runUpgrade,
+  summarizeBackupRequiredState,
   writeReinitDataDryRunPlan,
 } from "../scripts/install-server.mjs";
+
 
 const ARM64_SHA256 = "a".repeat(64);
 const INSTALL_SERVER_SOURCE = fileURLToPath(new URL("../scripts/install-server.mjs", import.meta.url));
@@ -807,9 +810,122 @@ PrivateTmp=true
       "read-service-enabled",
       "read-listening-address",
       "read-last-backup",
+      "probe-activation-compatibility",
     ]);
     expect(plan.steps.map((step) => step.command).join("\n")).toContain("systemctl is-active hanaagent");
     expect(plan.steps.map((step) => step.command).join("\n")).not.toMatch(/restart|stop|start|rm -rf/i);
+  });
+
+  it("retains previous release path for rollback planning", () => {
+    const plan = buildUpgradePlan({
+      metadata,
+      currentVersion: "v0.323.0",
+      platform: "linux",
+      arch: "arm64",
+      uid: 0,
+      hasSudo: false,
+      dryRun: true,
+      previousReleaseDir: "/opt/hanaagent/releases/v0.323.0-linux-arm64",
+    });
+
+    expect(plan.previousReleaseDir).toBe("/opt/hanaagent/releases/v0.323.0-linux-arm64");
+    expect(plan.targetReleaseDir).toBe("/opt/hanaagent/releases/v0.400.0-linux-arm64");
+  });
+
+  it("checksum failure prevents activation and does not switch current", async () => {
+    const plan = buildUpgradePlan({
+      metadata,
+      currentVersion: "v0.323.0",
+      platform: "linux",
+      arch: "arm64",
+      uid: 0,
+      hasSudo: false,
+      dryRun: false,
+    });
+    const calls = [];
+    const result = await executeUpgradePlan(plan, {
+      preflight: async () => calls.push("preflight"),
+      backup: async () => calls.push("backup"),
+      download: async () => calls.push("download"),
+      verifyChecksum: async () => {
+        calls.push("verify-checksum");
+        throw new Error("sha256 mismatch for archive");
+      },
+      extractRelease: async () => calls.push("extract-release"),
+      switchCurrent: async (target) => calls.push(`switch:${target}`),
+      writeSystemdUnit: async () => calls.push("write-unit"),
+      restartService: async () => calls.push("restart"),
+      healthCheck: async () => calls.push("health-check"),
+      rollback: async (target) => calls.push(`rollback:${target}`),
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.rolledBack).toBe(false);
+    expect(calls).toEqual(["preflight", "backup", "download", "verify-checksum"]);
+  });
+
+  it("runtime-start failure restores the previous current release symlink", async () => {
+    const plan = buildUpgradePlan({
+      metadata,
+      currentVersion: "v0.323.0",
+      platform: "linux",
+      arch: "arm64",
+      uid: 0,
+      hasSudo: false,
+      dryRun: false,
+      previousReleaseDir: "/opt/hanaagent/releases/v0.323.0-linux-arm64",
+    });
+    const calls = [];
+    const result = await executeUpgradePlan(plan, {
+      preflight: async () => calls.push("preflight"),
+      backup: async () => calls.push("backup"),
+      download: async () => calls.push("download"),
+      verifyChecksum: async () => calls.push("verify-checksum"),
+      extractRelease: async () => calls.push("extract-release"),
+      switchCurrent: async (target) => calls.push(`switch:${target}`),
+      writeSystemdUnit: async () => calls.push("write-unit"),
+      restartService: async () => {
+        calls.push("restart");
+        throw new Error("runtime start failed");
+      },
+      healthCheck: async () => calls.push("health-check"),
+      rollback: async (target) => calls.push(`rollback:${target}`),
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.rolledBack).toBe(true);
+    expect(calls.at(-1)).toBe("rollback:/opt/hanaagent/releases/v0.323.0-linux-arm64");
+  });
+
+  it("backup inspection reports required configuration/agents/sessions/auth without secrets", () => {
+    const secret = "device-secret-should-never-appear";
+    const summary = summarizeBackupRequiredState([
+      "root/.hanako/auth.json",
+      "root/.hanako/server-network.json",
+      "root/.hanako/agents/hana/sessions/sess.jsonl",
+      "root/.hanako/device-credentials.json",
+    ]);
+    expect(summary).toEqual({
+      configuration: true,
+      agents: true,
+      sessions: true,
+      auth: true,
+      redacted: true,
+    });
+    expect(JSON.stringify(summary)).not.toContain(secret);
+
+    const probe = probeInstallActivationState({
+      paths: {
+        installRoot: "/opt/hanaagent",
+        currentLink: "/opt/hanaagent/current",
+      },
+      listDir: () => ["hanaagent-backup.tar.gz"],
+      readLink: () => "/opt/hanaagent/releases/v0.323.0-linux-arm64",
+      realPath: () => "/opt/hanaagent/releases/v0.323.0-linux-arm64",
+    });
+    expect(probe.readOnly).toBe(true);
+    expect(probe.productionBehaviorChanged).toBe(false);
+    expect(probe.backupArchives).toEqual(["hanaagent-backup.tar.gz"]);
   });
 
   it("resolves reinit-data data root from HANA_HOME before falling back to ~/.hanako", () => {
