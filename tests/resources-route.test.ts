@@ -3,6 +3,10 @@ import os from "os";
 import path from "path";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
+import {
+  legacySessionFileContentPath,
+  ownershipCase,
+} from "./helpers/migration-resource-ownership.ts";
 
 describe("resources route", () => {
   let tmpDir = null;
@@ -52,6 +56,50 @@ describe("resources route", () => {
     }), "utf-8");
     return { agentsDir, fileId };
   }
+
+
+  it("ownership matrix: persisted-legacy res_sf_* content route streams remote attachment bytes", async () => {
+    const legacy = ownershipCase("persisted-legacy");
+    const { createResourcesRoute } = await import("../server/routes/resources.ts");
+    const filePath = makeFile();
+    const app = new Hono();
+    app.route("/api", createResourcesRoute({
+      getResource: () => ({
+        schemaVersion: 1,
+        resourceId: legacy.resourceId,
+        name: `studios/studio_route/resources/${legacy.resourceId}`,
+        studioId: "studio_route",
+        type: "file",
+        source: "session_file",
+        fileId: legacy.fileId,
+        displayName: "legacy.png",
+        lifecycle: { status: "available", missingAt: null },
+        links: {
+          self: `/api/resources/${legacy.resourceId}`,
+          content: legacy.expectedUrl,
+        },
+      }),
+      resolveResourceContent: () => ({
+        resourceId: legacy.resourceId,
+        filePath,
+        mime: "text/plain",
+        size: Buffer.byteLength("hello resources\n"),
+        filename: "legacy.png",
+      }),
+    }));
+
+    expect(legacySessionFileContentPath(legacy.fileId)).toBe(legacy.expectedUrl);
+    const meta = await app.request(`/api/resources/${legacy.resourceId}`);
+    expect(meta.status).toBe(200);
+    expect(await meta.json()).toMatchObject({
+      resourceId: legacy.resourceId,
+      fileId: legacy.fileId,
+      links: { content: legacy.expectedUrl },
+    });
+    const content = await app.request(legacy.expectedUrl);
+    expect(content.status).toBe(200);
+    expect(await content.text()).toBe("hello resources\n");
+  });
 
   it("returns resource metadata from the engine resource service", async () => {
     const { createResourcesRoute } = await import("../server/routes/resources.ts");
