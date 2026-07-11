@@ -10,6 +10,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT = path.resolve(__dirname, "..");
 const DEFAULT_RULES_PATH = path.join(ROOT, "docs", "fork-sync", "rules.yml");
+const DEFAULT_MIGRATION_CONTRACTS_PATH = path.join(ROOT, "docs", "fork-sync", "migration-contracts.yml");
 
 export const ISSUE_COMMANDS = ["status", "search", "draft"];
 
@@ -73,6 +74,29 @@ function runShell(command, options = {}) {
 
 export function loadRules(rulesPath = DEFAULT_RULES_PATH) {
   return yaml.load(fs.readFileSync(rulesPath, "utf8"));
+}
+
+export function resolveMigrationContractsPath(rules = loadRules()) {
+  const relativePath = rules?.migrationContracts?.inventory || "docs/fork-sync/migration-contracts.yml";
+  return path.isAbsolute(relativePath) ? relativePath : path.join(ROOT, relativePath);
+}
+
+export function loadMigrationContracts(contractsPath = resolveMigrationContractsPath()) {
+  return yaml.load(fs.readFileSync(contractsPath, "utf8"));
+}
+
+export function migrationSummary(migrationContracts = [], productionSync = {}) {
+  const contracts = Array.isArray(migrationContracts) ? migrationContracts : [];
+  return {
+    contractCount: contracts.length,
+    dispositions: Object.fromEntries(
+      ["retain", "adapt", "retire", "defer"].map((kind) => [
+        kind,
+        contracts.filter((item) => item.preliminaryDisposition === kind).length,
+      ]),
+    ),
+    stableActivationAllowed: Boolean(productionSync.stableSyncAvailable),
+  };
 }
 
 export function releaseChannelLabel(includePrerelease = false) {
@@ -341,6 +365,15 @@ export function renderPrDashboardBlock(report) {
     `- latest stable tag: \`${report.productionSync?.latestStableTag || "<none>"}\``,
     `- last synced stable tag: \`${report.productionSync?.lastSyncedTag || "<none>"}\``,
     `- stable sync available: \`${Boolean(report.productionSync?.stableSyncAvailable)}\``,
+    "",
+    "### Migration Contracts",
+    "",
+    `- contract count: \`${report.migration?.contractCount ?? 0}\``,
+    `- retain: \`${report.migration?.dispositions?.retain ?? 0}\``,
+    `- adapt: \`${report.migration?.dispositions?.adapt ?? 0}\``,
+    `- retire: \`${report.migration?.dispositions?.retire ?? 0}\``,
+    `- defer: \`${report.migration?.dispositions?.defer ?? 0}\``,
+    `- stable activation allowed: \`${Boolean(report.migration?.stableActivationAllowed)}\``,
     "",
     "### PR State",
     "",
@@ -708,6 +741,12 @@ function buildConflictReport(rules, options = {}) {
   const conflictPlan = buildConflictPlan(conflicts, rules, { generatedAt: options.generatedAt });
   const latestStableTag = latestUpstreamTag(rules, false);
   const syncedTag = lastSyncedTag(rules);
+  const productionSync = {
+    latestStableTag,
+    lastSyncedTag: syncedTag,
+    stableSyncAvailable: Boolean(latestStableTag && latestStableTag !== syncedTag),
+  };
+  const migrationContracts = loadMigrationContracts(resolveMigrationContractsPath(rules)).migrationContracts ?? [];
   const pr = readPr(rules, prNumber);
   const latestCommits = gitLines(["log", "--oneline", "--max-count=10", `${originDevRef}..${originMainRef}`]);
   const riskyFilesTouched = changedDivergingFiles(gitLines(["diff", "--name-only", `${originDevRef}..${originMainRef}`]), rules);
@@ -722,11 +761,8 @@ function buildConflictReport(rules, options = {}) {
     forkHead: {
       originDev,
     },
-    productionSync: {
-      latestStableTag,
-      lastSyncedTag: syncedTag,
-      stableSyncAvailable: Boolean(latestStableTag && latestStableTag !== syncedTag),
-    },
+    productionSync,
+    migration: migrationSummary(migrationContracts, productionSync),
     pr: {
       number: pr.number ?? prNumber,
       url: pr.url ?? `https://github.com/karlorz/openhanako/pull/${prNumber}`,
@@ -746,6 +782,8 @@ function renderConflictPlanText(report) {
     `  origin/main:   ${shortSha(report.dashboardBase?.originMainAfter)}`,
     `  origin/dev:    ${shortSha(report.forkHead?.originDev)}`,
     `  PR #${report.pr?.number ?? 1}: ${report.pr?.mergeable ?? "UNKNOWN"}`,
+    `  migration contracts: ${report.migration?.contractCount ?? 0}`,
+    `  stable activation allowed: ${Boolean(report.migration?.stableActivationAllowed)}`,
     "",
   ];
   if (!report.conflicts.length) {
