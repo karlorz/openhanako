@@ -6,6 +6,7 @@ import {
   changedDivergingFiles,
   forkOnlyFilePatterns,
   ISSUE_COMMANDS,
+  loadMigrationContracts,
   loadRules,
   minimatch,
   missingForkOnlyFiles,
@@ -27,6 +28,43 @@ describe("sync-upstream rule engine", () => {
     expect(rules.conflictRules.divergingFiles).toContain("core/server-auth.ts");
     expect(rules.criticalFileClasses).toContain("lan_connect_auth");
     expect(rules.issueTracking.states).toContain("tracked/no-upstream-issue");
+  });
+
+  it("loads the migration contract inventory schema", () => {
+    const config = loadMigrationContracts();
+    const requiredMigrationContracts = [
+      "connection-csp-bootstrap",
+      "websocket-ticket-auth",
+      "remote-recovery-credentials",
+      "provider-model-persistence",
+      "session-routing-replay-compaction",
+      "agent-reminder-isolation",
+      "remote-resource-ownership",
+      "server-installer-artifact-activation",
+      "fork-build-identity",
+    ];
+
+    expect(config.schemaVersion).toBe(1);
+    expect(config.migrationContracts.map((item) => item.id)).toEqual(
+      expect.arrayContaining(requiredMigrationContracts),
+    );
+    expect(config.migrationContracts).toHaveLength(requiredMigrationContracts.length);
+    for (const item of config.migrationContracts) {
+      expect(["retain", "adapt", "retire", "defer"]).toContain(item.preliminaryDisposition);
+      expect(item.focusedTests.length).toBeGreaterThan(0);
+      expect(item.stopConditions.length).toBeGreaterThan(0);
+      expect(item.surface).toBeTruthy();
+      expect(Array.isArray(item.forkPaths)).toBe(true);
+      expect(Array.isArray(item.upstreamPaths)).toBe(true);
+      expect(item.activationGate).toBeTruthy();
+      expect(Array.isArray(item.liveSmoke)).toBe(true);
+    }
+  });
+
+  it("keeps the migration inventory path in fork-only files", () => {
+    const patterns = forkOnlyFilePatterns(loadRules());
+    expect(patterns).toContain("docs/fork-sync/migration-contracts.yml");
+    expect(loadRules().migrationContracts?.inventory).toBe("docs/fork-sync/migration-contracts.yml");
   });
 
   it("selects stable upstream releases by default", () => {
