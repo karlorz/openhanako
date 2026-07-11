@@ -3,6 +3,10 @@ import os from "os";
 import path from "path";
 import { afterEach, describe, expect, it } from "vitest";
 import { SessionFileRegistry } from "../lib/session-files/session-file-registry.ts";
+import {
+  legacySessionFileContentPath,
+  ownershipCase,
+} from "./helpers/migration-resource-ownership.ts";
 
 describe("ResourceService", () => {
   let tmpDir = null;
@@ -78,6 +82,31 @@ describe("ResourceService", () => {
       },
     });
   }
+
+
+  it("ownership matrix: persisted-legacy sf_* sidecars resolve through res_sf_* content identity", async () => {
+    const legacy = ownershipCase("persisted-legacy");
+    const { ResourceService } = await import("../core/resource-service.ts");
+    const { agentsDir } = writeLegacySessionFileSidecar({ fileId: legacy.fileId });
+    const service = makeService(ResourceService, agentsDir);
+
+    const resource = service.getResource(legacy.resourceId);
+    expect(legacySessionFileContentPath(legacy.fileId)).toBe(legacy.expectedUrl);
+    expect(resource).toMatchObject({
+      resourceId: legacy.resourceId,
+      fileId: legacy.fileId,
+      links: {
+        self: `/api/resources/${legacy.resourceId}`,
+        content: legacy.expectedUrl,
+      },
+    });
+    const content = service.resolveContent(legacy.resourceId);
+    expect(content).toMatchObject({
+      resourceId: legacy.resourceId,
+      filename: "note.txt",
+      mime: "text/plain",
+    });
+  });
 
   it("resolves old SessionFile sidecars by derived resource id without a disk migration", async () => {
     const { ResourceService } = await import("../core/resource-service.ts");

@@ -8,6 +8,11 @@ import { useStore } from '../../stores';
 import { hanaFetch } from '../../hooks/use-hana-fetch';
 import { MainContent } from '../../MainContent';
 import { SkillsPanel } from '../../components/SkillsPanel';
+import {
+  ownershipCase,
+  ownershipCases,
+  shouldUploadOwnedPath,
+} from '../../../../../tests/helpers/migration-resource-ownership.ts';
 
 vi.mock('../../hooks/use-hana-fetch', () => ({
   hanaFetch: vi.fn(),
@@ -26,6 +31,28 @@ function fileDataTransfer(files: File[] = []) {
     types: ['Files'],
     getData: vi.fn(() => ''),
   };
+}
+
+function seedRemoteConnection() {
+  useStore.setState({
+    serverConnections: {
+      'lan:node:studio': {
+        connectionId: 'lan:node:studio',
+        kind: 'lan',
+        serverId: 'remote',
+        studioId: 'studio',
+        label: 'Remote Hana',
+        baseUrl: 'http://100.125.173.118:14500',
+        wsUrl: 'ws://100.125.173.118:14500',
+        token: 'remote-token',
+        authState: 'paired',
+        trustState: 'lan',
+        credentialKind: 'device_credential',
+        capabilities: ['chat'],
+      },
+    },
+    activeServerConnectionId: 'lan:node:studio',
+  } as never);
 }
 
 describe('MainContent app file drag attachments', () => {
@@ -145,6 +172,19 @@ describe('MainContent app file drag attachments', () => {
     expect(overlay).not.toHaveClass('visible');
   });
 
+  it('locks the shared remote attachment ownership matrix fixture', () => {
+    expect(ownershipCases.map((entry) => entry.kind)).toEqual([
+      'client-owned',
+      'server-owned',
+      'optimistic',
+      'persisted-legacy',
+    ]);
+    expect(ownershipCase('client-owned').shouldUpload).toBe(true);
+    expect(ownershipCase('server-owned').shouldUpload).toBe(false);
+    expect(shouldUploadOwnedPath(ownershipCase('client-owned').path, 'client')).toBe(true);
+    expect(shouldUploadOwnedPath(ownershipCase('server-owned').path, 'server')).toBe(false);
+  });
+
   it('attaches dragged session files without re-uploading them', async () => {
     const { attachAppFileDragPayloadToInput } = await import('../../MainContent');
 
@@ -225,28 +265,86 @@ describe('MainContent app file drag attachments', () => {
     expect(addToast).toHaveBeenCalledWith('channel.filesUnsupported', 'error');
   });
 
+  it('uploads client-owned local image bytes for remote connections instead of sending the macOS path', async () => {
+    const clientOwned = ownershipCase('client-owned');
+    const readFileBase64 = vi.fn(async () => 'CLIENT_OWNED_BASE64');
+    window.platform = { readFileBase64 } as unknown as typeof window.platform;
+    seedRemoteConnection();
+    vi.mocked(hanaFetch).mockResolvedValue({
+      json: async () => ({
+        uploads: [{
+          fileId: 'sf_remote_client',
+          filePath: '/root/.hanako/session-files/image.png',
+          dest: '/root/.hanako/session-files/image.png',
+          name: clientOwned.name,
+          isDirectory: false,
+        }],
+      }),
+    } as Response);
+
+    const { attachFilesFromPaths } = await import('../../MainContent');
+
+    await attachFilesFromPaths([clientOwned.path], {}, { pathOwner: 'client' });
+
+    expect(clientOwned.shouldUpload).toBe(true);
+    expect(readFileBase64).toHaveBeenCalledWith(clientOwned.path);
+    expect(hanaFetch).toHaveBeenCalledTimes(1);
+    expect(hanaFetch).toHaveBeenCalledWith('/api/upload-blob', expect.objectContaining({
+      method: 'POST',
+    }));
+    const body = JSON.parse(String(vi.mocked(hanaFetch).mock.calls[0][1]?.body));
+    expect(body).toMatchObject({
+      name: clientOwned.name,
+      base64Data: 'CLIENT_OWNED_BASE64',
+      mimeType: clientOwned.mimeType,
+      sessionPath: '/sessions/main.jsonl',
+    });
+    expect(body.paths).toBeUndefined();
+    expect(useStore.getState().attachedFiles[0]).toMatchObject({
+      fileId: 'sf_remote_client',
+      path: '/root/.hanako/session-files/image.png',
+      name: clientOwned.name,
+      isDirectory: false,
+      base64Data: 'CLIENT_OWNED_BASE64',
+      mimeType: clientOwned.mimeType,
+    });
+  });
+
+  it('attaches server-owned session files by identity and does not re-upload client-local bytes', async () => {
+    const serverOwned = ownershipCase('server-owned');
+    const readFileBase64 = vi.fn(async () => 'SHOULD_NOT_READ');
+    window.platform = { readFileBase64 } as unknown as typeof window.platform;
+    seedRemoteConnection();
+    const { attachAppFileDragPayloadToInput } = await import('../../MainContent');
+
+    await attachAppFileDragPayloadToInput({
+      dragId: 'hana-drag-server-owned',
+      source: 'session-file',
+      files: [{
+        id: serverOwned.fileId,
+        fileId: serverOwned.fileId,
+        name: serverOwned.name,
+        path: serverOwned.path,
+        isDirectory: false,
+      }],
+    });
+
+    expect(serverOwned.shouldUpload).toBe(false);
+    expect(shouldUploadOwnedPath(serverOwned.path, 'server')).toBe(false);
+    expect(readFileBase64).not.toHaveBeenCalled();
+    expect(hanaFetch).not.toHaveBeenCalled();
+    expect(useStore.getState().attachedFiles).toEqual([{
+      fileId: serverOwned.fileId,
+      path: serverOwned.path,
+      name: serverOwned.name,
+      isDirectory: false,
+    }]);
+  });
+
   it('uploads local image bytes for remote connections instead of sending the macOS path', async () => {
     const readFileBase64 = vi.fn(async () => 'JPG_BASE64');
     window.platform = { readFileBase64 } as unknown as typeof window.platform;
-    useStore.setState({
-      serverConnections: {
-        'lan:node:studio': {
-          connectionId: 'lan:node:studio',
-          kind: 'lan',
-          serverId: 'remote',
-          studioId: 'studio',
-          label: 'Remote Hana',
-          baseUrl: 'http://100.125.173.118:14500',
-          wsUrl: 'ws://100.125.173.118:14500',
-          token: 'remote-token',
-          authState: 'paired',
-          trustState: 'lan',
-          credentialKind: 'device_credential',
-          capabilities: ['chat'],
-        },
-      },
-      activeServerConnectionId: 'lan:node:studio',
-    } as never);
+    seedRemoteConnection();
     vi.mocked(hanaFetch).mockResolvedValue({
       json: async () => ({
         uploads: [{
@@ -293,25 +391,7 @@ describe('MainContent app file drag attachments', () => {
   it('uploads local PDF bytes for remote connections instead of sending the macOS path', async () => {
     const readFileBase64 = vi.fn(async () => 'PDF_BASE64');
     window.platform = { readFileBase64 } as unknown as typeof window.platform;
-    useStore.setState({
-      serverConnections: {
-        'lan:node:studio': {
-          connectionId: 'lan:node:studio',
-          kind: 'lan',
-          serverId: 'remote',
-          studioId: 'studio',
-          label: 'Remote Hana',
-          baseUrl: 'http://100.125.173.118:14500',
-          wsUrl: 'ws://100.125.173.118:14500',
-          token: 'remote-token',
-          authState: 'paired',
-          trustState: 'lan',
-          credentialKind: 'device_credential',
-          capabilities: ['chat'],
-        },
-      },
-      activeServerConnectionId: 'lan:node:studio',
-    } as never);
+    seedRemoteConnection();
     vi.mocked(hanaFetch).mockResolvedValue({
       json: async () => ({
         uploads: [{
