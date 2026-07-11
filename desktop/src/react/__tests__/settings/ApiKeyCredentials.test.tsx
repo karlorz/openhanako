@@ -327,7 +327,57 @@ describe('ApiKeyCredentials', () => {
     });
   });
 
+  it('persists provider API type after save and settings-store reload (upstream #2103)', async () => {
+    const onRefresh = vi.fn(async () => {});
+    let currentSummary = providerSummary({
+      display_name: 'Custom Local',
+      base_url: 'https://local.example/v1',
+      api: 'openai-completions',
+      api_key: 'sk-local',
+      has_credentials: true,
+      can_delete: true,
+    });
+
+    const { rerender } = render(
+      <ApiKeyCredentials
+        providerId="custom-local"
+        summary={currentSummary}
+        onRefresh={onRefresh}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'OpenAI Compatible' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'OpenAI Compatible' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Anthropic Messages' }));
+
+    await waitFor(() => expect(mocks.hanaFetch).toHaveBeenCalledWith(
+      '/api/config',
+      expect.objectContaining({ method: 'PUT' }),
+    ));
+    const configCall = mocks.hanaFetch.mock.calls.find(([path]) => path === '/api/config');
+    expect(JSON.parse(String((configCall?.[1] as RequestInit).body))).toEqual({
+      providers: { 'custom-local': { api: 'anthropic-messages' } },
+    });
+    expect(onRefresh).toHaveBeenCalled();
+
+    // Simulate settings store reload after save — summary.api comes back as the saved type.
+    currentSummary = {
+      ...currentSummary,
+      api: 'anthropic-messages',
+    };
+    rerender(
+      <ApiKeyCredentials
+        providerId="custom-local"
+        summary={currentSummary}
+        onRefresh={onRefresh}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'Anthropic Messages' })).toBeInTheDocument();
+  });
+
   it('saves discovered Gemini models during preset setup instead of static defaults', async () => {
+
     const onRefresh = vi.fn(async () => {});
     mocks.hanaFetch
       .mockResolvedValueOnce(jsonResponse({ ok: true }))
