@@ -401,9 +401,151 @@ export function buildStatusPlan({ hostProfile = "default", paths = {} } = {}) {
         readOnly: true,
         command: `list latest backup under ${path.posix.join(resolvedPaths.installRoot, "backups")}`,
       },
+      {
+        id: "probe-activation-compatibility",
+        readOnly: true,
+        command: "report artifact activation compatibility without mutating current/pointers",
+      },
     ],
   };
 }
+
+/**
+ * Read-only compatibility report for the next-stable installer migration gate.
+ * Characterizes the fork's current activation model; does not adopt artifact-core
+ * production packaging or change activation behavior.
+ */
+export function buildArtifactActivationCompatibilityReport({
+  candidateRoot = null,
+  fsImpl = fs,
+} = {}) {
+  const candidateProbe = probeCandidateArtifactCorePresence({
+    rootDir: candidateRoot,
+    fsImpl,
+  });
+  return {
+    safeExtraction: "probe-only",
+    manifestSignature: "probe-only",
+    pointerStore: "not-adopted",
+    atomicActivation: "current-symlink",
+    rollback: "current-release-symlink",
+    productionBehaviorChanged: false,
+    candidateArtifactCore: candidateProbe,
+  };
+}
+
+/**
+ * Pure read-only probe of install activation state. Never changes the current
+ * link, extracts archives, or writes activation pointers.
+ */
+export function probeInstallActivationState({
+  paths = {},
+  candidateRoot = null,
+  fsImpl = fs,
+  readLink = (linkPath) => {
+    try {
+      return fs.readlinkSync(linkPath);
+    } catch {
+      return null;
+    }
+  },
+  realPath = (linkPath) => {
+    try {
+      return fs.realpathSync(linkPath);
+    } catch {
+      return null;
+    }
+  },
+  listDir = (dirPath) => {
+    try {
+      return fs.readdirSync(dirPath);
+    } catch (error) {
+      if (error?.code === "ENOENT") return [];
+      throw error;
+    }
+  },
+} = {}) {
+  const resolvedPaths = { ...DEFAULT_PATHS, ...paths };
+  const currentLink = resolvedPaths.currentLink;
+  const linkTarget = readLink(currentLink);
+  const currentTarget = linkTarget || realPath(currentLink);
+  const currentRelease = currentTarget ? path.basename(String(currentTarget)) : null;
+  const backupDir = path.join(resolvedPaths.installRoot, "backups");
+  const backupNames = listDir(backupDir)
+    .filter((name) => name.endsWith(".tar.gz") || name.endsWith(".tgz"))
+    .sort();
+  const candidateArtifactCore = probeCandidateArtifactCorePresence({
+    rootDir: candidateRoot,
+    fsImpl,
+  });
+
+  return {
+    kind: "install-server-activation-probe",
+    readOnly: true,
+    currentLink,
+    currentTarget,
+    currentRelease,
+    previousReleasePathStrategy: "current-release-symlink",
+    backupDir,
+    backupArchives: backupNames,
+    checksumSupport: {
+      inlineSha256: true,
+      sidecarSha256: true,
+      blocksActivationOnMismatch: true,
+    },
+    artifactActivationCompatibility: buildArtifactActivationCompatibilityReport({
+      candidateRoot,
+      fsImpl,
+    }),
+    candidateArtifactCore,
+    productionBehaviorChanged: false,
+  };
+}
+
+/**
+ * Summarize whether a backup archive listing contains the required restore
+ * surfaces without reading or returning secret values.
+ */
+export function summarizeBackupRequiredState(entries = []) {
+  const normalized = normalizeTarEntries(entries);
+  const has = (pattern) => normalized.some((entry) => pattern.test(entry));
+  return {
+    configuration: has(/(^|\/)(server-network\.json|server-node\.json|provider-catalog\.json|users\.json|studios\.json|user\/preferences\.json)$/),
+    agents: has(/(^|\/)agents\//),
+    sessions: has(/(^|\/)agents\/[^/]+\/sessions\/[^/]+\.jsonl$/) || has(/(^|\/)sessions\//),
+    auth: has(/(^|\/)(auth\.json|device-credentials\.json|local-user-auth\.json|devices\.json|pairing-sessions\.json|security\/grants\.json)$/),
+    redacted: true,
+  };
+}
+
+function probeCandidateArtifactCorePresence({ rootDir = null, fsImpl = fs } = {}) {
+  const required = [
+    "shared/artifact-core/index.cjs",
+    "shared/artifact-core/activation.cjs",
+    "shared/artifact-core/manifest.cjs",
+    "shared/artifact-core/pointer-store.cjs",
+    "shared/artifact-core/ustar.cjs",
+    "scripts/artifact-keygen.mjs",
+    "scripts/artifact-sign.mjs",
+  ];
+  if (!rootDir) {
+    return {
+      present: false,
+      probed: false,
+      files: Object.fromEntries(required.map((file) => [file, false])),
+    };
+  }
+  const files = {};
+  for (const relative of required) {
+    files[relative] = fsImpl.existsSync(path.join(rootDir, relative));
+  }
+  return {
+    present: Object.values(files).every(Boolean),
+    probed: true,
+    files,
+  };
+}
+
 
 export function resolveHanaDataRoot({
   env = process.env,
