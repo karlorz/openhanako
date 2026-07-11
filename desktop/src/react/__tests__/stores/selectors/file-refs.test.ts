@@ -2,6 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { selectDeskFiles, selectSessionFiles, invalidateSessionCache } from '../../../stores/selectors/file-refs';
 import type { DeskFile } from '../../../types';
 import type { ChatListItem } from '../../../stores/chat-types';
+import {
+  legacySessionFileContentPath,
+  ownershipCase,
+} from '../../../../../../tests/helpers/migration-resource-ownership.ts';
+import { resolveFileRefUrl } from '../../../services/resource-url';
+import type { ServerConnection } from '../../../services/server-connection';
 
 function makeState(deskFiles: DeskFile[], basePath = '/home/u', currentPath = '') {
   return {
@@ -223,6 +229,78 @@ describe('selectSessionFiles', () => {
       'sess:sess_files:registry:/workspace/output.md',
       'sess:sess_files:m1:att:/workspace/input.png',
     ]);
+  });
+
+
+  it('after chat switch/return, Conversation Files resolve persisted-legacy remote content URLs', () => {
+    const legacy = ownershipCase('persisted-legacy');
+    const pathA = '/s/legacy-a';
+    const pathB = '/s/legacy-b';
+    const items: ChatListItem[] = [{
+      type: 'message',
+      data: {
+        id: 'm-legacy',
+        role: 'user',
+        attachments: [{
+          fileId: legacy.fileId,
+          path: '/srv/hana/session/legacy.png',
+          name: 'legacy.png',
+          isDir: false,
+          mimeType: 'image/png',
+        }],
+        timestamp: 1000,
+      },
+    }];
+    const stateA = sessionState(items, pathA, [{
+      fileId: legacy.fileId,
+      filePath: '/srv/hana/session/legacy.png',
+      label: 'legacy.png',
+      ext: 'png',
+      mime: 'image/png',
+      status: 'available',
+    }]);
+    const first = selectSessionFiles(stateA, pathA);
+    expect(first).toHaveLength(1);
+    expect(first[0]).toMatchObject({
+      fileId: legacy.fileId,
+      source: 'session-registry',
+      path: '/srv/hana/session/legacy.png',
+    });
+
+    // switch away then return to the original chat
+    const other = selectSessionFiles(sessionState([], pathB), pathB);
+    expect(other).toEqual([]);
+    invalidateSessionCache(pathA);
+    const returned = selectSessionFiles(stateA, pathA);
+    expect(returned).toHaveLength(1);
+    expect(returned[0].fileId).toBe(legacy.fileId);
+    expect(legacySessionFileContentPath(returned[0].fileId!)).toBe(legacy.expectedUrl);
+
+    const remoteConnection: ServerConnection = {
+      connectionId: 'custom:remote',
+      kind: 'custom_remote',
+      serverId: 'server_remote',
+      userId: 'user_remote',
+      studioId: 'studio_remote',
+      label: 'Remote Hana',
+      baseUrl: 'https://hana.example',
+      wsUrl: 'wss://hana.example',
+      token: 'remote token',
+      authState: 'paired',
+      trustState: 'tunnel',
+      credentialKind: 'device_credential',
+      platformAccountId: null,
+      officialServiceKind: null,
+      capabilities: ['resources'],
+    };
+    const resolved = resolveFileRefUrl(returned[0], {
+      connection: remoteConnection,
+      platform: null,
+    });
+    expect(resolved).toEqual({
+      mode: 'resource-content',
+      url: `https://hana.example${legacy.expectedUrl}`,
+    });
   });
 
   it('把 session registry 的 resource envelope 带入 FileRef', () => {

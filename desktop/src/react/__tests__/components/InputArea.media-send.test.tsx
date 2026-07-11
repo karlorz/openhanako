@@ -5,6 +5,7 @@ import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { InputArea } from '../../components/InputArea';
 import { useStore } from '../../stores';
+import { ownershipCase } from '../../../../../tests/helpers/migration-resource-ownership.ts';
 
 const mocks = vi.hoisted(() => ({
   clearContent: vi.fn(),
@@ -378,6 +379,61 @@ describe('InputArea media send', () => {
     expect(useStore.getState().attachedFiles).toEqual([
       expect.objectContaining({ fileId: 'sf_b', path: '/tmp/b.txt' }),
     ]);
+  });
+
+  it('ownership matrix: optimistic inline bytes stay available on send until server resource identity exists', async () => {
+    const optimistic = ownershipCase('optimistic');
+    useStore.setState({
+      attachedFiles: [{
+        fileId: optimistic.fileId,
+        path: optimistic.path,
+        name: optimistic.name,
+        isDirectory: false,
+        mimeType: optimistic.mimeType,
+        base64Data: optimistic.base64Data,
+      }],
+      attachedFilesBySession: {
+        '/session/media.jsonl': [{
+          fileId: optimistic.fileId,
+          path: optimistic.path,
+          name: optimistic.name,
+          isDirectory: false,
+          mimeType: optimistic.mimeType,
+          base64Data: optimistic.base64Data,
+        }],
+      },
+    } as never);
+
+    render(React.createElement(InputArea));
+    fireEvent.click(screen.getByTestId('send'));
+
+    await waitFor(() => {
+      expect(mocks.wsSend).toHaveBeenCalledTimes(1);
+    });
+    expect(window.platform.readFileBase64).not.toHaveBeenCalled();
+    const payload = JSON.parse(String(mocks.wsSend.mock.calls[0][0]));
+    expect(payload.images).toEqual([{
+      type: 'image',
+      data: optimistic.base64Data,
+      mimeType: optimistic.mimeType,
+    }]);
+    expect(payload.displayMessage.attachments[0]).toMatchObject({
+      fileId: optimistic.fileId,
+      path: optimistic.path,
+      name: optimistic.name,
+      mimeType: optimistic.mimeType,
+      visionAuxiliary: true,
+    });
+    expect(payload.displayMessage.attachments[0]).not.toHaveProperty('base64Data');
+    const optimisticItem = useStore.getState().chatSessions.sess_media?.items[0];
+    expect(optimisticItem?.type).toBe('message');
+    if (optimisticItem?.type !== 'message') throw new Error('expected optimistic message');
+    expect(optimisticItem.data.attachments?.[0]).toMatchObject({
+      fileId: optimistic.fileId,
+      mimeType: optimistic.mimeType,
+      base64Data: optimistic.base64Data,
+    });
+    expect(optimistic.keepInlineUntilServerEcho).toBe(true);
   });
 
   it('keeps existing inline media bytes in the optimistic message without persisting them to displayMessage', async () => {
