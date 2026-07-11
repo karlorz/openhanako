@@ -704,6 +704,37 @@ describe("HTTP route security policy", () => {
     });
   });
 
+
+  it("classifies POST /api/ws-ticket as chat-scoped for authenticated devices", async () => {
+    const { authorizeHttpRoute, classifyHttpRoute } = await import("../server/http/route-security.ts");
+
+    expect(classifyHttpRoute({ method: "POST", path: "/api/ws-ticket" }))
+      .toMatchObject({ kind: "scope", scope: "chat" });
+    expect(classifyHttpRoute({ method: "GET", path: "/api/ws-ticket" }))
+      .toMatchObject({ kind: "local_only" });
+
+    expect(authorizeHttpRoute({
+      method: "POST",
+      path: "/api/ws-ticket",
+      principal: devicePrincipal(["chat"]),
+    })).toMatchObject({ allowed: true });
+
+    expect(authorizeHttpRoute({
+      method: "POST",
+      path: "/api/ws-ticket",
+      principal: devicePrincipal(["resources.read"]),
+    })).toMatchObject({
+      allowed: false,
+      status: 403,
+    });
+
+    expect(authorizeHttpRoute({
+      method: "POST",
+      path: "/api/ws-ticket",
+      principal: localPrincipal,
+    })).toMatchObject({ allowed: true });
+  });
+
   describe("plugin route proxy policy", () => {
     function pluginSurfacePrincipal(pluginId, overrides: any = {}) {
       return Object.freeze({
