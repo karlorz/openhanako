@@ -350,6 +350,42 @@ describe('ProviderModelList', () => {
     expect(onRefresh).toHaveBeenCalled();
   });
 
+  it('removes slash-bearing model ids through the encoded provider model delete endpoint', async () => {
+    const onRefresh = vi.fn(async () => {});
+    mocks.hanaFetch.mockResolvedValue(jsonResponse({ models: [] }));
+
+    render(
+      <ProviderModelList
+        providerId="custom-local"
+        summary={{
+          type: 'api-key',
+          auth_type: 'api-key',
+          display_name: 'Custom Local',
+          base_url: 'https://local.example/v1',
+          api: 'openai-completions',
+          api_key: 'sk-test',
+          models: ['codex/model-x'],
+          custom_models: [],
+          has_credentials: true,
+          supports_oauth: false,
+          is_coding_plan: false,
+          can_delete: true,
+        }}
+        onRefresh={onRefresh}
+      />,
+    );
+
+    fireEvent.click(screen.getByTitle('settings.api.removeModel'));
+
+    await waitFor(() => {
+      expect(mocks.hanaFetch).toHaveBeenCalledWith(
+        '/api/providers/custom-local/models/codex%2Fmodel-x',
+        expect.objectContaining({ method: 'DELETE' }),
+      );
+    });
+    expect(onRefresh).toHaveBeenCalled();
+  });
+
   it('does not serialize untouched capability defaults as explicit false overrides', async () => {
     const onRefresh = vi.fn(async () => {});
     mocks.hanaFetch.mockResolvedValue(jsonResponse({ models: [] }));
