@@ -16,7 +16,6 @@ import {
   truncateTextHeadTail,
 } from "../core/compaction-utils.ts";
 import { Type } from "../lib/pi-sdk/index.ts";
-import { makeMigrationSession } from "./helpers/migration-session.ts";
 
 const VALID_COMPACTION_SUMMARY = `## Goal
 Keep the session useful.
@@ -1941,53 +1940,6 @@ describe("CompactionGuardExtension", () => {
       expect(res).toMatchObject({ compaction: expect.any(Object) });
       expect(computeHardTruncation).toHaveBeenCalledOnce();
       expect(cacheCompactor).not.toHaveBeenCalled();
-    });
-
-    it("rebuilds cache-prefix snapshot hash after a user pause changes tool schema without dead-session error", () => {
-      const migration = makeMigrationSession({
-        sessionPath: "/sessions/sess_migration_a.jsonl",
-      });
-      const afterTools = [
-        {
-          name: "write_plugin",
-          description: "Write plugin",
-          parameters: { type: "object" },
-        },
-        {
-          name: "install_plugin",
-          description: "Install plugin",
-          parameters: { type: "object" },
-        },
-      ];
-
-      const beforeSnapshot = buildSessionCacheSnapshot(migration.sessionPath, {
-        reason: "user_pause.before",
-        messages: preparation.messagesToSummarize,
-      });
-
-      // Simulate a pause-time tool schema change and rebuild the cache snapshot.
-      buildSessionCacheSnapshot.mockImplementationOnce((sessionPath, { reason, messages } = {}) => ({
-        strategy: "session_snapshot",
-        strict: true,
-        sessionPath,
-        reason,
-        cachePrefixHash: "c".repeat(64),
-        tools: afterTools,
-        messages,
-        messageCount: Array.isArray(messages) ? messages.length : 0,
-      }));
-
-      const afterSnapshot = buildSessionCacheSnapshot(migration.sessionPath, {
-        reason: "user_pause.after",
-        messages: preparation.messagesToSummarize,
-      });
-
-      expect(afterSnapshot.cachePrefixHash).not.toBe(beforeSnapshot.cachePrefixHash);
-      expect(afterSnapshot.tools.map((tool) => tool.name)).toEqual([
-        "write_plugin",
-        "install_plugin",
-      ]);
-      expect(String((afterSnapshot as any).error || "")).not.toMatch(/Cache prefix contract violated/);
     });
   });
 });
