@@ -1,6 +1,35 @@
 import { describe, expect, it } from "vitest";
 
 describe("websocket auth tickets", () => {
+  it("issues a scoped one-time ws ticket for an authenticated LAN principal", async () => {
+    const { createWebSocketTicketService } = await import("../core/ws-auth-ticket.ts");
+    const service = createWebSocketTicketService({
+      now: () => "2026-06-20T00:00:00.000Z",
+      ttlMs: 30_000,
+    });
+    const principal = {
+      kind: "device",
+      credentialKind: "device_credential",
+      connectionKind: "lan",
+      trustState: "lan",
+      userId: "device-1",
+      studioId: "studio_1",
+      scopes: ["chat"],
+    };
+
+    const first = service.issueTicket(principal, { connectionKind: "lan", path: "/ws" });
+
+    expect(first.ticket).toMatch(/^hana_ws_/);
+    expect(first.expiresAt).toBe("2026-06-20T00:00:30.000Z");
+    expect(service.consumeTicket(first.ticket, { connectionKind: "lan", path: "/ws" })).toMatchObject({
+      kind: "device",
+      userId: "device-1",
+      connectionKind: "lan",
+      scopes: ["chat"],
+    });
+    expect(service.consumeTicket(first.ticket, { connectionKind: "lan", path: "/ws" })).toBeNull();
+  });
+
   it("issues one-time tickets scoped to the websocket transport", async () => {
     const { createWebSocketTicketService } = await import("../core/ws-auth-ticket.ts");
     const service = createWebSocketTicketService({
@@ -110,5 +139,19 @@ describe("websocket auth tickets", () => {
         reason: "invalid_ws_ticket",
       },
     });
+  });
+
+  it("keeps /api/ws-ticket unavailable without an authenticated principal", async () => {
+    const { createWebSocketTicketService } = await import("../core/ws-auth-ticket.ts");
+    const { createWebSocketAuthRoute } = await import("../server/routes/ws-auth.ts");
+    const service = createWebSocketTicketService({
+      now: () => "2026-06-20T00:00:00.000Z",
+      ttlMs: 30_000,
+    });
+    const route = createWebSocketAuthRoute({ ticketService: service });
+
+    const resMissing = await route.request("/ws-ticket", { method: "POST" });
+    expect(resMissing.status).toBe(403);
+    expect(await resMissing.json()).toMatchObject({ error: "missing_principal" });
   });
 });
