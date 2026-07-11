@@ -4,6 +4,7 @@ import path from "path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
+  buildServerRuntimePackagingCompatibilityReport,
   copyServerRuntimeAssets,
   SERVER_RUNTIME_ASSET_DIRS,
   SERVER_RUNTIME_ASSET_FILES,
@@ -121,5 +122,22 @@ describe("server runtime assets", () => {
     expect(fs.existsSync(path.join(outDir, "desktop", "dist-renderer", "assets", "main-desktop.css"))).toBe(false);
     expect(fs.existsSync(path.join(outDir, "desktop", "dist-renderer", "index.html"))).toBe(false);
     expect(fs.existsSync(path.join(outDir, "desktop", "dist-renderer", "modules", "legacy.js"))).toBe(false);
+  });
+
+  it("reports upstream artifact-core without changing server activation", () => {
+    const report = buildServerRuntimePackagingCompatibilityReport({ rootDir: process.cwd() });
+    expect(report).toMatchObject({
+      kind: "server-runtime-packaging-compatibility",
+      includesArtifactCore: true,
+      artifactCorePathsPresent: [
+        "shared/artifact-core/index.cjs",
+        "shared/artifact-core/activation.cjs",
+        "shared/artifact-core/manifest.cjs",
+        "shared/artifact-core/pointer-store.cjs",
+        "shared/artifact-core/ustar.cjs",
+      ],
+      productionBehaviorChanged: false,
+      activationModel: "current-symlink",
+    });
   });
 });
