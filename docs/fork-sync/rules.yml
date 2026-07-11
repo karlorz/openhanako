@@ -27,6 +27,12 @@ issueTracking:
     - tracked/no-upstream-issue
   submission: never
 
+# Sibling inventory loaded by scripts/sync-upstream.mjs loadMigrationContracts().
+# Keep the full contract matrix in docs/fork-sync/migration-contracts.yml rather
+# than embedding it here so production conflict policy stays unchanged.
+migrationContracts:
+  inventory: docs/fork-sync/migration-contracts.yml
+
 criticalFileClasses:
   - lan_connect_auth
   - remote_attachment_preview
@@ -58,6 +64,7 @@ conflictRules:
     - tests/office-workflow-plugin.test.ts
     - tests/desktop-network-security-contract.test.ts
     - docs/fork-sync/rules.yml
+    - docs/fork-sync/migration-contracts.yml
     - docs/server-install.md
     - docs/reinit-data-failsafe.md
     - docs/upstream-issues/**
