@@ -320,4 +320,30 @@ describe('CSP sync', () => {
     expect(written).toContain('http://192.168.1.9:14500');
     expect(written).toContain('ws://192.168.1.9:14500');
   });
+
+  it('locks active remote origin into connect-src/img-src/media-src without bare http/https schemes', () => {
+    const csp = renderRuntimeConnectionCsp({
+      activeServerConnectionId: 'lan:remote:studio',
+      serverConnections: {
+        'lan:remote:studio': {
+          connectionId: 'lan:remote:studio',
+          kind: 'lan',
+          baseUrl: cspFixture.remote.baseUrl,
+          wsUrl: cspFixture.remote.wsUrl,
+        },
+      },
+    });
+    const parsed = parseCsp(csp);
+
+    expect(parsed['connect-src']).toContain(cspFixture.remote.baseUrl);
+    expect(parsed['connect-src']).toContain(cspFixture.remote.wsUrl);
+    expect(parsed['img-src']).toContain(cspFixture.remote.baseUrl);
+    expect(parsed['media-src']).toContain(cspFixture.remote.baseUrl);
+
+    // Bare scheme tokens must never appear as standalone CSP sources.
+    expect(csp).not.toMatch(/(?:^|\s)http:(?:\s|$)/);
+    expect(csp).not.toMatch(/(?:^|\s)https:(?:\s|$)/);
+    expect(csp).not.toMatch(/(?:^|\s)ws:(?:\s|$)/);
+    expect(csp).not.toMatch(/(?:^|\s)wss:(?:\s|$)/);
+  });
 });
