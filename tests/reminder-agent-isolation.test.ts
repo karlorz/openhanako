@@ -90,7 +90,7 @@ describe("memory-change reminder agent isolation (#2106)", () => {
   });
 
   it("SessionCoordinator does not expose candidate reminder render/consume APIs yet", () => {
-    const proto = SessionCoordinator.prototype as Record<string, unknown>;
+    const proto = SessionCoordinator.prototype as unknown as Record<string, unknown>;
     expect(typeof proto.renderSessionReminderBlock).not.toBe("function");
     expect(typeof proto.consumeRenderedSessionReminderBlock).not.toBe("function");
     expect(typeof proto.consumeSessionReminderBlock).not.toBe("function");
