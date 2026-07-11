@@ -1,0 +1,212 @@
+# Machine-readable migration contract inventory for the next stable sync.
+# Preliminary dispositions only. Final retain/adapt/retire/defer decisions
+# are set during stable activation against a non-prerelease target.
+
+schemaVersion: 1
+migrationContracts:
+  - id: connection-csp-bootstrap
+    surface: desktop connection bootstrap and runtime CSP
+    forkPaths:
+      - desktop/main.cjs
+      - desktop/preload.cjs
+      - desktop/src/modules/connection-csp.js
+      - desktop/src/react/services/server-connection.ts
+    upstreamPaths:
+      - desktop/main.cjs
+      - desktop/preload.cjs
+      - desktop/src/react/services/server-connection.ts
+    preliminaryDisposition: retain
+    activationGate: next-stable-only
+    focusedTests:
+      - tests/csp-sync.test.ts
+      - desktop/src/react/__tests__/services/server-connection.test.ts
+    liveSmoke:
+      - first LAN connect succeeds without a localStorage workaround
+      - active remote origin is scoped into img-src and media-src
+    stopConditions:
+      - first connect requires renderer fetch before CSP persistence
+      - CSP allows bare http or https schemes
+
+  - id: websocket-ticket-auth
+    surface: WebSocket authentication ticket lifecycle for non-loopback connections
+    forkPaths:
+      - core/server-auth.ts
+      - desktop/src/react/services/server-connection.ts
+      - server/routes/ws-auth.ts
+      - server/http/route-security.ts
+    upstreamPaths:
+      - core/server-auth.ts
+      - desktop/src/react/services/server-connection.ts
+      - server/routes/ws-auth.ts
+      - server/http/route-security.ts
+    preliminaryDisposition: adapt
+    activationGate: next-stable-only
+    focusedTests:
+      - tests/server-auth.test.ts
+      - tests/ws-auth-ticket.test.ts
+      - tests/http-route-security.test.ts
+      - desktop/src/react/__tests__/services/server-connection.test.ts
+    liveSmoke:
+      - ticket-authenticated LAN WebSocket opens without embedding long-lived credentials in the URL
+      - reconnect after ticket expiry re-acquires a fresh ticket
+    stopConditions:
+      - non-loopback WebSocket URL retains a long-lived device credential
+      - /api/ws-ticket is unavailable and no compatible auth path remains
+
+  - id: remote-recovery-credentials
+    surface: remote recovery credential reset and secret re-hide
+    forkPaths:
+      - desktop/src/react/settings/widgets/KeyInput.tsx
+      - desktop/src/react/settings/tabs/AccessTab.tsx
+    upstreamPaths:
+      - desktop/src/react/settings/widgets/KeyInput.tsx
+    preliminaryDisposition: adapt
+    activationGate: next-stable-only
+    focusedTests:
+      - desktop/src/react/settings/widgets/__tests__/KeyInput.test.tsx
+      - desktop/src/react/__tests__/settings/AccessTab.test.tsx
+    liveSmoke:
+      - replacing a saved remote credential clears stale recovery state
+      - revealed secrets re-hide when the controlled value is replaced externally
+    stopConditions:
+      - external credential replacement leaves a previously revealed secret visible
+      - recovery state continues using a replaced credential
+
+  - id: provider-model-persistence
+    surface: provider model deletion, explicit-empty catalogs, and API-type persistence
+    forkPaths:
+      - server/routes/providers.ts
+      - desktop/src/react/settings/tabs/providers
+    upstreamPaths:
+      - server/routes/providers.ts
+      - desktop/src/react/settings/tabs/providers
+    preliminaryDisposition: adapt
+    activationGate: next-stable-only
+    focusedTests:
+      - desktop/src/react/settings/tabs/providers/__tests__/ProviderModelList.test.tsx
+      - tests/model-sync-routes.test.ts
+      - tests/provider-registry-crud.test.ts
+    liveSmoke:
+      - slash-bearing model deletion survives reload
+      - provider API-type changes persist after settings reload
+    stopConditions:
+      - deleted models repopulate after reload
+      - explicit empty model lists are replaced by defaults without user action
+
+  - id: session-routing-replay-compaction
+    surface: session routing, replay, branch reset, compaction, and cache-prefix recovery
+    forkPaths:
+      - core/session-coordinator.ts
+      - server/routes/chat.ts
+      - server/ws-protocol.ts
+      - desktop/src/react/services/ws-message-handler.ts
+    upstreamPaths:
+      - core/session-coordinator.ts
+      - server/routes/chat.ts
+      - server/ws-protocol.ts
+      - desktop/src/react/services/ws-message-handler.ts
+    preliminaryDisposition: adapt
+    activationGate: next-stable-only
+    focusedTests:
+      - tests/chat-route-switching.test.ts
+      - tests/chat-compaction-events.test.ts
+      - tests/cache-prefix-contract.test.ts
+      - tests/compaction-guard-ext.test.ts
+      - desktop/src/react/__tests__/services/ws-message-handler.test.ts
+    liveSmoke:
+      - new-chat routing stays session-ID authoritative
+      - replay and branch reset apply only to the addressed session
+      - manual compaction returns a terminal result for the addressed session
+    stopConditions:
+      - cross-session delivery or rewrite is observed
+      - cache-prefix recovery leaves a dead session after a user pause
+
+  - id: agent-reminder-isolation
+    surface: Agent-scoped reminder delivery and memory fact provenance
+    forkPaths:
+      - core/session-coordinator.ts
+    upstreamPaths:
+      - core/session-coordinator.ts
+    preliminaryDisposition: adapt
+    activationGate: next-stable-only
+    focusedTests:
+      - tests/reminder-agent-isolation.test.ts
+      - tests/rolling-summary-format-contract.test.ts
+    liveSmoke:
+      - memory-change reminders deliver only to the owning Agent sessions
+    stopConditions:
+      - Agent A reminders are delivered to Agent B sessions
+      - assistant statements are promoted to user facts without provenance
+
+  - id: remote-resource-ownership
+    surface: remote attachment ownership, optimistic previews, and resource URL resolution
+    forkPaths:
+      - desktop/src/react/services/resource-url.ts
+      - desktop/src/react/utils/user-attachment-media.ts
+      - desktop/src/react/utils/remote-file-preview.ts
+      - server/routes/upload.ts
+    upstreamPaths:
+      - desktop/src/react/services/resource-url.ts
+      - server/routes/upload.ts
+    preliminaryDisposition: retain
+    activationGate: next-stable-only
+    focusedTests:
+      - desktop/src/react/__tests__/components/InputArea.media-send.test.tsx
+      - desktop/src/react/__tests__/components/InputArea.paste-and-slash.test.tsx
+      - desktop/src/react/__tests__/components/MainContent.drag.test.tsx
+      - desktop/src/react/__tests__/services/resource-url.test.ts
+      - desktop/src/react/__tests__/stores/chat-slice.test.ts
+      - desktop/src/react/__tests__/stores/selectors/file-refs.test.ts
+      - tests/upload-route.test.ts
+      - tests/resource-service.test.ts
+      - tests/resources-route.test.ts
+    liveSmoke:
+      - image paste/upload/send survives chat switch and return
+      - chat thumbnails and Conversation Files previews render for old sf_* sessions
+    stopConditions:
+      - server-owned files are re-uploaded from client-local paths
+      - old sf_* previews fail after chat switch/return
+
+  - id: server-installer-artifact-activation
+    surface: server installer, checksum, backup, and artifact-activation compatibility
+    forkPaths:
+      - scripts/install-server.mjs
+      - scripts/build-server-runtime-assets.mjs
+      - scripts/pack-server-bundle.mjs
+    upstreamPaths:
+      - shared/artifact-core
+      - scripts/artifact-keygen.mjs
+      - scripts/artifact-sign.mjs
+    preliminaryDisposition: retain
+    activationGate: next-stable-only
+    focusedTests:
+      - tests/artifact-activation-compatibility.test.mjs
+      - tests/install-server-upgrade.test.mjs
+      - tests/build-server-runtime-assets.test.ts
+      - tests/quality-gates-contract.test.ts
+    liveSmoke:
+      - installer dry-run selects the expected fork-scoped asset and backup path
+      - rollback can restore the previous current release symlink
+    stopConditions:
+      - checksum failure activates a release
+      - runtime-start failure leaves no restore path to the previous release
+
+  - id: fork-build-identity
+    surface: local desktop build identity and disabled local updater
+    forkPaths:
+      - desktop/src/shared/build-info.cjs
+      - scripts/write-local-build-info.mjs
+      - package.json
+    upstreamPaths:
+      - package.json
+      - release-digest.v1.json
+    preliminaryDisposition: retain
+    activationGate: next-stable-only
+    focusedTests:
+      - tests/sync-upstream.test.mjs
+    liveSmoke:
+      - installed HanaAgent CFBundle versions and build-info.json match package.json
+      - Settings About shows the local fork build identity with updates disabled
+    stopConditions:
+      - installed desktop version differs from package.json or build-info.json
+      - local builds enable updater behavior
