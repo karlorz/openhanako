@@ -913,9 +913,8 @@ describe("model sync related routes", () => {
 
       const reloaded = new ProviderRegistry(tmpHome);
       expect(reloaded.getProviderModels("custom-local")).toEqual(["keep-model"]);
-      expect(reloaded.getAllProvidersRaw()["custom-local"].models || []).not.toContainEqual(
-        expect.objectContaining({ id: "codex/model-x" }),
-      );
+      expect(reloaded.getAllProvidersRaw()["custom-local"].models).toEqual(["keep-model"]);
+      expect(reloaded.getAllProvidersRaw()["custom-local"].models).not.toContain("codex/model-x");
     } finally {
       fs.rmSync(tmpHome, { recursive: true, force: true });
     }
