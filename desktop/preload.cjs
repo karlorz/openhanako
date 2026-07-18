@@ -75,6 +75,10 @@ contextBridge.exposeInMainWorld("hana", {
     return () => ipcRenderer.removeListener("train-update-progress", handler);
   },
   getUpdateDigestHistory: () => ipcRenderer.invoke("get-update-digest-history"),
+  checkRemoteServerRelease: (options) => ipcRenderer.invoke(
+    "remote-server-release:check",
+    { force: options && options.force === true },
+  ),
   getAutoLaunchStatus: () => ipcRenderer.invoke("get-auto-launch-status"),
   setAutoLaunchEnabled: (enabled) => ipcRenderer.invoke("set-auto-launch-enabled", enabled),
   getKeepAwakeStatus: () => ipcRenderer.invoke("get-keep-awake-status"),
