@@ -31,8 +31,11 @@ chmod 600 "$HOME/.secrets/openhanako-release-digest"
 direnv allow
 ```
 
-`.envrc` parses both files as dotenv data. It does not shell-source them, scan
-the secrets directory, print the key, or change file permissions.
+`.envrc` parses both files as dotenv data when the secret file exists. It does
+not shell-source them, scan the secrets directory, print the key, or change
+file permissions. The secret file is optional for normal development and is
+required only when the generator makes a provider request; without it, the
+generator fails closed with an `API_KEY` error.
 
 ## Generate a digest
 

@@ -13,6 +13,7 @@ export type {
 export const {
   REMOTE_INPUT_DRAFT_FEATURE_REQUIREMENTS,
   applyRemoteFeatureObservation,
+  applyRemoteTransportObservation,
   assessRemoteServer,
   compareCanonicalRuntimeVersions,
   parseCanonicalRuntimeVersion,
