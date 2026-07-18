@@ -119,6 +119,18 @@ server_deploy:
     - "If install-server is missing on sg01, run the CLI-only bootstrap command as a separate attended host mutation before upgrade."
     - "Only use the raw-GitHub bootstrap curl command with a ref or tag that contains scripts/install-server-bootstrap.sh."
 
+# Remote prerequisite evidence is an attended, read-only boundary. The
+# checker only reads the supplied work-item and assessment files; it never
+# obtains credentials or contacts a host.
+remote_assessment:
+  mode: attended-read-only
+  evidence_path: .claude/remote-assessment/latest.json
+  evidence_ttl_seconds: 1800
+  smoke_command: "node scripts/hana-desktop-smoke-helper.mjs --restart --verify --url http://100.125.173.118:14500 --assessment-out .claude/remote-assessment/latest.json"
+  checker_command: "node scripts/check-remote-prerequisites.mjs --work-item $WORK_ITEM_SPEC --assessment .claude/remote-assessment/latest.json --json"
+  generic_dev_loop_hook_available: false
+  plugin_follow_up_required_for_automatic_prep: true
+
 # Interviews happen before spec/plan unless the loop is running unattended
 # under /goal, where preflight readiness gates are required instead.
 interview:
