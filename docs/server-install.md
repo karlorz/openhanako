@@ -284,14 +284,32 @@ The command prints the backup path and exits nonzero if the archive cannot be ve
 
 `install-server status` reports:
 
-- Installed version and release path.
-- Service enabled/active state.
-- Listening address/port if known.
-- Last backup path if known.
-- Current channel policy.
-- Whether the running binary matches the `current` symlink target.
+- The `current` symlink target and resolved release path.
+- The exact installed fork tag when the release directory matches
+  `vMAJOR.MINOR.PATCH-karlorz.REVISION-linux-ARCH`.
+- Structured absent and broken-link states instead of throwing.
+- Service enabled/active state and main PID when systemd is available.
+- A read-only server assessment that keeps core readiness, release freshness,
+  feature support, and host deployability as separate evidence.
 
-Status must be read-only.
+Status is read-only and does not require root or sudo. Plain status performs no
+network request:
+
+```bash
+install-server status --json
+```
+
+To explicitly check the fork's published server releases and include update
+evidence, use:
+
+```bash
+install-server status --check-updates --json
+```
+
+The update check does not download, install, restart, or change the service. If
+the release directory and optional embedded `server-build-info.json` disagree, the report adds
+`installed_release_evidence_mismatch` instead of guessing which identity is
+current.
 
 ## Failure Policy
 
