@@ -21,9 +21,12 @@ import {
   createLocalServerConnection,
   isLocalOwnerConnection,
   requestConnectionWsTicket,
+  resolveConnectionWsAuth,
+  type ConnectionWsAuth,
   resolveServerConnection,
   type ServerConnection,
 } from './server-connection';
+import { applyRemoteTransportObservation } from '../../../../shared/remote-server-assessment.cjs';
 import { AppError } from '../../../../shared/errors.ts';
 import { errorBus } from '../../../../shared/error-bus.ts';
 
@@ -67,6 +70,14 @@ export function getWebSocket(): WebSocket | null {
   return _ws;
 }
 
+export function buildAuthenticatedConnectionWsUrl(
+  connection: ServerConnection,
+  auth: ConnectionWsAuth,
+): string {
+  if (auth.mode === 'unsupported') throw new Error(auth.warningCode);
+  return buildConnectionWsUrl(connection, '/ws', { wsTicket: auth.ticket });
+}
+
 /** 发起 WebSocket 连接 */
 export function connectWebSocket(port?: string, token?: string): void {
   // 如果没有传参，从 Zustand store 获取
@@ -96,14 +107,51 @@ function ensureResourceForegroundCatchUp(): void {
 }
 
 async function openConnectionWebSocket(connection: ServerConnection): Promise<void> {
-  const wsTicket = await requestConnectionWsTicket(connection);
+  let assessment = useStore.getState().remoteServerAssessment;
+  if (assessment?.connectionId === connection.connectionId
+      && assessment.transport.reasonCodes.includes('ticket_request_failed_legacy_fallback')
+      && assessment.transport.reportedTicketContractVersion !== null) {
+    assessment = applyRemoteTransportObservation(assessment, {
+      status: 'ticket-ready',
+      reasonCode: null,
+    });
+    useStore.setState({ remoteServerAssessment: assessment });
+  }
+  // Before the first remote assessment completes, keep LAN startup available
+  // through the known legacy query-token path.
+  let auth;
+  if (assessment) {
+    auth = await resolveConnectionWsAuth(connection, assessment);
+  } else if (connection.kind === 'lan') {
+    auth = { mode: 'legacy-query-token' as const, ticket: null, warningCode: 'legacy_websocket_query_token' as const };
+  } else {
+    const wsTicket = await requestConnectionWsTicket(connection);
+    auth = wsTicket
+      ? { mode: 'ticket' as const, ticket: wsTicket, warningCode: null }
+      : (isLocalOwnerConnection(connection)
+        ? { mode: 'local-query-token' as const, ticket: null, warningCode: null }
+        : { mode: 'unsupported' as const, ticket: null, warningCode: 'websocket_ticket_required' as const });
+  }
+  if (auth.mode === 'unsupported') throw new Error(auth.warningCode);
+
+  if (auth.mode === 'legacy-query-token') {
+    const current = useStore.getState().remoteServerAssessment;
+    if (current?.connectionId === connection.connectionId) {
+      useStore.setState({
+        remoteServerAssessment: applyRemoteTransportObservation(current, {
+          status: 'legacy-query-token',
+          reasonCode: auth.warningCode,
+        }),
+      });
+    }
+  }
 
   if (_wsRetryTimer) { clearTimeout(_wsRetryTimer); _wsRetryTimer = null; }
   if (_ws) {
     try { _ws.onclose = null; _ws.close(); } catch { /* silent */ }
   }
 
-  const url = buildConnectionWsUrl(connection, '/ws', { wsTicket });
+  const url = buildAuthenticatedConnectionWsUrl(connection, auth);
   _ws = new WebSocket(url);
 
   _ws.onopen = () => {
