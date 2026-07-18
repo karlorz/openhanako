@@ -1,5 +1,6 @@
 const policy = require("./remote-server-policy.json");
 const {
+  normalizeServerCompatibilityManifest,
   selectRecommendedServerRelease,
 } = require("./remote-server-release-catalog.cjs");
 
@@ -59,6 +60,67 @@ function createRemoteServerReleaseLoader(options = {}) {
     };
     if (token) headers.Authorization = `Bearer ${token}`;
 
+    async function loadSelectedManifest(release) {
+      if (!release.compatibilityManifestName) return release;
+      const rawRelease = releases.find((value) => value?.tag_name === release.tag);
+      const manifestAsset = Array.isArray(rawRelease?.assets)
+        ? rawRelease.assets.find((asset) => asset?.name === release.compatibilityManifestName)
+        : null;
+      if (typeof manifestAsset?.browser_download_url !== "string") {
+        return {
+          ...release,
+          manifestStatus: "unavailable",
+          manifestErrorCode: "release_manifest_url_missing",
+          reasonCodes: dedupe([...release.reasonCodes, "release_manifest_url_missing"]),
+        };
+      }
+
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), policy.github.requestTimeoutMs);
+        let body;
+        try {
+          const response = await fetchImpl(manifestAsset.browser_download_url, { headers, signal: controller.signal });
+          if (!response || response.ok !== true) {
+            throw new ReleaseCatalogError(`release_manifest_http_${response?.status || "unknown"}`);
+          }
+          body = await response.text();
+        } finally {
+          clearTimeout(timeout);
+        }
+        if (Buffer.byteLength(body, "utf8") > policy.github.maxManifestBodyBytes) {
+          throw new ReleaseCatalogError("release_manifest_too_large");
+        }
+        let value;
+        try {
+          value = JSON.parse(body);
+        } catch {
+          throw new ReleaseCatalogError("release_manifest_invalid_json");
+        }
+        const manifest = normalizeServerCompatibilityManifest(value, release, policy);
+        if (!manifest) throw new ReleaseCatalogError("release_manifest_invalid");
+        return {
+          ...release,
+          ...manifest,
+          manifestStatus: "valid",
+          manifestErrorCode: null,
+        };
+      } catch (error) {
+        const code = errorCodeFor(error);
+        const invalid = code === "release_manifest_invalid"
+          || code === "release_manifest_invalid_json"
+          || code === "release_manifest_too_large";
+        return {
+          ...release,
+          featureContracts: null,
+          manifestGitSha: null,
+          manifestStatus: invalid ? "invalid" : "unavailable",
+          manifestErrorCode: code,
+          reasonCodes: dedupe([...release.reasonCodes, code]),
+        };
+      }
+    }
+
     try {
       for (let page = 1; page <= policy.github.maxPages; page += 1) {
         const controller = new AbortController();
@@ -89,8 +151,8 @@ function createRemoteServerReleaseLoader(options = {}) {
         if (page === policy.github.maxPages) truncated = true;
       }
 
-      const release = selectRecommendedServerRelease(releases, policy);
-      if (!release) {
+      const selectedRelease = selectRecommendedServerRelease(releases, policy);
+      if (!selectedRelease) {
         return {
           status: "unavailable",
           checkedAt,
@@ -101,6 +163,7 @@ function createRemoteServerReleaseLoader(options = {}) {
           reasonCodes: truncated ? ["release_catalog_truncated"] : [],
         };
       }
+      const release = await loadSelectedManifest(selectedRelease);
       if (truncated) reasonCodes.push("release_catalog_truncated");
       reasonCodes.push(...release.reasonCodes);
       return {

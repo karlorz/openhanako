@@ -1,4 +1,5 @@
 const defaultPolicy = require("./remote-server-policy.json");
+const { normalizeFeatureContracts } = require("./remote-feature-contracts.cjs");
 
 function isRecord(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -182,7 +183,35 @@ function normalizeGithubServerRelease(value, policy = defaultPolicy) {
     compatibilityManifestName,
     featureContracts: null,
     manifestGitSha: null,
+    manifestStatus: compatibilityManifestName ? "unavailable" : "missing",
+    manifestErrorCode: compatibilityManifestName ? "release_manifest_not_loaded" : null,
     reasonCodes: dedupe(reasonCodes),
+  };
+}
+
+function normalizeServerCompatibilityManifest(value, release, policy = defaultPolicy) {
+  if (!isRecord(value) || !isRecord(release) || value.schemaVersion !== 1) return null;
+  if (value.tag !== release.tag || value.runtimeVersion !== release.runtimeVersion) return null;
+  if (value.sourceRepository !== policy.repository) return null;
+  if (typeof value.gitSha !== "string" || !/^[0-9a-f]{40}$/i.test(value.gitSha)) return null;
+  const featureContracts = normalizeFeatureContracts(value.featureContracts);
+  if (!featureContracts || !isRecord(value.assets) || !Array.isArray(release.assets)) return null;
+
+  const expectedAssets = new Map(release.assets.map((asset) => [
+    `${asset.platform}-${asset.arch}`,
+    { bundle: asset.name, checksum: asset.checksumName },
+  ]));
+  const manifestEntries = Object.entries(value.assets);
+  if (manifestEntries.length !== expectedAssets.size || expectedAssets.size === 0) return null;
+  for (const [key, asset] of manifestEntries) {
+    const expected = expectedAssets.get(key);
+    if (!expected || !isRecord(asset)) return null;
+    if (asset.bundle !== expected.bundle || asset.checksum !== expected.checksum) return null;
+  }
+
+  return {
+    featureContracts: JSON.parse(JSON.stringify(featureContracts)),
+    manifestGitSha: value.gitSha.toLowerCase(),
   };
 }
 
@@ -198,6 +227,7 @@ function selectRecommendedServerRelease(values, policy = defaultPolicy) {
 module.exports = {
   compareForkReleaseTags,
   normalizeGithubServerRelease,
+  normalizeServerCompatibilityManifest,
   normalizeServerPlatformArch,
   parseForkReleaseTag,
   parseServerAssetName,

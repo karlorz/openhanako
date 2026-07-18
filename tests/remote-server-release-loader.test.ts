@@ -3,7 +3,7 @@ import loaderModule from "../shared/remote-server-release-loader.cjs";
 
 const { createRemoteServerReleaseLoader } = loaderModule;
 
-function serverRelease(tag = "v0.407.15-karlorz.1") {
+function serverRelease(tag = "v0.407.15-karlorz.1", { manifest = false } = {}) {
   const bundle = `hanaagent-server-${tag}-linux-arm64.tar.gz`;
   return {
     tag_name: tag,
@@ -14,7 +14,28 @@ function serverRelease(tag = "v0.407.15-karlorz.1") {
     assets: [
       { name: bundle, browser_download_url: `https://example.test/${bundle}` },
       { name: `${bundle}.sha256`, browser_download_url: `https://example.test/${bundle}.sha256` },
+      ...(manifest ? [{
+        name: `hanaagent-server-compatibility-${tag}.json`,
+        browser_download_url: `https://example.test/hanaagent-server-compatibility-${tag}.json`,
+      }] : []),
     ],
+  };
+}
+
+function compatibilityManifest(tag = "v0.407.15-karlorz.1") {
+  const bundle = `hanaagent-server-${tag}-linux-arm64.tar.gz`;
+  return {
+    schemaVersion: 1,
+    tag,
+    runtimeVersion: "0.407.15",
+    sourceRepository: "karlorz/openhanako",
+    gitSha: "0123456789abcdef0123456789abcdef01234567",
+    featureContracts: {
+      schemaVersion: 1,
+      complete: true,
+      entries: { "chat.core": 1, "input.drafts": 1, "websocket.ticket": 1 },
+    },
+    assets: { "linux-arm64": { bundle, checksum: `${bundle}.sha256` } },
   };
 }
 
@@ -196,5 +217,75 @@ describe("remote server release loader", () => {
     expect(result).toMatchObject({ status: "unavailable", source: "none", stale: false });
     expect(JSON.stringify(result)).not.toContain(token);
     expect(logs.join("\n")).not.toContain(token);
+  });
+
+  it("fetches and validates exactly one selected compatibility manifest", async () => {
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(response([serverRelease(undefined, { manifest: true })]))
+      .mockResolvedValueOnce(response(compatibilityManifest()));
+    const load = createRemoteServerReleaseLoader({ fetchImpl, now: () => 1_000 });
+
+    const result = await load();
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      2,
+      "https://example.test/hanaagent-server-compatibility-v0.407.15-karlorz.1.json",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(result.release).toMatchObject({
+      manifestStatus: "valid",
+      manifestErrorCode: null,
+      manifestGitSha: "0123456789abcdef0123456789abcdef01234567",
+      featureContracts: { entries: { "input.drafts": 1 } },
+    });
+  });
+
+  it.each([
+    ["invalid", response({ schemaVersion: 2 }), "release_manifest_invalid"],
+    ["http", response({}, { ok: false, status: 503 }), "release_manifest_http_503"],
+    ["large", response(" ".repeat(131_073)), "release_manifest_too_large"],
+  ])("retains the generic release when the manifest is %s", async (_name, manifestResponse, errorCode) => {
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(response([serverRelease(undefined, { manifest: true })]))
+      .mockResolvedValueOnce(manifestResponse);
+    const load = createRemoteServerReleaseLoader({ fetchImpl, now: () => 1_000 });
+
+    await expect(load()).resolves.toMatchObject({
+      status: "ready",
+      release: {
+        tag: "v0.407.15-karlorz.1",
+        manifestStatus: errorCode.includes("invalid") || errorCode.includes("large") ? "invalid" : "unavailable",
+        manifestErrorCode: errorCode,
+        featureContracts: null,
+      },
+    });
+  });
+
+  it("times out a stalled manifest body without discarding the generic release", async () => {
+    vi.useFakeTimers();
+    let manifestSignal: AbortSignal | undefined;
+    const stalled = response([]);
+    stalled.text = vi.fn(() => new Promise<string>((_resolve, reject) => {
+      manifestSignal?.addEventListener("abort", () => reject(Object.assign(new Error("aborted"), { name: "AbortError" })));
+    }));
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(response([serverRelease(undefined, { manifest: true })]))
+      .mockImplementationOnce((_url: string, options: { signal?: AbortSignal }) => {
+        manifestSignal = options.signal;
+        return Promise.resolve(stalled);
+      });
+    const load = createRemoteServerReleaseLoader({ fetchImpl: fetchImpl as unknown as typeof fetch, now: () => 1_000 });
+    const pending = load();
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    await expect(pending).resolves.toMatchObject({
+      status: "ready",
+      release: {
+        tag: "v0.407.15-karlorz.1",
+        manifestStatus: "unavailable",
+        manifestErrorCode: "release_catalog_timeout",
+      },
+    });
   });
 });
