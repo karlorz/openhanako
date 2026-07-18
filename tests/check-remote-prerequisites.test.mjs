@@ -29,7 +29,7 @@ function evidence(overrides = {}) {
     expiresAt: "2026-07-19T00:15:00.000Z",
     source: "hana-desktop-smoke-helper",
     functional: { status: "pass" },
-    environment: { status: "ready", assessment: { summary: "ready", freshness: { status: "current" }, deployability: { status: "eligible" } } },
+    environment: { status: "pass", assessment: { summary: "ready", freshness: { status: "current" }, deployability: { status: "eligible" } } },
     prerequisites: {
       status: "pass",
       requirements: [
@@ -71,6 +71,13 @@ describe("assessment evidence freshness", () => {
   it("reads valid evidence and derives the 30-minute expiry", () => {
     const { assessmentPath } = tempFiles(validWorkItem, evidence());
     expect(readAssessmentEvidence(assessmentPath, NOW)).toMatchObject({ generatedAt: "2026-07-18T23:45:00.000Z", expiresAt: "2026-07-19T00:15:00.000Z", freshness: "fresh" });
+  });
+
+  it("accepts the successful smoke-helper environment status and evaluates it as ready", () => {
+    const { workPath, assessmentPath } = tempFiles(validWorkItem, evidence());
+    const assessment = readAssessmentEvidence(assessmentPath, NOW);
+    expect(assessment).toMatchObject({ freshness: "fresh", value: { environment: { status: "pass" } } });
+    expect(evaluateRemotePrerequisites(readWorkItemRemoteRequirements(workPath), assessment).status).toBe("ready");
   });
 
   it("classifies missing, malformed, expired, and future evidence", () => {
