@@ -288,9 +288,12 @@ describe('initApp bridge indicator', () => {
     // The dot describes the bootstrap agent's bridges, named in the request,
     // rather than whichever agent the server is focused on when it arrives.
     expect(mockHanaFetch).toHaveBeenCalledWith('/api/bridge/status?agentId=hana');
+    expect(mockState.remoteServerAssessment).toBeNull();
   });
 
   it('refreshes the HttpOnly device web session before opening WebSocket for a persisted LAN frontend', async () => {
+    let resolveRelease!: (value: unknown) => void;
+    const pendingRelease = new Promise(resolve => { resolveRelease = resolve; });
     const listeners: Record<string, Array<(data?: unknown) => void>> = {};
     (globalThis as Record<string, unknown>).window = {
       addEventListener: vi.fn((type: string, cb: (data?: unknown) => void) => {
@@ -308,6 +311,9 @@ describe('initApp bridge indicator', () => {
         appReady: vi.fn(),
         onSettingsChanged: vi.fn(),
         openSettings: vi.fn(),
+      },
+      hana: {
+        checkRemoteServerRelease: vi.fn(() => pendingRelease),
       },
       dispatchEvent: vi.fn(),
     };
@@ -333,6 +339,7 @@ describe('initApp bridge indicator', () => {
         trustState: 'lan',
         authState: 'paired',
         credentialKind: 'device_credential',
+        version: '0.346.18',
         capabilities: ['chat', 'resources', 'files'],
         executionBoundary: {
           schemaVersion: 1,
@@ -374,7 +381,27 @@ describe('initApp bridge indicator', () => {
       credentialKind: 'device_credential',
     }));
     expect(mockConnectWebSocket).toHaveBeenCalledTimes(1);
+    expect(mockState.remoteServerAssessment).toEqual(expect.objectContaining({
+      connectionId: 'lan:node_lan:studio_lan',
+      core: expect.objectContaining({ status: 'ready' }),
+      freshness: expect.objectContaining({ status: 'unknown' }),
+    }));
     expect((mockHanaFetch.mock.invocationCallOrder[0] ?? 0)).toBeLessThan(mockConnectWebSocket.mock.invocationCallOrder[0] ?? 0);
+
+    const identityAssessment = mockState.remoteServerAssessment;
+    mockState.activeServerConnectionId = 'lan:other:studio';
+    resolveRelease({
+      status: 'unavailable',
+      checkedAt: '2026-07-18T12:00:00.000Z',
+      source: 'none',
+      stale: false,
+      release: null,
+      errorCode: 'offline',
+      reasonCodes: ['offline'],
+    });
+    await vi.waitFor(() => expect(mockState.remoteServerAssessment).toBe(identityAssessment));
+    expect(mockState.remoteConnectionRecovery).toBeNull();
+    expect(mockConnectWebSocket).toHaveBeenCalledTimes(1);
   });
 
   it('keeps a saved Remote Server active and records recovery state when identity load fails', async () => {
