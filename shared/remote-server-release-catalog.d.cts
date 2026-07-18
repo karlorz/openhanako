@@ -23,8 +23,14 @@ export type NormalizedServerRelease = {
   releaseUrl: string | null;
   assets: NormalizedServerAsset[];
   compatibilityManifestName: string | null;
-  featureContracts: null;
-  manifestGitSha: null;
+  featureContracts: {
+    schemaVersion: 1;
+    complete: true;
+    entries: Record<string, number>;
+  } | null;
+  manifestGitSha: string | null;
+  manifestStatus: "valid" | "missing" | "invalid" | "unavailable";
+  manifestErrorCode: string | null;
   reasonCodes: string[];
 };
 
@@ -49,6 +55,18 @@ export function normalizeGithubServerRelease(
   value: unknown,
   policy: Record<string, unknown>,
 ): NormalizedServerRelease | null;
+export function normalizeServerCompatibilityManifest(
+  value: unknown,
+  release: NormalizedServerRelease,
+  policy?: Record<string, unknown>,
+): {
+  featureContracts: {
+    schemaVersion: 1;
+    complete: true;
+    entries: Record<string, number>;
+  };
+  manifestGitSha: string;
+} | null;
 export function selectRecommendedServerRelease(
   values: unknown[],
   policy: Record<string, unknown>,
