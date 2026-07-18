@@ -50,6 +50,8 @@ conflictRules:
   # matching via minimatch (same as .gitignore). Add every fork-only file
   # or directory that must not be silently dropped by an upstream rebase.
   forkOnlyFiles:
+    - .envrc
+    - .env.example
     - scripts/sync-upstream.mjs
     - scripts/track-upstream-issues.mjs
     - scripts/install-server.mjs
@@ -69,8 +71,30 @@ conflictRules:
     - docs/reinit-data-failsafe.md
     - docs/upstream-issues/**
     - docs/agents/openhanako-dev-loop-setup.md
+    - docs/release-digest-generation.md
     - examples/plugins/office-workflow/**
     - desktop/src/shared/build-info.cjs
+    - scripts/build-server-compatibility-manifest.mjs
+    - scripts/check-remote-prerequisites.mjs
+    - scripts/write-server-build-info.mjs
+    - shared/remote-feature-contracts.*
+    - shared/remote-server-assessment.*
+    - shared/remote-server-policy.json
+    - shared/remote-server-release-*.cjs
+    - shared/remote-server-release-*.d.cts
+    - shared/remote-server-release-*.ts
+    - shared/server-build-info.*
+    - desktop/src/react/services/remote-feature-*.ts
+    - desktop/src/react/services/remote-server-assessment-*.ts
+    - desktop/src/react/__tests__/services/remote-feature-*.test.ts
+    - desktop/src/react/__tests__/services/remote-server-assessment-*.test.ts
+    - desktop/src/react/__tests__/services/websocket-input-draft-lifecycle.test.ts
+    - tests/check-remote-prerequisites.test.mjs
+    - tests/desktop-remote-server-release-ipc.test.ts
+    - tests/remote-server-*.test.*
+    - tests/server-build-info.test.mjs
+    - tests/server-compatibility-manifest.test.mjs
+    - tests/remote-server-workflow-contract.test.mjs
     - .claude/dev-loop.config.md
     - CLAUDE.md
     - CONTEXT.md
@@ -113,6 +137,27 @@ conflictRules:
     - package.json
     - package-lock.json
     - release-digest.v1.json
+    - scripts/generate-release-digest.mjs
+    - scripts/build-server-compatibility-manifest.mjs
+    - scripts/check-remote-prerequisites.mjs
+    - scripts/write-server-build-info.mjs
+    - scripts/install-server.mjs
+    - scripts/hana-desktop-smoke-helper.mjs
+    - desktop/src/react/services/remote-feature-gates.ts
+    - desktop/src/react/services/remote-feature-session.ts
+    - desktop/src/react/services/remote-server-assessment-cache.ts
+    - desktop/src/react/services/remote-server-assessment-coordinator.ts
+    - desktop/src/react/__tests__/services/remote-feature-gates.test.ts
+    - desktop/src/react/__tests__/services/remote-feature-session.test.ts
+    - desktop/src/react/__tests__/services/remote-server-assessment-cache.test.ts
+    - desktop/src/react/__tests__/services/remote-server-assessment-coordinator.test.ts
+    - desktop/src/react/__tests__/services/websocket-input-draft-lifecycle.test.ts
+    - desktop/src/react/app-init.ts
+    - desktop/src/react/services/websocket.ts
+    - desktop/src/react/stores/input-draft-persistence.ts
+    - server/index.ts
+    - docs/server-install.md
+    - CONTEXT.md
   policies:
     core/server-auth.ts:
       class: lan_connect_auth
@@ -178,6 +223,112 @@ conflictRules:
       strategy: preserve-both
       resolution: Preserve the fork external-value reset and secret re-hide behavior while accepting upstream wrapper-level blur handling and accessibility wiring.
       plannedAction: Start from the upstream stable version, retain wrapper-level blur handling so focus moving to the reveal button does not commit Bridge credentials, then restore the fork previousValueRef/internalChangeRef behavior so an externally replaced remote credential clears any transient revealed secret. Run the remote recovery, Access settings, provider credential, and upstream Bridge credential tests together.
+    scripts/generate-release-digest.mjs:
+      class: fork_release_digest
+      risk: high
+      strategy: preserve-both
+      resolution: Preserve provider-neutral BYOK configuration, both Responses and Chat Completions transports, strict schema validation, and the upstream digest/history contract.
+      plannedAction: Keep generic model/base_url/api_key/api_backend settings and compatibility aliases; require focused generator, validator, and schema tests before publishing a fork digest.
+    tests/generate-release-digest.test.ts:
+      class: fork_release_digest
+      risk: medium
+      strategy: preserve-both
+      resolution: Preserve BYOK precedence, secret-handling, both provider protocols, and schema/error-path coverage.
+    scripts/install-server.mjs:
+      class: server_release_compatibility
+      risk: critical
+      strategy: preserve-both
+      resolution: Preserve the unified installer and its build-identity, release-catalog, compatibility-manifest, dry-run, backup, and activation gates.
+      plannedAction: Review installer and release metadata changes together; never replace the attended dry-run/execute flow with the retired host helper.
+    scripts/hana-desktop-smoke-helper.mjs:
+      class: remote_server_assessment
+      risk: high
+      strategy: preserve-both
+      resolution: Preserve independent functional and environment results, contract evidence provenance, remote release freshness, and explicit assessment output.
+      plannedAction: Keep image/attachment live smoke as a separate attended UI gate after automated identity, WebSocket, release, and contract checks pass.
+    desktop/src/react/services/remote-server-assessment-coordinator.ts:
+      class: remote_server_assessment
+      risk: high
+      strategy: preserve-both
+      resolution: Preserve one coordinated assessment per connection generation and reject stale results from previous remote sessions.
+      plannedAction: Review with assessment cache, feature-session gates, app initialization, connection switching, and their focused tests.
+    desktop/src/react/stores/input-draft-persistence.ts:
+      class: remote_feature_contracts
+      risk: high
+      strategy: preserve-both
+      resolution: Preserve WebSocket draft transport only when the connected server advertises input.drafts@1, with local persistence fallback otherwise.
+      plannedAction: Verify reconnect, chat switching, fallback, and websocket-input-draft lifecycle coverage together.
+    server/index.ts:
+      class: server_release_compatibility
+      risk: high
+      strategy: preserve-both
+      resolution: Preserve server identity build metadata and remote feature-contract advertisement without losing upstream route or startup changes.
+      plannedAction: Verify identity route, runtime context, server build info, compatibility manifest, and packaged server assets together.
+    core/engine.ts:
+      class: server_release_compatibility
+      risk: high
+      strategy: preserve-both
+      resolution: Preserve remote feature-contract advertisement and runtime behavior while reviewing upstream engine changes.
+    core/server-runtime-context.ts:
+      class: server_release_compatibility
+      risk: high
+      strategy: preserve-both
+      resolution: Preserve build identity and remote release context across upstream runtime changes.
+    desktop/preload.cjs:
+      class: lan_connect_auth
+      risk: high
+      strategy: preserve-both
+      resolution: Preserve validated probe and release-status IPC exposure while retaining upstream preload changes.
+    desktop/src/react/services/remote-feature-gates.ts:
+      class: remote_feature_contracts
+      risk: high
+      strategy: preserve-both
+      resolution: Preserve server-advertised feature gating and conservative fallback behavior.
+    desktop/src/react/services/remote-feature-session.ts:
+      class: remote_feature_contracts
+      risk: high
+      strategy: preserve-both
+      resolution: Preserve connection-generation scoping for remote feature state.
+    desktop/src/react/services/remote-server-assessment-cache.ts:
+      class: remote_server_assessment
+      risk: high
+      strategy: preserve-both
+      resolution: Preserve TTL, identity binding, and stale-result rejection for environment assessments.
+    desktop/src/react/stores/connection-slice.ts:
+      class: remote_server_assessment
+      risk: high
+      strategy: preserve-both
+      resolution: Preserve assessment reset and connection-switch behavior.
+    .github/workflows/build.yml:
+      class: server_release_compatibility
+      risk: high
+      strategy: preserve-both
+      resolution: Preserve fork asset naming, compatibility manifest publication, and digest/history generation while retaining upstream CI changes.
+    scripts/build-server.mjs:
+      class: server_release_compatibility
+      risk: high
+      strategy: preserve-both
+      resolution: Preserve build-info and compatibility-manifest packaging in server artifacts.
+    tests/server-identity-route.test.ts:
+      class: server_release_compatibility
+      risk: medium
+      strategy: preserve-both
+      resolution: Preserve server identity and build metadata assertions.
+    tests/server-runtime-context.test.ts:
+      class: server_release_compatibility
+      risk: medium
+      strategy: preserve-both
+      resolution: Preserve remote runtime context and release identity assertions.
+    docs/server-install.md:
+      class: server_release_compatibility
+      risk: medium
+      strategy: preserve-both
+      resolution: Keep documentation aligned with the unified installer, pinned fork tags, stable release assets, compatibility manifests, backup, dry-run, and post-upgrade verification.
+    CONTEXT.md:
+      class: remote_server_assessment
+      risk: medium
+      strategy: preserve-both
+      resolution: Preserve the authoritative focused suite and attended remote verification contract while incorporating relevant upstream development guidance.
     package.json:
       class: desktop_packaging
       risk: medium

@@ -41,23 +41,33 @@ function normalizeBaseUrl(value) {
   return raw;
 }
 
+function digestEnvDefaults(env = process.env) {
+  return {
+    model: firstEnv(env, "model", "MODEL", "OPENAI_MODEL") || DEFAULT_MODEL,
+    baseUrl: firstEnv(env, "base_url", "BASE_URL", "OPENAI_API_BASE_URL") || DEFAULT_BASE_URL,
+    backend: firstEnv(env, "api_backend", "API_BACKEND", "OPENAI_BACKEND") || DEFAULT_BACKEND,
+  };
+}
+
 export function resolveDigestConfig({ env = process.env, model, baseUrl, backend } = {}) {
+  const defaults = digestEnvDefaults(env);
   const apiKey = firstEnv(env, "api_key", "API_KEY", "OPENAI_API_KEY") || undefined;
-  const resolvedModel = String(model || firstEnv(env, "model", "MODEL", "OPENAI_MODEL") || DEFAULT_MODEL).trim();
+  const resolvedModel = String(model || defaults.model).trim();
   if (!resolvedModel) throw new Error("MODEL is required to generate release digest");
-  const resolvedBackend = String(backend || firstEnv(env, "api_backend", "API_BACKEND", "OPENAI_BACKEND") || DEFAULT_BACKEND).trim();
+  const resolvedBackend = String(backend || defaults.backend).trim();
   if (!BACKENDS.has(resolvedBackend)) {
     throw new Error(`API_BACKEND must be one of: ${[...BACKENDS].join(", ")}`);
   }
   return {
     apiKey,
-    baseUrl: normalizeBaseUrl(baseUrl || firstEnv(env, "base_url", "BASE_URL", "OPENAI_API_BASE_URL") || DEFAULT_BASE_URL),
+    baseUrl: normalizeBaseUrl(baseUrl || defaults.baseUrl),
     model: resolvedModel,
     backend: resolvedBackend,
   };
 }
 
 export function parseArgs(argv = process.argv.slice(2), env = process.env) {
+  const defaults = digestEnvDefaults(env);
   const args = {
     tag: env.GITHUB_REF_NAME || null,
     previousTag: "auto",
@@ -71,9 +81,9 @@ export function parseArgs(argv = process.argv.slice(2), env = process.env) {
     noLlm: false,
     appendHistory: false,
     historyFile: DIGEST_HISTORY_ASSET_NAME,
-    model: firstEnv(env, "model", "MODEL", "OPENAI_MODEL") || DEFAULT_MODEL,
-    baseUrl: firstEnv(env, "base_url", "BASE_URL", "OPENAI_API_BASE_URL") || DEFAULT_BASE_URL,
-    backend: firstEnv(env, "api_backend", "API_BACKEND", "OPENAI_BACKEND") || DEFAULT_BACKEND,
+    model: defaults.model,
+    baseUrl: defaults.baseUrl,
+    backend: defaults.backend,
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -392,7 +402,7 @@ export async function run(argv = process.argv.slice(2), { env = process.env, fet
     return;
   }
 
-  const digest = await generateDigestWithOpenAI(source, {
+  const digest = await generateDigestWithProvider(source, {
     env,
     fetchImpl,
     model: args.model,

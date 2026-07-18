@@ -4,7 +4,7 @@ import {
   type RemoteServerAssessment,
   type RemoteServerAssessmentInput,
 } from '../../../../shared/remote-server-assessment';
-import type { RemoteServerReleaseCheck } from '../../../../shared/remote-server-release-catalog.cjs';
+import type { RemoteServerReleaseCheck } from '../../../../shared/remote-server-release-catalog';
 import { removeRemoteServerAssessment } from './remote-server-assessment-cache';
 import {
   validateRemoteBoundaryContract,
