@@ -117,6 +117,53 @@ describe("server runtime context", () => {
     expect(Object.isFrozen(context.executionBoundary)).toBe(true);
   });
 
+  it("deep-freezes additive build, feature-contract, and runtime-fact evidence", async () => {
+    tmpDir = makeTmpDir();
+    writeValidIdentity(tmpDir);
+    const { createServerRuntimeContext } = await import("../core/server-runtime-context.ts");
+
+    const context = createServerRuntimeContext({
+      hanakoHome: tmpDir,
+      appVersion: "0.407.15",
+      runtimeBuild: {
+        schemaVersion: 1,
+        runtimeVersion: "0.407.15",
+        releaseTag: "v0.407.15-karlorz.1",
+        gitSha: "0123456789abcdef0123456789abcdef01234567",
+        sourceRepository: "karlorz/openhanako",
+        platform: "linux",
+        arch: "arm64",
+      },
+      featureContracts: {
+        schemaVersion: 1,
+        complete: true,
+        entries: {
+          "chat.core": 1,
+          "input.drafts": 1,
+          "websocket.ticket": 1,
+        },
+      },
+      runtimeFacts: { platform: "linux", arch: "arm64" },
+    });
+
+    expect(context).toMatchObject({
+      runtimeBuild: {
+        releaseTag: "v0.407.15-karlorz.1",
+        sourceRepository: "karlorz/openhanako",
+      },
+      featureContracts: {
+        schemaVersion: 1,
+        complete: true,
+        entries: { "input.drafts": 1 },
+      },
+      runtimeFacts: { platform: "linux", arch: "arm64" },
+    });
+    expect(Object.isFrozen(context.runtimeBuild)).toBe(true);
+    expect(Object.isFrozen(context.featureContracts)).toBe(true);
+    expect(Object.isFrozen(context.featureContracts.entries)).toBe(true);
+    expect(Object.isFrozen(context.runtimeFacts)).toBe(true);
+  });
+
   it("fails explicitly when identity registries are invalid", async () => {
     tmpDir = makeTmpDir();
     writeValidIdentity(tmpDir);
