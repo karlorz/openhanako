@@ -2175,6 +2175,38 @@
     color: var(--text);
 }
 
+.access-status-item strong[data-assessment-status]::before {
+    display: inline-block;
+    width: 1.15em;
+    font-weight: 700;
+}
+
+.access-status-item strong[data-assessment-status="good"]::before {
+    content: "✓";
+    color: var(--success, #3f8f62);
+}
+
+.access-status-item strong[data-assessment-status="attention"]::before {
+    content: "!";
+    color: var(--warning, #a56a12);
+}
+
+.access-status-item strong[data-assessment-status="blocked"]::before {
+    content: "×";
+    color: var(--danger, #b44747);
+}
+
+.access-status-item strong[data-assessment-status="unknown"]::before {
+    content: "?";
+    color: var(--text-muted);
+}
+
+.access-assessment-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-8);
+}
+
 .access-remote-panel {
     display: flex;
     flex-direction: column;
