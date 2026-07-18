@@ -34,8 +34,14 @@ export function inputDraftRemoteMode(state: ReturnType<typeof useStore.getState>
     return { featureId: 'input-drafts', mode: 'remote', fallback: null, reasonCode: null, connectionId: connection.connectionId };
   }
   const decision = resolveRemoteFeatureDecision(state.remoteServerAssessment, 'input-drafts');
-  if (decision.mode !== 'probe-once') return { ...decision, connectionId: connection.connectionId };
   const session = featureSessions.read(connection.connectionId, 'input-drafts');
+  if (session.status === 'unsupported') {
+    return { featureId: 'input-drafts', mode: 'fallback', fallback: 'memory-only', reasonCode: session.reasonCode, connectionId: connection.connectionId };
+  }
+  if (session.status === 'backoff' && !featureSessions.canProbe(connection.connectionId, 'input-drafts')) {
+    return { featureId: 'input-drafts', mode: 'fallback', fallback: 'memory-only', reasonCode: session.reasonCode, connectionId: connection.connectionId };
+  }
+  if (decision.mode !== 'probe-once') return { ...decision, connectionId: connection.connectionId };
   if (session.status === 'supported') {
     return { featureId: 'input-drafts', mode: 'remote', fallback: null, reasonCode: null, connectionId: connection.connectionId };
   }
@@ -75,6 +81,12 @@ function recordRemoteResponse(connectionId: string, response: Response): boolean
   return false;
 }
 
+function isInputDraftHydratePayload(data: unknown): data is { home?: unknown; sessions: Record<string, unknown> } {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return false;
+  const sessions = (data as { sessions?: unknown }).sessions;
+  return !!sessions && typeof sessions === 'object' && !Array.isArray(sessions);
+}
+
 /** 内存 map 的键要么是 sessionId，要么是老数据兜底的 sessionPath（含路径分隔符），要么是 __home__ */
 function isPathLikeKey(key: string): boolean {
   return key.includes('/') || key.includes('\\');
@@ -94,6 +106,7 @@ async function pushDraft(connectionId: string, key: string, text: string, doc: J
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
+      ...(connectionId !== 'local' ? { throwOnHttpError: false } : {}),
     });
     if (connectionId !== 'local') recordRemoteResponse(connectionId, response);
   } catch (err) {
@@ -124,18 +137,24 @@ export async function hydrateInputDrafts(): Promise<void> {
   if ((mode.mode !== 'remote' && mode.mode !== 'probe-once') || !mode.connectionId) return;
   let data: any = null;
   try {
-    const res = await hanaFetch(`/api/input-drafts?surface=${resolveWorkspaceUiSurface()}`);
-    if (mode.connectionId !== 'local' && !recordRemoteResponse(mode.connectionId, res)) return;
+    const res = await hanaFetch(`/api/input-drafts?surface=${resolveWorkspaceUiSurface()}`, {
+      ...(mode.connectionId !== 'local' ? { throwOnHttpError: false } : {}),
+    });
+    if (mode.connectionId !== 'local' && classifyInputDraftResponse(res) !== 'supported') {
+      recordRemoteResponse(mode.connectionId, res);
+      return;
+    }
     data = await res.json().catch(() => null);
   } catch (err) {
     if (mode.connectionId !== 'local') featureSessions.recordTransientFailure(mode.connectionId, 'input-drafts');
     console.warn('[input-drafts] hydrate failed:', err);
     return;
   }
-  if (!data || typeof data !== 'object') {
+  if (!isInputDraftHydratePayload(data)) {
     if (mode.connectionId !== 'local') featureSessions.recordTransientFailure(mode.connectionId, 'input-drafts');
     return;
   }
+  if (mode.connectionId !== 'local') featureSessions.recordSupported(mode.connectionId, 'input-drafts');
   const current = useStore.getState();
   const drafts = { ...current.drafts };
   const draftDocs = { ...current.draftDocs };
