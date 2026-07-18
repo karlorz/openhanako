@@ -20,13 +20,16 @@ import {
   executeReinitDataRestore,
   executeUpgradePlan,
   inspectReinitDataBackups,
+  inspectServerStatus,
   loadReinitDataPlan,
+  parseInstalledReleaseDirectory,
   probeInstallActivationState,
   resolveHanaDataRoot,
   resolveLinuxAsset,
   resolvePrivilegeModel,
   resolveRelease,
   runInstall,
+  runStatus,
   selectServerAsset,
   runUpgrade,
   summarizeBackupRequiredState,
@@ -59,6 +62,152 @@ const metadata = {
 };
 
 describe("install-server upgrade planner", () => {
+  it("parses only exact fork release directory names", () => {
+    expect(parseInstalledReleaseDirectory("v0.346.18-karlorz.1-linux-arm64")).toEqual({
+      tag: "v0.346.18-karlorz.1",
+      runtimeVersion: "0.346.18",
+      platform: "linux",
+      arch: "arm64",
+    });
+    expect(parseInstalledReleaseDirectory("v0.346.18-karlorz.12-linux-x64")?.arch).toBe("x64");
+    expect(parseInstalledReleaseDirectory("v0.346.18-linux-arm64")).toBeNull();
+    expect(parseInstalledReleaseDirectory("v0.346.18-karlorz.1-linux-arm64-custom")).toBeNull();
+  });
+
+  it("inspects installed status without root or mutation", async () => {
+    const mutations = [];
+    const report = await inspectServerStatus({
+      paths: { currentLink: "/opt/hanaagent/current" },
+      platform: "linux",
+      arch: "arm64",
+      now: () => new Date("2026-07-18T12:00:00.000Z"),
+      fsImpl: {
+        lstatSync: () => ({ isSymbolicLink: () => true }),
+        readlinkSync: () => "/opt/hanaagent/releases/v0.346.18-karlorz.1-linux-arm64",
+        realpathSync: () => "/opt/hanaagent/releases/v0.346.18-karlorz.1-linux-arm64",
+        readFileSync: () => { const error = new Error("missing"); error.code = "ENOENT"; throw error; },
+        writeFileSync: (...args) => mutations.push(["write", ...args]),
+        renameSync: (...args) => mutations.push(["rename", ...args]),
+        unlinkSync: (...args) => mutations.push(["unlink", ...args]),
+        symlinkSync: (...args) => mutations.push(["symlink", ...args]),
+      },
+      run: async (_command, args) => {
+        if (args[0] === "is-active") return { status: 0, stdout: "active\n", stderr: "" };
+        if (args[0] === "is-enabled") return { status: 0, stdout: "enabled\n", stderr: "" };
+        return { status: 0, stdout: "1234\n", stderr: "" };
+      },
+    });
+
+    expect(report).toMatchObject({
+      kind: "install-server-status-report",
+      schemaVersion: 1,
+      observedAt: "2026-07-18T12:00:00.000Z",
+      installState: "installed",
+      installedRelease: {
+        tag: "v0.346.18-karlorz.1",
+        runtimeVersion: "0.346.18",
+        platform: "linux",
+        arch: "arm64",
+        evidenceSource: "current-symlink",
+      },
+      service: { active: "active", enabled: "enabled", mainPid: "1234" },
+      assessment: { core: { status: "not-assessed" } },
+    });
+    expect(report.plan.kind).toBe("install-server-status-plan");
+    expect(mutations).toEqual([]);
+  });
+
+  it.each([
+    ["absent", () => { const error = new Error("missing"); error.code = "ENOENT"; throw error; }],
+    ["broken-link", () => ({ isSymbolicLink: () => true })],
+  ])("returns structured %s install state", async (expectedState, lstatSync) => {
+    const report = await inspectServerStatus({
+      fsImpl: {
+        lstatSync,
+        readlinkSync: () => "/missing/release",
+        realpathSync: () => { const error = new Error("missing"); error.code = "ENOENT"; throw error; },
+        readFileSync: () => { const error = new Error("missing"); error.code = "ENOENT"; throw error; },
+      },
+      run: async () => ({ status: 1, stdout: "", stderr: "systemd unavailable" }),
+    });
+    expect(report.installState).toBe(expectedState);
+    expect(report.service).toEqual({ active: null, enabled: null, mainPid: null });
+    expect(report.assessment.core.status).toBe("not-assessed");
+  });
+
+  it("checks releases only when explicitly requested", async () => {
+    let releaseCalls = 0;
+    const dependencies = {
+      fsImpl: {
+        lstatSync: () => ({ isSymbolicLink: () => true }),
+        readlinkSync: () => "/opt/hanaagent/releases/v0.346.18-karlorz.1-linux-arm64",
+        realpathSync: () => "/opt/hanaagent/releases/v0.346.18-karlorz.1-linux-arm64",
+        readFileSync: () => { const error = new Error("missing"); error.code = "ENOENT"; throw error; },
+      },
+      run: async () => ({ status: 1, stdout: "", stderr: "not found" }),
+      loadRelease: async () => {
+        releaseCalls += 1;
+        return { status: "unavailable", checkedAt: "2026-07-18T12:00:00.000Z", source: "none", stale: false, release: null, errorCode: "offline", reasonCodes: ["offline"] };
+      },
+    };
+
+    await runStatus(["--json"], dependencies);
+    expect(releaseCalls).toBe(0);
+    const checked = await runStatus(["--check-updates", "--json"], dependencies);
+    expect(releaseCalls).toBe(1);
+    expect(checked.assessment.reasonCodes).toContain("offline");
+  });
+
+  it("reports mismatched symlink and embedded build identity", async () => {
+    const report = await inspectServerStatus({
+      fsImpl: {
+        lstatSync: () => ({ isSymbolicLink: () => true }),
+        readlinkSync: () => "/opt/hanaagent/releases/v0.346.18-karlorz.1-linux-arm64",
+        realpathSync: () => "/opt/hanaagent/releases/v0.346.18-karlorz.1-linux-arm64",
+        readFileSync: () => JSON.stringify({ runtimeVersion: "0.346.18", releaseTag: "v0.346.18-karlorz.2" }),
+      },
+      run: async () => ({ status: 1, stdout: "", stderr: "not found" }),
+    });
+    expect(report.assessment.reasonCodes).toContain("installed_release_evidence_mismatch");
+  });
+
+  it("recommends only a channel-correct dry-run when a host asset is eligible", async () => {
+    const report = await inspectServerStatus({
+      platform: "linux",
+      arch: "arm64",
+      checkUpdates: true,
+      fsImpl: {
+        lstatSync: () => ({ isSymbolicLink: () => true }),
+        readlinkSync: () => "/opt/hanaagent/releases/v0.346.18-karlorz.1-linux-arm64",
+        realpathSync: () => "/opt/hanaagent/releases/v0.346.18-karlorz.1-linux-arm64",
+        readFileSync: () => { const error = new Error("missing"); error.code = "ENOENT"; throw error; },
+      },
+      run: async () => ({ status: 1, stdout: "", stderr: "not found" }),
+      loadRelease: async () => ({
+        status: "ready",
+        checkedAt: "2026-07-18T12:00:00.000Z",
+        source: "online",
+        stale: false,
+        errorCode: null,
+        reasonCodes: [],
+        release: {
+          tag: "v0.357.17-karlorz.1",
+          runtimeVersion: "0.357.17",
+          forkRevision: 1,
+          prerelease: true,
+          publishedAt: null,
+          releaseUrl: null,
+          assets: [{ platform: "linux", arch: "arm64", name: "server.tar.gz", url: "https://example.test/server.tar.gz", checksumName: "server.tar.gz.sha256", checksumUrl: "https://example.test/server.tar.gz.sha256" }],
+          compatibilityManifestName: null,
+          featureContracts: null,
+          manifestGitSha: null,
+          reasonCodes: [],
+        },
+      }),
+    });
+    expect(report.assessment.deployability.status).toBe("eligible");
+    expect(report.recommendedDryRunCommand).toBe("install-server upgrade --version v0.357.17-karlorz.1 --channel prerelease --dry-run");
+  });
   it("selects the linux-arm64 release asset for arm64 hosts", () => {
     expect(resolveLinuxAsset(metadata, { platform: "linux", arch: "arm64" })).toMatchObject({
       name: "hanaagent-server-v0.400.0-linux-arm64.tar.gz",
