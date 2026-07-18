@@ -497,10 +497,12 @@ export function AccessTab() {
                 <span>{t('settings.access.remoteInstalledRelease')}</span>
                 <strong>{assessment?.build.releaseTag || t('settings.access.remoteReleaseIdentityUnverified')}</strong>
               </div>
-              <div className={styles['access-status-item']}>
-                <span>{t('settings.access.remoteRecommendedRelease')}</span>
-                <strong data-server-update-target="true">{assessment?.freshness.recommendedReleaseTag || remoteUnknown}</strong>
-              </div>
+              {assessment?.freshness.status === 'update-recommended' && (
+                <div className={styles['access-status-item']}>
+                  <span>{t('settings.access.remoteRecommendedRelease')}</span>
+                  <strong data-server-update-target="true">{assessment.freshness.recommendedReleaseTag || remoteUnknown}</strong>
+                </div>
+              )}
               <div className={styles['access-status-item']}>
                 <span>{t('settings.access.remoteDesktopVersion')}</span>
                 <strong>{desktopVersion || remoteUnknown}</strong>
