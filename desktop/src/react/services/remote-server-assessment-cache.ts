@@ -174,7 +174,7 @@ function defaultStorage(): AssessmentStorage | null {
   }
 }
 
-function readEnvelope(storage: AssessmentStorage | null): PersistedAssessmentEnvelope {
+function readEnvelope(storage: AssessmentStorage | null, onlyConnectionId?: string): PersistedAssessmentEnvelope {
   if (!storage) return { schemaVersion: 1, byConnectionId: {} };
   try {
     const raw = storage.getItem(STORAGE_KEY);
@@ -184,7 +184,10 @@ function readEnvelope(storage: AssessmentStorage | null): PersistedAssessmentEnv
       return { schemaVersion: 1, byConnectionId: {} };
     }
     const byConnectionId: Record<string, RemoteServerAssessment> = {};
-    for (const [connectionId, candidate] of Object.entries(parsed.byConnectionId)) {
+    const entries: Array<[string, unknown]> = onlyConnectionId
+      ? [[onlyConnectionId, parsed.byConnectionId[onlyConnectionId]]]
+      : Object.entries(parsed.byConnectionId);
+    for (const [connectionId, candidate] of entries) {
       const assessment = sanitizeRemoteServerAssessment(candidate);
       if (assessment?.connectionId === connectionId) byConnectionId[connectionId] = assessment;
     }
@@ -195,7 +198,7 @@ function readEnvelope(storage: AssessmentStorage | null): PersistedAssessmentEnv
 }
 
 export function readRemoteServerAssessment(connectionId: string, options: CacheOptions = {}): RemoteServerAssessment | null {
-  const assessment = readEnvelope(options.storage ?? defaultStorage()).byConnectionId[connectionId] ?? null;
+  const assessment = readEnvelope(options.storage ?? defaultStorage(), connectionId).byConnectionId[connectionId] ?? null;
   if (!assessment) return null;
   const assessedAt = Date.parse(assessment.assessedAt);
   const now = options.now?.() ?? Date.now();

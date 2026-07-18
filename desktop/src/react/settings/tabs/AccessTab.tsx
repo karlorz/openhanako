@@ -334,6 +334,7 @@ export function AccessTab() {
   }, [remoteServerKey, remoteServerUrl, showToast]);
 
   const prepareAnotherRemoteServer = useCallback(() => {
+    useSettingsStore.getState().clearRemoteServerAssessment();
     setRemoteServerUrl('');
     setRemoteServerKey('');
   }, []);
