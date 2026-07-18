@@ -111,7 +111,9 @@ function assessTransport(input, declaration) {
     return {
       status: "legacy-query-token",
       reportedTicketContractVersion: reported,
-      reasonCodes: ["websocket_ticket_not_confirmed"],
+      reasonCodes: declaration.recognized && declaration.complete
+        ? ["websocket_ticket_contract_missing"]
+        : ["websocket_ticket_not_confirmed"],
     };
   }
   if (input.evidenceSource === "installer") {
@@ -425,9 +427,27 @@ function applyRemoteFeatureObservation(assessment, observation) {
   return next;
 }
 
+function applyRemoteTransportObservation(assessment, observation) {
+  if (!isRecord(assessment) || assessment.schemaVersion !== 1 || !isRecord(observation)) return assessment;
+  if (observation.status !== "ticket-ready" && observation.status !== "legacy-query-token") return assessment;
+  const reasonCode = stringOrNull(observation.reasonCode);
+  const next = {
+    ...assessment,
+    transport: {
+      ...assessment.transport,
+      status: observation.status,
+      reasonCodes: reasonCode ? [reasonCode] : [],
+    },
+  };
+  next.reasonCodes = collectAssessmentReasonCodes(next);
+  next.summary = summarizeAssessment(next);
+  return next;
+}
+
 module.exports = {
   REMOTE_INPUT_DRAFT_FEATURE_REQUIREMENTS,
   applyRemoteFeatureObservation,
+  applyRemoteTransportObservation,
   assessRemoteServer,
   compareCanonicalRuntimeVersions,
   parseCanonicalRuntimeVersion,
