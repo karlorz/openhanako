@@ -693,6 +693,24 @@ describe('AccessTab', () => {
     expect(screen.getByText(expectedKey)).toBeInTheDocument();
   });
 
+  it('does not present an older catalog release as an update target for an ahead or custom server', async () => {
+    const assessment = remoteAssessment();
+    assessment.freshness.status = 'ahead-or-custom';
+    assessment.freshness.recommendedReleaseTag = 'v0.357.17-karlorz.1';
+    Object.assign(mockState, {
+      serverConnections: { local: localConnection, [remoteConnection.connectionId]: remoteConnection },
+      activeServerConnectionId: remoteConnection.connectionId,
+      activeServerConnection: remoteConnection,
+      remoteServerAssessment: assessment,
+    });
+    const { AccessTab } = await import('../../settings/tabs/AccessTab');
+
+    render(<AccessTab />);
+
+    expect(screen.queryByText('v0.357.17-karlorz.1', { selector: '[data-server-update-target="true"]' })).not.toBeInTheDocument();
+    expect(screen.queryByText('settings.access.remoteRecommendedRelease')).not.toBeInTheDocument();
+  });
+
   it('offers only read-only assessment actions and copies sanitized diagnostics', async () => {
     Object.assign(mockState, {
       serverConnections: { local: localConnection, [remoteConnection.connectionId]: remoteConnection },

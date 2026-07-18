@@ -123,6 +123,28 @@ describe("remote server release loader", () => {
     });
   });
 
+  it("times out when response headers arrive but the body stalls", async () => {
+    vi.useFakeTimers();
+    let requestSignal: AbortSignal | undefined;
+    const stalledResponse = response([]);
+    stalledResponse.text = vi.fn(() => new Promise<string>((_resolve, reject) => {
+      requestSignal?.addEventListener("abort", () => reject(Object.assign(new Error("aborted"), { name: "AbortError" })));
+    }));
+    const fetchImpl = vi.fn((_url: string, options: { signal?: AbortSignal }) => {
+      requestSignal = options.signal;
+      return Promise.resolve(stalledResponse);
+    });
+    const load = createRemoteServerReleaseLoader({ fetchImpl: fetchImpl as unknown as typeof fetch, now: () => 1_000 });
+    const pending = load();
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    await expect(pending).resolves.toMatchObject({
+      status: "unavailable",
+      source: "none",
+      errorCode: "release_catalog_timeout",
+    });
+  });
+
   it("rejects a combined release body over the configured bound", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(response(" ".repeat(2_097_153)));
     const load = createRemoteServerReleaseLoader({ fetchImpl, now: () => 1_000 });
