@@ -6,6 +6,7 @@ import {
   DIGEST_HISTORY_SCHEMA_VERSION,
   assertValidReleaseDigest,
   assertValidReleaseDigestHistory,
+  releaseTagToProductVersion,
 } from "./release-digest-schema.mjs";
 
 function parseArgs(argv = process.argv.slice(2), env = process.env) {
@@ -37,7 +38,7 @@ Validates the committed release digest before CI uploads it as a release asset.
 }
 
 function tagToVersion(tag) {
-  return tag.startsWith("v") ? tag.slice(1) : tag;
+  return releaseTagToProductVersion(tag);
 }
 
 export function validateDigestForTag(digest, tag) {
