@@ -26,7 +26,7 @@ import {
   resolveServerConnection,
   type ServerConnection,
 } from './server-connection';
-import { applyRemoteTransportObservation } from '../../../../shared/remote-server-assessment.cjs';
+import { applyRemoteTransportObservation } from '../../../../shared/remote-server-assessment';
 import { AppError } from '../../../../shared/errors.ts';
 import { errorBus } from '../../../../shared/error-bus.ts';
 
