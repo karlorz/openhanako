@@ -10,7 +10,7 @@ import WebSocket from "ws";
 import remoteServerAssessmentModule from "../shared/remote-server-assessment.cjs";
 import remoteServerReleaseLoaderModule from "../shared/remote-server-release-loader.cjs";
 
-const { assessRemoteServer } = remoteServerAssessmentModule;
+const { assessRemoteServer, REMOTE_INPUT_DRAFT_FEATURE_REQUIREMENTS } = remoteServerAssessmentModule;
 const { createRemoteServerReleaseLoader } = remoteServerReleaseLoaderModule;
 
 export const STORAGE_KEY = "hana-server-connections-v1";
@@ -272,13 +272,7 @@ export function buildSmokeReport({ verification = null, releaseCheck = null, ass
       runtimeFacts: identity.runtimeFacts || null,
     } : null,
     releaseCheck,
-    featureRequirements: [{
-      id: "input-drafts",
-      contract: "input.drafts",
-      minVersion: 1,
-      unknownPolicy: "fallback",
-      fallback: "memory-only",
-    }],
+    featureRequirements: REMOTE_INPUT_DRAFT_FEATURE_REQUIREMENTS,
   });
   const environmentStatus = !releaseCheck || releaseCheck.status !== "ready"
     ? "unknown"
@@ -855,14 +849,14 @@ export async function main(argv = process.argv.slice(2)) {
     await restartAppWithDebugging(options);
   }
 
+  const releaseCheckPromise = options.verify
+    ? createRemoteServerReleaseLoader()()
+    : Promise.resolve(null);
   const result = await resetRendererStorage(options);
   const verification = options.verify
     ? await delay(RELOAD_SETTLE_MS).then(() => waitForRendererConnectionVerification(options))
     : null;
-  let releaseCheck = null;
-  if (options.verify) {
-    releaseCheck = await createRemoteServerReleaseLoader()();
-  }
+  const releaseCheck = await releaseCheckPromise;
   const report = buildSmokeReport({ verification, releaseCheck, reset: result });
   console.log(JSON.stringify(report, null, 2));
   return report.functional.status === "fail" ? 1 : 0;
