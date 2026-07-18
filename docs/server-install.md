@@ -111,6 +111,14 @@ Five server-bundle assets, one per target:
 
 Each tarball is produced by `scripts/pack-server-bundle.mjs` from the matching `dist-server/<os>-<arch>/` build output. The asset's sha256 is computed at pack time and published as a same-name `.sha256` sidecar used by `install-server upgrade` to verify the download before extraction. The release verify gate fails the release if any tarball or sidecar is missing.
 
+Fork releases also publish `hanaagent-server-compatibility-TAG.json`. This
+manifest binds the exact fork tag and source commit to the complete declared
+server feature contracts and to checksum-paired bundle names. It enables
+feature-specific upgrade claims; it does not replace the bundle sidecar, and
+the installer still verifies the downloaded archive against that sidecar
+before activation. `release-digest.v1.json` remains separate Desktop release
+notes metadata and is not a server compatibility manifest.
+
 ## Staging And Build Space
 
 The supported install and upgrade path is to consume tagged GitHub release
