@@ -19,6 +19,16 @@ export const DIGEST_KINDS = ["feature", "fix", "improvement", "migration"];
 export const DIGEST_IMPORTANCE = ["high", "medium", "low"];
 export const DIGEST_SOURCE_TYPES = ["commit", "release-notes", "pull-request", "issue"];
 
+/**
+ * Release tags identify fork revisions, while digest versions identify the
+ * installed product version used by the desktop announcement history.
+ */
+export function releaseTagToProductVersion(tag) {
+  const normalized = String(tag || "").trim().replace(/^v/, "");
+  const forkMatch = /^(\d+\.\d+\.\d+)-karlorz\.\d+$/.exec(normalized);
+  return forkMatch ? forkMatch[1] : normalized;
+}
+
 const localizedTextSchema = {
   type: "object",
   additionalProperties: false,

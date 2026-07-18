@@ -3,152 +3,470 @@
   "entries": [
     {
       "schemaVersion": 1,
-      "tag": "v0.407.15",
+      "tag": "v0.407.15-karlorz.1",
       "version": "0.407.15",
-      "previousTag": "v0.407.8",
-      "generatedAt": "2026-07-17T05:33:51.000Z",
+      "previousTag": "v0.407.15",
+      "generatedAt": "2026-07-18T22:52:10.995Z",
       "noUserFacingChanges": false,
       "summary": {
-        "zh": "本版集中加固从 stable 升级到最新版的兼容性：会在接收新输入前刷新已变化的工具快照，保留历史会话引用的 Codex OAuth 模型，修复旧供应商模型元数据，并迁移钉钉旧版应用认证与项目技能发现策略；同时移除频道中已经失效的私信工具提示。",
-        "en": "This release hardens upgrades from stable: changed tool snapshots are refreshed before new input, Codex OAuth models referenced by existing data are preserved, legacy provider metadata is repaired, and older DingTalk application authentication and project skill-discovery policies are migrated. It also removes obsolete direct-message tool guidance from channels."
+        "zh": "本次更新强化远程服务器状态评估与设置展示，修复局域网连接/WebSocket 鉴权与图片消息回放问题，并提升草稿、附件预览与服务器安装升级的可靠性。",
+        "en": "This update improves remote server assessment in Settings, fixes LAN connect/WebSocket auth and image-message replay issues, and makes drafts, attachment previews, and server install/upgrade more reliable."
       },
       "counts": {
-        "feature": 0,
-        "fix": 2,
-        "improvement": 0,
-        "migration": 4
+        "feature": 5,
+        "fix": 5,
+        "improvement": 2,
+        "migration": 0
       },
       "source": {
         "owner": "liliMozi",
         "repo": "openhanako",
-        "commitRange": "v0.407.8..v0.407.15",
-        "releaseUrl": "https://github.com/liliMozi/openhanako/releases/tag/v0.407.15",
+        "commitRange": "v0.407.15..HEAD",
+        "releaseUrl": "https://github.com/liliMozi/openhanako/releases/tag/v0.407.15-karlorz.1",
         "releaseNotes": ""
       },
       "items": [
         {
-          "id": "refresh-frozen-tool-snapshots",
+          "id": "remote-server-assessment",
+          "kind": "feature",
+          "importance": "high",
+          "title": {
+            "zh": "设置中可查看远程服务器评估",
+            "en": "Remote server assessment in Settings"
+          },
+          "summary": {
+            "zh": "连接远程服务器后，可在设置中查看基于已验证清单与运行证据的服务器状态与兼容性评估。",
+            "en": "When connected to a remote server, Settings can show status and compatibility assessment based on verified manifests and runtime evidence."
+          },
+          "details": [
+            {
+              "zh": "支持按连接范围协调并保留评估结果",
+              "en": "Assessments are coordinated per connection and retained in the app stores"
+            },
+            {
+              "zh": "可检查已安装发行版状态并消费服务器兼容性清单",
+              "en": "Inspects installed release status and consumes server compatibility manifests"
+            }
+          ],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "8a4a7a05a291",
+              "title": "feat(settings): show remote server assessment"
+            },
+            {
+              "type": "commit",
+              "ref": "290147c217e4",
+              "title": "feat(remote): assess server evidence truthfully"
+            },
+            {
+              "type": "commit",
+              "ref": "a1f4d3584005",
+              "title": "feat(release): add server compatibility manifest"
+            },
+            {
+              "type": "commit",
+              "ref": "3c2711f110d7",
+              "title": "feat(server): inspect installed release status"
+            }
+          ]
+        },
+        {
+          "id": "lan-connect-ws-auth",
           "kind": "fix",
           "importance": "high",
           "title": {
-            "zh": "输入前刷新变化的工具快照",
-            "en": "Refresh changed tool snapshots before input"
+            "zh": "局域网连接与 WebSocket 鉴权更可靠",
+            "en": "More reliable LAN connect and WebSocket auth"
           },
           "summary": {
-            "zh": "插件、MCP 或内置工具发生变化后，已有会话会在接收下一条输入前完成刷新，避免继续使用过期工具定义。",
-            "en": "Existing sessions now refresh changed plugin, MCP, and built-in tool snapshots before accepting the next input instead of continuing with stale definitions."
+            "zh": "修复新局域网地址因 CSP 无法完成首次校验、以及 WebSocket 握手 403 的问题，连接票据也优先并带回落。",
+            "en": "Fixes first-time LAN connect blocked by CSP and WebSocket 403 handshakes; connection tickets are preferred with a LAN fallback."
           },
-          "details": [],
+          "details": [
+            {
+              "zh": "主进程预校验新远程地址，避免渲染进程 CSP 鸡生蛋问题",
+              "en": "Main-process pre-validation for new remote URLs avoids renderer CSP chicken-and-egg failures"
+            },
+            {
+              "zh": "局域网 WebSocket 允许使用 query token 完成鉴权",
+              "en": "LAN WebSocket connections may authenticate with query tokens"
+            },
+            {
+              "zh": "WebSocket 优先使用票据，并支持局域网回退",
+              "en": "WebSocket prefers tickets and can fall back on LAN"
+            }
+          ],
           "sources": [
             {
               "type": "commit",
-              "ref": "ffff66f63",
-              "title": "fix(sessions): preflight frozen tool drift before input (#2156)"
+              "ref": "c3e7d8ac5131",
+              "title": "fix: main-process pre-validation for LAN connect (CSP bootstrapping)"
+            },
+            {
+              "type": "commit",
+              "ref": "48d63e3f7265",
+              "title": "fix: allow query token auth for LAN WebSocket connections"
+            },
+            {
+              "type": "commit",
+              "ref": "7db6237140b1",
+              "title": "feat(ws): prefer tickets with LAN fallback"
             }
           ]
         },
         {
-          "id": "preserve-codex-oauth-model-references",
-          "kind": "migration",
+          "id": "image-replay-fix",
+          "kind": "fix",
           "importance": "high",
           "title": {
-            "zh": "保留历史数据引用的 Codex OAuth 模型",
-            "en": "Preserve Codex OAuth models referenced by existing data"
+            "zh": "修复图片消息回放失败",
+            "en": "Fix image message replay failures"
           },
           "summary": {
-            "zh": "升级时会扫描现有 Agent、会话、定时任务和频道配置，把仍被引用的官方 Codex OAuth 模型保留在可用列表中。",
-            "en": "Upgrades scan existing agents, sessions, scheduled tasks, and channel settings so referenced official Codex OAuth models remain available."
+            "zh": "已保存的“仅标记”图片回合不再被错误还原成 base64 直传载荷，避免提供商返回 HTTP 400。",
+            "en": "Persisted marker-only image turns no longer rebuild direct base64 image payloads that providers reject with HTTP 400."
           },
-          "details": [],
+          "details": [
+            {
+              "zh": "回放时保留文本标记与附件路径，不再合成直传图片体",
+              "en": "Replay keeps text markers and attachment paths without synthesizing direct image bodies"
+            },
+            {
+              "zh": "同步加固图片回放相关补丁发布路径",
+              "en": "Hardens the image-replay patch release path"
+            }
+          ],
           "sources": [
             {
               "type": "commit",
-              "ref": "c9c30a219",
-              "title": "fix(models): preserve referenced Codex OAuth models on upgrade"
+              "ref": "846ad4bc6a44",
+              "title": "fix(replay): stop synthesizing direct image payloads for persisted marker-only turns"
+            },
+            {
+              "type": "commit",
+              "ref": "9e4fbc658838",
+              "title": "fix(replay): harden image replay patch release"
             }
           ]
         },
         {
-          "id": "repair-provider-model-metadata",
-          "kind": "migration",
-          "importance": "high",
-          "title": {
-            "zh": "修复旧版供应商模型元数据",
-            "en": "Repair legacy provider model metadata"
-          },
-          "summary": {
-            "zh": "升级会先备份供应商目录，再修复不兼容的数字、API、推理和凭证字段；有效模型、排序与自定义信息保持不变。",
-            "en": "The provider catalog is backed up before incompatible numeric, API, reasoning, and credential fields are repaired, while valid models, ordering, and custom metadata stay intact."
-          },
-          "details": [],
-          "sources": [
-            {
-              "type": "commit",
-              "ref": "f1f356fbc",
-              "title": "fix(models): repair incompatible catalog metadata on upgrade"
-            }
-          ]
-        },
-        {
-          "id": "remove-obsolete-channel-dm-guidance",
+          "id": "remote-previews",
           "kind": "fix",
           "importance": "medium",
           "title": {
-            "zh": "移除频道中的失效私信提示",
-            "en": "Remove obsolete direct-message guidance from channels"
+            "zh": "远程附件与技能预览更完整",
+            "en": "Better remote attachment and skill previews"
           },
           "summary": {
-            "zh": "频道不再引导 Agent 调用已经移除的私信工具，避免生成无法执行的操作。",
-            "en": "Channels no longer instruct agents to call a removed direct-message tool, preventing actions that cannot be executed."
+            "zh": "远程会话附件预览可正确保留，并支持由服务器托管的技能预览。",
+            "en": "Remote session attachment previews are preserved, and server-owned skill previews are supported."
           },
-          "details": [],
+          "details": [
+            {
+              "zh": "修复远程会话中附件预览丢失的问题",
+              "en": "Keeps attachment previews available in remote sessions"
+            },
+            {
+              "zh": "支持服务器侧技能预览展示",
+              "en": "Supports server-owned skill preview display"
+            }
+          ],
           "sources": [
             {
               "type": "commit",
-              "ref": "4abdf464f",
-              "title": "fix(channels): remove stale direct-message tool guidance"
+              "ref": "8d9158682dba",
+              "title": "fix: preserve remote session attachment previews"
+            },
+            {
+              "type": "commit",
+              "ref": "0c58184d5d39",
+              "title": "fix(remote): support server-owned skill previews"
             }
           ]
         },
         {
-          "id": "migrate-dingtalk-application-auth",
-          "kind": "migration",
-          "importance": "high",
-          "title": {
-            "zh": "迁移钉钉旧版应用认证",
-            "en": "Migrate legacy DingTalk application authentication"
-          },
-          "summary": {
-            "zh": "从 stable 升级后，既有钉钉应用凭证会明确标记为旧版认证并继续使用对应令牌与发送接口；补齐 corpId 后会自动切换到当前模式。",
-            "en": "Existing DingTalk application credentials are explicitly migrated to legacy authentication with matching token and send endpoints; adding a corpId switches them to the current mode."
-          },
-          "details": [],
-          "sources": [
-            {
-              "type": "commit",
-              "ref": "1fb072d9e",
-              "title": "fix(dingtalk): preserve stable application auth on upgrade"
-            }
-          ]
-        },
-        {
-          "id": "preserve-project-skill-discovery-policy",
-          "kind": "migration",
+          "id": "persist-model-removal",
+          "kind": "fix",
           "importance": "medium",
           "title": {
-            "zh": "保留旧 Agent 的项目技能发现行为",
-            "en": "Preserve project skill discovery for existing agents"
+            "zh": "删除模型后设置会正确保存",
+            "en": "Model removals now persist correctly"
           },
           "summary": {
-            "zh": "旧 Agent 缺少显式设置时会继续发现兼容的项目技能；已经明确开启或关闭的设置保持原样，新建 Agent 的默认策略也不变。",
-            "en": "Existing agents without an explicit setting keep discovering compatible project skills; explicit choices and the default for newly created agents remain unchanged."
+            "zh": "在提供商设置中移除模型后，变更会正确写入并在下次加载时生效。",
+            "en": "Removing a model in provider settings is saved and still applied after reload."
           },
-          "details": [],
+          "details": [
+            {
+              "zh": "修复模型删除未持久化的问题",
+              "en": "Fixes model removal not being persisted"
+            }
+          ],
           "sources": [
             {
               "type": "commit",
-              "ref": "50707271c",
-              "title": "fix(skills): preserve stable project discovery policy"
+              "ref": "9b54670e63f4",
+              "title": "fix(providers): persist model removal"
+            }
+          ]
+        },
+        {
+          "id": "drafts-remote-resilience",
+          "kind": "improvement",
+          "importance": "medium",
+          "title": {
+            "zh": "草稿在远程环境下更稳",
+            "en": "More resilient drafts on remote"
+          },
+          "summary": {
+            "zh": "草稿会按远程能力契约回退内存方案，并忽略过期的 hydrate 会话、遵守远程功能退避。",
+            "en": "Drafts use contract-aware memory fallback, ignore stale hydrate sessions, and honor remote feature backoff."
+          },
+          "details": [
+            {
+              "zh": "在远程能力不可用时使用契约感知的内存回退",
+              "en": "Falls back to contract-aware in-memory drafts when remote features are unavailable"
+            },
+            {
+              "zh": "避免陈旧 hydrate 会话干扰，并尊重远程退避策略",
+              "en": "Ignores stale hydrate sessions and respects remote backoff"
+            }
+          ],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "c3594cdcbd5f",
+              "title": "feat(drafts): use contract-aware memory fallback"
+            },
+            {
+              "type": "commit",
+              "ref": "268ca33609b9",
+              "title": "fix(drafts): ignore stale hydrate sessions"
+            },
+            {
+              "type": "commit",
+              "ref": "fd4f27f8c5d4",
+              "title": "fix(drafts): honor remote feature backoff"
+            }
+          ]
+        },
+        {
+          "id": "install-server-upgrade",
+          "kind": "feature",
+          "importance": "medium",
+          "title": {
+            "zh": "服务器安装与升级更省心",
+            "en": "Easier server install and upgrade"
+          },
+          "summary": {
+            "zh": "install-server 支持全新主机引导，并可通过 GitHub 解析最新或指定版本升级，附带校验与发布资产。",
+            "en": "install-server can bootstrap fresh hosts and resolve latest or pinned upgrades via GitHub, with verification and release assets."
+          },
+          "details": [
+            {
+              "zh": "支持按最新稳定版、指定 tag 或本地 metadata 规划升级",
+              "en": "Plan upgrades from latest stable, a pinned tag, or local metadata"
+            },
+            {
+              "zh": "发布多平台 server-bundle 与 .sha256 校验文件",
+              "en": "Publishes multi-platform server bundles with .sha256 sidecars"
+            },
+            {
+              "zh": "升级默认 dry-run，并校验下载校验和",
+              "en": "Upgrades default to dry-run and verify download checksums"
+            }
+          ],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "29b867aca5d6",
+              "title": "feat(install-server): bootstrap fresh host installs"
+            },
+            {
+              "type": "commit",
+              "ref": "e3ab538059f4",
+              "title": "feat(install-server): upgrade resolves latest/pinned release via GitHub API"
+            },
+            {
+              "type": "commit",
+              "ref": "023b752397e7",
+              "title": "ci: build and publish per-platform server-bundle release assets"
+            },
+            {
+              "type": "commit",
+              "ref": "7e39f39b11e6",
+              "title": "fix(install-server): publish <asset>.sha256 sidecar for release verification"
+            }
+          ]
+        },
+        {
+          "id": "reinit-data-safety",
+          "kind": "feature",
+          "importance": "medium",
+          "title": {
+            "zh": "数据重置前可备份与恢复",
+            "en": "Safer reinit with backup and restore"
+          },
+          "summary": {
+            "zh": "reinit-data 支持 dry-run 规划、确认后执行、完整状态备份与恢复，并尽量保留运行所需数据。",
+            "en": "reinit-data supports dry-run planning, confirmed execution, full-state backup/restore, and preserves operational data where needed."
+          },
+          "details": [
+            {
+              "zh": "重置前可生成并校验备份，失败可回退",
+              "en": "Create and verify backups before reset; restore when needed"
+            },
+            {
+              "zh": "支持列出与检查已有备份",
+              "en": "List and inspect existing backups"
+            },
+            {
+              "zh": "重装/重初始化时保留关键运行与 studio 访问基础数据",
+              "en": "Preserves operational and studio-access foundation data across reinit"
+            }
+          ],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "165181283fd1",
+              "title": "feat: add reinit-data dry-run planner"
+            },
+            {
+              "type": "commit",
+              "ref": "22ba67abba51",
+              "title": "Implement reinit-data backup/confirm/restore flows"
+            },
+            {
+              "type": "commit",
+              "ref": "6726423594a2",
+              "title": "feat(install-server): restore latest operational full-state backup"
+            },
+            {
+              "type": "commit",
+              "ref": "eae58bbd098f",
+              "title": "feat(install-server): preserve operational reinit data"
+            }
+          ]
+        },
+        {
+          "id": "security-hardening",
+          "kind": "improvement",
+          "importance": "medium",
+          "title": {
+            "zh": "连接与安装过程更安全",
+            "en": "Safer connecting and installing"
+          },
+          "summary": {
+            "zh": "加强连接探测的 SSRF 防护、统一 no-referrer 策略，并避免远程插件 iframe 凭证出现在查询 URL 中。",
+            "en": "Hardens connect probing against SSRF, applies a no-referrer policy, and keeps remote plugin iframe credentials out of query URLs."
+          },
+          "details": [
+            {
+              "zh": "连接探测不自动跟随重定向，降低 SSRF 风险",
+              "en": "Connect probing does not follow redirects, reducing SSRF risk"
+            },
+            {
+              "zh": "桌面页与服务端响应使用 Referrer-Policy: no-referrer",
+              "en": "Desktop pages and server responses use Referrer-Policy: no-referrer"
+            },
+            {
+              "zh": "远程插件 iframe 不再通过 query 传递凭证",
+              "en": "Remote plugin iframes no longer put credentials in query strings"
+            }
+          ],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "bc9c3772373f",
+              "title": "SSRF hardening, referrer policy, safer installer"
+            },
+            {
+              "type": "commit",
+              "ref": "ed48ba2452e6",
+              "title": "fix: keep remote plugin iframe credentials out of query URLs"
+            }
+          ]
+        },
+        {
+          "id": "attachment-materialize",
+          "kind": "fix",
+          "importance": "medium",
+          "title": {
+            "zh": "粘贴/上传附件预览更稳定",
+            "en": "More stable paste and upload attachment previews"
+          },
+          "summary": {
+            "zh": "临时上传会先落到会话缓存，粘贴预览在首次发送前也会保留，显示附件更不易失效。",
+            "en": "Temp uploads are materialized into the session cache, and paste previews stay available until first send."
+          },
+          "details": [
+            {
+              "zh": "绝对路径上传会复制到会话文件缓存后再登记",
+              "en": "Absolute upload paths are copied into the session-files cache before registration"
+            },
+            {
+              "zh": "输入区保留粘贴图片的内联预览字节",
+              "en": "Input area keeps inline preview bytes for pasted images"
+            }
+          ],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "723768fc7b6d",
+              "title": "Materialize temp uploads to session cache"
+            }
+          ]
+        },
+        {
+          "id": "tool-file-link-context",
+          "kind": "feature",
+          "importance": "low",
+          "title": {
+            "zh": "工具组文件链接带上会话上下文",
+            "en": "Tool-group file links carry session context"
+          },
+          "summary": {
+            "zh": "工具结果里的文件详情链接会附带会话路径与消息位置，打开内部链接时可完整追溯来源。",
+            "en": "File-detail links in tool results include session path and message location so internal opens resolve with full provenance."
+          },
+          "details": [
+            {
+              "zh": "与流式 Markdown 内容块使用同一套 linkContext 传递方式",
+              "en": "Uses the same linkContext threading already used by streaming markdown content"
+            }
+          ],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "ff2950253808",
+              "title": "feat(desktop): pass session linkContext through ToolGroupBlock file-detail links"
+            }
+          ]
+        },
+        {
+          "id": "release-digest-byok",
+          "kind": "feature",
+          "importance": "low",
+          "title": {
+            "zh": "提供商无关的更新说明（BYOK）",
+            "en": "Provider-neutral release digest (BYOK)"
+          },
+          "summary": {
+            "zh": "新增不绑定特定模型提供商的更新摘要能力，便于在自备密钥场景下生成/展示本次更新内容。",
+            "en": "Adds a provider-neutral release digest path so update notes can be generated/shown in BYOK setups."
+          },
+          "details": [
+            {
+              "zh": "更新摘要流程不再绑定单一提供商",
+              "en": "Release digest flow is no longer tied to a single provider"
+            }
+          ],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "cafdbcb73e68",
+              "title": "feat: add provider-neutral release digest BYOK"
             }
           ]
         }
