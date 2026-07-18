@@ -319,6 +319,39 @@ the release directory and optional embedded `server-build-info.json` disagree, t
 `installed_release_evidence_mismatch` instead of guessing which identity is
 current.
 
+## Desktop Remote Smoke Gates
+
+The desktop smoke helper can require one or more explicit server contracts and
+write short-lived evidence:
+
+```bash
+node scripts/hana-desktop-smoke-helper.mjs --restart --verify \
+  --url http://100.125.173.118:14500 \
+  --require-contract input.drafts@1 \
+  --assessment-out .claude/remote-assessment/latest.json
+```
+
+`--require-contract NAME@VERSION` is repeatable. Names are lowercase dotted
+identifiers and versions are positive integers. A complete server declaration
+at or above the requested version is `satisfied`; a lower or missing entry in
+a complete declaration is `missing`; an incomplete or legacy declaration is
+`unconfirmed`. A valid future compatibility manifest produces
+`deployment-coupled` evidence only. Release freshness never substitutes for a
+contract declaration.
+
+Exit `3` means functional identity/WebSocket verification passed but an
+explicit prerequisite is missing, unconfirmed, or deployment-coupled.
+Functional failure retains exit `1`. With no explicit requirements,
+environment attention remains non-fatal and a functional pass exits `0`. The
+top-level `ok` field remains an alias for functional status.
+
+Evidence defaults to `.claude/remote-assessment/latest.json`. The helper creates
+parent directories and writes the file atomically with mode `0600`; evidence
+expires after 30 minutes. The schema excludes URLs, tokens, credentials,
+authorization/cookie/header data, CDP endpoints, user-data paths, and raw
+localStorage. `websocket.ticket@1` is migration-readiness evidence, not a
+generic LAN core requirement.
+
 ## Failure Policy
 
 - Unsupported OS or architecture: fail before download.
