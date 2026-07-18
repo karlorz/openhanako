@@ -86,6 +86,7 @@ Manual smoke for the remote server:
 1. Connect to `http://100.125.173.118:14500`.
    - To clear `localStorage` and reconnect without retyping a previously saved key, run `node scripts/hana-desktop-smoke-helper.mjs --restart --verify --url http://100.125.173.118:14500`.
    - If the LAN connection has never been saved in this app profile, prefer `HANA_DESKTOP_SMOKE_TOKEN=<device-key>` over `--token` for the first helper run.
+   - A normal `--verify` run always reports two independent results: `functional.status` for identity/WebSocket operation and `environment.status` for server release freshness, feature-contract evidence, and host compatibility. `functional.status: pass` does not mean the Remote Server is current. Environment attention or an unavailable GitHub release lookup remains non-fatal in Phase 1; identity or WebSocket failure still exits nonzero.
 2. Paste/upload an image.
 3. Send it.
 4. Switch chats and return.

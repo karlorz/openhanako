@@ -4,10 +4,12 @@ import * as smokeHelper from "../scripts/hana-desktop-smoke-helper.mjs";
 
 const {
   buildConnectionFromProbe,
+  buildSmokeReport,
   connectionVerificationPassed,
   createRestoredConnectionState,
   extractPersistedConnectionStates,
   normalizeBaseUrl,
+  sanitizeSmokeIdentity,
   summarizePersistedConnectionState,
 } = smokeHelper;
 
@@ -155,6 +157,132 @@ describe("hana desktop smoke helper", () => {
       identityOk: false,
       wsOk: true,
     })).toBe(false);
+  });
+
+  it("sanitizes renderer identity evidence without retaining credentials or unknown fields", () => {
+    const identity = sanitizeSmokeIdentity({
+      connectionKind: "lan",
+      version: "0.346.18",
+      serverProtocol: 3,
+      runtimeBuild: { schemaVersion: 1, runtimeVersion: "0.346.18", releaseTag: null },
+      featureContracts: { schemaVersion: 1, complete: false, entries: { "chat.core": 1 } },
+      runtimeFacts: { platform: "linux", arch: "arm64" },
+      capabilities: ["chat", "resources"],
+      executionBoundary: { kind: "remote_process", serverNodeId: "node", studioId: "studio", workbench: { kind: "server_managed" }, token: "nested-secret" },
+      token: "secret",
+      headers: { Authorization: "Bearer secret" },
+      baseUrl: "http://secret.test",
+      unknown: true,
+    });
+
+    expect(identity).toEqual({
+      connectionKind: "lan",
+      version: "0.346.18",
+      serverProtocol: 3,
+      runtimeBuild: { schemaVersion: 1, runtimeVersion: "0.346.18", releaseTag: null },
+      featureContracts: { schemaVersion: 1, complete: false, entries: { "chat.core": 1 } },
+      runtimeFacts: { platform: "linux", arch: "arm64" },
+      capabilities: ["chat", "resources"],
+      executionBoundary: { kind: "remote_process", serverNodeId: "node", studioId: "studio", workbench: { kind: "server_managed" } },
+    });
+    expect(JSON.stringify(identity)).not.toMatch(/secret|token|authorization|headers|baseUrl/i);
+  });
+
+  it("reports functional pass separately from an outdated environment", () => {
+    const report = buildSmokeReport({
+      verification: {
+        ok: true,
+        baseUrl: "http://100.125.173.118:14500",
+        hasToken: true,
+        identityStatus: 200,
+        identityOk: true,
+        identityError: null,
+        identity: sanitizeSmokeIdentity({ connectionKind: "lan", version: "0.346.18", capabilities: ["chat"] }),
+        wsOk: true,
+      },
+      releaseCheck: {
+        status: "ready",
+        checkedAt: "2026-07-18T12:00:00.000Z",
+        source: "online",
+        stale: false,
+        errorCode: null,
+        reasonCodes: [],
+        release: {
+          tag: "v0.357.17-karlorz.1",
+          runtimeVersion: "0.357.17",
+          forkRevision: 1,
+          prerelease: true,
+          publishedAt: null,
+          releaseUrl: null,
+          assets: [],
+          compatibilityManifestName: null,
+          featureContracts: null,
+          manifestGitSha: null,
+          reasonCodes: [],
+        },
+      },
+      assessedAt: "2026-07-18T12:00:01.000Z",
+    });
+
+    expect(report).toMatchObject({
+      schemaVersion: 2,
+      ok: true,
+      functional: { status: "pass" },
+      environment: {
+        status: "attention",
+        assessment: {
+          core: { status: "ready" },
+          freshness: { status: "update-recommended" },
+        },
+      },
+    });
+  });
+
+  it("keeps release lookup failure non-fatal but functional failure fatal", () => {
+    const verification = {
+      ok: true,
+      hasToken: true,
+      identityStatus: 200,
+      identityOk: true,
+      identityError: null,
+      identity: sanitizeSmokeIdentity({ connectionKind: "lan", version: "0.346.18", capabilities: ["chat"] }),
+      wsOk: true,
+    };
+    const unavailable = buildSmokeReport({
+      verification,
+      releaseCheck: { status: "unavailable", checkedAt: "2026-07-18T12:00:00.000Z", source: "none", stale: false, release: null, errorCode: "offline", reasonCodes: ["offline"] },
+    });
+    expect(unavailable).toMatchObject({ ok: true, functional: { status: "pass" }, environment: { status: "unknown" } });
+
+    const failed = buildSmokeReport({ verification: { ...verification, identityOk: false, wsOk: false } });
+    expect(failed).toMatchObject({ ok: false, functional: { status: "fail" } });
+  });
+
+  it("never places supplied tokens in smoke report JSON or errors", () => {
+    const report = buildSmokeReport({
+      verification: {
+        ok: true,
+        baseUrl: "http://server.test",
+        hasToken: true,
+        identityStatus: 200,
+        identityOk: true,
+        identityError: "request failed",
+        identity: sanitizeSmokeIdentity({ version: "0.346.18", token: "hana_dev_secret" }),
+        wsOk: true,
+      },
+      reset: summarizePersistedConnectionState(JSON.stringify({
+        schemaVersion: 1,
+        serverConnections: { [savedConnection.connectionId]: savedConnection },
+        activeServerConnectionId: savedConnection.connectionId,
+      })),
+    });
+    expect(JSON.stringify(report)).not.toContain("hana_dev_secret");
+  });
+
+  it("keeps the Phase 1 LAN query-token WebSocket verification path", () => {
+    const expression = smokeHelper.rendererVerificationExpression();
+    expect(expression).toContain("connection.wsUrl + '/ws?token=' + encodeURIComponent(connection.token)");
+    expect(expression).not.toContain("require-contract");
   });
 
   it("retries renderer connection verification while the reloaded app settles", async () => {
