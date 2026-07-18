@@ -64,6 +64,8 @@ function releaseCheck(): RemoteServerReleaseCheck {
       compatibilityManifestName: null,
       featureContracts: null,
       manifestGitSha: null,
+      manifestStatus: "missing",
+      manifestErrorCode: null,
       reasonCodes: ["release_publication_policy_drift"],
     },
   };

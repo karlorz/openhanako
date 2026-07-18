@@ -10,6 +10,7 @@ export type {
 export const {
   compareForkReleaseTags,
   normalizeGithubServerRelease,
+  normalizeServerCompatibilityManifest,
   normalizeServerPlatformArch,
   parseForkReleaseTag,
   parseServerAssetName,

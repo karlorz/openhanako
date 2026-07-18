@@ -125,6 +125,22 @@ function assessFeatures(input, declaration) {
   if (requirements.length === 0) {
     return { summary: "not-assessed", items: [] };
   }
+  const release = input.releaseCheck?.status === "ready" && isRecord(input.releaseCheck.release)
+    ? input.releaseCheck.release
+    : null;
+  const upgradeEvidenceFor = (requirement) => {
+    if (!release || release.manifestStatus !== "valid" || typeof release.manifestGitSha !== "string") return null;
+    const targetDeclaration = normalizeContractDeclaration(release.featureContracts);
+    const targetVersion = targetDeclaration.recognized && targetDeclaration.complete
+      ? targetDeclaration.entries[requirement.contract]
+      : null;
+    if (!Number.isSafeInteger(targetVersion) || targetVersion < requirement.minVersion) return null;
+    return {
+      targetTag: release.tag,
+      targetContractVersion: targetVersion,
+      manifestGitSha: release.manifestGitSha,
+    };
+  };
   const items = requirements.map((requirement) => {
     const reportedVersion = declaration.recognized && Number.isSafeInteger(declaration.entries[requirement.contract])
       ? declaration.entries[requirement.contract]
@@ -140,7 +156,7 @@ function assessFeatures(input, declaration) {
         fallback: supported ? null : requirement.fallback ?? null,
         evidenceSource: "declared",
         reasonCode: supported ? null : "feature_contract_version_too_low",
-        upgradeEvidence: null,
+        upgradeEvidence: supported ? null : upgradeEvidenceFor(requirement),
       };
     }
     if (declaration.recognized && declaration.complete) {
@@ -153,7 +169,7 @@ function assessFeatures(input, declaration) {
         fallback: requirement.fallback ?? null,
         evidenceSource: "declared",
         reasonCode: "feature_contract_missing",
-        upgradeEvidence: null,
+        upgradeEvidence: upgradeEvidenceFor(requirement),
       };
     }
     return {
@@ -165,7 +181,7 @@ function assessFeatures(input, declaration) {
       fallback: requirement.fallback ?? null,
       evidenceSource: "legacy",
       reasonCode: "feature_contract_unknown",
-      upgradeEvidence: null,
+      upgradeEvidence: upgradeEvidenceFor(requirement),
     };
   });
   return { summary: summarizeFeatures(items), items };
