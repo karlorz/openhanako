@@ -247,6 +247,37 @@ describe('server connection helpers', () => {
     expect(buildConnectionWsUrl(remote, '/ws')).toBe('wss://hana.example/ws');
   });
 
+  it('keeps additive server assessment evidence out of persisted connection state', () => {
+    const connection = createDeviceServerConnection({
+      baseUrl: 'http://192.168.1.20:14500',
+      credential: 'device-secret',
+      identity: {
+        connectionKind: 'lan',
+        serverId: 'server_evidence',
+        serverNodeId: 'node_evidence',
+        studioId: 'studio_evidence',
+        label: 'Evidence Server',
+        runtimeBuild: {
+          schemaVersion: 1,
+          runtimeVersion: '0.407.15',
+          releaseTag: 'v0.407.15-karlorz.1',
+          gitSha: '0123456789abcdef0123456789abcdef01234567',
+          sourceRepository: 'karlorz/openhanako',
+        },
+        featureContracts: {
+          schemaVersion: 1,
+          complete: true,
+          entries: { 'chat.core': 1, 'input.drafts': 1, 'websocket.ticket': 1 },
+        },
+        runtimeFacts: { platform: 'linux', arch: 'arm64' },
+      },
+    });
+
+    expect(connection).not.toHaveProperty('runtimeBuild');
+    expect(connection).not.toHaveProperty('featureContracts');
+    expect(connection).not.toHaveProperty('runtimeFacts');
+  });
+
   it('identifies the local owner connection by the same contract as server route security', () => {
     const local = createLocalServerConnection({
       serverPort: '3210',

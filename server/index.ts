@@ -62,6 +62,9 @@ import { registerTaskRegistryBusHandlers } from "./task-bus-handlers.ts";
 import { registerDeferredResultBusHandlers } from "./deferred-result-bus-handlers.ts";
 import { resolveHanakoHome } from "../shared/hana-runtime-paths.ts";
 import { DATA_EPOCH } from "../shared/contract-versions.cjs";
+import { SERVER_FEATURE_CONTRACTS } from "../shared/remote-feature-contracts.ts";
+import { normalizeServerPlatformArch } from "../shared/remote-server-release-catalog.ts";
+import { normalizeServerBuildInfo, readServerBuildInfo } from "../shared/server-build-info.ts";
 import { describeForeignServerBlock, isForeignServerBlocking, probeServerInfo } from "../shared/server-info-probe.cjs";
 import { coordinateDataEpochStartup, describeDataEpochStartupBlock } from "../core/data-epoch-coordinator.ts";
 import { createDataEpochCheckpointProvider } from "../core/data-epoch-checkpoint-provider.ts";
@@ -391,7 +394,25 @@ export async function startServer(root: CompositionRoot = {}): Promise<void> {
 
   // ── 初始化引擎 ──
   log.log("② 创建 HanaEngine...");
-  const engine: any = new HanaEngine({ hanakoHome, productDir, appVersion } as any);
+  const runtimeFacts = normalizeServerPlatformArch(process.platform, process.arch);
+  const packagedRuntimeBuild = readServerBuildInfo({ rootDir: fromRoot(".") });
+  const runtimeBuild = packagedRuntimeBuild || normalizeServerBuildInfo({
+    schemaVersion: 1,
+    runtimeVersion: appVersion,
+    releaseTag: null,
+    gitSha: null,
+    sourceRepository: null,
+    platform: runtimeFacts?.platform ?? null,
+    arch: runtimeFacts?.arch ?? null,
+  });
+  const engine: any = new HanaEngine({
+    hanakoHome,
+    productDir,
+    appVersion,
+    runtimeBuild,
+    featureContracts: SERVER_FEATURE_CONTRACTS,
+    runtimeFacts,
+  } as any);
   log.log("② HanaEngine 构造完成，开始 init...");
   await engine.init((msg: any) => log.log(msg));
   log.log("② engine.init 完成");

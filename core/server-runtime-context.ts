@@ -1,5 +1,8 @@
 import { loadServerIdentity } from "./server-identity.ts";
 import { createRuntimeExecutionBoundary } from "./execution-boundary.ts";
+import { normalizeFeatureContracts } from "../shared/remote-feature-contracts.ts";
+import { normalizeServerBuildInfo } from "../shared/server-build-info.ts";
+import { normalizeServerPlatformArch } from "../shared/remote-server-release-catalog.ts";
 
 const LOCAL_CAPABILITIES = ["chat", "resources", "tools"];
 
@@ -14,8 +17,22 @@ function deepFreeze(value) {
   return Object.freeze(value);
 }
 
-export function createServerRuntimeContext({ hanakoHome, appVersion = "?" }) {
+export function createServerRuntimeContext({
+  hanakoHome,
+  appVersion = "?",
+  runtimeBuild = null,
+  featureContracts = null,
+  runtimeFacts = null,
+}) {
   const identity = loadServerIdentity(hanakoHome);
+  const normalizedRuntimeBuild = runtimeBuild ? normalizeServerBuildInfo(runtimeBuild) : null;
+  const normalizedFeatureContracts = featureContracts ? normalizeFeatureContracts(featureContracts) : null;
+  const normalizedRuntimeFacts = runtimeFacts
+    ? normalizeServerPlatformArch(runtimeFacts.platform, runtimeFacts.arch)
+    : null;
+  if (runtimeBuild && !normalizedRuntimeBuild) throw new TypeError("Invalid server runtime build evidence");
+  if (featureContracts && !normalizedFeatureContracts) throw new TypeError("Invalid server feature-contract evidence");
+  if (runtimeFacts && !normalizedRuntimeFacts) throw new TypeError("Invalid server runtime facts");
   const runtimeContext = {
     schemaVersion: 1,
     serverId: identity.serverId,
@@ -39,6 +56,9 @@ export function createServerRuntimeContext({ hanakoHome, appVersion = "?" }) {
     officialServiceKind: null,
     capabilities: [...LOCAL_CAPABILITIES],
     appVersion,
+    ...(normalizedRuntimeBuild ? { runtimeBuild: clonePlain(normalizedRuntimeBuild) } : {}),
+    ...(normalizedFeatureContracts ? { featureContracts: clonePlain(normalizedFeatureContracts) } : {}),
+    ...(normalizedRuntimeFacts ? { runtimeFacts: clonePlain(normalizedRuntimeFacts) } : {}),
     executionBoundary: null as any,
   };
   runtimeContext.executionBoundary = createRuntimeExecutionBoundary(runtimeContext);
@@ -46,6 +66,20 @@ export function createServerRuntimeContext({ hanakoHome, appVersion = "?" }) {
 }
 
 export function toServerIdentityResponse(runtimeContext, { appVersion }: { appVersion?: string } = {}) {
+  const runtimeBuild = runtimeContext.runtimeBuild
+    ? {
+        schemaVersion: runtimeContext.runtimeBuild.schemaVersion,
+        runtimeVersion: runtimeContext.runtimeBuild.runtimeVersion,
+        releaseTag: runtimeContext.runtimeBuild.releaseTag,
+        gitSha: runtimeContext.runtimeBuild.gitSha,
+        sourceRepository: runtimeContext.runtimeBuild.sourceRepository,
+      }
+    : null;
+  const featureContracts = normalizeFeatureContracts(runtimeContext.featureContracts);
+  const runtimeFacts = normalizeServerPlatformArch(
+    runtimeContext.runtimeFacts?.platform,
+    runtimeContext.runtimeFacts?.arch,
+  );
   return {
     connectionKind: runtimeContext.connectionKind,
     serverId: runtimeContext.serverId,
@@ -65,5 +99,8 @@ export function toServerIdentityResponse(runtimeContext, { appVersion }: { appVe
     executionBoundary: clonePlain(runtimeContext.executionBoundary),
     capabilities: [...runtimeContext.capabilities],
     version: appVersion || runtimeContext.appVersion || "?",
+    ...(runtimeBuild ? { runtimeBuild: clonePlain(runtimeBuild) } : {}),
+    ...(featureContracts ? { featureContracts: clonePlain(featureContracts) } : {}),
+    ...(runtimeFacts ? { runtimeFacts: clonePlain(runtimeFacts) } : {}),
   };
 }
