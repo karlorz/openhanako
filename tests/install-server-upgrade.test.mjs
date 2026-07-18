@@ -160,6 +160,9 @@ describe("install-server upgrade planner", () => {
 
   it("reports mismatched symlink and embedded build identity", async () => {
     const report = await inspectServerStatus({
+      platform: "linux",
+      arch: "arm64",
+      checkUpdates: true,
       fsImpl: {
         lstatSync: () => ({ isSymbolicLink: () => true }),
         readlinkSync: () => "/opt/hanaagent/releases/v0.346.18-karlorz.1-linux-arm64",
@@ -167,8 +170,93 @@ describe("install-server upgrade planner", () => {
         readFileSync: () => JSON.stringify({ runtimeVersion: "0.346.18", releaseTag: "v0.346.18-karlorz.2" }),
       },
       run: async () => ({ status: 1, stdout: "", stderr: "not found" }),
+      loadRelease: async () => ({
+        status: "ready",
+        checkedAt: "2026-07-18T12:00:00.000Z",
+        source: "online",
+        stale: false,
+        errorCode: null,
+        reasonCodes: [],
+        release: {
+          tag: "v0.346.18-karlorz.2",
+          runtimeVersion: "0.346.18",
+          forkRevision: 2,
+          prerelease: true,
+          publishedAt: null,
+          releaseUrl: null,
+          assets: [{ platform: "linux", arch: "arm64", name: "server.tar.gz", url: "https://example.test/server.tar.gz", checksumName: "server.tar.gz.sha256", checksumUrl: "https://example.test/server.tar.gz.sha256" }],
+          compatibilityManifestName: null,
+          featureContracts: null,
+          manifestGitSha: null,
+          reasonCodes: [],
+        },
+      }),
     });
+    expect(report.assessment.freshness.status).not.toBe("current");
+    expect(report.assessment.freshness.exactReleaseMatch).toBe(false);
+    expect(report.assessment.freshness.reasonCodes).toContain("installed_release_evidence_mismatch");
+    expect(report.assessment.deployability.status).not.toBe("eligible");
+    expect(report.assessment.deployability.targetTag).toBeNull();
+    expect(report.assessment.deployability.reasonCodes).toContain("installed_release_evidence_mismatch");
     expect(report.assessment.reasonCodes).toContain("installed_release_evidence_mismatch");
+    expect(report.recommendedDryRunCommand).toBeNull();
+  });
+
+  it.each([
+    ["linux", "x64", "arm64", "linux", "x64"],
+    ["linux", "arm64", "x64", "linux", "arm64"],
+    ["darwin", "arm64", "arm64", "mac", "arm64"],
+    ["linux", "riscv64", "arm64", null, null],
+  ])("uses the %s/%s host instead of a linux/%s release-directory suffix", async (hostPlatform, hostArch, directoryArch, expectedPlatform, expectedArch) => {
+    const tag = "v0.346.18-karlorz.1";
+    const report = await inspectServerStatus({
+      platform: hostPlatform,
+      arch: hostArch,
+      checkUpdates: true,
+      fsImpl: {
+        lstatSync: () => ({ isSymbolicLink: () => true }),
+        readlinkSync: () => `/opt/hanaagent/releases/${tag}-linux-${directoryArch}`,
+        realpathSync: () => `/opt/hanaagent/releases/${tag}-linux-${directoryArch}`,
+        readFileSync: () => { const error = new Error("missing"); error.code = "ENOENT"; throw error; },
+      },
+      run: async () => ({ status: 1, stdout: "", stderr: "not found" }),
+      loadRelease: async () => ({
+        status: "ready",
+        checkedAt: "2026-07-18T12:00:00.000Z",
+        source: "online",
+        stale: false,
+        errorCode: null,
+        reasonCodes: [],
+        release: {
+          tag: "v0.357.17-karlorz.1",
+          runtimeVersion: "0.357.17",
+          forkRevision: 1,
+          prerelease: true,
+          publishedAt: null,
+          releaseUrl: null,
+          assets: [
+            { platform: "linux", arch: "arm64", name: "server-arm64.tar.gz", url: "https://example.test/server-arm64.tar.gz", checksumName: "server-arm64.tar.gz.sha256", checksumUrl: "https://example.test/server-arm64.tar.gz.sha256" },
+            { platform: "linux", arch: "x64", name: "server-x64.tar.gz", url: "https://example.test/server-x64.tar.gz", checksumName: "server-x64.tar.gz.sha256", checksumUrl: "https://example.test/server-x64.tar.gz.sha256" },
+          ],
+          compatibilityManifestName: null,
+          featureContracts: null,
+          manifestGitSha: null,
+          reasonCodes: [],
+        },
+      }),
+    });
+
+    expect(report.assessment.deployability).toMatchObject({
+      status: "unknown",
+      platform: expectedPlatform,
+      arch: expectedArch,
+      targetTag: null,
+      assetName: null,
+      checksumName: null,
+    });
+    expect(report.assessment.deployability.reasonCodes).toContain("installed_release_host_mismatch");
+    expect(report.assessment.reasonCodes).toContain("installed_release_host_mismatch");
+    expect(report.recommendedDryRunCommand).toBeNull();
   });
 
   it("recommends only a channel-correct dry-run when a host asset is eligible", async () => {

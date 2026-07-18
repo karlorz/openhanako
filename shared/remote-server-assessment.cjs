@@ -3,8 +3,9 @@ const {
   normalizeServerPlatformArch,
   parseForkReleaseTag,
 } = require("./remote-server-release-catalog.cjs");
+const policy = require("./remote-server-policy.json");
 
-const EXPECTED_PUBLICATION_PRERELEASE = true;
+const EXPECTED_PUBLICATION_PRERELEASE = policy.expectedPublicationPrerelease;
 const DEFAULT_CORE_REQUIREMENT = { contract: "chat.core", minVersion: 1 };
 const REMOTE_INPUT_DRAFT_FEATURE_REQUIREMENTS = Object.freeze([Object.freeze({
   id: "input-drafts",
