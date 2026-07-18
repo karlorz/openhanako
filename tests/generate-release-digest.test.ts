@@ -12,6 +12,8 @@ describe("generate-release-digest", () => {
 
     expect(envrc).toContain("dotenv_if_exists .env");
     expect(envrc).toContain("OPENHANAKO_RELEASE_DIGEST_SECRET_FILE");
+    expect(envrc).toContain('if [ -f "$secret_file" ]; then');
+    expect(envrc).toContain("Release-digest secret file not loaded");
     expect(envrc).not.toMatch(/^\s*(?:source|\.)\s+/m);
     expect(example).toContain("base_url=https://api.openai.com/v1");
     expect(example).toContain("model=gpt-5.5");

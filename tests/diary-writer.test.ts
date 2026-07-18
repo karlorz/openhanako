@@ -341,18 +341,19 @@ describe("writeDiary hybrid material collection", () => {
       updated_at: "2026-05-07T04:15:00.000Z",
       messageCount: 4,
       source_time_range: {
-        start: "2026-05-06T19:40:00.000Z",
+        start: "2026-05-06T14:40:00.000Z",
         end: "2026-05-07T04:12:00.000Z",
         timezone: "Asia/Shanghai",
         localDates: ["2026-05-06", "2026-05-07"],
       },
       summary: [
         "## 事情经过",
-        "- 2026-05-06 03:40 用户和小王讨论了昨晚的角色设定。",
+        "- 2026-05-06 22:40 用户和小王讨论了昨晚的角色设定。",
         "- 2026-05-07 12:10 用户开始整理今天的日记材料。",
       ].join("\n"),
     };
     const opts = baseOpts({
+      targetDate: "2026-05-07",
       summaryManager: {
         getSummariesInRange: vi.fn().mockReturnValue([crossDaySummary]),
         getSummary: vi.fn().mockReturnValue(crossDaySummary),
@@ -363,8 +364,8 @@ describe("writeDiary hybrid material collection", () => {
       ),
     });
     makeSession(opts.sessionDir, "cross-day-session", [
-      { role: "user", content: "昨晚和小王聊角色设定。", timestamp: "2026-05-06T19:40:00.000Z" },
-      { role: "assistant", content: "我把这件事记在昨晚。", timestamp: "2026-05-06T19:45:00.000Z" },
+      { role: "user", content: "昨晚和小王聊角色设定。", timestamp: "2026-05-06T14:40:00.000Z" },
+      { role: "assistant", content: "我把这件事记在昨晚。", timestamp: "2026-05-06T14:45:00.000Z" },
       { role: "user", content: "今天开始整理日记材料。", timestamp: "2026-05-07T04:10:00.000Z" },
       { role: "assistant", content: "今天的材料应该只写今天。", timestamp: "2026-05-07T04:12:00.000Z" },
     ]);

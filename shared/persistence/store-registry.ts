@@ -620,6 +620,7 @@ export const PERSISTENT_STORES: readonly StoreDescriptor[] = Object.freeze([
       "lib/session-files/browser-screenshot-file.ts",
       "lib/session-files/session-file-registry.ts",
       "hub/index.ts",
+      "core/desktop-session-submit.ts",
     ], "Stages payload bytes or updates SessionFile sidecars under the managed cache."),
   }),
   defineStore({
