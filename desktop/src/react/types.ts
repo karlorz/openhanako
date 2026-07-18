@@ -1,4 +1,5 @@
 import type { ThinkingLevel } from './stores/model-slice';
+import type { RemoteServerReleaseCheck } from '../../../shared/remote-server-release-catalog.cjs';
 
 // ── Auto-update ──
 
@@ -626,6 +627,7 @@ export interface PlatformApi {
   ackTrainFallbackNotice?(): Promise<{ ok: boolean }>;
   /** 关于页更新历史：在线最近五个已发布版本；网络失败时显式返回包内备份来源。 */
   getUpdateDigestHistory?(): Promise<UpdateDigestHistoryResult>;
+  checkRemoteServerRelease?(options?: { force?: boolean }): Promise<RemoteServerReleaseCheck>;
   getAutoLaunchStatus?(): Promise<AutoLaunchStatus>;
   setAutoLaunchEnabled?(enabled: boolean): Promise<AutoLaunchStatus>;
   getKeepAwakeStatus?(): Promise<KeepAwakeStatus>;
