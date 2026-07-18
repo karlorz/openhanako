@@ -72,6 +72,10 @@ jobs:
             runner: ubuntu-latest
 
     runs-on: ${{ matrix.runner }}
+    env:
+      HANA_SERVER_RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
+      HANA_SERVER_GIT_SHA: ${{ github.sha }}
+      HANA_SERVER_SOURCE_REPOSITORY: ${{ github.repository }}
 
     steps:
       - uses: actions/checkout@v4
@@ -329,6 +333,10 @@ jobs:
     permissions:
       contents: read
     runs-on: ${{ matrix.runner }}
+    env:
+      HANA_SERVER_RELEASE_TAG: ${{ github.ref_name }}
+      HANA_SERVER_GIT_SHA: ${{ github.sha }}
+      HANA_SERVER_SOURCE_REPOSITORY: ${{ github.repository }}
     strategy:
       fail-fast: false
       matrix:

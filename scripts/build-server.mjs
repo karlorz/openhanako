@@ -59,6 +59,7 @@ import {
 import { copyServerRuntimeAssets } from "./build-server-runtime-assets.mjs";
 import { pruneRuntimeDeadFiles } from "./build-server-prune.mjs";
 import { packDualKindSeed } from "./build-server-artifact.mjs";
+import { writeServerBuildInfo } from "./write-server-build-info.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
@@ -699,6 +700,19 @@ if (isWin) {
   fs.chmodSync(cliWrapper, 0o755);
 }
 console.log("[build-server] wrapper created");
+
+const buildGitSha = process.env.HANA_SERVER_GIT_SHA
+  || execSync("git rev-parse HEAD", { cwd: ROOT, encoding: "utf8" }).trim();
+writeServerBuildInfo({
+  outputRoot: outDir,
+  rootDir: outDir,
+  releaseTag: process.env.HANA_SERVER_RELEASE_TAG || null,
+  gitSha: buildGitSha,
+  sourceRepository: process.env.HANA_SERVER_SOURCE_REPOSITORY || "karlorz/openhanako",
+  platform,
+  arch,
+});
+console.log("[build-server] server-build-info.json created");
 
 // ── 11. server + renderer 树 → 一份签名 seed 归档（双 artifact 管线）──
 // ⚠️ 顺序铁律：先签名，后装箱。Apple notary
