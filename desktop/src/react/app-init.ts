@@ -31,6 +31,7 @@ import {
   LOCAL_CONNECTION_ID,
   createLocalServerConnection,
   hasServerConnection,
+  isLocalOwnerConnection,
   mergeServerIdentity,
   readPersistedServerConnectionState,
   refreshLocalServerConnectionState,
@@ -160,7 +161,9 @@ export async function initApp(): Promise<void> {
     const serverPort = String(data.port);
     const serverToken = data.token ?? storeState.serverToken ?? null;
     const activeBeforeRestart = storeState.activeServerConnection;
-    if (activeBeforeRestart) clearInputDraftRemoteSession(activeBeforeRestart.connectionId);
+    if (activeBeforeRestart && !isLocalOwnerConnection(activeBeforeRestart)) {
+      clearInputDraftRemoteSession(activeBeforeRestart.connectionId);
+    }
     const nextConnectionState = refreshLocalServerConnectionState({
       serverConnections: storeState.serverConnections,
       activeServerConnectionId: storeState.activeServerConnectionId,
