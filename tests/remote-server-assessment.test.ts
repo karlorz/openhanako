@@ -5,6 +5,7 @@ import type { RemoteServerReleaseCheck } from "../shared/remote-server-release-c
 
 const {
   applyRemoteFeatureObservation,
+  applyRemoteTransportObservation,
   assessRemoteServer,
   compareCanonicalRuntimeVersions,
   parseCanonicalRuntimeVersion,
@@ -176,6 +177,42 @@ describe("remote server assessment", () => {
     expect(result.transport).toMatchObject({
       status: "legacy-query-token",
       reportedTicketContractVersion: null,
+    });
+  });
+
+  it("distinguishes a complete declaration missing websocket.ticket for migration", () => {
+    const result = assessRemoteServer({
+      connectionId: "lan:complete:default",
+      boundary: boundaryReady,
+      server: {
+        connectionKind: "lan",
+        featureContracts: { schemaVersion: 1, complete: true, entries: { "chat.core": 1 } },
+      },
+    });
+    expect(result.core.status).toBe("ready");
+    expect(result.transport).toMatchObject({
+      status: "legacy-query-token",
+      reasonCodes: ["websocket_ticket_contract_missing"],
+    });
+  });
+
+  it("records an observed LAN ticket fallback without blocking core", () => {
+    const initial = assessRemoteServer({
+      connectionId: "lan:observed:default",
+      boundary: boundaryReady,
+      server: {
+        connectionKind: "lan",
+        featureContracts: { schemaVersion: 1, complete: true, entries: { "chat.core": 1, "websocket.ticket": 1 } },
+      },
+    });
+    const observed = applyRemoteTransportObservation(initial, {
+      status: "legacy-query-token",
+      reasonCode: "ticket_request_failed_legacy_fallback",
+    });
+    expect(observed.core.status).toBe("ready");
+    expect(observed.transport).toMatchObject({
+      status: "legacy-query-token",
+      reasonCodes: ["ticket_request_failed_legacy_fallback"],
     });
   });
 
