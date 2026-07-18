@@ -6,6 +6,16 @@ const SCHEMA_VERSION = 1;
 const EVIDENCE_TTL_MS = 30 * 60 * 1000;
 const FUTURE_TOLERANCE_MS = 5 * 60 * 1000;
 const CONTRACT_RE = /^([a-z][a-z0-9]*(?:\.[a-z][a-z0-9]*)*)@([1-9]\d*)$/;
+const CONTRACT_NAME_RE = /^[a-z][a-z0-9]*(?:\.[a-z][a-z0-9]*)*$/;
+const FULL_ISO_TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+const FUNCTIONAL_STATUSES = new Set(["not-run", "pass", "fail"]);
+const ENVIRONMENT_STATUSES = new Set(["ready", "attention", "unknown"]);
+const PREREQUISITE_STATUSES = new Set(["not-requested", "pass", "fail", "deployment-coupled"]);
+const REQUIREMENT_STATUSES = new Set(["satisfied", "missing", "unconfirmed", "deployment-coupled"]);
+const ASSESSMENT_SUMMARIES = new Set(["not-assessed", "ready", "attention", "blocked"]);
+const FRESHNESS_STATUSES = new Set(["unknown", "current", "update-recommended", "ahead-or-custom"]);
+const DEPLOYABILITY_STATUSES = new Set(["not-assessed", "unknown", "release-only", "unavailable", "eligible"]);
+
 function record(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -62,9 +72,9 @@ export function readWorkItemRemoteRequirements(workItemPath) {
 }
 
 function parseTimestamp(value, field) {
-  if (typeof value !== "string" || !value) throw new Error(`${field} must be an ISO timestamp`);
+  if (typeof value !== "string" || !FULL_ISO_TIMESTAMP_RE.test(value)) throw new Error(`${field} must be a full ISO timestamp`);
   const time = Date.parse(value);
-  if (!Number.isFinite(time)) throw new Error(`${field} must be an ISO timestamp`);
+  if (!Number.isFinite(time) || new Date(time).toISOString() !== value) throw new Error(`${field} must be a full ISO timestamp`);
   return { value, time };
 }
 
@@ -84,8 +94,7 @@ export function readAssessmentEvidence(assessmentPath, now = new Date()) {
   }
   let value;
   try { value = JSON.parse(raw); } catch { return invalidEvidence(pathname, "assessment_invalid_json"); }
-  if (!record(value) || value.schemaVersion !== SCHEMA_VERSION
-    || !record(value.functional) || !record(value.environment) || !record(value.prerequisites)) {
+  if (!isAssessmentEnvelope(value)) {
     return invalidEvidence(pathname, "assessment_invalid_schema");
   }
   let generated;
@@ -99,7 +108,7 @@ export function readAssessmentEvidence(assessmentPath, now = new Date()) {
   const nowTime = now instanceof Date ? now.getTime() : new Date(now).getTime();
   if (!Number.isFinite(nowTime)) throw new Error("now must be a valid date");
   if (generated.time > nowTime + FUTURE_TOLERANCE_MS) return invalidEvidence(pathname, "assessment_generated_in_future");
-  if (expires.time !== generated.time + EVIDENCE_TTL_MS) return invalidEvidence(pathname, "assessment_ttl_invalid");
+  if (expires.time !== generated.time + EVIDENCE_TTL_MS) return invalidEvidence(pathname, "assessment_invalid_ttl");
   return {
     path: pathname,
     checkedAt: new Date(nowTime).toISOString(),
@@ -111,6 +120,62 @@ export function readAssessmentEvidence(assessmentPath, now = new Date()) {
   };
 }
 
+function isAssessmentEnvelope(value) {
+  if (!record(value) || value.schemaVersion !== SCHEMA_VERSION || value.source !== "hana-desktop-smoke-helper") return false;
+  if (!record(value.functional) || !FUNCTIONAL_STATUSES.has(value.functional.status)) return false;
+  if (!record(value.environment) || !ENVIRONMENT_STATUSES.has(value.environment.status) || !record(value.environment.assessment)) return false;
+  if (!record(value.prerequisites) || !PREREQUISITE_STATUSES.has(value.prerequisites.status) || !Array.isArray(value.prerequisites.requirements)) return false;
+  if (!value.prerequisites.requirements.every(isAssessmentRequirement)) return false;
+  if (!validFunctionalShape(value.functional) || !validEnvironmentAssessmentShape(value.environment.assessment)) return false;
+  return true;
+}
+
+function isAssessmentRequirement(value) {
+  if (!record(value) || typeof value.contract !== "string" || !CONTRACT_NAME_RE.test(value.contract)) return false;
+  if (!REQUIREMENT_STATUSES.has(value.status)) return false;
+  if (value.minVersion !== undefined && (!Number.isSafeInteger(value.minVersion) || value.minVersion < 1)) return false;
+  if (value.reportedVersion !== undefined && value.reportedVersion !== null
+    && (!Number.isSafeInteger(value.reportedVersion) || value.reportedVersion < 0)) return false;
+  if (value.reasonCode !== undefined && value.reasonCode !== null && typeof value.reasonCode !== "string") return false;
+  if (value.targetTag !== undefined && value.targetTag !== null && typeof value.targetTag !== "string") return false;
+  return true;
+}
+
+function validFunctionalShape(functional) {
+  if (functional.verification === undefined || functional.verification === null) return true;
+  if (!record(functional.verification)) return false;
+  const identity = functional.verification.identity;
+  if (identity === undefined || identity === null) return true;
+  if (!record(identity)) return false;
+  return identity.featureContracts === undefined || identity.featureContracts === null
+    || isFeatureContractDeclaration(identity.featureContracts);
+}
+
+function validEnvironmentAssessmentShape(assessment) {
+  if (assessment.summary !== undefined && !ASSESSMENT_SUMMARIES.has(assessment.summary)) return false;
+  if (assessment.featureContracts !== undefined && assessment.featureContracts !== null
+    && !isFeatureContractDeclaration(assessment.featureContracts)) return false;
+  if (assessment.freshness !== undefined) {
+    if (!record(assessment.freshness) || !FRESHNESS_STATUSES.has(assessment.freshness.status)) return false;
+    if (assessment.freshness.recommendedReleaseTag !== undefined && assessment.freshness.recommendedReleaseTag !== null
+      && typeof assessment.freshness.recommendedReleaseTag !== "string") return false;
+  }
+  if (assessment.deployability !== undefined
+    && (!record(assessment.deployability) || !DEPLOYABILITY_STATUSES.has(assessment.deployability.status))) return false;
+  if (assessment.manifest !== undefined && assessment.manifest !== null) {
+    if (!record(assessment.manifest) || assessment.manifest.status !== "valid") return false;
+    if (typeof assessment.manifest.targetTag !== "string" || typeof assessment.manifest.manifestGitSha !== "string") return false;
+    if (!isFeatureContractDeclaration(assessment.manifest.featureContracts)) return false;
+  }
+  return true;
+}
+
+function isFeatureContractDeclaration(value) {
+  if (!record(value) || value.schemaVersion !== 1 || typeof value.complete !== "boolean" || !record(value.entries)) return false;
+  return Object.entries(value.entries).every(([contract, version]) => CONTRACT_NAME_RE.test(contract)
+    && Number.isSafeInteger(version) && version >= 0);
+}
+
 function contractParts(requirement) {
   const match = CONTRACT_RE.exec(requirement);
   return { contract: match[1], minVersion: Number(match[2]) };
@@ -120,12 +185,17 @@ function assessmentRequirementMap(value) {
   const map = new Map();
   const declaration = value?.functional?.verification?.identity?.featureContracts
     || value?.environment?.assessment?.featureContracts;
-  if (record(declaration) && declaration.schemaVersion === 1 && record(declaration.entries)) {
+  const hasCurrentDeclaration = record(declaration)
+    && declaration.schemaVersion === 1
+    && typeof declaration.complete === "boolean"
+    && record(declaration.entries);
+  if (hasCurrentDeclaration) {
     for (const [contract, reportedVersion] of Object.entries(declaration.entries)) {
       if (Number.isSafeInteger(reportedVersion)) {
         map.set(contract, { status: declaration.complete === true ? "satisfied" : "unconfirmed", reportedVersion });
       }
     }
+    return map;
   }
   const items = value?.prerequisites?.requirements;
   if (Array.isArray(items)) {
