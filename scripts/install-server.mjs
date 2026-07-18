@@ -479,6 +479,8 @@ export async function inspectServerStatus({
 } = {}) {
   const resolvedPaths = { ...DEFAULT_PATHS, ...paths };
   const plan = buildStatusPlan({ hostProfile, paths: resolvedPaths });
+  const observedAt = now().toISOString();
+  const servicePromise = readServiceStatus(run, resolvedPaths.serviceName);
   let installState = "unknown";
   let target = null;
   let realPath = null;
@@ -511,26 +513,36 @@ export async function inspectServerStatus({
     && embeddedBuild?.releaseTag
     && embeddedBuild.releaseTag !== symlinkRelease.tag,
   );
-  const installedRelease = symlinkRelease
-    ? { ...symlinkRelease, evidenceSource: "current-symlink" }
-    : embeddedBuild
-      ? {
-          tag: embeddedBuild.releaseTag,
-          runtimeVersion: embeddedBuild.runtimeVersion,
-          platform: platform === "linux" ? "linux" : null,
-          arch: platform === "linux" && (normalizeArch(arch) === "arm64" || normalizeArch(arch) === "x64")
-            ? normalizeArch(arch)
-            : null,
-          evidenceSource: "embedded-build-info",
-        }
-      : { tag: null, runtimeVersion: null, platform: null, arch: null, evidenceSource: "none" };
+  const hostPlatform = platform === "linux" ? "linux" : null;
+  let hostArch = null;
+  if (hostPlatform) {
+    try {
+      hostArch = normalizeArch(arch);
+    } catch {
+      hostArch = null;
+    }
+  }
+  let installedRelease;
+  if (symlinkRelease) {
+    installedRelease = { ...symlinkRelease, evidenceSource: "current-symlink" };
+  } else if (embeddedBuild) {
+    installedRelease = {
+      tag: embeddedBuild.releaseTag,
+      runtimeVersion: embeddedBuild.runtimeVersion,
+      platform: hostPlatform,
+      arch: hostArch,
+      evidenceSource: "embedded-build-info",
+    };
+  } else {
+    installedRelease = { tag: null, runtimeVersion: null, platform: null, arch: null, evidenceSource: "none" };
+  }
 
   const releaseCheck = checkUpdates && typeof loadRelease === "function"
     ? await loadRelease()
     : null;
   const assessment = assessRemoteServer({
     connectionId: "installer:local-host",
-    assessedAt: now().toISOString(),
+    assessedAt: observedAt,
     evidenceSource: "installer",
     server: {
       runtimeBuild: {
@@ -560,7 +572,7 @@ export async function inspectServerStatus({
     kind: "install-server-status-report",
     schemaVersion: 1,
     plan,
-    observedAt: now().toISOString(),
+    observedAt,
     installState,
     currentLink: {
       path: resolvedPaths.currentLink,
@@ -568,7 +580,7 @@ export async function inspectServerStatus({
       realPath,
     },
     installedRelease,
-    service: await readServiceStatus(run, resolvedPaths.serviceName),
+    service: await servicePromise,
     assessment,
     recommendedDryRunCommand,
   };
