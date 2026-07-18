@@ -11,6 +11,7 @@ export type {
 } from "./remote-server-assessment.cjs";
 
 export const {
+  REMOTE_INPUT_DRAFT_FEATURE_REQUIREMENTS,
   applyRemoteFeatureObservation,
   assessRemoteServer,
   compareCanonicalRuntimeVersions,
