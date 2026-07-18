@@ -637,6 +637,7 @@ describe('AccessTab', () => {
 
     expect(screen.getByText('settings.access.remoteCoreConnection')).toBeInTheDocument();
     expect(screen.getByText('settings.access.remoteCoreReady')).toBeInTheDocument();
+    expect(screen.getByText('settings.access.remoteTransportLegacy')).toBeInTheDocument();
     expect(screen.getByText('settings.access.remoteServerUpdate')).toBeInTheDocument();
     expect(screen.getByText('settings.access.remoteUpdateRecommended')).toBeInTheDocument();
     expect(screen.getByText('settings.access.remoteFeatureSupport')).toBeInTheDocument();

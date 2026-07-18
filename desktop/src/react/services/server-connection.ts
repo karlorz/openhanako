@@ -1,6 +1,7 @@
 import { validateStudioConnectionTrust } from './studio-access';
 import { SERVER_PROTOCOL_VERSION } from '../../../../shared/contract-versions.ts';
 import { assertRemoteBoundaryContract } from './remote-boundary-contract';
+import type { RemoteServerAssessment } from '../../../../shared/remote-server-assessment';
 
 export type StudioConnectionKind = 'local' | 'lan' | 'custom_remote' | 'relay' | 'cloud';
 export type ServerTrustState = 'local' | 'lan' | 'tunnel' | 'cloud';
@@ -735,15 +736,87 @@ export function buildConnectionWsUrl(
   assertRoutePath(path);
   const url = `${trimTrailingSlash(connection.wsUrl)}${path}`;
   if (opts.wsTicket) return appendQueryParam(url, 'wsTicket', opts.wsTicket);
+  if (connection.kind !== 'local' && connection.kind !== 'lan') return url;
   if (!connection.token || !canUseQueryToken(connection)) return url;
   return appendQueryParam(url, 'token', connection.token);
+}
+
+export type ConnectionWsAuth =
+  | { mode: 'local-query-token'; ticket: null; warningCode: null }
+  | { mode: 'ticket'; ticket: string; warningCode: null }
+  | {
+      mode: 'legacy-query-token';
+      ticket: null;
+      warningCode: 'legacy_websocket_query_token' | 'websocket_ticket_contract_missing' | 'ticket_request_failed_legacy_fallback';
+    }
+  | { mode: 'unsupported'; ticket: null; warningCode: 'websocket_ticket_required' };
+
+function assessmentForConnection(
+  connection: ServerConnection,
+  assessment: RemoteServerAssessment | null | undefined,
+): RemoteServerAssessment | null {
+  return assessment?.schemaVersion === 1 && assessment.connectionId === connection.connectionId
+    ? assessment
+    : null;
+}
+
+export async function resolveConnectionWsAuth(
+  connection: ServerConnection,
+  assessment: RemoteServerAssessment | null | undefined,
+  fetchImpl: typeof fetch = fetch,
+): Promise<ConnectionWsAuth> {
+  if (isLocalOwnerConnection(connection)) {
+    return { mode: 'local-query-token', ticket: null, warningCode: null };
+  }
+
+  const currentAssessment = assessmentForConnection(connection, assessment);
+  const transport = currentAssessment?.transport;
+  const hasDeclaredTicket = transport?.status === 'ticket-ready'
+    || (transport?.status === 'legacy-query-token'
+      && transport.reportedTicketContractVersion !== null
+      && transport.reasonCodes.includes('ticket_request_failed_legacy_fallback'));
+
+  if (hasDeclaredTicket) {
+    try {
+      const ticket = await requestConnectionWsTicket(connection, fetchImpl);
+      if (ticket) return { mode: 'ticket', ticket, warningCode: null };
+      if (connection.kind !== 'lan') {
+        return { mode: 'unsupported', ticket: null, warningCode: 'websocket_ticket_required' };
+      }
+    } catch {
+      if (connection.kind !== 'lan') {
+        return { mode: 'unsupported', ticket: null, warningCode: 'websocket_ticket_required' };
+      }
+      return {
+        mode: 'legacy-query-token',
+        ticket: null,
+        warningCode: 'ticket_request_failed_legacy_fallback',
+      };
+    }
+    if (connection.kind === 'lan') {
+      return {
+        mode: 'legacy-query-token',
+        ticket: null,
+        warningCode: 'ticket_request_failed_legacy_fallback',
+      };
+    }
+  }
+
+  if (connection.kind === 'lan') {
+    const warningCode = transport?.reasonCodes.includes('websocket_ticket_contract_missing')
+      ? 'websocket_ticket_contract_missing'
+      : 'legacy_websocket_query_token';
+    return { mode: 'legacy-query-token', ticket: null, warningCode };
+  }
+
+  return { mode: 'unsupported', ticket: null, warningCode: 'websocket_ticket_required' };
 }
 
 export async function requestConnectionWsTicket(
   connection: ServerConnection,
   fetchImpl: typeof fetch = fetch,
 ): Promise<string | null> {
-  if (canUseQueryToken(connection)) return null;
+  if (isLocalOwnerConnection(connection)) return null;
   const res = await fetchImpl(buildConnectionUrl(connection, '/api/ws-ticket'), {
     method: 'POST',
     headers: appendConnectionAuth(connection, { 'Content-Type': 'application/json' }),
