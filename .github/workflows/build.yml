@@ -409,6 +409,10 @@ jobs:
         with:
           path: artifacts
 
+      - name: Generate server compatibility manifest
+        run: >-
+          node scripts/build-server-compatibility-manifest.mjs --tag "${{ github.ref_name }}" --git-sha "${{ github.sha }}" --source-repository "${{ github.repository }}" --artifacts artifacts --output "hanaagent-server-compatibility-${{ github.ref_name }}.json"
+
       # build job 改为 --publish never 后，draft release 不再由 electron-builder 自动创建，
       # 由 release job 显式创建，并通过 --generate-notes 从上一个 tag 的 commit 自动生成 changelog。
       - name: Create draft release
@@ -464,6 +468,9 @@ jobs:
               echo "  $f"
               gh release upload "${{ github.ref_name }}" "$f" --clobber
             done
+
+          echo "=== Uploading server compatibility manifest ==="
+          gh release upload "${{ github.ref_name }}" "hanaagent-server-compatibility-${{ github.ref_name }}.json" --clobber
 
           # Renderer archive is platform-independent AND now byte-identical across all four
           # matrix jobs: it is built once by the renderer-box job and downloaded/reused by
@@ -545,6 +552,7 @@ jobs:
           echo "$ASSETS" | grep -qx 'hanaagent-server-${{ github.ref_name }}-mac-x64.tar.gz.sha256'    || MISSING+=("server-mac-x64.sha256")
           echo "$ASSETS" | grep -qx 'hanaagent-server-${{ github.ref_name }}-win-x64.tar.gz'    || MISSING+=("server-win-x64")
           echo "$ASSETS" | grep -qx 'hanaagent-server-${{ github.ref_name }}-win-x64.tar.gz.sha256'    || MISSING+=("server-win-x64.sha256")
+          echo "$ASSETS" | grep -qx 'hanaagent-server-compatibility-${{ github.ref_name }}.json' || MISSING+=("server compatibility manifest")
 
           # 清洁性检查：不应该有 blockmap 漏进来
           if echo "$ASSETS" | grep -qE '\.blockmap$'; then
