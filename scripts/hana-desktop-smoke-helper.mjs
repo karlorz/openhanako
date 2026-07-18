@@ -22,6 +22,7 @@ const RELOAD_SETTLE_MS = 800;
 const VERIFY_RETRY_DELAY_MS = 500;
 const DEFAULT_ASSESSMENT_OUT = path.join(".claude", "remote-assessment", "latest.json");
 const CONTRACT_REQUIREMENT_RE = /^([a-z][a-z0-9]*(?:\.[a-z][a-z0-9]*)*)@([1-9]\d*)$/;
+const SENSITIVE_EVIDENCE_VALUE_RE = /(?:https?|wss?):\/\/|authorization|cookie|credential|token|headers?|cdp|user[-_ ]?data|localstorage/i;
 
 function trimTrailingSlash(value) {
   return value.replace(/\/+$/, "");
@@ -383,7 +384,7 @@ export function evaluateContractRequirements(assessment, requirements = []) {
 function redactEvidenceValue(value, key = "") {
   if (/url|token|credential|authorization|cookie|headers|cdp|user.?data|localstorage/i.test(key)) return undefined;
   if (typeof value === "string") {
-    if (/https?:\/\/|wss?:\/\/|localstorage|application support|user.?data|cdp/i.test(value)) return undefined;
+    if (SENSITIVE_EVIDENCE_VALUE_RE.test(value)) return undefined;
     return value;
   }
   if (Array.isArray(value)) return value.map((item) => redactEvidenceValue(item)).filter((item) => item !== undefined);
@@ -431,7 +432,8 @@ export function writeRedactedAssessmentEvidence(outputPath, report, { now = () =
 
 export function smokeExitCode(report) {
   if (report?.functional?.status === "fail" || report?.ok === false) return 1;
-  if (report?.prerequisites?.status === "fail" || report?.prerequisites?.status === "deployment-coupled") return 3;
+  if (report?.functional?.status === "pass"
+    && (report?.prerequisites?.status === "fail" || report?.prerequisites?.status === "deployment-coupled")) return 3;
   return 0;
 }
 
@@ -507,7 +509,7 @@ function findHistoricalConnection({ userDataDir, baseUrl }) {
   return null;
 }
 
-function parseArgs(argv) {
+export function parseArgs(argv) {
   const options = {
     assessmentOut: DEFAULT_ASSESSMENT_OUT,
     appPath: DEFAULT_APP_PATH,
