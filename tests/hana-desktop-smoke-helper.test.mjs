@@ -78,12 +78,34 @@ describe("hana desktop smoke helper", () => {
     expect(legacy.status).toBe("fail");
     expect(legacy.requirements.find((item) => item.contract === "chat.core").status).toBe("unconfirmed");
 
-    const manifestOnly = evaluateContractRequirements({
+    const untrustedUpgradeEvidence = evaluateContractRequirements({
       functional: { verification: { identity: { featureContracts: null } } },
       environment: { assessment: { features: { items: [{ contract: "input.drafts", status: "unknown", upgradeEvidence: { targetTag: "v0.1.0-karlorz.1", targetContractVersion: 1, manifestGitSha: "abc" } }] }, freshness: { status: "current" } } },
     }, [{ contract: "input.drafts", minVersion: 1 }]);
-    expect(manifestOnly.status).toBe("deployment-coupled");
-    expect(manifestOnly.requirements[0]).toMatchObject({ status: "deployment-coupled", targetTag: "v0.1.0-karlorz.1" });
+    expect(untrustedUpgradeEvidence.status).toBe("fail");
+    expect(untrustedUpgradeEvidence.requirements[0]).toMatchObject({ status: "unconfirmed", targetTag: null });
+  });
+
+  it("requires a valid future manifest identity instead of arbitrary upgrade metadata", () => {
+    const requirement = [{ contract: "input.drafts", minVersion: 1 }];
+    const legacy = { functional: { verification: { identity: { featureContracts: null } } } };
+    const currentTarget = evaluateContractRequirements({
+      ...legacy,
+      environment: { assessment: {
+        manifest: { status: "valid", targetTag: "v0.357.17-karlorz.1", manifestGitSha: "0123456789abcdef0123456789abcdef01234567", featureContracts: { schemaVersion: 1, complete: true, entries: { "input.drafts": 1 } } },
+        freshness: { status: "current", recommendedReleaseTag: "v0.357.17-karlorz.1" },
+      } },
+    }, requirement);
+    const malformedTarget = evaluateContractRequirements({
+      ...legacy,
+      environment: { assessment: {
+        manifest: { status: "valid", targetTag: "v0.357.17-karlorz.1", featureContracts: { schemaVersion: 1, complete: true, entries: { "input.drafts": 1 } } },
+        freshness: { status: "update-recommended", recommendedReleaseTag: "v0.357.17-karlorz.1" },
+      } },
+    }, requirement);
+
+    expect(currentTarget.requirements[0]).toMatchObject({ status: "unconfirmed", reasonCode: "legacy_contract_unconfirmed" });
+    expect(malformedTarget.requirements[0]).toMatchObject({ status: "unconfirmed", reasonCode: "legacy_contract_unconfirmed" });
   });
 
   it("reports lower and absent versions in complete declarations as missing", () => {
@@ -106,12 +128,16 @@ describe("hana desktop smoke helper", () => {
         hasToken: true,
         identityOk: true,
         wsOk: true,
-        identity: sanitizeSmokeIdentity({ featureContracts: { schemaVersion: 1, complete: false, entries: {} } }),
+        identity: sanitizeSmokeIdentity({
+          runtimeBuild: { runtimeVersion: "0.346.18", releaseTag: "v0.346.18-karlorz.1" },
+          featureContracts: { schemaVersion: 1, complete: false, entries: {} },
+        }),
       },
       releaseCheck: {
         status: "ready",
         release: {
           tag: "v0.357.17-karlorz.1",
+          runtimeVersion: "0.357.17",
           manifestStatus: "valid",
           featureContracts: { schemaVersion: 1, complete: true, entries: { "chat.core": 1 } },
           manifestGitSha: "0123456789abcdef0123456789abcdef01234567",
@@ -137,12 +163,12 @@ describe("hana desktop smoke helper", () => {
   it("writes a redacted, expiring evidence envelope atomically", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-smoke-") );
     const output = path.join(dir, "nested", "evidence.json");
-    const report = { ok: true, functional: { status: "pass", verification: { baseUrl: "https://secret.test", hasToken: true, identity: { runtimeBuild: { sourceRepository: "https://secret.test/repo" } }, diagnostic: "Authorization: Bearer real-secret" } }, environment: { assessment: { freshness: { status: "current" }, opaque: "credential=real-secret", unlabelled: "apiToken=real-secret" } }, reset: { userDataDir: "/Users/me/Library/Application Support/Hanako", wsUrl: "ws://secret.test" } };
+    const report = { ok: true, functional: { status: "pass", verification: { baseUrl: "https://secret.test", hasToken: true, identity: { runtimeBuild: { sourceRepository: "https://secret.test/repo" }, capabilities: ["chat", "Bearer real-secret"] }, diagnostic: "Authorization: Bearer real-secret" } }, environment: { assessment: { freshness: { status: "current" }, opaque: "credential=real-secret", unlabelled: "apiToken=real-secret" } }, reset: { userDataDir: "/Users/me/Library/Application Support/Hanako", wsUrl: "ws://secret.test" } };
     const envelope = writeRedactedAssessmentEvidence(output, report, { now: () => new Date("2026-07-18T12:00:00.000Z") });
     expect(envelope).toMatchObject({ schemaVersion: 1, generatedAt: "2026-07-18T12:00:00.000Z", expiresAt: "2026-07-18T12:30:00.000Z", source: "hana-desktop-smoke-helper" });
     expect(fs.statSync(output).mode & 0o777).toBe(0o600);
     const raw = fs.readFileSync(output, "utf8");
-    expect(raw).not.toMatch(/https?:|ws:|token|credential|authorization|cookie|headers|cdp|user-data|localStorage/i);
+    expect(raw).not.toMatch(/https?:|ws:|token|credential|authorization|cookie|headers|cdp|user-data|localStorage|bearer|real-secret/i);
     expect(JSON.parse(raw)).toEqual(expect.objectContaining({ functional: expect.any(Object), environment: expect.any(Object), prerequisites: expect.any(Object) }));
     expect(fs.readdirSync(path.dirname(output)).filter((name) => name.includes(".tmp.")).length).toBe(0);
   });
