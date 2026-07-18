@@ -22,7 +22,7 @@ const RELOAD_SETTLE_MS = 800;
 const VERIFY_RETRY_DELAY_MS = 500;
 const DEFAULT_ASSESSMENT_OUT = path.join(".claude", "remote-assessment", "latest.json");
 const CONTRACT_REQUIREMENT_RE = /^([a-z][a-z0-9]*(?:\.[a-z][a-z0-9]*)*)@([1-9]\d*)$/;
-const SENSITIVE_EVIDENCE_VALUE_RE = /(?:https?|wss?):\/\/|authorization|cookie|credential|token|headers?|cdp|user[-_ ]?data|localstorage/i;
+const SENSITIVE_EVIDENCE_VALUE_RE = /(?:https?|wss?):\/\/|authorization|bearer|cookie|credential|token|headers?|cdp|user[-_ ]?data|localstorage/i;
 
 function trimTrailingSlash(value) {
   return value.replace(/\/+$/, "");
@@ -285,6 +285,7 @@ export function buildSmokeReport({ verification = null, releaseCheck = null, ass
     ? {
         status: "valid",
         targetTag: typeof release.tag === "string" ? release.tag : null,
+        manifestGitSha: typeof release.manifestGitSha === "string" ? release.manifestGitSha : null,
         featureContracts: release.featureContracts,
       }
     : null;
@@ -328,31 +329,23 @@ function contractDeclarationFromAssessment(assessment) {
   return { recognized: false, complete: false, entries: {} };
 }
 
+function validatedFutureManifest(assessment) {
+  const environment = assessment?.environment?.assessment;
+  const manifest = environment?.manifest;
+  const freshness = environment?.freshness;
+  if (!isSmokeRecord(manifest) || manifest.status !== "valid") return null;
+  if (typeof manifest.targetTag !== "string" || !/^[a-f0-9]{40}$/i.test(manifest.manifestGitSha || "")) return null;
+  if (!isSmokeRecord(freshness) || freshness.status !== "update-recommended" || freshness.recommendedReleaseTag !== manifest.targetTag) return null;
+  const declaration = manifest.featureContracts;
+  if (!isSmokeRecord(declaration) || declaration.schemaVersion !== 1 || declaration.complete !== true || !isSmokeRecord(declaration.entries)) return null;
+  return { targetTag: manifest.targetTag, entries: declaration.entries };
+}
+
 function manifestContractEvidence(assessment, contract, minVersion) {
-  const items = assessment?.environment?.assessment?.features?.items;
-  if (Array.isArray(items)) {
-    const item = items.find((candidate) => candidate?.contract === contract);
-    const evidence = item?.upgradeEvidence;
-    if (evidence && Number.isSafeInteger(evidence.targetContractVersion) && evidence.targetContractVersion >= minVersion) {
-      return { targetTag: typeof evidence.targetTag === "string" ? evidence.targetTag : null };
-    }
-  }
-  const manifests = [
-    assessment?.manifest,
-    assessment?.environment?.assessment?.manifest,
-    assessment?.releaseCheck?.release,
-  ];
-  for (const manifest of manifests) {
-    if (!manifest || typeof manifest !== "object") continue;
-    if (manifest.manifestStatus !== "valid" && manifest.status !== "valid") continue;
-    const declaration = manifest.featureContracts;
-    if (!declaration || declaration.schemaVersion !== 1 || declaration.complete !== true) continue;
-    const version = declaration.entries?.[contract];
-    if (Number.isSafeInteger(version) && version >= minVersion) {
-      return { targetTag: typeof manifest.targetTag === "string" ? manifest.targetTag : (typeof manifest.tag === "string" ? manifest.tag : null) };
-    }
-  }
-  return null;
+  const manifest = validatedFutureManifest(assessment);
+  const version = manifest?.entries[contract];
+  if (!Number.isSafeInteger(version) || version < minVersion) return null;
+  return { targetTag: manifest.targetTag };
 }
 
 export function evaluateContractRequirements(assessment, requirements = []) {
@@ -387,7 +380,7 @@ function redactEvidenceValue(value, key = "") {
     if (SENSITIVE_EVIDENCE_VALUE_RE.test(value)) return undefined;
     return value;
   }
-  if (Array.isArray(value)) return value.map((item) => redactEvidenceValue(item)).filter((item) => item !== undefined);
+  if (Array.isArray(value)) return value.map((item) => redactEvidenceValue(item, key)).filter((item) => item !== undefined);
   if (value && typeof value === "object") {
     return Object.fromEntries(Object.entries(value)
       .map(([childKey, childValue]) => [childKey, redactEvidenceValue(childValue, childKey)])
