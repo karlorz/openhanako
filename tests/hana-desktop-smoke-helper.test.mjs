@@ -17,6 +17,7 @@ const {
   summarizePersistedConnectionState,
   evaluateContractRequirements,
   parseContractRequirement,
+  parseArgs,
   writeRedactedAssessmentEvidence,
 } = smokeHelper;
 
@@ -44,6 +45,17 @@ describe("hana desktop smoke helper", () => {
 
   it.each(["Chat.core@1", "chat-core@1", "chat.core@0", "chat.core@1.1", "chat.core", "chat.core@1@2", "future.contract@01"])("rejects invalid contract requirement %s", (value) => {
     expect(() => parseContractRequirement(value)).toThrow();
+  });
+
+  it("parses repeatable contract flags and rejects unknown CLI flags", () => {
+    expect(parseArgs([
+      "--require-contract", "chat.core@1",
+      "--require-contract", "input.drafts@2",
+    ]).contractRequirements).toEqual([
+      { contract: "chat.core", minVersion: 1 },
+      { contract: "input.drafts", minVersion: 2 },
+    ]);
+    expect(() => parseArgs(["--not-a-real-flag"])).toThrow("unknown flag: --not-a-real-flag");
   });
 
   it("evaluates declared, legacy, and deployment-coupled contract evidence without using freshness", () => {
@@ -118,13 +130,14 @@ describe("hana desktop smoke helper", () => {
     expect(smokeExitCode({ ok: true, functional: { status: "pass" }, prerequisites: { status: "pass" } })).toBe(0);
     expect(smokeExitCode({ ok: true, functional: { status: "pass" }, prerequisites: { status: "fail" } })).toBe(3);
     expect(smokeExitCode({ ok: true, functional: { status: "pass" }, prerequisites: { status: "deployment-coupled" } })).toBe(3);
+    expect(smokeExitCode({ ok: true, functional: { status: "not-run" }, prerequisites: { status: "fail" } })).toBe(0);
     expect(smokeExitCode({ ok: false, functional: { status: "fail" }, prerequisites: { status: "fail" } })).toBe(1);
   });
 
   it("writes a redacted, expiring evidence envelope atomically", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-smoke-") );
     const output = path.join(dir, "nested", "evidence.json");
-    const report = { ok: true, functional: { status: "pass", verification: { baseUrl: "https://secret.test", hasToken: true, identity: { runtimeBuild: { sourceRepository: "https://secret.test/repo" } } } }, environment: { assessment: { freshness: { status: "current" } } }, reset: { userDataDir: "/Users/me/Library/Application Support/Hanako", wsUrl: "ws://secret.test" } };
+    const report = { ok: true, functional: { status: "pass", verification: { baseUrl: "https://secret.test", hasToken: true, identity: { runtimeBuild: { sourceRepository: "https://secret.test/repo" } }, diagnostic: "Authorization: Bearer real-secret" } }, environment: { assessment: { freshness: { status: "current" }, opaque: "credential=real-secret", unlabelled: "apiToken=real-secret" } }, reset: { userDataDir: "/Users/me/Library/Application Support/Hanako", wsUrl: "ws://secret.test" } };
     const envelope = writeRedactedAssessmentEvidence(output, report, { now: () => new Date("2026-07-18T12:00:00.000Z") });
     expect(envelope).toMatchObject({ schemaVersion: 1, generatedAt: "2026-07-18T12:00:00.000Z", expiresAt: "2026-07-18T12:30:00.000Z", source: "hana-desktop-smoke-helper" });
     expect(fs.statSync(output).mode & 0o777).toBe(0o600);
