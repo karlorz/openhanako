@@ -2,9 +2,24 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { appendDigestFileToHistoryFile, generateDigestWithOpenAI, parseArgs } from "../scripts/generate-release-digest.mjs";
+import { appendDigestFileToHistoryFile, generateDigestWithOpenAI, parseArgs, resolveDigestConfig } from "../scripts/generate-release-digest.mjs";
 
 describe("generate-release-digest", () => {
+  it("documents a non-executing direnv BYOK contract", () => {
+    const envrc = fs.readFileSync(path.resolve(".envrc"), "utf-8");
+    const example = fs.readFileSync(path.resolve(".env.example"), "utf-8");
+    const gitignore = fs.readFileSync(path.resolve(".gitignore"), "utf-8");
+
+    expect(envrc).toContain("dotenv_if_exists .env");
+    expect(envrc).toContain("OPENHANAKO_RELEASE_DIGEST_SECRET_FILE");
+    expect(envrc).not.toMatch(/^\s*(?:source|\.)\s+/m);
+    expect(example).toContain("base_url=https://api.openai.com/v1");
+    expect(example).toContain("model=gpt-5.5");
+    expect(example).toContain("api_backend=responses");
+    expect(example).not.toContain("api_key=");
+    expect(gitignore).toContain("!.env.example");
+  });
+
   it("parses local pre-tag defaults without requiring release lookup", () => {
     const args = parseArgs(["--out", "tmp/digest.json"], {
       GITHUB_REF_NAME: "v0.425.4",
@@ -88,6 +103,137 @@ describe("generate-release-digest", () => {
       name: "hana_release_digest",
       strict: true,
     }));
+  });
+
+  it("resolves provider-neutral BYOK settings with CLI precedence", () => {
+    expect(resolveDigestConfig({
+      env: {
+        api_key: "test-key",
+        base_url: "https://env.example/v1///",
+        model: "env-model",
+        api_backend: "chat-completions",
+      },
+      baseUrl: "https://cli.example/v1/",
+      model: "cli-model",
+      backend: "responses",
+    })).toMatchObject({
+      apiKey: "test-key",
+      baseUrl: "https://cli.example/v1",
+      model: "cli-model",
+      backend: "responses",
+    });
+  });
+
+  it("prefers canonical lowercase BYOK values over inherited aliases", () => {
+    expect(resolveDigestConfig({
+      env: {
+        api_key: "project-key",
+        API_KEY: "inherited-key",
+        OPENAI_API_KEY: "legacy-key",
+        base_url: "https://project.example/v1",
+        BASE_URL: "https://inherited.example/v1",
+        model: "project-model",
+        MODEL: "inherited-model",
+        api_backend: "chat-completions",
+        API_BACKEND: "responses",
+      },
+    })).toEqual({
+      apiKey: "project-key",
+      baseUrl: "https://project.example/v1",
+      model: "project-model",
+      backend: "chat-completions",
+    });
+  });
+
+  it("supports Chat Completions-compatible BYOK responses", async () => {
+    const digest = {
+      schemaVersion: 1,
+      tag: "v0.425.4",
+      version: "0.425.4",
+      previousTag: "v0.425.3",
+      generatedAt: "2026-07-05T00:00:00.000Z",
+      noUserFacingChanges: false,
+      summary: { zh: "更新说明更清楚。", en: "Update notes are clearer." },
+      counts: { feature: 1, fix: 0, improvement: 0, migration: 0 },
+      source: {
+        owner: "liliMozi",
+        repo: "openhanako",
+        commitRange: "v0.425.3..v0.425.4",
+        releaseUrl: "https://github.com/liliMozi/openhanako/releases/tag/v0.425.4",
+        releaseNotes: "",
+      },
+      items: [{
+        id: "digest",
+        kind: "feature",
+        importance: "high",
+        title: { zh: "更新摘要", en: "Update digest" },
+        summary: { zh: "About 页展示更新内容。", en: "The About page shows update content." },
+        details: [],
+        sources: [{ type: "commit", ref: "abc123", title: "Add digest" }],
+      }],
+    };
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue({ choices: [{ message: { content: JSON.stringify(digest) } }] }),
+    });
+
+    const result = await generateDigestWithOpenAI(
+      { tag: "v0.425.4", version: "0.425.4", commits: [] },
+      {
+        env: {
+          API_KEY: "test-key",
+          BASE_URL: "https://proxy.example/v1/",
+          MODEL: "provider-model",
+          API_BACKEND: "chat-completions",
+        },
+        fetchImpl,
+      },
+    );
+
+    expect(result.tag).toBe("v0.425.4");
+    expect(fetchImpl).toHaveBeenCalledWith("https://proxy.example/v1/chat/completions", expect.objectContaining({
+      method: "POST",
+      headers: expect.objectContaining({ Authorization: "Bearer test-key" }),
+    }));
+    const body = JSON.parse(fetchImpl.mock.calls[0][1].body);
+    expect(body.model).toBe("provider-model");
+    expect(body.messages).toHaveLength(2);
+    expect(body.response_format).toMatchObject({ type: "json_schema" });
+    expect(body.store).toBe(false);
+  });
+
+  it("rejects unsupported provider-neutral backend values", () => {
+    expect(() => resolveDigestConfig({ env: { API_BACKEND: "unsupported" } })).toThrow(/API_BACKEND/);
+  });
+
+  it("rejects URLs that could leak credentials or alter endpoint joining", () => {
+    expect(() => resolveDigestConfig({ env: { base_url: "https://user:pass@example.test/v1" } })).toThrow(/credentials/);
+    expect(() => resolveDigestConfig({ env: { base_url: "https://example.test/v1?token=secret" } })).toThrow(/query/);
+  });
+
+  it("fails closed without a key and never sends a request", async () => {
+    const fetchImpl = vi.fn();
+    await expect(generateDigestWithOpenAI({ tag: "v0.425.4" }, { env: {}, fetchImpl })).rejects.toThrow(/API_KEY/);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("does not echo a key in HTTP, malformed-output, or schema errors", async () => {
+    const key = "test-key-that-must-not-escape";
+    const failingFetch = vi.fn().mockResolvedValue({ ok: false, status: 401, text: vi.fn().mockResolvedValue(`upstream ${key}`) });
+    await expect(generateDigestWithOpenAI({ tag: "v0.425.4" }, { env: { api_key: key }, fetchImpl: failingFetch })).rejects.toThrow(/401/);
+    await expect(generateDigestWithOpenAI({ tag: "v0.425.4" }, {
+      env: { api_key: key },
+      fetchImpl: vi.fn().mockResolvedValue({ ok: true, json: vi.fn().mockResolvedValue({ output_text: "not-json" }) }),
+    })).rejects.toThrow(/JSON/);
+    await expect(generateDigestWithOpenAI({ tag: "v0.425.4" }, {
+      env: { api_key: key },
+      fetchImpl: vi.fn().mockResolvedValue({ ok: true, json: vi.fn().mockResolvedValue({ output_text: "{}" }) }),
+    })).rejects.toThrow(/Invalid release digest/);
+    await expect(generateDigestWithOpenAI({ tag: "v0.425.4" }, {
+      env: { api_key: key, api_backend: "chat-completions" },
+      fetchImpl: vi.fn().mockResolvedValue({ ok: true, json: vi.fn().mockResolvedValue({ choices: [] }) }),
+    })).rejects.toThrow(/Chat Completions/);
+    expect(failingFetch.mock.calls[0][1].headers.Authorization).toBe(`Bearer ${key}`);
   });
 });
 

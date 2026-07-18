@@ -82,6 +82,7 @@ desktop/src/react/animation-mockup/
 # 环境变量 / 凭证
 .env
 .env.*
+!.env.example
 *.pem
 *.key
 *.p12
