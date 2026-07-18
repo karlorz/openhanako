@@ -34,7 +34,7 @@ export function createLocalBuildInfo({
   const gitSha = env.HANA_LOCAL_BUILD_SHA
     || gitOutput(["rev-parse", "--short=12", "HEAD"], { rootDir, execFileSyncImpl });
   const baseTag = env.HANA_LOCAL_BUILD_BASE_TAG
-    || gitOutput(["describe", "--tags", "--abbrev=0", "HEAD"], { rootDir, execFileSyncImpl });
+    || gitOutput(["describe", "--tags", "--abbrev=0", "--match", "v[0-9]*", "HEAD"], { rootDir, execFileSyncImpl });
   const dirtyOutput = gitOutput(["status", "--porcelain"], { rootDir, execFileSyncImpl });
 
   return {
