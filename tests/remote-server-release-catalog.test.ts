@@ -5,6 +5,7 @@ import policy from "../shared/remote-server-policy.json";
 const {
   compareForkReleaseTags,
   normalizeGithubServerRelease,
+  normalizeServerCompatibilityManifest,
   normalizeServerPlatformArch,
   parseForkReleaseTag,
   parseServerAssetName,
@@ -101,5 +102,51 @@ describe("fork server release catalog", () => {
       prerelease: false,
       reasonCodes: ["release_publication_policy_drift"],
     });
+  });
+
+  it("validates a compatibility manifest only against the normalized release", () => {
+    const tag = "v0.407.15-karlorz.1";
+    const raw = serverRelease(tag);
+    raw.assets.push({
+      name: `hanaagent-server-compatibility-${tag}.json`,
+      browser_download_url: `https://example.test/hanaagent-server-compatibility-${tag}.json`,
+    });
+    const release = normalizeGithubServerRelease(raw, policy)!;
+    const bundle = `hanaagent-server-${tag}-linux-arm64.tar.gz`;
+    const manifest = {
+      schemaVersion: 1,
+      tag,
+      runtimeVersion: "0.407.15",
+      sourceRepository: "karlorz/openhanako",
+      gitSha: "0123456789abcdef0123456789abcdef01234567",
+      featureContracts: {
+        schemaVersion: 1,
+        complete: true,
+        entries: { "chat.core": 1, "input.drafts": 1, "websocket.ticket": 1 },
+      },
+      assets: {
+        "linux-arm64": { bundle, checksum: `${bundle}.sha256` },
+      },
+    };
+
+    expect(normalizeServerCompatibilityManifest(manifest, release)).toEqual({
+      featureContracts: manifest.featureContracts,
+      manifestGitSha: manifest.gitSha,
+    });
+
+    const invalidValues = [
+      { ...manifest, schemaVersion: 2 },
+      { ...manifest, tag: "v0.407.15-karlorz.2" },
+      { ...manifest, runtimeVersion: "0.407.14" },
+      { ...manifest, sourceRepository: "other/openhanako" },
+      { ...manifest, gitSha: "short" },
+      { ...manifest, featureContracts: { ...manifest.featureContracts, complete: false } },
+      { ...manifest, featureContracts: { ...manifest.featureContracts, entries: { "Input.Drafts": 1 } } },
+      { ...manifest, assets: { "linux-x64": { bundle: bundle.replace("arm64", "x64"), checksum: `${bundle.replace("arm64", "x64")}.sha256` } } },
+      { ...manifest, assets: { ...manifest.assets, "linux-x64": { bundle, checksum: `${bundle}.sha256` } } },
+    ];
+    for (const invalid of invalidValues) {
+      expect(normalizeServerCompatibilityManifest(invalid, release)).toBeNull();
+    }
   });
 });

@@ -43,6 +43,8 @@ function releaseCheck(overrides: Partial<RemoteServerReleaseCheck> = {}): Remote
       compatibilityManifestName: null,
       featureContracts: null,
       manifestGitSha: null,
+      manifestStatus: "missing",
+      manifestErrorCode: null,
       reasonCodes: ["release_publication_policy_drift"],
     },
   };
@@ -236,6 +238,44 @@ describe("remote server assessment", () => {
       expect.objectContaining({ id: "input-drafts", status: "supported", reportedVersion: 1 }),
       expect.objectContaining({ id: "future-feature", status: "unavailable", reasonCode: "feature_contract_missing" }),
     ]));
+  });
+
+  it("attaches verified target support only as feature-specific upgrade evidence", () => {
+    const target = releaseCheck();
+    target.release = {
+      ...target.release!,
+      featureContracts: {
+        schemaVersion: 1,
+        complete: true,
+        entries: { "chat.core": 1, "input.drafts": 1, "websocket.ticket": 1 },
+      },
+      manifestGitSha: "0123456789abcdef0123456789abcdef01234567",
+      manifestStatus: "valid",
+      manifestErrorCode: null,
+    };
+    const result = assessRemoteServer({
+      connectionId: "lan:legacy:default",
+      boundary: boundaryReady,
+      server: { connectionKind: "lan", runtimeVersion: "0.346.18", featureContracts: null },
+      releaseCheck: target,
+      featureRequirements: [{
+        id: "input-drafts",
+        contract: "input.drafts",
+        minVersion: 1,
+        unknownPolicy: "fallback",
+        fallback: "memory-only",
+      }],
+    });
+
+    expect(result.features.items[0]).toMatchObject({
+      status: "unknown",
+      fallback: "memory-only",
+      upgradeEvidence: {
+        targetTag: "v0.357.17-karlorz.1",
+        targetContractVersion: 1,
+        manifestGitSha: "0123456789abcdef0123456789abcdef01234567",
+      },
+    });
   });
 
   it("applies a definitive feature observation without changing core state", () => {
