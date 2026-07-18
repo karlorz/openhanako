@@ -38,6 +38,7 @@ import {
   upsertServerConnection,
   warnIfServerProtocolMismatch,
   type ServerConnection,
+  type ServerIdentity,
 } from './services/server-connection';
 import {
   clearRemoteConnectionRecoveryState,
@@ -46,7 +47,12 @@ import {
 } from './services/remote-connection-recovery';
 import {
   assertRemoteBoundaryContract,
+  validateRemoteBoundaryContract,
+  type RemoteBoundaryCompatibility,
 } from './services/remote-boundary-contract';
+import { createRemoteServerAssessmentCoordinator } from './services/remote-server-assessment-coordinator';
+import { writeRemoteServerAssessment } from './services/remote-server-assessment-cache';
+import { assessRemoteServer } from '../../../shared/remote-server-assessment';
 import { persistAppearancePreferences } from './services/appearance-sync';
 import { errorBus as _errorBus } from '../../../shared/error-bus.ts';
 import { AppError as _AppError } from '../../../shared/errors.ts';
@@ -57,6 +63,27 @@ declare const i18n: {
   load(locale: string): Promise<void>;
 };
 declare function t(key: string, vars?: Record<string, string | number>): string;
+
+type LoadedIdentity = {
+  connection: ServerConnection;
+  identity: ServerIdentity;
+  boundary: RemoteBoundaryCompatibility;
+};
+
+const remoteServerAssessmentCoordinator = createRemoteServerAssessmentCoordinator({
+  getActiveConnectionId: () => useStore.getState().activeServerConnectionId,
+  fetchIdentity: async () => fetchServerIdentity(),
+  loadRelease: async (options) => {
+    if (typeof window.hana?.checkRemoteServerRelease !== 'function') {
+      throw new Error('remote server release bridge unavailable');
+    }
+    return window.hana.checkRemoteServerRelease(options);
+  },
+  evaluate: assessRemoteServer,
+  applyAssessment: (remoteServerAssessment) => useStore.setState({ remoteServerAssessment }),
+  persistAssessment: writeRemoteServerAssessment,
+  now: () => new Date(),
+});
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- 全局 bootstrap：platform/IPC callback 签名含 any */
 
@@ -169,6 +196,7 @@ export async function initApp(): Promise<void> {
     serverConnections: initialRegistry,
     activeServerConnectionId: activeServerConnection?.connectionId ?? null,
     activeServerConnection,
+    remoteServerAssessment: null,
   });
 
   if (!activeServerConnection) {
@@ -180,13 +208,18 @@ export async function initApp(): Promise<void> {
 
   try {
     await refreshDeviceWebSession(activeServerConnection);
-    const mergedConnection = await loadIdentityForActiveConnection(activeServerConnection);
+    const loadedIdentity = await loadIdentityForActiveConnection(activeServerConnection);
+    const mergedConnection = loadedIdentity.connection;
     useStore.setState({
       serverConnections: upsertServerConnection(useStore.getState().serverConnections, mergedConnection),
       activeServerConnectionId: mergedConnection.connectionId,
       activeServerConnection: mergedConnection,
       remoteConnectionRecovery: null,
     });
+    void remoteServerAssessmentCoordinator.assessConnection(mergedConnection, {
+      initialIdentity: loadedIdentity.identity,
+      initialBoundary: loadedIdentity.boundary,
+    }).catch(err => console.warn('[init] remote server assessment skipped:', err));
     clearRemoteConnectionRecoveryState();
   } catch (err) {
     const recovery = remoteRecoveryForStartupFailure(activeServerConnection, err);
@@ -355,12 +388,21 @@ export async function initApp(): Promise<void> {
   platform.appReady();
 }
 
-async function loadIdentityForActiveConnection(connection: ServerConnection): Promise<ServerConnection> {
+async function fetchServerIdentity(): Promise<ServerIdentity> {
   const identityRes = await hanaFetch('/api/server/identity');
-  const identityData = await identityRes.json();
+  return identityRes.json() as Promise<ServerIdentity>;
+}
+
+async function loadIdentityForActiveConnection(connection: ServerConnection): Promise<LoadedIdentity> {
+  const identityData = await fetchServerIdentity();
   warnIfServerProtocolMismatch(identityData);
+  const boundary = validateRemoteBoundaryContract(connection, identityData);
   assertRemoteBoundaryContract(connection, identityData);
-  return mergeServerIdentity(connection, identityData);
+  return {
+    connection: mergeServerIdentity(connection, identityData),
+    identity: identityData,
+    boundary,
+  };
 }
 
 async function refreshDeviceWebSession(connection: ServerConnection): Promise<void> {

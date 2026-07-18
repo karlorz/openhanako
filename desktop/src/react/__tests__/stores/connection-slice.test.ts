@@ -1,6 +1,28 @@
 import { describe, expect, it } from 'vitest';
 import { createConnectionSlice, type ConnectionSlice } from '../../stores/connection-slice';
 import { mergeServerIdentity } from '../../services/server-connection';
+import { assessRemoteServer } from '../../../../../shared/remote-server-assessment';
+
+function assessment(connectionId: string) {
+  return assessRemoteServer({
+    connectionId,
+    boundary: { status: 'assessed', ok: true, reasonCodes: [], warningCodes: [] },
+    server: { connectionKind: 'lan', runtimeVersion: '0.346.18' },
+  });
+}
+
+function remoteFrom(local: NonNullable<ConnectionSlice['activeServerConnection']>, connectionId: string) {
+  return {
+    ...local,
+    connectionId,
+    kind: 'lan' as const,
+    baseUrl: `http://${connectionId.replace(':', '-')}.test:14500`,
+    wsUrl: `ws://${connectionId.replace(':', '-')}.test:14500`,
+    token: 'device-token',
+    trustState: 'lan' as const,
+    credentialKind: 'device_credential' as const,
+  };
+}
 
 function createHarness() {
   let state: ConnectionSlice;
@@ -79,5 +101,56 @@ describe('connection slice registry', () => {
     expect(h.state.serverToken).toBe('local-token');
     expect(h.state.activeServerConnectionId).toBe('custom:remote');
     expect(h.state.activeServerConnection).toBe(remote);
+  });
+
+  it('clears an assessment when selecting another connection', () => {
+    const h = createHarness();
+    h.state.setLocalServerConnection(3210, 'local-token');
+    const first = remoteFrom(h.state.activeServerConnection!, 'lan:first');
+    const second = remoteFrom(h.state.activeServerConnection!, 'lan:second');
+    h.state.upsertServerConnection(first);
+    h.state.upsertServerConnection(second);
+    h.state.selectServerConnection(first.connectionId);
+    h.state.setRemoteServerAssessment(assessment(first.connectionId));
+
+    h.state.selectServerConnection(second.connectionId);
+
+    expect(h.state.remoteServerAssessment).toBeNull();
+  });
+
+  it('clears a remote assessment when switching to the local owner', () => {
+    const h = createHarness();
+    h.state.setLocalServerConnection(3210, 'local-token');
+    const remote = remoteFrom(h.state.activeServerConnection!, 'lan:first');
+    h.state.setActiveServerConnection(remote);
+    h.state.setRemoteServerAssessment(assessment(remote.connectionId));
+
+    h.state.setLocalServerConnection(3210, 'local-token');
+
+    expect(h.state.remoteServerAssessment).toBeNull();
+  });
+
+  it('keeps the active assessment when upserting a non-active connection', () => {
+    const h = createHarness();
+    h.state.setLocalServerConnection(3210, 'local-token');
+    const remote = remoteFrom(h.state.activeServerConnection!, 'lan:first');
+    h.state.setActiveServerConnection(remote);
+    const activeAssessment = assessment(remote.connectionId);
+    h.state.setRemoteServerAssessment(activeAssessment);
+
+    h.state.upsertServerConnection(remoteFrom(h.state.serverConnections.local, 'lan:second'));
+
+    expect(h.state.remoteServerAssessment).toEqual(activeAssessment);
+  });
+
+  it('rejects an assessment for a connection other than the active one', () => {
+    const h = createHarness();
+    h.state.setLocalServerConnection(3210, 'local-token');
+    const remote = remoteFrom(h.state.activeServerConnection!, 'lan:first');
+    h.state.setActiveServerConnection(remote);
+
+    h.state.setRemoteServerAssessment(assessment('lan:other'));
+
+    expect(h.state.remoteServerAssessment).toBeNull();
   });
 });
