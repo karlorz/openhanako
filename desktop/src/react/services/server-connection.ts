@@ -78,6 +78,22 @@ export interface ServerIdentity {
    *  Optional so an older server that predates this field is read-time
    *  compatible: absence means "don't know", not "mismatch". */
   serverProtocol?: number;
+  runtimeBuild?: {
+    schemaVersion?: number;
+    runtimeVersion?: string;
+    releaseTag?: string | null;
+    gitSha?: string | null;
+    sourceRepository?: string | null;
+  };
+  featureContracts?: {
+    schemaVersion?: number;
+    complete?: boolean;
+    entries?: Record<string, number>;
+  };
+  runtimeFacts?: {
+    platform?: string;
+    arch?: string;
+  };
 }
 
 export interface ServerConnectionSource {
