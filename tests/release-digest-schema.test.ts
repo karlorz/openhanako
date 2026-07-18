@@ -123,6 +123,23 @@ describe("release digest history (v2 rolling anthology)", () => {
     expect(validateReleaseDigestHistory(history)).toEqual({ ok: true, errors: [] });
   });
 
+  it("keeps fork tag identity while replacing the matching product-version head", () => {
+    const upstream = digestForVersion("0.407.15", "0.407.8");
+    const fork = digestForVersion("0.407.15", "0.407.15");
+    fork.tag = "v0.407.15-karlorz.1";
+
+    const history = appendDigestToHistory({
+      schema: 2,
+      entries: [upstream, digestForVersion("0.407.8", "0.407.3")],
+    }, fork);
+
+    expect(history.entries).toHaveLength(2);
+    expect(history.entries[0].tag).toBe("v0.407.15-karlorz.1");
+    expect(history.entries[0].version).toBe("0.407.15");
+    expect(history.entries[1].version).toBe("0.407.8");
+    expect(validateReleaseDigestHistory(history)).toEqual({ ok: true, errors: [] });
+  });
+
   it("rejects more than the max entry count", () => {
     const entries = [];
     for (let i = 60; i > 0; i -= 1) {
