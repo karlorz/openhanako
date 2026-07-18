@@ -138,10 +138,12 @@ describe("chat route compaction lifecycle messages", () => {
       { type: "compaction_end", reason: "manual", aborted: false, willRetry: false },
       addressed.sessionPath,
       getSessionByPath,
+      () => addressed.sessionId,
     );
 
     expect(message).toEqual({
       type: "compaction_end",
+      sessionId: addressed.sessionId,
       sessionPath: addressed.sessionPath,
       reason: "manual",
       aborted: false,
@@ -163,6 +165,7 @@ describe("chat route compaction lifecycle messages", () => {
     expect(toCompactionLifecycleWsMessage(
       { type: "session_compaction_result", outcome: "noop" },
       "/session/a.jsonl",
+      () => null,
       () => null,
     )).toBeNull();
 
