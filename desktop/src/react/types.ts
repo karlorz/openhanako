@@ -1,5 +1,5 @@
 import type { ThinkingLevel } from './stores/model-slice';
-import type { RemoteServerReleaseCheck } from '../../../shared/remote-server-release-catalog.cjs';
+import type { RemoteServerReleaseCheck } from '../../../shared/remote-server-release-catalog';
 
 // ── Auto-update ──
 

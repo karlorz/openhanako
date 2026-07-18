@@ -104,6 +104,12 @@ describe("sync-upstream rule engine", () => {
 
     expect(patterns).toContain("scripts/sync-upstream.mjs");
     expect(patterns).toContain("FORK_SYNC.md");
+    expect(patterns).toContain(".envrc");
+    expect(patterns).toContain("docs/release-digest-generation.md");
+    expect(patterns).toContain("scripts/check-remote-prerequisites.mjs");
+    expect(patterns).toContain("shared/remote-feature-contracts.*");
+    expect(patterns).toContain("shared/server-build-info.*");
+    expect(patterns).toContain("tests/remote-server-*.test.*");
     expect(patterns).toContain("docs/upstream-issues/**");
     expect(patterns.some((p) => p.startsWith("examples/plugins/office-workflow"))).toBe(true);
   });
@@ -117,6 +123,25 @@ describe("sync-upstream rule engine", () => {
     expect(minimatch("examples/plugins/other/x.js", "examples/plugins/office-workflow/**")).toBe(false);
     expect(minimatch("scripts/sync-upstream.mjs", "scripts/sync-upstream.mjs")).toBe(true);
     expect(minimatch("scripts/other.mjs", "scripts/sync-upstream.mjs")).toBe(false);
+  });
+
+  it("tracks remote assessment and release workflow files as explicit divergence", () => {
+    const rules = loadRules();
+    expect(rules.conflictRules.divergingFiles).toEqual(expect.arrayContaining([
+      "scripts/generate-release-digest.mjs",
+      "scripts/install-server.mjs",
+      "scripts/hana-desktop-smoke-helper.mjs",
+      "desktop/src/react/services/remote-server-assessment-coordinator.ts",
+      "server/index.ts",
+    ]));
+    expect(rules.conflictRules.policies["scripts/generate-release-digest.mjs"]).toMatchObject({
+      class: "fork_release_digest",
+      strategy: "preserve-both",
+    });
+    expect(rules.conflictRules.policies["scripts/install-server.mjs"]).toMatchObject({
+      class: "server_release_compatibility",
+      risk: "critical",
+    });
   });
 
   it("reports fork-only patterns that match zero tracked files after a sync", () => {
