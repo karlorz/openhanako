@@ -164,6 +164,8 @@ function remoteAssessment(overrides: Partial<RemoteServerAssessmentInput> = {}) 
         compatibilityManifestName: null,
         featureContracts: null,
         manifestGitSha: null,
+        manifestStatus: 'missing',
+        manifestErrorCode: null,
         reasonCodes: [],
       },
     },
