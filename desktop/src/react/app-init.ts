@@ -22,7 +22,7 @@ import { initErrorBusBridge } from './errors/error-bus-bridge';
 import { refreshPluginUI } from './stores/plugin-ui-actions';
 import { openSettingsModal } from './stores/settings-modal-actions';
 import { initQuotedSelectionLifecycle } from './stores/selection-actions';
-import { hydrateInputDrafts, initInputDraftPersistence } from './stores/input-draft-persistence';
+import { clearInputDraftRemoteSession, hydrateInputDrafts, initInputDraftPersistence } from './stores/input-draft-persistence';
 import { configureAppEventActions, handleAppEvent, readConfigCwdHistory, readConfigHomeFolder, readConfigMemoryMasterEnabled } from './services/app-event-actions';
 import { configureWsMessageHandler } from './services/ws-message-handler';
 import { applyChatLayout } from './chat/layout';
@@ -161,6 +161,7 @@ export async function initApp(): Promise<void> {
     const serverPort = String(data.port);
     const serverToken = data.token ?? storeState.serverToken ?? null;
     const activeBeforeRestart = storeState.activeServerConnection;
+    if (activeBeforeRestart) clearInputDraftRemoteSession(activeBeforeRestart.connectionId);
     const nextConnectionState = refreshLocalServerConnectionState({
       serverConnections: storeState.serverConnections,
       activeServerConnectionId: storeState.activeServerConnectionId,
