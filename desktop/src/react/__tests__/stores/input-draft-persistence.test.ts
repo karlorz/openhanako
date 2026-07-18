@@ -39,10 +39,19 @@ const localConnection: ServerConnection = {
   trustState: 'local' as const,
   credentialKind: 'loopback_token' as const,
 };
+const secondRemoteConnection: ServerConnection = {
+  ...remoteConnection,
+  connectionId: 'lan:server:other-studio',
+  studioId: 'other-studio',
+  label: 'Other Remote',
+};
 
-function remoteAssessment(featureContracts: null | { schemaVersion: 1; complete: true; entries: Record<string, number> }) {
+function remoteAssessment(
+  featureContracts: null | { schemaVersion: 1; complete: true; entries: Record<string, number> },
+  connectionId = remoteConnection.connectionId,
+) {
   return assessRemoteServer({
-    connectionId: remoteConnection.connectionId,
+    connectionId,
     boundary: { status: 'assessed', ok: true, reasonCodes: [], warningCodes: [] },
     server: { connectionKind: 'lan', featureContracts },
     featureRequirements: REMOTE_INPUT_DRAFT_FEATURE_REQUIREMENTS,
@@ -292,6 +301,46 @@ describe('input draft persistence', () => {
     resolveJson!([]);
     await hydration;
     expect(inputDraftRemoteMode(useStore.getState()).mode).toBe('fallback');
+  });
+
+  it('ignores a hydrate body that arrives after switching to another remote connection', async () => {
+    useConnection(remoteConnection, remoteAssessment(null));
+    initInputDraftPersistence();
+    let resolveJson: (body: unknown) => void;
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => new Promise((resolve) => { resolveJson = resolve; }),
+    } as Response);
+
+    const hydration = hydrateInputDrafts();
+    await Promise.resolve();
+    await Promise.resolve();
+    useConnection(secondRemoteConnection, remoteAssessment(null, secondRemoteConnection.connectionId));
+    resolveJson!({ sessions: { 'sess-from-a': { text: 'stale server A draft' } } });
+    await hydration;
+
+    expect(useStore.getState().drafts['sess-from-a']).toBeUndefined();
+    useConnection(remoteConnection, remoteAssessment(null));
+    expect(inputDraftRemoteMode(useStore.getState()).mode).toBe('probe-once');
+  });
+
+  it('ignores a hydrate body that arrives after reconnect clears its remote session', async () => {
+    useConnection(remoteConnection, remoteAssessment(null));
+    let resolveJson: (body: unknown) => void;
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => new Promise((resolve) => { resolveJson = resolve; }),
+    } as Response);
+
+    const hydration = hydrateInputDrafts();
+    await Promise.resolve();
+    await Promise.resolve();
+    clearInputDraftRemoteSession(remoteConnection.connectionId);
+    resolveJson!({ sessions: { 'sess-from-a': { text: 'stale reconnect draft' } } });
+    await hydration;
+
+    expect(useStore.getState().drafts['sess-from-a']).toBeUndefined();
+    expect(inputDraftRemoteMode(useStore.getState()).mode).toBe('probe-once');
   });
 
   it('backs off network failures and reconnect clearing permits a new probe', async () => {

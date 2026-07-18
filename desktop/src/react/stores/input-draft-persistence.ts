@@ -21,6 +21,7 @@ import { HOME_DRAFT_KEY } from '../../../../shared/input-drafts.ts';
 const PUSH_DEBOUNCE_MS = 500;
 const featureSessions = createRemoteFeatureSessionRegistry();
 const pushTimers = new Map<string, { timer: ReturnType<typeof setTimeout>; connectionId: string }>();
+const connectionGenerations = new Map<string, number>();
 let connectionSubscriptionInitialized = false;
 
 type InputDraftRemoteMode = RemoteFeatureDecision & { connectionId: string | null };
@@ -52,12 +53,24 @@ export function inputDraftRemoteMode(state: ReturnType<typeof useStore.getState>
 }
 
 export function clearInputDraftRemoteSession(connectionId: string): void {
+  connectionGenerations.set(connectionId, (connectionGenerations.get(connectionId) ?? 0) + 1);
   featureSessions.clearConnection(connectionId);
   for (const [key, pending] of pushTimers) {
     if (pending.connectionId !== connectionId) continue;
     clearTimeout(pending.timer);
     pushTimers.delete(key);
   }
+}
+
+function connectionGeneration(connectionId: string): number {
+  return connectionGenerations.get(connectionId) ?? 0;
+}
+
+function isCurrentHydrateConnection(connectionId: string, generation: number): boolean {
+  const state = useStore.getState();
+  return state.activeServerConnectionId === connectionId
+    && state.activeServerConnection?.connectionId === connectionId
+    && connectionGeneration(connectionId) === generation;
 }
 
 function classifyInputDraftResponse(response: Response): 'supported' | 'unsupported' | 'auth' | 'transient' {
@@ -135,21 +148,25 @@ function schedulePush(key: string, text: string, doc: JSONContent | null): void 
 export async function hydrateInputDrafts(): Promise<void> {
   const mode = inputDraftRemoteMode(useStore.getState());
   if ((mode.mode !== 'remote' && mode.mode !== 'probe-once') || !mode.connectionId) return;
+  const generation = connectionGeneration(mode.connectionId);
   let data: any = null;
   try {
     const res = await hanaFetch(`/api/input-drafts?surface=${resolveWorkspaceUiSurface()}`, {
       ...(mode.connectionId !== 'local' ? { throwOnHttpError: false } : {}),
     });
+    if (!isCurrentHydrateConnection(mode.connectionId, generation)) return;
     if (mode.connectionId !== 'local' && classifyInputDraftResponse(res) !== 'supported') {
       recordRemoteResponse(mode.connectionId, res);
       return;
     }
     data = await res.json().catch(() => null);
   } catch (err) {
+    if (!isCurrentHydrateConnection(mode.connectionId, generation)) return;
     if (mode.connectionId !== 'local') featureSessions.recordTransientFailure(mode.connectionId, 'input-drafts');
     console.warn('[input-drafts] hydrate failed:', err);
     return;
   }
+  if (!isCurrentHydrateConnection(mode.connectionId, generation)) return;
   if (!isInputDraftHydratePayload(data)) {
     if (mode.connectionId !== 'local') featureSessions.recordTransientFailure(mode.connectionId, 'input-drafts');
     return;
