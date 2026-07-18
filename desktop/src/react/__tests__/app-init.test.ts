@@ -32,6 +32,9 @@ const mockUpdateLayout = vi.fn();
 const mockInitErrorBusBridge = vi.fn();
 const mockRefreshPluginUI = vi.fn();
 const mockInitSessionProjectCatalog = vi.fn(async () => {});
+const mockClearInputDraftRemoteSession = vi.fn();
+const mockHydrateInputDrafts = vi.fn();
+const mockInitInputDraftPersistence = vi.fn();
 
 vi.mock('../stores', () => ({
   useStore: {
@@ -63,6 +66,12 @@ vi.mock('../stores/session-actions', () => ({
 
 vi.mock('../stores/session-project-actions', () => ({
   initSessionProjectCatalog: mockInitSessionProjectCatalog,
+}));
+
+vi.mock('../stores/input-draft-persistence', () => ({
+  clearInputDraftRemoteSession: mockClearInputDraftRemoteSession,
+  hydrateInputDrafts: mockHydrateInputDrafts,
+  initInputDraftPersistence: mockInitInputDraftPersistence,
 }));
 
 vi.mock('../services/websocket', () => ({
@@ -202,6 +211,9 @@ describe('initApp bridge indicator', () => {
     mockInitErrorBusBridge.mockReset();
     mockRefreshPluginUI.mockReset();
     mockInitSessionProjectCatalog.mockReset();
+    mockClearInputDraftRemoteSession.mockReset();
+    mockHydrateInputDrafts.mockReset();
+    mockInitInputDraftPersistence.mockReset();
     vi.resetModules();
   });
 
@@ -727,6 +739,7 @@ describe('initApp bridge indicator', () => {
       token: 'new-token',
     }));
     expect(mockConnectWebSocket).toHaveBeenCalledTimes(1);
+    expect(mockClearInputDraftRemoteSession).not.toHaveBeenCalled();
   });
 
   it('refreshes local restart credentials without stealing an active remote connection', async () => {
@@ -800,6 +813,7 @@ describe('initApp bridge indicator', () => {
     expect(mockState.activeServerConnectionId).toBe(remote.connectionId);
     expect(mockState.activeServerConnection).toBe(remote);
     expect(mockConnectWebSocket).not.toHaveBeenCalled();
+    expect(mockClearInputDraftRemoteSession).toHaveBeenCalledWith(remote.connectionId);
   });
 
   it('refreshes the desk default workspace when settings change the current agent workspace', async () => {
