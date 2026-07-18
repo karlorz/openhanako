@@ -14,10 +14,12 @@ import {
   recordResourceEventCursor,
 } from './resource-events';
 import { useStore } from '../stores';
+import { clearInputDraftRemoteSession } from '../stores/input-draft-persistence';
 import { setStatus } from '../utils/ui-helpers';
 import {
   buildConnectionWsUrl,
   createLocalServerConnection,
+  isLocalOwnerConnection,
   requestConnectionWsTicket,
   resolveServerConnection,
   type ServerConnection,
@@ -77,6 +79,7 @@ export function connectWebSocket(port?: string, token?: string): void {
     : resolveServerConnection(storeState);
 
   if (!connection) return;
+  if (!isLocalOwnerConnection(connection)) clearInputDraftRemoteSession(connection.connectionId);
   ensureResourceForegroundCatchUp();
 
   void openConnectionWebSocket(connection).catch((err) => {
