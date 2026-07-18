@@ -1,5 +1,10 @@
 import type { RemoteServerAssessment } from '../../../../shared/remote-server-assessment';
 
+export {
+  resolveConnectionWsAuth,
+  type ConnectionWsAuth,
+} from './server-connection';
+
 export type RemoteFeatureDecision =
   | { featureId: string; mode: 'remote'; fallback: null; reasonCode: null }
   | { featureId: string; mode: 'fallback'; fallback: 'memory-only'; reasonCode: string }
