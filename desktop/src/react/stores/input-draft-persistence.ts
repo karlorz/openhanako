@@ -10,21 +10,77 @@
  */
 import type { JSONContent } from '@tiptap/core';
 import { hanaFetch } from '../hooks/use-hana-fetch';
-import { hasServerConnection } from '../services/server-connection';
+import { hasServerConnection, isLocalOwnerConnection } from '../services/server-connection';
+import { resolveRemoteFeatureDecision, type RemoteFeatureDecision } from '../services/remote-feature-gates';
+import { createRemoteFeatureSessionRegistry } from '../services/remote-feature-session';
 import { useStore } from './index';
 import { resolveWorkspaceUiSurface } from './workspace-ui-state-actions';
 import { registerDraftSyncListener } from './input-draft-sync';
 import { HOME_DRAFT_KEY } from '../../../../shared/input-drafts.ts';
 
 const PUSH_DEBOUNCE_MS = 500;
-const pushTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const featureSessions = createRemoteFeatureSessionRegistry();
+const pushTimers = new Map<string, { timer: ReturnType<typeof setTimeout>; connectionId: string }>();
+let connectionSubscriptionInitialized = false;
+
+type InputDraftRemoteMode = RemoteFeatureDecision & { connectionId: string | null };
+
+export function inputDraftRemoteMode(state: ReturnType<typeof useStore.getState>): InputDraftRemoteMode {
+  const connection = state.activeServerConnection;
+  if (!connection || !hasServerConnection(state)) {
+    return { featureId: 'input-drafts', mode: 'not-assessed', fallback: null, reasonCode: 'feature_not_assessed', connectionId: null };
+  }
+  if (isLocalOwnerConnection(connection)) {
+    return { featureId: 'input-drafts', mode: 'remote', fallback: null, reasonCode: null, connectionId: connection.connectionId };
+  }
+  const decision = resolveRemoteFeatureDecision(state.remoteServerAssessment, 'input-drafts');
+  if (decision.mode !== 'probe-once') return { ...decision, connectionId: connection.connectionId };
+  const session = featureSessions.read(connection.connectionId, 'input-drafts');
+  if (session.status === 'supported') {
+    return { featureId: 'input-drafts', mode: 'remote', fallback: null, reasonCode: null, connectionId: connection.connectionId };
+  }
+  if (!featureSessions.canProbe(connection.connectionId, 'input-drafts')) {
+    return { featureId: 'input-drafts', mode: 'fallback', fallback: 'memory-only', reasonCode: session.reasonCode || decision.reasonCode, connectionId: connection.connectionId };
+  }
+  return { ...decision, connectionId: connection.connectionId };
+}
+
+export function clearInputDraftRemoteSession(connectionId: string): void {
+  featureSessions.clearConnection(connectionId);
+  for (const [key, pending] of pushTimers) {
+    if (pending.connectionId !== connectionId) continue;
+    clearTimeout(pending.timer);
+    pushTimers.delete(key);
+  }
+}
+
+function classifyInputDraftResponse(response: Response): 'supported' | 'unsupported' | 'auth' | 'transient' {
+  if (response.ok || (response.status >= 200 && response.status < 300)) return 'supported';
+  if (response.status === 404 || response.status === 405) return 'unsupported';
+  if (response.status === 401 || response.status === 403) return 'auth';
+  return 'transient';
+}
+
+function recordRemoteResponse(connectionId: string, response: Response): boolean {
+  const classification = classifyInputDraftResponse(response);
+  if (classification === 'supported') {
+    featureSessions.recordSupported(connectionId, 'input-drafts');
+    return true;
+  }
+  if (classification === 'unsupported' || classification === 'auth') {
+    featureSessions.recordHttpFailure(connectionId, 'input-drafts', response.status);
+  } else {
+    featureSessions.recordTransientFailure(connectionId, 'input-drafts');
+  }
+  return false;
+}
 
 /** 内存 map 的键要么是 sessionId，要么是老数据兜底的 sessionPath（含路径分隔符），要么是 __home__ */
 function isPathLikeKey(key: string): boolean {
   return key.includes('/') || key.includes('\\');
 }
 
-async function pushDraft(key: string, text: string, doc: JSONContent | null): Promise<void> {
+async function pushDraft(connectionId: string, key: string, text: string, doc: JSONContent | null): Promise<void> {
   const body: Record<string, unknown> = {
     surface: resolveWorkspaceUiSurface(),
     text,
@@ -34,40 +90,52 @@ async function pushDraft(key: string, text: string, doc: JSONContent | null): Pr
   else if (isPathLikeKey(key)) body.sessionPath = key;
   else body.sessionId = key;
   try {
-    await hanaFetch('/api/input-drafts', {
+    const response = await hanaFetch('/api/input-drafts', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
+    if (connectionId !== 'local') recordRemoteResponse(connectionId, response);
   } catch (err) {
+    if (connectionId !== 'local') featureSessions.recordTransientFailure(connectionId, 'input-drafts');
     // 尽力而为的影子：失败不打断输入，下一次变更自然重试
     console.warn('[input-drafts] draft push failed:', err);
   }
 }
 
 function schedulePush(key: string, text: string, doc: JSONContent | null): void {
-  if (!hasServerConnection(useStore.getState())) return;
+  const mode = inputDraftRemoteMode(useStore.getState());
+  if (mode.mode !== 'remote' || !mode.connectionId) return;
+  const connectionId = mode.connectionId;
   const existing = pushTimers.get(key);
-  if (existing) clearTimeout(existing);
+  if (existing) clearTimeout(existing.timer);
   const timer = setTimeout(() => {
     pushTimers.delete(key);
-    void pushDraft(key, text, doc);
+    const current = inputDraftRemoteMode(useStore.getState());
+    if (current.mode !== 'remote' || current.connectionId !== connectionId) return;
+    void pushDraft(connectionId, key, text, doc);
   }, PUSH_DEBOUNCE_MS);
-  pushTimers.set(key, timer);
+  pushTimers.set(key, { timer, connectionId });
 }
 
 /** 拉全量草稿填充内存；内存已有的键以内存为准（用户可能已开始打字） */
 export async function hydrateInputDrafts(): Promise<void> {
-  if (!hasServerConnection(useStore.getState())) return;
+  const mode = inputDraftRemoteMode(useStore.getState());
+  if ((mode.mode !== 'remote' && mode.mode !== 'probe-once') || !mode.connectionId) return;
   let data: any = null;
   try {
     const res = await hanaFetch(`/api/input-drafts?surface=${resolveWorkspaceUiSurface()}`);
+    if (mode.connectionId !== 'local' && !recordRemoteResponse(mode.connectionId, res)) return;
     data = await res.json().catch(() => null);
   } catch (err) {
+    if (mode.connectionId !== 'local') featureSessions.recordTransientFailure(mode.connectionId, 'input-drafts');
     console.warn('[input-drafts] hydrate failed:', err);
     return;
   }
-  if (!data || typeof data !== 'object') return;
+  if (!data || typeof data !== 'object') {
+    if (mode.connectionId !== 'local') featureSessions.recordTransientFailure(mode.connectionId, 'input-drafts');
+    return;
+  }
   const current = useStore.getState();
   const drafts = { ...current.drafts };
   const draftDocs = { ...current.draftDocs };
@@ -92,4 +160,13 @@ export function initInputDraftPersistence(): void {
     onSet: (key, text, doc) => schedulePush(key, text, doc),
     onClear: (key) => schedulePush(key, '', null),
   });
+  if (!connectionSubscriptionInitialized) {
+    connectionSubscriptionInitialized = true;
+    useStore.subscribe((state, previous) => {
+      const previousId = previous.activeServerConnectionId;
+      if (previousId && previousId !== state.activeServerConnectionId) {
+        clearInputDraftRemoteSession(previousId);
+      }
+    });
+  }
 }
