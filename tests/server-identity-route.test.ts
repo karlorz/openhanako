@@ -169,6 +169,27 @@ describe("server identity route", () => {
         },
         capabilities: ["chat", "resources", "tools"],
         appVersion: "8.8.8",
+        runtimeBuild: {
+          schemaVersion: 1,
+          runtimeVersion: "0.407.15",
+          releaseTag: "v0.407.15-karlorz.1",
+          gitSha: "0123456789abcdef0123456789abcdef01234567",
+          sourceRepository: "karlorz/openhanako",
+          platform: "linux",
+          arch: "arm64",
+          buildFilePath: "/opt/hanaagent/current/server-build-info.json",
+          token: "must-not-serialize",
+        },
+        featureContracts: {
+          schemaVersion: 1,
+          complete: true,
+          entries: {
+            "chat.core": 1,
+            "input.drafts": 1,
+            "websocket.ticket": 1,
+          },
+        },
+        runtimeFacts: { platform: "linux", arch: "arm64", installerPath: "/usr/local/bin/install-server" },
       }),
     }));
 
@@ -204,6 +225,23 @@ describe("server identity route", () => {
       },
       capabilities: ["chat", "resources", "tools"],
       version: "9.9.9",
+      runtimeBuild: {
+        schemaVersion: 1,
+        runtimeVersion: "0.407.15",
+        releaseTag: "v0.407.15-karlorz.1",
+        gitSha: "0123456789abcdef0123456789abcdef01234567",
+        sourceRepository: "karlorz/openhanako",
+      },
+      featureContracts: {
+        schemaVersion: 1,
+        complete: true,
+        entries: {
+          "chat.core": 1,
+          "input.drafts": 1,
+          "websocket.ticket": 1,
+        },
+      },
+      runtimeFacts: { platform: "linux", arch: "arm64" },
       serverProtocol: SERVER_PROTOCOL_VERSION,
     });
   });
