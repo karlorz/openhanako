@@ -6,6 +6,13 @@ const {
 
 const EXPECTED_PUBLICATION_PRERELEASE = true;
 const DEFAULT_CORE_REQUIREMENT = { contract: "chat.core", minVersion: 1 };
+const REMOTE_INPUT_DRAFT_FEATURE_REQUIREMENTS = Object.freeze([Object.freeze({
+  id: "input-drafts",
+  contract: "input.drafts",
+  minVersion: 1,
+  unknownPolicy: "fallback",
+  fallback: "memory-only",
+})]);
 
 function isRecord(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -324,6 +331,16 @@ function summarizeAssessment(assessment) {
   return "ready";
 }
 
+function collectAssessmentReasonCodes(assessment) {
+  return dedupe([
+    ...assessment.core.reasonCodes,
+    ...assessment.transport.reasonCodes,
+    ...assessment.features.items.map((item) => item.reasonCode),
+    ...assessment.freshness.reasonCodes,
+    ...assessment.deployability.reasonCodes,
+  ]);
+}
+
 function assessRemoteServer(input) {
   if (!isRecord(input) || typeof input.connectionId !== "string" || input.connectionId.length === 0) {
     throw new TypeError("Remote server assessment requires a connectionId");
@@ -363,13 +380,7 @@ function assessRemoteServer(input) {
     deployability,
     releasePolicy,
   };
-  const reasonCodes = dedupe([
-    ...core.reasonCodes,
-    ...transport.reasonCodes,
-    ...features.items.map((item) => item.reasonCode),
-    ...freshness.reasonCodes,
-    ...deployability.reasonCodes,
-  ]);
+  const reasonCodes = collectAssessmentReasonCodes(partial);
   return {
     ...partial,
     summary: summarizeAssessment(partial),
@@ -392,18 +403,13 @@ function applyRemoteFeatureObservation(assessment, observation) {
     ...assessment,
     features: { summary: summarizeFeatures(items), items },
   };
-  next.reasonCodes = dedupe([
-    ...assessment.core.reasonCodes,
-    ...assessment.transport.reasonCodes,
-    ...items.map((item) => item.reasonCode),
-    ...assessment.freshness.reasonCodes,
-    ...assessment.deployability.reasonCodes,
-  ]);
+  next.reasonCodes = collectAssessmentReasonCodes(next);
   next.summary = summarizeAssessment(next);
   return next;
 }
 
 module.exports = {
+  REMOTE_INPUT_DRAFT_FEATURE_REQUIREMENTS,
   applyRemoteFeatureObservation,
   assessRemoteServer,
   compareCanonicalRuntimeVersions,

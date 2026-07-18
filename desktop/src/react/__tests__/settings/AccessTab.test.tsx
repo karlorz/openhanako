@@ -190,6 +190,7 @@ describe('AccessTab', () => {
       },
       remoteServerAssessment: null,
       refreshRemoteServerAssessment: vi.fn(async () => {}),
+      clearRemoteServerAssessment: vi.fn(() => { mockState.remoteServerAssessment = null; }),
     });
     mockHanaFetch.mockReset();
     mockHanaFetch.mockImplementation((url: string, options?: RequestInit) => {
@@ -731,6 +732,7 @@ describe('AccessTab', () => {
         reasonCodes: ['missing_core_capability'],
         warningCodes: ['missing_optional_capability'],
       },
+      remoteServerAssessment: remoteAssessment(),
     });
     mockHanaFetch.mockImplementation((url: string) => {
       if (url === '/api/server/identity') {
@@ -771,6 +773,8 @@ describe('AccessTab', () => {
     expect(replaced).toHaveValue('');
     expect(replaced).toHaveAttribute('type', 'password');
     expect(screen.queryByDisplayValue('old-remote-secret')).not.toBeInTheDocument();
+    expect(mockState.clearRemoteServerAssessment).toHaveBeenCalledTimes(1);
+    expect(mockState.remoteServerAssessment).toBeNull();
   });
 
   it('saves the local owner profile and password from the account section', async () => {

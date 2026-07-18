@@ -155,6 +155,7 @@ export interface SettingsActions {
   getSettingsAgentId: () => string | null;
   showToast: (message: string, type: 'success' | 'error') => void;
   refreshRemoteServerAssessment: (options?: { force?: boolean }) => Promise<void>;
+  clearRemoteServerAssessment: () => void;
 }
 
 export type SettingsStore = SettingsState & SettingsActions;
@@ -218,8 +219,12 @@ export const useSettingsStore = create<SettingsStore>()((set, get) => ({
   set: (partial) => set((state) => {
     const next = { ...partial };
     if ('activeServerConnection' in partial || 'activeServerConnectionId' in partial) {
-      const activeConnection = partial.activeServerConnection ?? state.activeServerConnection;
-      const activeConnectionId = partial.activeServerConnectionId ?? activeConnection?.connectionId ?? null;
+      const activeConnection = 'activeServerConnection' in partial
+        ? partial.activeServerConnection
+        : state.activeServerConnection;
+      const activeConnectionId = 'activeServerConnectionId' in partial
+        ? partial.activeServerConnectionId
+        : activeConnection?.connectionId ?? null;
       const assessment = partial.remoteServerAssessment ?? state.remoteServerAssessment;
       if (!activeConnection || isLocalOwnerConnection(activeConnection)
           || assessment?.connectionId !== activeConnectionId) {
@@ -249,6 +254,12 @@ export const useSettingsStore = create<SettingsStore>()((set, get) => ({
       return;
     }
     await settingsAssessmentCoordinator.assessConnection(connection, options);
+  },
+
+  clearRemoteServerAssessment: () => {
+    const connectionId = get().activeServerConnectionId;
+    settingsAssessmentCoordinator.invalidate(connectionId ?? undefined);
+    set({ remoteServerAssessment: null });
   },
 }));
 
