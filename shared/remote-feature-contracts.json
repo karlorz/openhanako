@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "complete": true,
+  "entries": {
+    "chat.core": 1,
+    "input.drafts": 1,
+    "websocket.ticket": 1
+  }
+}
