@@ -50,5 +50,8 @@ describe("server connection websocket URLs", () => {
     expect(buildConnectionWsUrl(tunnel, "/ws", { wsTicket: "hana_ws_ticket" })).toBe(
       "ws://remote.example:14500/ws?wsTicket=hana_ws_ticket",
     );
+
+    const relay = { ...tunnel, kind: "relay" as const, wsUrl: "wss://relay.example" };
+    expect(buildConnectionWsUrl(relay, "/ws")).toBe("wss://relay.example/ws");
   });
 });

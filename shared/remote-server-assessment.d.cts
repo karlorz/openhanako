@@ -152,3 +152,10 @@ export function applyRemoteFeatureObservation(
     reasonCode: string;
   },
 ): RemoteServerAssessment;
+export function applyRemoteTransportObservation(
+  assessment: RemoteServerAssessment,
+  observation: {
+    status: "ticket-ready" | "legacy-query-token";
+    reasonCode: string | null;
+  },
+): RemoteServerAssessment;
