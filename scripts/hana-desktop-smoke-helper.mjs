@@ -20,6 +20,8 @@ const DEFAULT_URL = "http://100.125.173.118:14500";
 const DEFAULT_USER_DATA_DIR = path.join(os.homedir(), "Library", "Application Support", "Hanako");
 const RELOAD_SETTLE_MS = 800;
 const VERIFY_RETRY_DELAY_MS = 500;
+const DEFAULT_ASSESSMENT_OUT = path.join(".claude", "remote-assessment", "latest.json");
+const CONTRACT_REQUIREMENT_RE = /^([a-z][a-z0-9]*(?:\.[a-z][a-z0-9]*)*)@([1-9]\d*)$/;
 
 function trimTrailingSlash(value) {
   return value.replace(/\/+$/, "");
@@ -247,7 +249,7 @@ function sanitizeSmokeError(value) {
     .replace(/hana_[A-Za-z0-9_-]+/g, "[redacted]");
 }
 
-export function buildSmokeReport({ verification = null, releaseCheck = null, assessedAt, reset = null } = {}) {
+export function buildSmokeReport({ verification = null, releaseCheck = null, assessedAt, reset = null, requirements = [] } = {}) {
   const functionalPass = verification ? connectionVerificationPassed(verification) : true;
   const identity = sanitizeSmokeIdentity(verification?.identity);
   const boundary = verification
@@ -277,7 +279,15 @@ export function buildSmokeReport({ verification = null, releaseCheck = null, ass
   const environmentStatus = !releaseCheck || releaseCheck.status !== "ready"
     ? "unknown"
     : assessment.summary === "ready" ? "pass" : "attention";
-  return {
+  const release = releaseCheck?.status === "ready" ? releaseCheck.release : null;
+  const manifest = release?.manifestStatus === "valid" && isSmokeRecord(release.featureContracts)
+    ? {
+        status: "valid",
+        targetTag: typeof release.tag === "string" ? release.tag : null,
+        featureContracts: release.featureContracts,
+      }
+    : null;
+  const report = {
     schemaVersion: 2,
     ok: functionalPass,
     functional: {
@@ -287,9 +297,142 @@ export function buildSmokeReport({ verification = null, releaseCheck = null, ass
     },
     environment: {
       status: environmentStatus,
-      assessment,
+      assessment: manifest ? { ...assessment, manifest } : assessment,
     },
   };
+  return { ...report, prerequisites: evaluateContractRequirements(report, requirements) };
+}
+
+export function parseContractRequirement(value) {
+  if (typeof value !== "string") throw new Error("contract requirement must be NAME@VERSION");
+  const match = CONTRACT_REQUIREMENT_RE.exec(value);
+  if (!match) throw new Error(`invalid contract requirement: ${value}`);
+  return { contract: match[1], minVersion: Number(match[2]) };
+}
+
+function contractDeclarationFromAssessment(assessment) {
+  const candidates = [
+    assessment?.functional?.verification?.identity?.featureContracts,
+    assessment?.featureContracts,
+    assessment?.server?.featureContracts,
+    assessment?.environment?.assessment?.featureContracts,
+  ];
+  for (const candidate of candidates) {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) continue;
+    if (candidate.schemaVersion !== 1 || !candidate.entries || typeof candidate.entries !== "object") continue;
+    const entries = Object.fromEntries(Object.entries(candidate.entries)
+      .filter(([, version]) => Number.isSafeInteger(version) && version >= 0));
+    return { recognized: true, complete: candidate.complete === true, entries };
+  }
+  return { recognized: false, complete: false, entries: {} };
+}
+
+function manifestContractEvidence(assessment, contract, minVersion) {
+  const items = assessment?.environment?.assessment?.features?.items;
+  if (Array.isArray(items)) {
+    const item = items.find((candidate) => candidate?.contract === contract);
+    const evidence = item?.upgradeEvidence;
+    if (evidence && Number.isSafeInteger(evidence.targetContractVersion) && evidence.targetContractVersion >= minVersion) {
+      return { targetTag: typeof evidence.targetTag === "string" ? evidence.targetTag : null };
+    }
+  }
+  const manifests = [
+    assessment?.manifest,
+    assessment?.environment?.assessment?.manifest,
+    assessment?.releaseCheck?.release,
+  ];
+  for (const manifest of manifests) {
+    if (!manifest || typeof manifest !== "object") continue;
+    if (manifest.manifestStatus !== "valid" && manifest.status !== "valid") continue;
+    const declaration = manifest.featureContracts;
+    if (!declaration || declaration.schemaVersion !== 1 || declaration.complete !== true) continue;
+    const version = declaration.entries?.[contract];
+    if (Number.isSafeInteger(version) && version >= minVersion) {
+      return { targetTag: typeof manifest.targetTag === "string" ? manifest.targetTag : (typeof manifest.tag === "string" ? manifest.tag : null) };
+    }
+  }
+  return null;
+}
+
+export function evaluateContractRequirements(assessment, requirements = []) {
+  const normalized = requirements.map((requirement) => typeof requirement === "string" ? parseContractRequirement(requirement) : requirement);
+  if (normalized.length === 0) return { status: "not-requested", requirements: [] };
+  const declaration = contractDeclarationFromAssessment(assessment);
+  const results = normalized.map((requirement) => {
+    const contract = requirement.contract;
+    const minVersion = requirement.minVersion;
+    const reportedVersion = Number.isSafeInteger(declaration.entries[contract]) ? declaration.entries[contract] : null;
+    if (declaration.recognized && declaration.complete) {
+      if (reportedVersion !== null && reportedVersion >= minVersion) {
+        return { contract, minVersion, status: "satisfied", reportedVersion, reasonCode: null, targetTag: null };
+      }
+      return { contract, minVersion, status: "missing", reportedVersion, reasonCode: reportedVersion === null ? "contract_declaration_missing" : "contract_version_too_low", targetTag: null };
+    }
+    const target = manifestContractEvidence(assessment, contract, minVersion);
+    if (target) {
+      return { contract, minVersion, status: "deployment-coupled", reportedVersion, reasonCode: "future_manifest_only", targetTag: target.targetTag };
+    }
+    return { contract, minVersion, status: "unconfirmed", reportedVersion, reasonCode: "legacy_contract_unconfirmed", targetTag: null };
+  });
+  const status = results.some((item) => item.status === "missing" || item.status === "unconfirmed")
+    ? "fail"
+    : results.some((item) => item.status === "deployment-coupled") ? "deployment-coupled" : "pass";
+  return { status, requirements: results };
+}
+
+function redactEvidenceValue(value, key = "") {
+  if (/url|token|credential|authorization|cookie|headers|cdp|user.?data|localstorage/i.test(key)) return undefined;
+  if (typeof value === "string") {
+    if (/https?:\/\/|wss?:\/\/|localstorage|application support|user.?data|cdp/i.test(value)) return undefined;
+    return value;
+  }
+  if (Array.isArray(value)) return value.map((item) => redactEvidenceValue(item)).filter((item) => item !== undefined);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value)
+      .map(([childKey, childValue]) => [childKey, redactEvidenceValue(childValue, childKey)])
+      .filter(([, childValue]) => childValue !== undefined));
+  }
+  return value;
+}
+
+export function writeRedactedAssessmentEvidence(outputPath, report, { now = () => new Date() } = {}) {
+  if (typeof outputPath !== "string" || !outputPath) throw new Error("assessment output path required");
+  const generatedAtDate = now();
+  const generatedAt = generatedAtDate.toISOString();
+  const expiresAt = new Date(generatedAtDate.getTime() + 30 * 60 * 1000).toISOString();
+  const envelope = {
+    schemaVersion: 1,
+    generatedAt,
+    expiresAt,
+    source: "hana-desktop-smoke-helper",
+    functional: redactEvidenceValue(report?.functional || {}),
+    environment: redactEvidenceValue(report?.environment || {}),
+    prerequisites: redactEvidenceValue(report?.prerequisites || { status: "not-requested", requirements: [] }),
+  };
+  const absolutePath = path.resolve(outputPath);
+  const directory = path.dirname(absolutePath);
+  fs.mkdirSync(directory, { recursive: true });
+  const temporaryPath = path.join(directory, `.${path.basename(absolutePath)}.${process.pid}.${Date.now()}.tmp`);
+  let fd = null;
+  try {
+    fd = fs.openSync(temporaryPath, "wx", 0o600);
+    fs.writeFileSync(fd, `${JSON.stringify(envelope, null, 2)}\n`, "utf8");
+    fs.fchmodSync(fd, 0o600);
+    fs.closeSync(fd);
+    fd = null;
+    fs.renameSync(temporaryPath, absolutePath);
+  } catch (error) {
+    if (fd !== null) fs.closeSync(fd);
+    try { fs.rmSync(temporaryPath, { force: true }); } catch {}
+    throw error;
+  }
+  return envelope;
+}
+
+export function smokeExitCode(report) {
+  if (report?.functional?.status === "fail" || report?.ok === false) return 1;
+  if (report?.prerequisites?.status === "fail" || report?.prerequisites?.status === "deployment-coupled") return 3;
+  return 0;
 }
 
 function readBalancedObject(text, startIndex) {
@@ -366,9 +509,11 @@ function findHistoricalConnection({ userDataDir, baseUrl }) {
 
 function parseArgs(argv) {
   const options = {
+    assessmentOut: DEFAULT_ASSESSMENT_OUT,
     appPath: DEFAULT_APP_PATH,
     port: DEFAULT_PORT,
     baseUrl: DEFAULT_URL,
+    contractRequirements: [],
     token: process.env.HANA_DESKTOP_SMOKE_TOKEN || process.env.HANA_DEVICE_KEY || "",
     restart: false,
     timeoutMs: 15000,
@@ -378,7 +523,9 @@ function parseArgs(argv) {
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--app") options.appPath = requireValue(argv, ++i, arg);
+    else if (arg === "--assessment-out") options.assessmentOut = requireValue(argv, ++i, arg);
     else if (arg === "--port") options.port = Number(requireValue(argv, ++i, arg));
+    else if (arg === "--require-contract") options.contractRequirements.push(parseContractRequirement(requireValue(argv, ++i, arg)));
     else if (arg === "--url") options.baseUrl = requireValue(argv, ++i, arg);
     else if (arg === "--token") options.token = requireValue(argv, ++i, arg);
     else if (arg === "--user-data-dir") options.userDataDir = requireValue(argv, ++i, arg);
@@ -408,7 +555,7 @@ function usage() {
   return `HanaAgent desktop smoke helper
 
 Usage:
-  node scripts/hana-desktop-smoke-helper.mjs --restart --verify [--url ${DEFAULT_URL}]
+  node scripts/hana-desktop-smoke-helper.mjs --restart --verify [--url ${DEFAULT_URL}] [--require-contract NAME@VERSION]
   HANA_DESKTOP_SMOKE_TOKEN=<device-key> node scripts/hana-desktop-smoke-helper.mjs --restart --verify --url ${DEFAULT_URL}
 
 What it does:
@@ -417,10 +564,13 @@ What it does:
   3. If needed, recovers the target LAN connection from Electron Local Storage history.
   4. Clears localStorage, restores only the target LAN connection, and reloads.
   5. With --verify, confirms token-auth identity fetch and WebSocket open from the renderer.
+  6. Evaluates each repeatable --require-contract prerequisite and writes redacted evidence.
 
 If no saved connection exists for --url, pass --token or HANA_DESKTOP_SMOKE_TOKEN.
 Prefer HANA_DESKTOP_SMOKE_TOKEN because command-line tokens can appear in shell history or process listings.
 The helper never prints stored device tokens.
+Evidence defaults to ${DEFAULT_ASSESSMENT_OUT}; override it with --assessment-out PATH.
+Exit 3 means functional verification passed but an explicit contract prerequisite is not currently satisfied.
 `;
 }
 
@@ -857,9 +1007,10 @@ export async function main(argv = process.argv.slice(2)) {
     ? await delay(RELOAD_SETTLE_MS).then(() => waitForRendererConnectionVerification(options))
     : null;
   const releaseCheck = await releaseCheckPromise;
-  const report = buildSmokeReport({ verification, releaseCheck, reset: result });
+  const report = buildSmokeReport({ verification, releaseCheck, reset: result, requirements: options.contractRequirements });
+  writeRedactedAssessmentEvidence(options.assessmentOut, report);
   console.log(JSON.stringify(report, null, 2));
-  return report.functional.status === "fail" ? 1 : 0;
+  return smokeExitCode(report);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

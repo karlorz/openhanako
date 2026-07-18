@@ -1,4 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 import * as smokeHelper from "../scripts/hana-desktop-smoke-helper.mjs";
 
@@ -10,7 +13,11 @@ const {
   extractPersistedConnectionStates,
   normalizeBaseUrl,
   sanitizeSmokeIdentity,
+  smokeExitCode,
   summarizePersistedConnectionState,
+  evaluateContractRequirements,
+  parseContractRequirement,
+  writeRedactedAssessmentEvidence,
 } = smokeHelper;
 
 const savedConnection = {
@@ -31,6 +38,115 @@ const savedConnection = {
 };
 
 describe("hana desktop smoke helper", () => {
+  it.each(["chat.core@1", "input.drafts@1", "websocket.ticket@1"])("parses supported contract requirement %s", (value) => {
+    expect(parseContractRequirement(value)).toEqual({ contract: value.split("@")[0], minVersion: 1 });
+  });
+
+  it.each(["Chat.core@1", "chat-core@1", "chat.core@0", "chat.core@1.1", "chat.core", "chat.core@1@2", "future.contract@01"])("rejects invalid contract requirement %s", (value) => {
+    expect(() => parseContractRequirement(value)).toThrow();
+  });
+
+  it("evaluates declared, legacy, and deployment-coupled contract evidence without using freshness", () => {
+    const requirements = [
+      { contract: "chat.core", minVersion: 1 },
+      { contract: "input.drafts", minVersion: 1 },
+      { contract: "websocket.ticket", minVersion: 1 },
+    ];
+    const declared = evaluateContractRequirements({
+      functional: { verification: { identity: { featureContracts: { schemaVersion: 1, complete: true, entries: { "chat.core": 1, "input.drafts": 1, "websocket.ticket": 1 } } } } },
+      environment: { assessment: { freshness: { status: "current" } } },
+    }, requirements);
+    expect(declared.status).toBe("pass");
+    expect(declared.requirements.every((item) => item.status === "satisfied")).toBe(true);
+
+    const legacy = evaluateContractRequirements({
+      functional: { verification: { identity: { featureContracts: { schemaVersion: 1, complete: false, entries: { "chat.core": 1 } } } } },
+      environment: { assessment: { freshness: { status: "current" } } },
+    }, requirements);
+    expect(legacy.status).toBe("fail");
+    expect(legacy.requirements.find((item) => item.contract === "chat.core").status).toBe("unconfirmed");
+
+    const manifestOnly = evaluateContractRequirements({
+      functional: { verification: { identity: { featureContracts: null } } },
+      environment: { assessment: { features: { items: [{ contract: "input.drafts", status: "unknown", upgradeEvidence: { targetTag: "v0.1.0-karlorz.1", targetContractVersion: 1, manifestGitSha: "abc" } }] }, freshness: { status: "current" } } },
+    }, [{ contract: "input.drafts", minVersion: 1 }]);
+    expect(manifestOnly.status).toBe("deployment-coupled");
+    expect(manifestOnly.requirements[0]).toMatchObject({ status: "deployment-coupled", targetTag: "v0.1.0-karlorz.1" });
+  });
+
+  it("reports lower and absent versions in complete declarations as missing", () => {
+    const result = evaluateContractRequirements({
+      functional: { verification: { identity: { featureContracts: { schemaVersion: 1, complete: true, entries: { "chat.core": 1 } } } } },
+    }, [{ contract: "chat.core", minVersion: 2 }, { contract: "input.drafts", minVersion: 1 }]);
+    expect(result).toEqual({
+      status: "fail",
+      requirements: [
+        { contract: "chat.core", minVersion: 2, status: "missing", reportedVersion: 1, reasonCode: "contract_version_too_low", targetTag: null },
+        { contract: "input.drafts", minVersion: 1, status: "missing", reportedVersion: null, reasonCode: "contract_declaration_missing", targetTag: null },
+      ],
+    });
+  });
+
+  it("marks a valid future release manifest as deployment-coupled for the built report", () => {
+    const report = buildSmokeReport({
+      verification: {
+        ok: true,
+        hasToken: true,
+        identityOk: true,
+        wsOk: true,
+        identity: sanitizeSmokeIdentity({ featureContracts: { schemaVersion: 1, complete: false, entries: {} } }),
+      },
+      releaseCheck: {
+        status: "ready",
+        release: {
+          tag: "v0.357.17-karlorz.1",
+          manifestStatus: "valid",
+          featureContracts: { schemaVersion: 1, complete: true, entries: { "chat.core": 1 } },
+          manifestGitSha: "0123456789abcdef0123456789abcdef01234567",
+        },
+      },
+      requirements: [{ contract: "chat.core", minVersion: 1 }],
+    });
+    expect(report.prerequisites).toMatchObject({
+      status: "deployment-coupled",
+      requirements: [{ status: "deployment-coupled", targetTag: "v0.357.17-karlorz.1" }],
+    });
+  });
+
+  it("uses exit 3 only after functional verification passes", () => {
+    expect(smokeExitCode({ ok: true, functional: { status: "pass" }, environment: { status: "attention" }, prerequisites: { status: "not-requested" } })).toBe(0);
+    expect(smokeExitCode({ ok: true, functional: { status: "pass" }, prerequisites: { status: "pass" } })).toBe(0);
+    expect(smokeExitCode({ ok: true, functional: { status: "pass" }, prerequisites: { status: "fail" } })).toBe(3);
+    expect(smokeExitCode({ ok: true, functional: { status: "pass" }, prerequisites: { status: "deployment-coupled" } })).toBe(3);
+    expect(smokeExitCode({ ok: false, functional: { status: "fail" }, prerequisites: { status: "fail" } })).toBe(1);
+  });
+
+  it("writes a redacted, expiring evidence envelope atomically", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-smoke-") );
+    const output = path.join(dir, "nested", "evidence.json");
+    const report = { ok: true, functional: { status: "pass", verification: { baseUrl: "https://secret.test", hasToken: true, identity: { runtimeBuild: { sourceRepository: "https://secret.test/repo" } } } }, environment: { assessment: { freshness: { status: "current" } } }, reset: { userDataDir: "/Users/me/Library/Application Support/Hanako", wsUrl: "ws://secret.test" } };
+    const envelope = writeRedactedAssessmentEvidence(output, report, { now: () => new Date("2026-07-18T12:00:00.000Z") });
+    expect(envelope).toMatchObject({ schemaVersion: 1, generatedAt: "2026-07-18T12:00:00.000Z", expiresAt: "2026-07-18T12:30:00.000Z", source: "hana-desktop-smoke-helper" });
+    expect(fs.statSync(output).mode & 0o777).toBe(0o600);
+    const raw = fs.readFileSync(output, "utf8");
+    expect(raw).not.toMatch(/https?:|ws:|token|credential|authorization|cookie|headers|cdp|user-data|localStorage/i);
+    expect(JSON.parse(raw)).toEqual(expect.objectContaining({ functional: expect.any(Object), environment: expect.any(Object), prerequisites: expect.any(Object) }));
+    expect(fs.readdirSync(path.dirname(output)).filter((name) => name.includes(".tmp.")).length).toBe(0);
+  });
+
+  it("removes the same-directory temporary evidence file when rename fails", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-smoke-failure-"));
+    const output = path.join(dir, "evidence.json");
+    const rename = vi.spyOn(fs, "renameSync").mockImplementation(() => { throw new Error("rename failed"); });
+    try {
+      expect(() => writeRedactedAssessmentEvidence(output, { functional: {}, environment: {}, prerequisites: {} })).toThrow("rename failed");
+    } finally {
+      rename.mockRestore();
+    }
+    expect(fs.existsSync(output)).toBe(false);
+    expect(fs.readdirSync(dir)).toEqual([]);
+  });
+
   it("normalizes sg01 desktop URLs to the base server URL", () => {
     expect(normalizeBaseUrl("100.125.173.118:14500/desktop?x=1#top")).toBe("http://100.125.173.118:14500");
   });
