@@ -7,6 +7,11 @@ import { setTimeout as delay } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
 
 import WebSocket from "ws";
+import remoteServerAssessmentModule from "../shared/remote-server-assessment.cjs";
+import remoteServerReleaseLoaderModule from "../shared/remote-server-release-loader.cjs";
+
+const { assessRemoteServer } = remoteServerAssessmentModule;
+const { createRemoteServerReleaseLoader } = remoteServerReleaseLoaderModule;
 
 export const STORAGE_KEY = "hana-server-connections-v1";
 const DEFAULT_APP_PATH = "/Applications/HanaAgent.app";
@@ -162,6 +167,134 @@ export function summarizePersistedConnectionState(raw) {
     connections: Object.values(state.serverConnections || {})
       .filter(Boolean)
       .map(summarizeConnection),
+  };
+}
+
+function isSmokeRecord(value) {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+export function sanitizeSmokeIdentity(identity) {
+  if (!identity || typeof identity !== "object" || Array.isArray(identity)) return null;
+  const out = {};
+  if (typeof identity.connectionKind === "string") out.connectionKind = identity.connectionKind;
+  if (typeof identity.version === "string") out.version = identity.version;
+  if (Number.isSafeInteger(identity.serverProtocol)) out.serverProtocol = identity.serverProtocol;
+
+  if (isSmokeRecord(identity.runtimeBuild)) {
+    const runtimeBuild = {};
+    if (Number.isSafeInteger(identity.runtimeBuild.schemaVersion)) runtimeBuild.schemaVersion = identity.runtimeBuild.schemaVersion;
+    if (typeof identity.runtimeBuild.runtimeVersion === "string") runtimeBuild.runtimeVersion = identity.runtimeBuild.runtimeVersion;
+    if (identity.runtimeBuild.releaseTag === null || typeof identity.runtimeBuild.releaseTag === "string") runtimeBuild.releaseTag = identity.runtimeBuild.releaseTag;
+    if (identity.runtimeBuild.gitSha === null || typeof identity.runtimeBuild.gitSha === "string") runtimeBuild.gitSha = identity.runtimeBuild.gitSha;
+    if (identity.runtimeBuild.sourceRepository === null || typeof identity.runtimeBuild.sourceRepository === "string") runtimeBuild.sourceRepository = identity.runtimeBuild.sourceRepository;
+    out.runtimeBuild = runtimeBuild;
+  }
+  if (isSmokeRecord(identity.featureContracts)) {
+    const featureContracts = {};
+    if (Number.isSafeInteger(identity.featureContracts.schemaVersion)) featureContracts.schemaVersion = identity.featureContracts.schemaVersion;
+    if (typeof identity.featureContracts.complete === "boolean") featureContracts.complete = identity.featureContracts.complete;
+    if (isSmokeRecord(identity.featureContracts.entries)) {
+      featureContracts.entries = Object.fromEntries(Object.entries(identity.featureContracts.entries)
+        .filter(([name, version]) => !/token|authorization|credential|headers|cookie|baseurl/i.test(name)
+          && Number.isSafeInteger(version)));
+    }
+    out.featureContracts = featureContracts;
+  }
+  if (isSmokeRecord(identity.runtimeFacts)) {
+    const runtimeFacts = {};
+    if (typeof identity.runtimeFacts.platform === "string") runtimeFacts.platform = identity.runtimeFacts.platform;
+    if (typeof identity.runtimeFacts.arch === "string") runtimeFacts.arch = identity.runtimeFacts.arch;
+    out.runtimeFacts = runtimeFacts;
+  }
+  if (Array.isArray(identity.capabilities)) {
+    out.capabilities = identity.capabilities.filter(value => typeof value === "string");
+  }
+  if (identity.executionBoundary && typeof identity.executionBoundary === "object") {
+    const boundary = {};
+    if (typeof identity.executionBoundary.kind === "string") boundary.kind = identity.executionBoundary.kind;
+    if (typeof identity.executionBoundary.serverNodeId === "string") boundary.serverNodeId = identity.executionBoundary.serverNodeId;
+    if (typeof identity.executionBoundary.studioId === "string") boundary.studioId = identity.executionBoundary.studioId;
+    if (isSmokeRecord(identity.executionBoundary.workbench)) {
+      const workbench = {};
+      if (typeof identity.executionBoundary.workbench.kind === "string") workbench.kind = identity.executionBoundary.workbench.kind;
+      if (identity.executionBoundary.workbench.root === null || typeof identity.executionBoundary.workbench.root === "string") {
+        workbench.root = identity.executionBoundary.workbench.root;
+      }
+      boundary.workbench = workbench;
+    }
+    out.executionBoundary = boundary;
+  }
+  return out;
+}
+
+function sanitizedVerification(verification) {
+  if (!verification) return null;
+  return {
+    hasToken: verification.hasToken === true,
+    identityStatus: Number.isInteger(verification.identityStatus) ? verification.identityStatus : null,
+    identityOk: verification.identityOk === true,
+    identityError: sanitizeSmokeError(verification.identityError),
+    identity: sanitizeSmokeIdentity(verification.identity),
+    wsOk: verification.wsOk === true,
+  };
+}
+
+function sanitizeSmokeError(value) {
+  if (typeof value !== "string" || !value) return null;
+  return value
+    .replace(/Bearer\s+\S+/gi, "Bearer [redacted]")
+    .replace(/hana_[A-Za-z0-9_-]+/g, "[redacted]");
+}
+
+export function buildSmokeReport({ verification = null, releaseCheck = null, assessedAt, reset = null } = {}) {
+  const functionalPass = verification ? connectionVerificationPassed(verification) : true;
+  const identity = sanitizeSmokeIdentity(verification?.identity);
+  const boundary = verification
+    ? {
+        status: "assessed",
+        ok: functionalPass,
+        reasonCodes: functionalPass ? [] : [verification.identityOk ? "websocket_functional_failed" : "identity_functional_failed"],
+        warningCodes: [],
+      }
+    : { status: "not-assessed", reasonCode: "smoke_verification_not_requested" };
+  const assessment = assessRemoteServer({
+    connectionId: "smoke:remote-server",
+    assessedAt: assessedAt || new Date().toISOString(),
+    evidenceSource: "smoke",
+    boundary,
+    server: identity ? {
+      connectionKind: identity.connectionKind || null,
+      runtimeVersion: identity.version || null,
+      serverProtocol: identity.serverProtocol ?? null,
+      runtimeBuild: identity.runtimeBuild || null,
+      featureContracts: identity.featureContracts || null,
+      runtimeFacts: identity.runtimeFacts || null,
+    } : null,
+    releaseCheck,
+    featureRequirements: [{
+      id: "input-drafts",
+      contract: "input.drafts",
+      minVersion: 1,
+      unknownPolicy: "fallback",
+      fallback: "memory-only",
+    }],
+  });
+  const environmentStatus = !releaseCheck || releaseCheck.status !== "ready"
+    ? "unknown"
+    : assessment.summary === "ready" ? "pass" : "attention";
+  return {
+    schemaVersion: 2,
+    ok: functionalPass,
+    functional: {
+      status: verification ? (functionalPass ? "pass" : "fail") : "not-run",
+      verification: sanitizedVerification(verification),
+      ...(reset ? { reset } : {}),
+    },
+    environment: {
+      status: environmentStatus,
+      assessment,
+    },
   };
 }
 
@@ -558,7 +691,7 @@ async function resetRendererStorage(options) {
   }
 }
 
-function rendererVerificationExpression() {
+export function rendererVerificationExpression() {
   return `
 (async () => {
   const STORAGE_KEY = ${JSON.stringify(STORAGE_KEY)};
@@ -569,15 +702,72 @@ function rendererVerificationExpression() {
     : Object.values(state.serverConnections || {})[0];
   if (!connection) return { ok: false, reason: 'missing connection' };
 
+  const sanitizeIdentity = (identity) => {
+    if (!identity || typeof identity !== 'object' || Array.isArray(identity)) return null;
+    const isRecord = (value) => !!value && typeof value === 'object' && !Array.isArray(value);
+    const out = {};
+    if (typeof identity.connectionKind === 'string') out.connectionKind = identity.connectionKind;
+    if (typeof identity.version === 'string') out.version = identity.version;
+    if (Number.isSafeInteger(identity.serverProtocol)) out.serverProtocol = identity.serverProtocol;
+    if (isRecord(identity.runtimeBuild)) {
+      const runtimeBuild = {};
+      if (Number.isSafeInteger(identity.runtimeBuild.schemaVersion)) runtimeBuild.schemaVersion = identity.runtimeBuild.schemaVersion;
+      if (typeof identity.runtimeBuild.runtimeVersion === 'string') runtimeBuild.runtimeVersion = identity.runtimeBuild.runtimeVersion;
+      if (identity.runtimeBuild.releaseTag === null || typeof identity.runtimeBuild.releaseTag === 'string') runtimeBuild.releaseTag = identity.runtimeBuild.releaseTag;
+      if (identity.runtimeBuild.gitSha === null || typeof identity.runtimeBuild.gitSha === 'string') runtimeBuild.gitSha = identity.runtimeBuild.gitSha;
+      if (identity.runtimeBuild.sourceRepository === null || typeof identity.runtimeBuild.sourceRepository === 'string') runtimeBuild.sourceRepository = identity.runtimeBuild.sourceRepository;
+      out.runtimeBuild = runtimeBuild;
+    }
+    if (isRecord(identity.featureContracts)) {
+      const featureContracts = {};
+      if (Number.isSafeInteger(identity.featureContracts.schemaVersion)) featureContracts.schemaVersion = identity.featureContracts.schemaVersion;
+      if (typeof identity.featureContracts.complete === 'boolean') featureContracts.complete = identity.featureContracts.complete;
+      if (isRecord(identity.featureContracts.entries)) {
+        featureContracts.entries = Object.fromEntries(Object.entries(identity.featureContracts.entries).filter(([name, version]) => !/token|authorization|credential|headers|cookie|baseurl/i.test(name) && Number.isSafeInteger(version)));
+      }
+      out.featureContracts = featureContracts;
+    }
+    if (isRecord(identity.runtimeFacts)) {
+      const runtimeFacts = {};
+      if (typeof identity.runtimeFacts.platform === 'string') runtimeFacts.platform = identity.runtimeFacts.platform;
+      if (typeof identity.runtimeFacts.arch === 'string') runtimeFacts.arch = identity.runtimeFacts.arch;
+      out.runtimeFacts = runtimeFacts;
+    }
+    if (Array.isArray(identity.capabilities)) out.capabilities = identity.capabilities.filter((value) => typeof value === 'string');
+    if (identity.executionBoundary && typeof identity.executionBoundary === 'object') {
+      const boundary = {};
+      if (typeof identity.executionBoundary.kind === 'string') boundary.kind = identity.executionBoundary.kind;
+      if (typeof identity.executionBoundary.serverNodeId === 'string') boundary.serverNodeId = identity.executionBoundary.serverNodeId;
+      if (typeof identity.executionBoundary.studioId === 'string') boundary.studioId = identity.executionBoundary.studioId;
+      if (isRecord(identity.executionBoundary.workbench)) {
+        const workbench = {};
+        if (typeof identity.executionBoundary.workbench.kind === 'string') workbench.kind = identity.executionBoundary.workbench.kind;
+        if (identity.executionBoundary.workbench.root === null || typeof identity.executionBoundary.workbench.root === 'string') workbench.root = identity.executionBoundary.workbench.root;
+        boundary.workbench = workbench;
+      }
+      out.executionBoundary = boundary;
+    }
+    return out;
+  };
+
   let identityStatus = null;
   let identityOk = false;
   let identityError = null;
+  let identity = null;
   try {
     const res = await fetch(connection.baseUrl + '/api/server/identity', {
       headers: connection.token ? { Authorization: 'Bearer ' + connection.token } : {},
     });
     identityStatus = res.status;
     identityOk = res.ok;
+    if (res.ok) {
+      try {
+        identity = sanitizeIdentity(await res.json());
+      } catch (err) {
+        identityOk = false;
+        identityError = 'identity response was not valid JSON';
+      }
+    }
   } catch (err) {
     identityError = err && err.message ? err.message : String(err);
   }
@@ -607,6 +797,7 @@ function rendererVerificationExpression() {
     identityStatus,
     identityOk,
     identityError,
+    identity,
     wsOk,
   };
 })()
@@ -668,15 +859,13 @@ export async function main(argv = process.argv.slice(2)) {
   const verification = options.verify
     ? await delay(RELOAD_SETTLE_MS).then(() => waitForRendererConnectionVerification(options))
     : null;
-  const ok = !options.verify || connectionVerificationPassed(verification);
-  console.log(JSON.stringify({
-    ok,
-    baseUrl: options.baseUrl,
-    port: options.port,
-    ...result,
-    ...(verification ? { verification } : {}),
-  }, null, 2));
-  return ok ? 0 : 1;
+  let releaseCheck = null;
+  if (options.verify) {
+    releaseCheck = await createRemoteServerReleaseLoader()();
+  }
+  const report = buildSmokeReport({ verification, releaseCheck, reset: result });
+  console.log(JSON.stringify(report, null, 2));
+  return report.functional.status === "fail" ? 1 : 0;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
