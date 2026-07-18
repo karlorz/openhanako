@@ -207,7 +207,7 @@ describe('AboutTab', () => {
   it('does not render the platform-update row when no shell update is pending', () => {
     installHana();
     useSettingsStore.setState({ settingsConfig: { auto_check_updates: true, update_channel: 'stable' } });
-    shellUpdateStateOverride = { status: 'idle' };
+    shellUpdateStateOverride = createAutoUpdateState('idle');
 
     render(<AboutTab />);
 
@@ -218,7 +218,7 @@ describe('AboutTab', () => {
     const autoUpdateInstall = vi.fn();
     installHana({ autoUpdateInstall });
     useSettingsStore.setState({ settingsConfig: { auto_check_updates: true, update_channel: 'stable' } });
-    shellUpdateStateOverride = { status: 'downloaded', version: '2.0.0' };
+    shellUpdateStateOverride = { ...createAutoUpdateState('downloaded'), version: '2.0.0' };
 
     render(<AboutTab />);
 
@@ -232,7 +232,7 @@ describe('AboutTab', () => {
   it('escalates the platform-update row copy when minShellBlocked is true (two-tier copy)', () => {
     installHana();
     useSettingsStore.setState({ settingsConfig: { auto_check_updates: true, update_channel: 'stable' } });
-    shellUpdateStateOverride = { status: 'downloaded', version: '2.0.0' };
+    shellUpdateStateOverride = { ...createAutoUpdateState('downloaded'), version: '2.0.0' };
     trainOverride = { ...DEFAULT_TRAIN_OVERRIDE, minShellBlocked: true };
 
     render(<AboutTab />);
