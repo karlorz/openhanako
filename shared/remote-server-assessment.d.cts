@@ -133,6 +133,14 @@ export type RemoteServerAssessmentInput = {
   featureRequirements?: readonly RemoteFeatureRequirement[];
 };
 
+export const REMOTE_INPUT_DRAFT_FEATURE_REQUIREMENTS: readonly [{
+  readonly id: "input-drafts";
+  readonly contract: "input.drafts";
+  readonly minVersion: 1;
+  readonly unknownPolicy: "fallback";
+  readonly fallback: "memory-only";
+}];
+
 export function parseCanonicalRuntimeVersion(value: unknown): [number, number, number] | null;
 export function compareCanonicalRuntimeVersions(left: unknown, right: unknown): number | null;
 export function assessRemoteServer(input: RemoteServerAssessmentInput): RemoteServerAssessment;

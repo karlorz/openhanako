@@ -1,4 +1,5 @@
 import {
+  REMOTE_INPUT_DRAFT_FEATURE_REQUIREMENTS,
   assessRemoteServer,
   type RemoteServerAssessment,
   type RemoteServerAssessmentInput,
@@ -15,17 +16,11 @@ import {
   type ServerIdentity,
 } from './server-connection';
 
-type ExtendedServerIdentity = ServerIdentity & {
-  runtimeBuild?: RemoteServerAssessmentInput['server'] extends infer Server
-    ? Server extends { runtimeBuild?: infer Build } ? Build : never
-    : never;
-  featureContracts?: RemoteServerAssessmentInput['server'] extends infer Server
-    ? Server extends { featureContracts?: infer Contracts } ? Contracts : never
-    : never;
-  runtimeFacts?: RemoteServerAssessmentInput['server'] extends infer Server
-    ? Server extends { runtimeFacts?: infer Facts } ? Facts : never
-    : never;
-};
+type AssessmentServerEvidence = NonNullable<RemoteServerAssessmentInput['server']>;
+type ExtendedServerIdentity = ServerIdentity & Pick<
+  AssessmentServerEvidence,
+  'runtimeBuild' | 'featureContracts' | 'runtimeFacts'
+>;
 
 export type CoordinatorDependencies = {
   getActiveConnectionId: () => string | null;
@@ -47,14 +42,6 @@ export type RemoteServerAssessmentCoordinator = {
   assessConnection(connection: ServerConnection, options?: AssessConnectionOptions): Promise<RemoteServerAssessment | null>;
   invalidate(connectionId?: string): void;
 };
-
-const FEATURE_REQUIREMENTS = [{
-  id: 'input-drafts',
-  contract: 'input.drafts',
-  minVersion: 1,
-  unknownPolicy: 'fallback',
-  fallback: 'memory-only',
-}] as const;
 
 export function createRemoteServerAssessmentCoordinator(
   dependencies: CoordinatorDependencies,
@@ -91,7 +78,7 @@ export function createRemoteServerAssessmentCoordinator(
         runtimeFacts: identity.runtimeFacts ?? null,
       },
       releaseCheck,
-      featureRequirements: FEATURE_REQUIREMENTS,
+      featureRequirements: REMOTE_INPUT_DRAFT_FEATURE_REQUIREMENTS,
     });
   }
 
