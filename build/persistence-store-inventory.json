@@ -2725,6 +2725,33 @@
       "exemptionId": null
     },
     {
+      "sourceFile": "core/desktop-session-submit.ts",
+      "line": 654,
+      "kind": "mkdir",
+      "excerpt": "fs.mkdirSync(cacheDir, { recursive: true })",
+      "reason": "Stages payload bytes or updates SessionFile sidecars under the managed cache.",
+      "storeId": "session-files",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "core/desktop-session-submit.ts",
+      "line": 657,
+      "kind": "copy-file",
+      "excerpt": "fs.cpSync(sourcePath, destPath, { recursive: true, force: false, errorOnExist: true })",
+      "reason": "Stages payload bytes or updates SessionFile sidecars under the managed cache.",
+      "storeId": "session-files",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "core/desktop-session-submit.ts",
+      "line": 659,
+      "kind": "copy-file",
+      "excerpt": "fs.copyFileSync(sourcePath, destPath, fs.constants.COPYFILE_EXCL)",
+      "reason": "Stages payload bytes or updates SessionFile sidecars under the managed cache.",
+      "storeId": "session-files",
+      "exemptionId": null
+    },
+    {
       "sourceFile": "core/device-registry.ts",
       "line": 30,
       "kind": "atomic-write",
@@ -2780,7 +2807,7 @@
     },
     {
       "sourceFile": "core/engine.ts",
-      "line": 296,
+      "line": 302,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(this.channelsDir, { recursive: true })",
       "reason": "Creates the channel root.",
@@ -2789,7 +2816,7 @@
     },
     {
       "sourceFile": "core/engine.ts",
-      "line": 342,
+      "line": 348,
       "kind": "persistent-store-constructor",
       "excerpt": "new PreferencesManager({ userDir: this.userDir, agentsDir: this.agentsDir })",
       "reason": "Constructs the preferences owner.",
@@ -2798,7 +2825,7 @@
     },
     {
       "sourceFile": "core/engine.ts",
-      "line": 343,
+      "line": 349,
       "kind": "persistent-store-constructor",
       "excerpt": "new InputDraftsStore({ hanakoHome: this.hanakoHome })",
       "reason": "Constructs draft/project stores.",
@@ -2807,7 +2834,7 @@
     },
     {
       "sourceFile": "core/engine.ts",
-      "line": 360,
+      "line": 366,
       "kind": "persistent-store-constructor",
       "excerpt": "new SessionProjectCatalogStore({ userDir: this.userDir })",
       "reason": "Constructs draft/project stores.",
@@ -2816,7 +2843,7 @@
     },
     {
       "sourceFile": "core/engine.ts",
-      "line": 542,
+      "line": 548,
       "kind": "persistent-store-constructor",
       "excerpt": "new TaskRegistry({ persistencePath: path.join(this.hanakoHome, \".ephemeral\", \"plugin-tasks.json\"), getSessionIdForPath: (sessionPath) => this.getSessionIdForPath(sessionPath), })",
       "reason": "Constructs the plugin task registry.",
@@ -2825,7 +2852,7 @@
     },
     {
       "sourceFile": "core/engine.ts",
-      "line": 1082,
+      "line": 1088,
       "kind": "persistent-store-constructor",
       "excerpt": "new SessionManifestStore({ dbPath })",
       "reason": "Constructs the manifest store during engine construction.",
@@ -2834,7 +2861,7 @@
     },
     {
       "sourceFile": "core/engine.ts",
-      "line": 1103,
+      "line": 1109,
       "kind": "persistent-store-constructor",
       "excerpt": "new SessionManifestStore({ dbPath })",
       "reason": "Constructs the manifest store during engine construction.",
@@ -2843,7 +2870,7 @@
     },
     {
       "sourceFile": "core/engine.ts",
-      "line": 1974,
+      "line": 1983,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(skillsDir, { recursive: true })",
       "reason": "Creates the user skill root.",
@@ -2852,7 +2879,7 @@
     },
     {
       "sourceFile": "core/engine.ts",
-      "line": 2156,
+      "line": 2165,
       "kind": "remove-path",
       "excerpt": "fs.unlinkSync(filePath)",
       "reason": "Deletes an expired legacy ephemeral session JSONL locator.",
@@ -2861,7 +2888,7 @@
     },
     {
       "sourceFile": "core/engine.ts",
-      "line": 2210,
+      "line": 2219,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(pluginDevSourcesDir, { recursive: true })",
       "reason": "Creates the plugin development source root.",
@@ -3149,7 +3176,7 @@
     },
     {
       "sourceFile": "core/local-provider-plugin-store.ts",
-      "line": 307,
+      "line": 309,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(path.dirname(this.providerPath(id)), { recursive: true })",
       "reason": "Owns provider catalog, authentication, model compatibility, or local provider plugin state.",
@@ -3158,7 +3185,7 @@
     },
     {
       "sourceFile": "core/local-provider-plugin-store.ts",
-      "line": 308,
+      "line": 310,
       "kind": "atomic-write",
       "excerpt": "atomicWriteSync(this.manifestPath(id), JSON.stringify({ id: storageId, type: \"provider-plugin\", schemaVersion: LOCAL_PROVIDER_PLUGIN_SCHEMA_VERSION, provider: id, }, null, 2) + \"\\n\")",
       "reason": "Owns provider catalog, authentication, model compatibility, or local provider plugin state.",
@@ -3167,7 +3194,7 @@
     },
     {
       "sourceFile": "core/local-provider-plugin-store.ts",
-      "line": 314,
+      "line": 316,
       "kind": "atomic-write",
       "excerpt": "atomicWriteSync(this.providerPath(id), JSON.stringify(plugin, null, 2) + \"\\n\")",
       "reason": "Owns provider catalog, authentication, model compatibility, or local provider plugin state.",
@@ -3176,7 +3203,7 @@
     },
     {
       "sourceFile": "core/local-provider-plugin-store.ts",
-      "line": 323,
+      "line": 325,
       "kind": "remove-path",
       "excerpt": "fs.rmSync(this.providerDir(providerId), { recursive: true, force: true })",
       "reason": "Owns provider catalog, authentication, model compatibility, or local provider plugin state.",
@@ -3185,7 +3212,7 @@
     },
     {
       "sourceFile": "core/local-provider-plugin-store.ts",
-      "line": 326,
+      "line": 328,
       "kind": "remove-path",
       "excerpt": "fs.rmSync(legacyDir, { recursive: true, force: true })",
       "reason": "Owns provider catalog, authentication, model compatibility, or local provider plugin state.",
@@ -4373,7 +4400,7 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
-      "line": 4492,
+      "line": 4501,
       "kind": "write-file",
       "excerpt": "fsp.writeFile(titlePath, JSON.stringify(titles, null, 2), \"utf-8\")",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
@@ -4382,7 +4409,7 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
-      "line": 4600,
+      "line": 4609,
       "kind": "write-file",
       "excerpt": "fsp.writeFile(titlePath, JSON.stringify(titles, null, 2), \"utf-8\")",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
@@ -4391,7 +4418,7 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
-      "line": 4913,
+      "line": 4922,
       "kind": "write-file",
       "excerpt": "fsp.writeFile(metaPath, JSON.stringify(compactedMeta, null, 2))",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
@@ -4400,7 +4427,7 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
-      "line": 4921,
+      "line": 4930,
       "kind": "mkdir",
       "excerpt": "fsp.mkdir(path.dirname(metaPath), { recursive: true })",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
@@ -4409,7 +4436,7 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
-      "line": 4969,
+      "line": 4995,
       "kind": "rename",
       "excerpt": "fsp.rename(metaPath, backupPath)",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
@@ -4418,7 +4445,7 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
-      "line": 4996,
+      "line": 5024,
       "kind": "write-file",
       "excerpt": "fsp.writeFile(metaPath, JSON.stringify(budgeted, null, 2))",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
@@ -4427,7 +4454,7 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
-      "line": 5068,
+      "line": 5098,
       "kind": "mkdir",
       "excerpt": "fsp.mkdir(path.dirname(absPath), { recursive: true })",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
@@ -4436,7 +4463,7 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
-      "line": 5069,
+      "line": 5099,
       "kind": "write-file",
       "excerpt": "fsp.writeFile(absPath, encoded, \"utf-8\")",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
@@ -4445,7 +4472,7 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
-      "line": 5244,
+      "line": 5274,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(agent.sessionDir, { recursive: true })",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
@@ -4454,7 +4481,7 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
-      "line": 5245,
+      "line": 5275,
       "kind": "rename",
       "excerpt": "fs.renameSync(oldPath, newPath)",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
@@ -4463,7 +4490,7 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
-      "line": 5261,
+      "line": 5291,
       "kind": "rename",
       "excerpt": "fs.renameSync(newPath, oldPath)",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
@@ -4472,7 +4499,7 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
-      "line": 5352,
+      "line": 5382,
       "kind": "remove-path",
       "excerpt": "fs.unlinkSync(sp)",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
@@ -4481,7 +4508,7 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
-      "line": 5363,
+      "line": 5393,
       "kind": "remove-path",
       "excerpt": "fs.unlinkSync(candidate)",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
@@ -4490,7 +4517,7 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
-      "line": 5368,
+      "line": 5398,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(sessionDir, { recursive: true })",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
@@ -4787,7 +4814,7 @@
     },
     {
       "sourceFile": "desktop/auto-updater.cjs",
-      "line": 182,
+      "line": 183,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(logDir, { recursive: true })",
       "reason": "Appends desktop auto-update diagnostics.",
@@ -4796,7 +4823,7 @@
     },
     {
       "sourceFile": "desktop/auto-updater.cjs",
-      "line": 183,
+      "line": 184,
       "kind": "append-file",
       "excerpt": "fs.appendFileSync(path.join(logDir, \"auto-update.log\"), line + \"\\n\", \"utf-8\")",
       "reason": "Appends desktop auto-update diagnostics.",
@@ -4805,7 +4832,7 @@
     },
     {
       "sourceFile": "desktop/auto-updater.cjs",
-      "line": 411,
+      "line": 432,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(path.dirname(versionFile), { recursive: true })",
       "reason": "Migrates or writes the current desktop update-cache version marker.",
@@ -4814,7 +4841,7 @@
     },
     {
       "sourceFile": "desktop/auto-updater.cjs",
-      "line": 412,
+      "line": 433,
       "kind": "rename",
       "excerpt": "fs.renameSync(wrongFile, versionFile)",
       "reason": "Migrates or writes the current desktop update-cache version marker.",
@@ -4823,7 +4850,7 @@
     },
     {
       "sourceFile": "desktop/auto-updater.cjs",
-      "line": 414,
+      "line": 435,
       "kind": "remove-path",
       "excerpt": "fs.unlinkSync(wrongFile)",
       "reason": "Deletes the exact legacy last-update-version source and its now-empty legacy directory outside the active HANA_HOME.",
@@ -4832,7 +4859,7 @@
     },
     {
       "sourceFile": "desktop/auto-updater.cjs",
-      "line": 417,
+      "line": 438,
       "kind": "remove-path",
       "excerpt": "fs.rmdirSync(wrongDir)",
       "reason": "Deletes the exact legacy last-update-version source and its now-empty legacy directory outside the active HANA_HOME.",
@@ -4841,7 +4868,7 @@
     },
     {
       "sourceFile": "desktop/auto-updater.cjs",
-      "line": 436,
+      "line": 457,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(path.dirname(versionFile), { recursive: true })",
       "reason": "Migrates or writes the current desktop update-cache version marker.",
@@ -4850,7 +4877,7 @@
     },
     {
       "sourceFile": "desktop/auto-updater.cjs",
-      "line": 437,
+      "line": 458,
       "kind": "write-file",
       "excerpt": "fs.writeFileSync(versionFile, currentVersion)",
       "reason": "Migrates or writes the current desktop update-cache version marker.",
@@ -4859,7 +4886,7 @@
     },
     {
       "sourceFile": "desktop/auto-updater.cjs",
-      "line": 452,
+      "line": 473,
       "kind": "remove-path",
       "excerpt": "fs.promises.rm(cacheDir, { recursive: true, force: true })",
       "reason": "Deletes Electron updater's regenerable pending cache under app.getPath(userData), not Hana application state.",
@@ -4913,7 +4940,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 1219,
+      "line": 1221,
       "kind": "remove-path",
       "excerpt": "fs.unlinkSync(serverInfoPath)",
       "reason": "Deletes stale desktop server discovery state before or after a server lifecycle.",
@@ -4922,7 +4949,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 1223,
+      "line": 1225,
       "kind": "remove-path",
       "excerpt": "fs.unlinkSync(serverInfoPath)",
       "reason": "Deletes stale desktop server discovery state before or after a server lifecycle.",
@@ -4931,7 +4958,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 1729,
+      "line": 1731,
       "kind": "remove-path",
       "excerpt": "fs.unlinkSync(serverInfoPath)",
       "reason": "Deletes stale desktop server discovery state before or after a server lifecycle.",
@@ -4940,7 +4967,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 2215,
+      "line": 2217,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(hanakoHome, { recursive: true })",
       "reason": "Writes desktop crash or browser-command diagnostics.",
@@ -4949,7 +4976,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 2216,
+      "line": 2218,
       "kind": "write-file",
       "excerpt": "fs.writeFileSync(crashLogPath, content, \"utf-8\")",
       "reason": "Writes desktop crash or browser-command diagnostics.",
@@ -4958,7 +4985,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 2277,
+      "line": 2279,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(path.dirname(lastSeenVersionPath), { recursive: true })",
       "reason": "Writes desktop window bounds or the release-announcement version bookmark.",
@@ -4967,7 +4994,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 2278,
+      "line": 2280,
       "kind": "write-file",
       "excerpt": "fs.writeFileSync(lastSeenVersionPath, JSON.stringify({ version }))",
       "reason": "Writes desktop window bounds or the release-announcement version bookmark.",
@@ -4976,7 +5003,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 2346,
+      "line": 2348,
       "kind": "write-file",
       "excerpt": "fs.promises.writeFile(windowStatePath, JSON.stringify(state, null, 2) + \"\\n\")",
       "reason": "Writes desktop window bounds or the release-announcement version bookmark.",
@@ -4985,7 +5012,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 2445,
+      "line": 2447,
       "kind": "mkdir",
       "excerpt": "fs.promises.mkdir(path.dirname(quickChatWindowStatePath), { recursive: true })",
       "reason": "Writes desktop window bounds or the release-announcement version bookmark.",
@@ -4994,7 +5021,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 2446,
+      "line": 2448,
       "kind": "write-file",
       "excerpt": "fs.promises.writeFile(quickChatWindowStatePath, JSON.stringify(state, null, 2) + \"\\n\")",
       "reason": "Writes desktop window bounds or the release-announcement version bookmark.",
@@ -5003,7 +5030,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 4191,
+      "line": 4193,
       "kind": "append-file",
       "excerpt": "require(\"fs\").appendFileSync(require(\"path\").join(hanakoHome, \"browser-cmd.log\"), `${new Date().toISOString()} ${redactMainLogText(line)}\\n`)",
       "reason": "Writes desktop crash or browser-command diagnostics.",
@@ -5012,7 +5039,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 4758,
+      "line": 4760,
       "kind": "write-file",
       "excerpt": "fs.writeFileSync(tmpHtml, htmlContent, \"utf-8\")",
       "reason": "Writes and removes one request-scoped screenshot HTML file under the operating-system temporary directory.",
@@ -5021,7 +5048,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 4812,
+      "line": 4814,
       "kind": "remove-path",
       "excerpt": "fs.unlinkSync(tmpHtml)",
       "reason": "Writes and removes one request-scoped screenshot HTML file under the operating-system temporary directory.",
@@ -5030,7 +5057,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 5367,
+      "line": 5392,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(tmpDir, { recursive: true })",
       "reason": "Creates a request-scoped skill preview directory under Electron's operating-system temp path.",
@@ -5039,7 +5066,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 5513,
+      "line": 5538,
       "kind": "write-file",
       "excerpt": "fs.writeFileSync(filePath, content, \"utf-8\")",
       "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
@@ -5048,7 +5075,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 5535,
+      "line": 5560,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(path.dirname(resolved), { recursive: true })",
       "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
@@ -5057,7 +5084,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 5536,
+      "line": 5561,
       "kind": "write-file",
       "excerpt": "fs.writeFileSync(resolved, Buffer.from(base64Data, \"base64\"))",
       "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
@@ -5066,7 +5093,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 5547,
+      "line": 5572,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(path.dirname(destinationPath), { recursive: true })",
       "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
@@ -5075,7 +5102,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 5548,
+      "line": 5573,
       "kind": "copy-file",
       "excerpt": "fs.copyFileSync(sourcePath, destinationPath)",
       "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
@@ -5084,7 +5111,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 5581,
+      "line": 5606,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(dir, { recursive: true })",
       "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
@@ -5093,7 +5120,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 5582,
+      "line": 5607,
       "kind": "write-file",
       "excerpt": "fs.writeFileSync(filePath, pngBuffer)",
       "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
@@ -5102,7 +5129,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 6104,
+      "line": 6178,
       "kind": "remove-path",
       "excerpt": "fs.unlinkSync(path.join(hanakoHome, \"server-info.json\"))",
       "reason": "Deletes stale desktop server discovery state before or after a server lifecycle.",
@@ -7694,7 +7721,7 @@
     },
     {
       "sourceFile": "server/index.ts",
-      "line": 272,
+      "line": 275,
       "kind": "remove-path",
       "excerpt": "fs.unlinkSync(serverInfoPath)",
       "reason": "Writes or deletes live server discovery state.",
@@ -7703,7 +7730,7 @@
     },
     {
       "sourceFile": "server/index.ts",
-      "line": 433,
+      "line": 454,
       "kind": "persistent-store-constructor",
       "excerpt": "new DeferredResultStore( hub.eventBus, path.join(hanakoHome, \".ephemeral\", \"deferred-tasks.json\"), { getSessionIdForPath: (sessionPath: string) => engine.getSessionIdForPath?.(sessionPath) || null }, )",
       "reason": "Constructs the deferred result store.",
@@ -7712,7 +7739,7 @@
     },
     {
       "sourceFile": "server/index.ts",
-      "line": 633,
+      "line": 655,
       "kind": "persistent-store-constructor",
       "excerpt": "new ConfirmStore({ getSessionIdForPath: (sessionPath: string) => engine.getSessionIdForPath?.(sessionPath) || null, })",
       "reason": "ConfirmStore is deliberately process-memory-only: pending approvals time out or abort with their session and have no restart replay contract.",
@@ -7721,7 +7748,7 @@
     },
     {
       "sourceFile": "server/index.ts",
-      "line": 638,
+      "line": 660,
       "kind": "persistent-store-constructor",
       "excerpt": "new SubagentRunStore( path.join(hanakoHome, \"subagent-runs.json\"), { getSessionIdForPath: (sessionPath: string) => engine.getSessionIdForPath?.(sessionPath) || null }, )",
       "reason": "Constructs subagent stores.",
@@ -7730,7 +7757,7 @@
     },
     {
       "sourceFile": "server/index.ts",
-      "line": 644,
+      "line": 666,
       "kind": "persistent-store-constructor",
       "excerpt": "new SubagentThreadStore( path.join(hanakoHome, \"subagent-threads.json\"), { getSessionIdForPath: (sessionPath: string) => engine.getSessionIdForPath?.(sessionPath) || null }, )",
       "reason": "Constructs subagent stores.",
@@ -7739,7 +7766,7 @@
     },
     {
       "sourceFile": "server/index.ts",
-      "line": 655,
+      "line": 677,
       "kind": "persistent-store-constructor",
       "excerpt": "new WorkflowActivityStore( path.join(hanakoHome, \"workflow-activity.json\"), )",
       "reason": "Constructs the workflow activity store.",
@@ -7748,7 +7775,7 @@
     },
     {
       "sourceFile": "server/index.ts",
-      "line": 1072,
+      "line": 1094,
       "kind": "append-file",
       "excerpt": "fs.promises.appendFile(_bwsLogPath, chunk)",
       "reason": "Appends the browser worker log.",
@@ -7757,7 +7784,7 @@
     },
     {
       "sourceFile": "server/index.ts",
-      "line": 1131,
+      "line": 1153,
       "kind": "write-file",
       "excerpt": "fs.writeFileSync(serverInfoPath, JSON.stringify({ pid: process.pid, port: actualPort, host, configuredHost: serverRuntimeState.listenHost, networkMode: serverRuntimeState.mode, configuredMode: serverRuntimeState.configuredMode, configuredLi",
       "reason": "Writes or deletes live server discovery state.",
@@ -7766,7 +7793,7 @@
     },
     {
       "sourceFile": "server/index.ts",
-      "line": 1229,
+      "line": 1251,
       "kind": "remove-path",
       "excerpt": "fs.unlinkSync(path.join(hanakoHome, \"server-info.json\"))",
       "reason": "Writes or deletes live server discovery state.",
@@ -8207,7 +8234,7 @@
     },
     {
       "sourceFile": "server/routes/skills.ts",
-      "line": 41,
+      "line": 53,
       "kind": "remove-path",
       "excerpt": "fs.rmSync(dir, { recursive: true, force: true })",
       "reason": "Removes an installed user skill through the skill owner route.",
@@ -8216,7 +8243,7 @@
     },
     {
       "sourceFile": "server/routes/upload.ts",
-      "line": 216,
+      "line": 247,
       "kind": "remove-path",
       "excerpt": "fs.rm(fullPath, { recursive: true, force: true })",
       "reason": "Expires a sessionless legacy upload cache entry.",
@@ -8225,7 +8252,7 @@
     },
     {
       "sourceFile": "server/routes/upload.ts",
-      "line": 309,
+      "line": 340,
       "kind": "mkdir",
       "excerpt": "fs.mkdir(uploadsDir, { recursive: true })",
       "reason": "resolveUploadTarget sends the same syntactic write sites to registered session-files storage when sessionPath is present or to the registered legacy uploads cache otherwise; flow-sensitive site attribution is required to distinguish them.",
@@ -8234,7 +8261,7 @@
     },
     {
       "sourceFile": "server/routes/upload.ts",
-      "line": 390,
+      "line": 421,
       "kind": "copy-file",
       "excerpt": "fs.cp(srcPath, destPath, { recursive: true })",
       "reason": "resolveUploadTarget sends the same syntactic write sites to registered session-files storage when sessionPath is present or to the registered legacy uploads cache otherwise; flow-sensitive site attribution is required to distinguish them.",
@@ -8243,7 +8270,7 @@
     },
     {
       "sourceFile": "server/routes/upload.ts",
-      "line": 392,
+      "line": 423,
       "kind": "copy-file",
       "excerpt": "fs.copyFile(srcPath, destPath)",
       "reason": "resolveUploadTarget sends the same syntactic write sites to registered session-files storage when sessionPath is present or to the registered legacy uploads cache otherwise; flow-sensitive site attribution is required to distinguish them.",
@@ -8252,7 +8279,7 @@
     },
     {
       "sourceFile": "server/routes/upload.ts",
-      "line": 450,
+      "line": 481,
       "kind": "mkdir",
       "excerpt": "fs.mkdir(uploadsDir, { recursive: true })",
       "reason": "resolveUploadTarget sends the same syntactic write sites to registered session-files storage when sessionPath is present or to the registered legacy uploads cache otherwise; flow-sensitive site attribution is required to distinguish them.",
@@ -8261,7 +8288,7 @@
     },
     {
       "sourceFile": "server/routes/upload.ts",
-      "line": 509,
+      "line": 544,
       "kind": "write-file",
       "excerpt": "fs.writeFile(destPath, buf)",
       "reason": "resolveUploadTarget sends the same syntactic write sites to registered session-files storage when sessionPath is present or to the registered legacy uploads cache otherwise; flow-sensitive site attribution is required to distinguish them.",
