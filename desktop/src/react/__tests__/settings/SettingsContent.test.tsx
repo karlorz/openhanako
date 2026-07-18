@@ -7,6 +7,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import '@testing-library/jest-dom/vitest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ServerConnection } from '../../services/server-connection';
+import { assessRemoteServer } from '../../../../../shared/remote-server-assessment';
 
 interface MockState extends Record<string, unknown> {
   activeTab?: string;
@@ -85,6 +86,7 @@ function resetState() {
     activeTab: 'agent',
     ready: true,
     set: vi.fn((patch: Record<string, unknown>) => Object.assign(mockState, patch)),
+    refreshRemoteServerAssessment: vi.fn(async () => {}),
   });
 }
 
@@ -363,5 +365,42 @@ describe('SettingsContent title placement', () => {
         warningCodes: ['missing_optional_capability'],
       });
     });
+  });
+
+  it('restores a matching cached assessment before a fresh release check completes', async () => {
+    const { writePersistedServerConnectionState } = await import('../../services/server-connection');
+    const { writeRemoteServerAssessment } = await import('../../services/remote-server-assessment-cache');
+    const remoteConnection: ServerConnection = {
+      connectionId: 'lan:node_lan:studio_lan',
+      kind: 'lan',
+      serverId: 'server_lan',
+      serverNodeId: 'node_lan',
+      studioId: 'studio_lan',
+      label: 'LAN Studio',
+      baseUrl: 'http://192.168.31.75:14500',
+      wsUrl: 'ws://192.168.31.75:14500',
+      token: 'hana_dev_remote',
+      authState: 'paired',
+      trustState: 'lan',
+      credentialKind: 'device_credential',
+      capabilities: ['chat'],
+    };
+    const cached = assessRemoteServer({
+      connectionId: remoteConnection.connectionId,
+      assessedAt: new Date().toISOString(),
+      boundary: { status: 'assessed', ok: true, reasonCodes: [], warningCodes: [] },
+      server: { connectionKind: 'lan', runtimeVersion: '0.346.18' },
+    });
+    writePersistedServerConnectionState({
+      serverConnections: { [remoteConnection.connectionId]: remoteConnection },
+      activeServerConnectionId: remoteConnection.connectionId,
+    });
+    writeRemoteServerAssessment(cached);
+    const { SettingsContent } = await import('../../settings/SettingsContent');
+
+    render(<SettingsContent variant="modal" onClose={() => {}} />);
+
+    await waitFor(() => expect(mockState.remoteServerAssessment).toEqual(cached));
+    expect(mockState.refreshRemoteServerAssessment).toHaveBeenCalled();
   });
 });
