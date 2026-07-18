@@ -330,10 +330,13 @@ export class HanaEngine {
   declare _win32LegacySandboxCleanupQueue: any;
   declare agentsDir: any;
   declare appVersion: any;
+  declare featureContracts: any;
   declare channelsDir: any;
   declare hanakoHome: any;
   declare _inputDrafts: any;
   declare productDir: any;
+  declare runtimeBuild: any;
+  declare runtimeFacts: any;
   declare userDir: any;
   /**
    * @param {object} dirs
@@ -346,10 +349,13 @@ export class HanaEngine {
    *   root. Absent/empty means an open composition: the media runtime
    *   constructs with zero built-in adapters, never an implicit import.
    */
-  constructor({ hanakoHome, productDir, agentId, appVersion, builtinMediaAdapters }) {
+  constructor({ hanakoHome, productDir, agentId, appVersion, runtimeBuild = null, featureContracts = null, runtimeFacts = null }) {
     this.hanakoHome = hanakoHome;
     this.productDir = productDir;
     this.appVersion = appVersion || "0.0.0";
+    this.runtimeBuild = runtimeBuild;
+    this.featureContracts = featureContracts;
+    this.runtimeFacts = runtimeFacts;
     this._runtimeContext = null;
     this._resources = null;
     this._resourceAccess = null;
@@ -2460,6 +2466,9 @@ export class HanaEngine {
     this._runtimeContext = createServerRuntimeContext({
       hanakoHome: this.hanakoHome,
       appVersion: this.appVersion,
+      runtimeBuild: this.runtimeBuild,
+      featureContracts: this.featureContracts,
+      runtimeFacts: this.runtimeFacts,
     });
     this._resources = new ResourceService({
       agentsDir: this.agentsDir,
