@@ -93,6 +93,26 @@ Manual smoke for the remote server:
 4. Switch chats and return.
 5. Confirm chat thumbnail and Conversation Files preview still render, including older sessions.
 
+### Offline work-item prerequisite check
+
+Candidate specs may declare `remote_requirements` in YAML frontmatter. An
+attended operator sets `WORK_ITEM_SPEC` to the candidate spec's absolute path,
+refreshes `.claude/remote-assessment/latest.json` with the desktop smoke helper,
+and then runs the configured `check-remote-prerequisites.mjs` command. Refresh
+evidence only with attended authority.
+Attended refresh is the only supported evidence refresh workflow.
+
+The checker is offline, credential-free, and read-only: it reads only the
+supplied work-item and assessment paths. It reports `unknown` when evidence is
+absent, invalid, or stale. Prep must not scrape credentials, read renderer or
+localStorage state, or contact sg01 merely because a candidate has remote
+requirements. Generic `/dev-loop prep` does not invoke this checker.
+
+When the result is `deployment-coupled`, split the work into explicit client,
+server, release, upgrade, and post-upgrade verification stages. Automatic prep
+integration requires a separate dev-loop plugin source change and release; do
+not patch an installed plugin cache.
+
 ## Dev-Loop Notes
 
 - Root agent guide: `CLAUDE.md`.

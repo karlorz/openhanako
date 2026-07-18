@@ -352,6 +352,26 @@ authorization/cookie/header data, CDP endpoints, user-data paths, and raw
 localStorage. `websocket.ticket@1` is migration-readiness evidence, not a
 generic LAN core requirement.
 
+Repository work items can consume that short-lived evidence with the offline
+prerequisite checker. An attended operator sets `WORK_ITEM_SPEC` to the
+candidate spec's absolute path, refreshes the evidence deliberately, and runs:
+
+```bash
+node scripts/check-remote-prerequisites.mjs \
+  --work-item "$WORK_ITEM_SPEC" \
+  --assessment .claude/remote-assessment/latest.json \
+  --json
+```
+
+The checker reports `unknown` when the assessment is absent, invalid, or stale.
+It only reads the two supplied files and must not obtain credentials, inspect
+renderer/localStorage state, use SSH, or contact sg01 merely because prep runs.
+Generic `/dev-loop prep` does not call it. Automatic prep integration requires
+a separate dev-loop plugin source change and release, never an installed-cache
+patch. For `deployment-coupled` work, plan client, server, release, upgrade,
+and post-upgrade verification as explicit stages; future manifest evidence is
+not proof that the current host asset is installed.
+
 ## Failure Policy
 
 - Unsupported OS or architecture: fail before download.
