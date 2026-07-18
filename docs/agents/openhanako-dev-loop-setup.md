@@ -83,6 +83,21 @@ Generated during the 2026-06-15 remote attachment preview fix closeout. Last rev
 
 ## Grill-Me Decision
 
+## Remote prerequisite boundary
+
+Remote assessment refresh is attended work. Set `WORK_ITEM_SPEC` to the
+absolute candidate spec path, deliberately run the configured smoke command,
+then run the offline checker. The checker reports `unknown` for absent,
+invalid, or stale evidence and reads only the two paths supplied on its command
+line. It does not use the network, SSH, keychain, renderer, localStorage, or
+credentials, and it never contacts sg01 merely because prep is running.
+
+Generic `/dev-loop prep` does not invoke this command. Automatic integration
+requires a separate change and release in the dev-loop plugin source; never
+apply an installed-cache patch. A `deployment-coupled` result must become
+separate client, server, release, upgrade, and post-upgrade work rather than a
+claim that the current host is ready.
+
 The fork policy says the working/default branch is `dev`, so `.github/workflows/ci.yml` now runs on both `main` and `dev`.
 
 Decision: **yes, add `dev` to CI triggers** because dev-loop will operate on `dev`. Branch protection remains manual until the repo owner chooses to enable it.
