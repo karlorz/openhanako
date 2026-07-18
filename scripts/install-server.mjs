@@ -6,10 +6,12 @@ import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import remoteServerAssessmentModule from "../shared/remote-server-assessment.cjs";
+import remoteServerReleaseCatalogModule from "../shared/remote-server-release-catalog.cjs";
 import remoteServerReleaseLoaderModule from "../shared/remote-server-release-loader.cjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const { assessRemoteServer } = remoteServerAssessmentModule;
+const { normalizeServerPlatformArch } = remoteServerReleaseCatalogModule;
 const { createRemoteServerReleaseLoader } = remoteServerReleaseLoaderModule;
 
 const LATEST_FULL_STATE_BACKUP_ALIAS = "latest-full-state";
@@ -513,15 +515,15 @@ export async function inspectServerStatus({
     && embeddedBuild?.releaseTag
     && embeddedBuild.releaseTag !== symlinkRelease.tag,
   );
-  const hostPlatform = platform === "linux" ? "linux" : null;
-  let hostArch = null;
-  if (hostPlatform) {
-    try {
-      hostArch = normalizeArch(arch);
-    } catch {
-      hostArch = null;
-    }
-  }
+  const hostFacts = normalizeServerPlatformArch(platform, arch);
+  const hostPlatform = hostFacts?.platform ?? null;
+  const hostArch = hostFacts?.arch ?? null;
+  const hostEvidenceMismatch = Boolean(
+    symlinkRelease
+    && typeof platform === "string"
+    && typeof arch === "string"
+    && (!hostFacts || symlinkRelease.platform !== hostPlatform || symlinkRelease.arch !== hostArch),
+  );
   let installedRelease;
   if (symlinkRelease) {
     installedRelease = { ...symlinkRelease, evidenceSource: "current-symlink" };
@@ -548,20 +550,55 @@ export async function inspectServerStatus({
       runtimeBuild: {
         schemaVersion: 1,
         runtimeVersion: embeddedBuild?.runtimeVersion || installedRelease.runtimeVersion || undefined,
-        releaseTag: embeddedBuild?.releaseTag || installedRelease.tag,
+        releaseTag: evidenceMismatch ? undefined : embeddedBuild?.releaseTag || installedRelease.tag,
         gitSha: embeddedBuild?.gitSha || null,
         sourceRepository: embeddedBuild?.sourceRepository || null,
       },
       runtimeFacts: {
-        platform: installedRelease.platform || (platform === "linux" ? "linux" : null),
-        arch: installedRelease.arch || null,
+        platform: hostPlatform,
+        arch: hostArch,
       },
     },
     releaseCheck,
   });
-  if (evidenceMismatch && !assessment.reasonCodes.includes("installed_release_evidence_mismatch")) {
-    assessment.reasonCodes.push("installed_release_evidence_mismatch");
+  if (evidenceMismatch) {
+    assessment.freshness.status = "unknown";
+    assessment.freshness.installedReleaseTag = null;
+    assessment.freshness.exactReleaseMatch = false;
+    assessment.freshness.reasonCodes = [...new Set([
+      ...assessment.freshness.reasonCodes,
+      "installed_release_evidence_mismatch",
+    ])];
+    assessment.deployability = {
+      ...assessment.deployability,
+      status: "unknown",
+      targetTag: null,
+      assetName: null,
+      checksumName: null,
+      reasonCodes: [...new Set([
+        ...assessment.deployability.reasonCodes,
+        "installed_release_evidence_mismatch",
+      ])],
+    };
   }
+  if (hostEvidenceMismatch) {
+    assessment.deployability = {
+      ...assessment.deployability,
+      status: "unknown",
+      targetTag: null,
+      assetName: null,
+      checksumName: null,
+      reasonCodes: [...new Set([
+        ...assessment.deployability.reasonCodes,
+        "installed_release_host_mismatch",
+      ])],
+    };
+  }
+  assessment.reasonCodes = [...new Set([
+    ...assessment.reasonCodes,
+    ...assessment.freshness.reasonCodes,
+    ...assessment.deployability.reasonCodes,
+  ])];
   const recommendedDryRunCommand = assessment.deployability.status === "eligible"
     && releaseCheck?.release?.tag
     && typeof releaseCheck.release.prerelease === "boolean"
