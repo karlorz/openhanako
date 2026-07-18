@@ -3,9 +3,8 @@
  *
  * Candidate-only surface (v0.380.10+): process-local EnvChangeLedger + hana_reminder
  * blocks can fan memory_facts changes into every live session unless dispatch is
- * filtered by owning agentId. Current fork (pre-activation) does not ship that
- * surface; this suite locks the isolation contract and characterizes absence so
- * the leak cannot land silently during next-stable migration.
+ * filtered by owning agentId. The v0.407.15 sync activated that surface, so this
+ * suite locks both the module/API presence and the agent-isolation contract.
  *
  * Policy: characterization only. Do not invent production reminder modules here.
  * If a live leak is demonstrated on production code under this master work item,
@@ -76,25 +75,19 @@ describe("memory-change reminder agent isolation (#2106)", () => {
     )).toEqual([]);
   });
 
-  it("characterizes current-fork absence of candidate memory-change reminder modules", () => {
+  it("characterizes the activated memory-change reminder modules", () => {
     const coreModules = listCoreModuleBasenames();
-    expect(coreModules).not.toContain("session-reminders");
-    expect(coreModules).not.toContain("env-change-ledger");
-    expect(memoryChangeReminderSurfaceActive(coreModules)).toBe(false);
-
-    // Preferred candidate surface after stable activation (inventory only).
-    expect(memoryChangeReminderSurfaceActive([
-      "core/session-reminders.ts",
-      "core/env-change-ledger.ts",
-    ])).toBe(true);
+    expect(coreModules).toContain("session-reminders");
+    expect(coreModules).toContain("env-change-ledger");
+    expect(memoryChangeReminderSurfaceActive(coreModules)).toBe(true);
   });
 
-  it("SessionCoordinator does not expose candidate reminder render/consume APIs yet", () => {
+  it("SessionCoordinator exposes the activated reminder render/consume APIs", () => {
     const proto = SessionCoordinator.prototype as unknown as Record<string, unknown>;
-    expect(typeof proto.renderSessionReminderBlock).not.toBe("function");
-    expect(typeof proto.consumeRenderedSessionReminderBlock).not.toBe("function");
-    expect(typeof proto.consumeSessionReminderBlock).not.toBe("function");
-    expect(typeof proto.noteSessionTimeObserved).not.toBe("function");
+    expect(typeof proto.renderSessionReminderBlock).toBe("function");
+    expect(typeof proto.consumeRenderedSessionReminderBlock).toBe("function");
+    expect(typeof proto.consumeSessionReminderBlock).toBe("function");
+    expect(typeof proto.noteSessionTimeObserved).toBe("function");
   });
 
   it("documents unscoped memory_facts fan-out as the #2106 leak shape to reject", async () => {
