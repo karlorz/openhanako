@@ -6,6 +6,7 @@ import React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { assessRemoteServer, type RemoteServerAssessmentInput } from '../../../../../shared/remote-server-assessment';
 
 type MockState = Record<string, any>;
 
@@ -127,6 +128,49 @@ const remoteConnection = {
   credentialKind: 'device_credential',
 };
 
+function remoteAssessment(overrides: Partial<RemoteServerAssessmentInput> = {}) {
+  return assessRemoteServer({
+    connectionId: remoteConnection.connectionId,
+    assessedAt: '2026-07-18T12:00:01.000Z',
+    boundary: { status: 'assessed', ok: true, reasonCodes: [], warningCodes: [] },
+    server: {
+      connectionKind: 'lan',
+      runtimeVersion: '0.346.18',
+      featureContracts: null,
+      ...overrides.server,
+    },
+    featureRequirements: [{
+      id: 'input-drafts',
+      contract: 'input.drafts',
+      minVersion: 1,
+      unknownPolicy: 'fallback',
+      fallback: 'memory-only',
+    }],
+    releaseCheck: {
+      status: 'ready',
+      checkedAt: '2026-07-18T12:00:00.000Z',
+      source: 'online',
+      stale: false,
+      errorCode: null,
+      reasonCodes: [],
+      release: {
+        tag: 'v0.357.17-karlorz.1',
+        runtimeVersion: '0.357.17',
+        forkRevision: 1,
+        prerelease: true,
+        publishedAt: '2026-07-18T12:00:00.000Z',
+        releaseUrl: null,
+        assets: [],
+        compatibilityManifestName: null,
+        featureContracts: null,
+        manifestGitSha: null,
+        reasonCodes: [],
+      },
+    },
+    ...overrides,
+  });
+}
+
 describe('AccessTab', () => {
   beforeEach(() => {
     Object.keys(mockState).forEach(key => delete mockState[key]);
@@ -144,6 +188,8 @@ describe('AccessTab', () => {
         requestId: 0,
         updatedAt: null,
       },
+      remoteServerAssessment: null,
+      refreshRemoteServerAssessment: vi.fn(async () => {}),
     });
     mockHanaFetch.mockReset();
     mockHanaFetch.mockImplementation((url: string, options?: RequestInit) => {
@@ -481,6 +527,16 @@ describe('AccessTab', () => {
         reasonCodes: ['missing_core_capability'],
         warningCodes: ['missing_optional_capability'],
       },
+      remoteServerAssessment: assessRemoteServer({
+        connectionId: remoteConnection.connectionId,
+        boundary: {
+          status: 'assessed',
+          ok: false,
+          reasonCodes: ['missing_core_capability'],
+          warningCodes: ['missing_optional_capability'],
+        },
+        server: { connectionKind: 'lan', runtimeVersion: '0.348.11' },
+      }),
     });
     mockHanaFetch.mockImplementation((url: string) => {
       if (url === '/api/server/identity') {
@@ -512,11 +568,11 @@ describe('AccessTab', () => {
 
     expect(await screen.findByText('settings.access.remoteConnection')).toBeInTheDocument();
     expect(screen.getByText('LAN Studio')).toBeInTheDocument();
-    expect(screen.getByText('settings.access.remoteCompatibilityStatus')).toBeInTheDocument();
-    expect(screen.getByText('settings.access.remoteCompatibilityProblem')).toBeInTheDocument();
+    expect(screen.getByText('settings.access.remoteCoreConnection')).toBeInTheDocument();
+    expect(screen.getByText('settings.access.remoteCoreBlocked')).toBeInTheDocument();
     expect(screen.getByText('settings.access.remoteReason.missing_core_capability')).toBeInTheDocument();
     expect(screen.getByText('settings.access.remoteWarning.missing_optional_capability')).toBeInTheDocument();
-    expect(await screen.findByText('settings.access.remoteServerVersion')).toBeInTheDocument();
+    expect(screen.getByText('settings.access.remoteConnectedRuntime')).toBeInTheDocument();
     expect(screen.getByText('0.348.11')).toBeInTheDocument();
     expect(screen.getByText('settings.access.remoteConnectionKindRemote')).toBeInTheDocument();
     expect(screen.getByText('settings.access.remoteTrustState')).toBeInTheDocument();
@@ -530,12 +586,9 @@ describe('AccessTab', () => {
       'settings.access.remoteCapabilityChat',
       'settings.access.remoteCapabilityFiles',
       'settings.access.remoteCapabilityResources',
-      'settings.access.remoteCapabilitySettings',
+      'settings.access.remoteCapabilityTools',
     ].join(', '))).toBeInTheDocument();
     expect(screen.getByText('settings.access.remoteStudioLabel')).toBeInTheDocument();
-    expect(screen.getByText('Personal Studio')).toBeInTheDocument();
-    expect(screen.getByText('settings.access.remoteRuntime')).toBeInTheDocument();
-    expect(screen.getByText('settings.access.remoteRuntimeServer')).toBeInTheDocument();
     expect(screen.queryByText('device_credential')).not.toBeInTheDocument();
     expect(screen.queryByText('remote_process / legacy_agent_workbench')).not.toBeInTheDocument();
     expect(screen.queryByText('sg01 Hana')).not.toBeInTheDocument();
@@ -556,6 +609,111 @@ describe('AccessTab', () => {
     expect(mockState.activeServerConnectionId).toBe('local');
     expect(mockState.activeServerConnection).toBe(localConnection);
     expect(window.hana.reloadMainWindow).toHaveBeenCalledTimes(1);
+  });
+
+  it('separates core readiness, server freshness, feature support, and host compatibility', async () => {
+    Object.assign(mockState, {
+      serverConnections: { local: localConnection, [remoteConnection.connectionId]: remoteConnection },
+      activeServerConnectionId: remoteConnection.connectionId,
+      activeServerConnection: remoteConnection,
+      remoteServerAssessment: remoteAssessment(),
+    });
+    window.hana.getBuildInfo = vi.fn(async () => ({
+      appVersion: '0.407.15',
+      channel: 'stable',
+      sourceRepo: 'karlorz/openhanako',
+      gitSha: null,
+      baseTag: null,
+      dirty: false,
+      updateEnabled: true,
+      signatureKind: null,
+    }));
+    const { AccessTab } = await import('../../settings/tabs/AccessTab');
+
+    render(<AccessTab />);
+
+    expect(screen.getByText('settings.access.remoteCoreConnection')).toBeInTheDocument();
+    expect(screen.getByText('settings.access.remoteCoreReady')).toBeInTheDocument();
+    expect(screen.getByText('settings.access.remoteServerUpdate')).toBeInTheDocument();
+    expect(screen.getByText('settings.access.remoteUpdateRecommended')).toBeInTheDocument();
+    expect(screen.getByText('settings.access.remoteFeatureSupport')).toBeInTheDocument();
+    expect(screen.getByText('settings.access.remoteFeaturesLegacy')).toBeInTheDocument();
+    expect(screen.getByText('settings.access.remoteHostCompatibility')).toBeInTheDocument();
+    expect(screen.getByText('settings.access.remoteHostCheckOnServer')).toBeInTheDocument();
+    expect(screen.getByText('0.346.18')).toBeInTheDocument();
+    expect(await screen.findByText('0.407.15')).toBeInTheDocument();
+    expect(screen.queryByText('settings.access.remoteCompatibilityStatus')).not.toBeInTheDocument();
+    expect(screen.queryByText('0.407.15', { selector: '[data-server-update-target="true"]' })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['exact current', (value: ReturnType<typeof remoteAssessment>) => {
+      value.build.releaseTag = 'v0.357.17-karlorz.1';
+      value.build.runtimeVersion = '0.357.17';
+      value.freshness.status = 'current';
+      value.freshness.baseVersionMatch = true;
+      value.freshness.exactReleaseMatch = true;
+    }, 'settings.access.remoteCurrent'],
+    ['same-base unverified', (value: ReturnType<typeof remoteAssessment>) => {
+      value.build.runtimeVersion = '0.357.17';
+      value.freshness.status = 'unknown';
+      value.freshness.baseVersionMatch = true;
+    }, 'settings.access.remoteReleaseIdentityUnverified'],
+    ['stale cache', (value: ReturnType<typeof remoteAssessment>) => {
+      value.freshness.stale = true;
+      value.freshness.source = 'cached';
+    }, 'settings.access.remoteCheckStale'],
+    ['lookup unavailable', (value: ReturnType<typeof remoteAssessment>) => {
+      value.freshness.status = 'unknown';
+      value.freshness.source = 'none';
+    }, 'settings.access.remoteCheckUnavailable'],
+    ['ahead or custom', (value: ReturnType<typeof remoteAssessment>) => {
+      value.freshness.status = 'ahead-or-custom';
+    }, 'settings.access.remoteAheadOrCustom'],
+    ['blocked core', (value: ReturnType<typeof remoteAssessment>) => {
+      value.core.status = 'blocked';
+    }, 'settings.access.remoteCoreBlocked'],
+    ['missing host asset', (value: ReturnType<typeof remoteAssessment>) => {
+      value.deployability.status = 'unavailable';
+    }, 'settings.access.remoteHostUnavailable'],
+  ])('renders the %s assessment state', async (_name, mutate, expectedKey) => {
+    const assessment = remoteAssessment();
+    mutate(assessment);
+    Object.assign(mockState, {
+      serverConnections: { local: localConnection, [remoteConnection.connectionId]: remoteConnection },
+      activeServerConnectionId: remoteConnection.connectionId,
+      activeServerConnection: remoteConnection,
+      remoteServerAssessment: assessment,
+    });
+    const { AccessTab } = await import('../../settings/tabs/AccessTab');
+
+    render(<AccessTab />);
+
+    expect(screen.getByText(expectedKey)).toBeInTheDocument();
+  });
+
+  it('offers only read-only assessment actions and copies sanitized diagnostics', async () => {
+    Object.assign(mockState, {
+      serverConnections: { local: localConnection, [remoteConnection.connectionId]: remoteConnection },
+      activeServerConnectionId: remoteConnection.connectionId,
+      activeServerConnection: remoteConnection,
+      remoteServerAssessment: remoteAssessment(),
+    });
+    const { AccessTab } = await import('../../settings/tabs/AccessTab');
+    render(<AccessTab />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'settings.access.remoteCheckAgain' }));
+    expect(mockState.refreshRemoteServerAssessment).toHaveBeenCalledWith({ force: true });
+
+    fireEvent.click(screen.getByRole('button', { name: 'settings.access.remoteCopyDiagnostic' }));
+    await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalled());
+    const diagnostic = String((navigator.clipboard.writeText as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0]);
+    expect(diagnostic).not.toMatch(/fixture-key|baseUrl|authorization|credential|headers|cookie/i);
+    expect(JSON.parse(diagnostic)).toMatchObject({ schemaVersion: 1, connectionId: remoteConnection.connectionId });
+
+    fireEvent.click(screen.getByRole('button', { name: 'settings.access.remoteCopyStatusCommand' }));
+    expect(navigator.clipboard.writeText).toHaveBeenLastCalledWith('install-server status --check-updates --json');
+    expect(screen.queryByRole('button', { name: /upgrade/i })).not.toBeInTheDocument();
   });
 
   it('re-hides a revealed remote recovery secret after connect-another clears the credential draft', async () => {
