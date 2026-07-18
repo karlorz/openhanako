@@ -11,6 +11,7 @@ import {
   appendDigestToHistory,
   assertValidReleaseDigest,
   assertValidReleaseDigestHistory,
+  releaseTagToProductVersion,
 } from "./release-digest-schema.mjs";
 
 const DEFAULT_REPOSITORY = "liliMozi/openhanako";
@@ -157,8 +158,7 @@ function normalizeTag(tag) {
 }
 
 function tagToVersion(tag) {
-  const normalized = normalizeTag(tag);
-  return normalized.startsWith("v") ? normalized.slice(1) : normalized;
+  return releaseTagToProductVersion(normalizeTag(tag));
 }
 
 export function resolvePreviousTag(ref = "HEAD", explicitPreviousTag = "auto") {

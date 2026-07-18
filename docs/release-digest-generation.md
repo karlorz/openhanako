@@ -37,6 +37,13 @@ file permissions. The secret file is optional for normal development and is
 required only when the generator makes a provider request; without it, the
 generator fails closed with an `API_KEY` error.
 
+Fork release tags use the form `vX.Y.Z-karlorz.N`. The digest keeps that full
+value in `tag` for release identity, but stores the installed product version
+`X.Y.Z` in `version` so the desktop update-history comparator can consume the
+entry. Always pass the explicit stable upstream baseline with `--previous-tag`
+when generating a fork digest; automatic discovery can select a train tag that
+is not the intended release baseline.
+
 ## Generate a digest
 
 Run the generator through direnv so the project and secret settings are loaded:
@@ -44,6 +51,7 @@ Run the generator through direnv so the project and secret settings are loaded:
 ```bash
 direnv exec . node scripts/generate-release-digest.mjs \
   --tag v0.407.15-karlorz.1 \
+  --previous-tag v0.407.15 \
   --source-out /tmp/openhanako-release-digest-source.json \
   --out release-digest.v1.json
 ```

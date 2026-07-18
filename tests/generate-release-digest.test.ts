@@ -2,9 +2,23 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { appendDigestFileToHistoryFile, generateDigestWithOpenAI, parseArgs, resolveDigestConfig } from "../scripts/generate-release-digest.mjs";
+import { appendDigestFileToHistoryFile, collectDigestSource, generateDigestWithOpenAI, parseArgs, resolveDigestConfig } from "../scripts/generate-release-digest.mjs";
 
 describe("generate-release-digest", () => {
+  it("maps a fork release tag to the installed product version", async () => {
+    const source = await collectDigestSource({
+      tag: "v0.407.15-karlorz.1",
+      previousTag: "v0.407.15",
+      ref: "HEAD",
+      owner: "karlorz",
+      repo: "openhanako",
+      releaseUrl: "",
+    });
+
+    expect(source.tag).toBe("v0.407.15-karlorz.1");
+    expect(source.version).toBe("0.407.15");
+  });
+
   it("documents a non-executing direnv BYOK contract", () => {
     const envrc = fs.readFileSync(path.resolve(".envrc"), "utf-8");
     const example = fs.readFileSync(path.resolve(".env.example"), "utf-8");
