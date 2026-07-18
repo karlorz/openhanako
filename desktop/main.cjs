@@ -18,6 +18,7 @@ const { pathToFileURL } = require("url");
 const { PNG } = require("pngjs");
 const { initAutoUpdater, checkForUpdatesAuto, setMainWindow: setUpdaterMainWindow, setUpdateChannel, installDownloadedUpdate, normalizeReleaseDigest } = require("./auto-updater.cjs");
 const { createUpdateDigestHistoryLoader } = require("./src/shared/update-digest-history.cjs");
+const { createRemoteServerReleaseLoader } = require("../shared/remote-server-release-loader.cjs");
 const {
   getAutoLaunchStatus,
   setAutoLaunchEnabled,
@@ -5027,7 +5028,15 @@ const loadUpdateDigestHistory = createUpdateDigestHistoryLoader({
   log: (message) => console.warn(`[update-history] ${redactMainLogText(message)}`),
 });
 
+const loadRemoteServerRelease = createRemoteServerReleaseLoader({
+  log: (message) => console.warn(`[remote-server-release] ${redactMainLogText(message)}`),
+});
+
 wrapIpcHandler("get-update-digest-history", () => loadUpdateDigestHistory());
+wrapIpcHandler("remote-server-release:check", async (_event, payload) => {
+  const force = payload && payload.force === true;
+  return loadRemoteServerRelease({ force });
+});
 
 // ── IPC ──
 wrapIpcHandler("get-server-port", () => serverPort);
