@@ -83,6 +83,23 @@ describe("assessment evidence freshness", () => {
     const future = tempFiles(validWorkItem, { ...evidence(), generatedAt: "2026-07-19T00:06:00.000Z", expiresAt: "2026-07-19T00:36:00.000Z" });
     expect(readAssessmentEvidence(future.assessmentPath, NOW)).toMatchObject({ freshness: "invalid" });
   });
+
+  it.each([
+    ["missing source", (value) => { delete value.source; }],
+    ["invalid functional status", (value) => { value.functional.status = "maybe"; }],
+    ["invalid environment status", (value) => { value.environment.status = "maybe"; }],
+    ["missing environment assessment", (value) => { delete value.environment.assessment; }],
+    ["invalid prerequisites status", (value) => { value.prerequisites.status = "maybe"; }],
+    ["malformed prerequisites requirements", (value) => { value.prerequisites.requirements = {}; }],
+    ["malformed current feature declaration", (value) => { value.functional.verification = { identity: { featureContracts: { schemaVersion: 1, complete: true, entries: [] } } }; }],
+    ["non-ISO generated timestamp", (value) => { value.generatedAt = "2026-07-18"; value.expiresAt = "2026-07-18T00:30:00.000Z"; }],
+    ["non-ISO expiry timestamp", (value) => { value.expiresAt = "2026-07-19 00:15:00"; }],
+  ])("rejects %s as assessment-invalid instead of fresh", (_name, mutate) => {
+    const value = evidence();
+    mutate(value);
+    const { assessmentPath } = tempFiles(validWorkItem, value);
+    expect(readAssessmentEvidence(assessmentPath, NOW)).toMatchObject({ freshness: "invalid", reasonCode: expect.stringMatching(/^assessment_invalid/) });
+  });
 });
 
 describe("remote prerequisite states", () => {
@@ -122,6 +139,21 @@ describe("remote prerequisite states", () => {
       { contract: "input.drafts", status: "satisfied" },
     ] } });
     expect(evaluateRemotePrerequisites(requirements, { freshness: "fresh", value: untrusted }).status).toBe("release-blocked");
+  });
+
+  it("does not let an older prerequisite row override a current declaration omission or lower version", () => {
+    const requirements = { core: "chat.core@1", features: ["input.drafts@1"], deploymentCoupled: false };
+    for (const entries of [{ "chat.core": 1 }, { "chat.core": 1, "input.drafts": 0 }]) {
+      const value = evidence({
+        functional: { status: "pass", verification: { identity: { featureContracts: { schemaVersion: 1, complete: true, entries } } } },
+        prerequisites: { status: "pass", requirements: [
+          { contract: "chat.core", minVersion: 1, status: "satisfied", reportedVersion: 1 },
+          { contract: "input.drafts", minVersion: 1, status: "satisfied", reportedVersion: 1 },
+        ] },
+      });
+      expect(evaluateRemotePrerequisites(requirements, { freshness: "fresh", value }).status).toBe("release-blocked");
+      expect(evaluateRemotePrerequisites(requirements, { freshness: "fresh", value }).features[0]).toMatchObject({ status: "missing", reasonCode: "required_contract_missing" });
+    }
   });
 });
 
