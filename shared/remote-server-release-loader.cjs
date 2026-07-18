@@ -64,16 +64,17 @@ function createRemoteServerReleaseLoader(options = {}) {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), policy.github.requestTimeoutMs);
         let response;
+        let body;
         try {
           const url = `https://api.github.com/repos/${policy.repository}/releases?per_page=${policy.github.perPage}&page=${page}`;
           response = await fetchImpl(url, { headers, signal: controller.signal });
+          if (!response || response.ok !== true) {
+            throw new ReleaseCatalogError(`release_catalog_http_${response?.status || "unknown"}`);
+          }
+          body = await response.text();
         } finally {
           clearTimeout(timeout);
         }
-        if (!response || response.ok !== true) {
-          throw new ReleaseCatalogError(`release_catalog_http_${response?.status || "unknown"}`);
-        }
-        const body = await response.text();
         combinedBodyBytes += Buffer.byteLength(body, "utf8");
         if (combinedBodyBytes > policy.github.maxReleasesBodyBytes) {
           throw new ReleaseCatalogError("release_catalog_too_large");
