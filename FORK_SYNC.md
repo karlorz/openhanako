@@ -281,6 +281,42 @@ The server on sg01 and the desktop app stay on the last-known-good bundles until
 - Tier 3B helper verification returned identity HTTP 200, valid token-auth identity, and WebSocket open. The UI smoke uploaded `Hanako.jpg`, sent it, switched chats and returned, confirmed its transcript thumbnail and Conversation Files entry, and opened a complete `1024x1024` MediaViewer image. No CSP refusal or WebSocket disconnect occurred; old-server input-draft 404s and one stale historical-resource 410 were non-blocking.
 - PR #1 remains the permanent draft dashboard and was not merged, auto-merged, closed, or remotely refreshed during closeout. No push, sg01 deployment, fork tag, or fork release occurred. The SkillWiki changelog note remains deferred pending safe isolation of the dirty shared vault.
 
+## Attended fork-release closeout (v0.407.15 line)
+
+The post-sync development line now includes the Phase 1-3 remote-server
+assessment and feature-contract work, the unified server installer/build
+identity and compatibility-manifest flow, and provider-neutral BYOK release
+digest generation. These are fork-maintained surfaces and are protected by the
+expanded `forkOnlyFiles` and explicit divergence policies in
+`docs/fork-sync/rules.yml`.
+
+Before a fork release is created, the attended gate is:
+
+1. Run the upstream stable/issue checks and record the result. On this line,
+   upstream stable is still `v0.407.15`; issue search confirms #1749 remains
+   open, #1811 remains closed, and no exact matches were found for the pending
+   local drafts. The tracker is search/status-only and never submits issues.
+2. Run the sync rule, focused remote-assessment/release suites, typecheck,
+   diff check, desktop/server builds, and compatibility-manifest validation.
+3. Generate a temporary digest through the configured generic
+   `model`/`base_url`/`api_key`/`api_backend` environment, validate it, inspect
+   its commit range and secret scan, and only then align the committed digest
+   to the exact final fork release commit and tag.
+4. Publish the fork-scoped tag `v0.407.15-karlorz.N` and verify the release has
+   the linux-arm64 server archive, checksum, compatibility manifest, digest,
+   and history assets before marking it stable/latest.
+5. On sg01, run `install-server status`, a pinned stable upgrade dry-run,
+   backup, and only then the attended execute step. Verify the current symlink,
+   service health, build identity, compatibility contracts, `/mobile/`, and
+   localized mobile strings.
+6. Reinstall/codesign the local desktop if required and complete the live
+   smoke: identity, WebSocket, image paste/upload/send, chat switch/return,
+   transcript thumbnail, and Conversation Files preview.
+
+No release, tag, push, or sg01 deployment is implied by this checklist until
+each corresponding command and artifact has fresh evidence. PR #1 remains a
+permanent draft dashboard and is never a merge vehicle.
+
 ## Latest fork patch closeout
 
 - 2026-06-30: patch target `v0.346.18-karlorz.5` remains on upstream package version `0.346.18` and carries the replay/link-context fixes reviewed from `4c82293b` and `b9d8a730`.
