@@ -64,6 +64,19 @@ function jsonResponse(data: unknown) {
   return { ok: true, json: async () => data } as unknown as Response;
 }
 
+function hanaHttpResponse(status: number): Response {
+  return { ok: false, status, json: async () => ({}) } as Response;
+}
+
+function mockHanaFetchHttpFailure(status: number): void {
+  mockFetch.mockImplementation(async (_path, options) => {
+    if (options?.throwOnHttpError !== false) {
+      throw new Error(`hanaFetch: ${status}`);
+    }
+    return hanaHttpResponse(status);
+  });
+}
+
 describe('input draft persistence', () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -178,11 +191,16 @@ describe('input draft persistence', () => {
     expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 
-  it.each([404, 405])('treats HTTP %s as unsupported and suppresses later calls', async (status) => {
+  it.each([
+    [404, 'feature_route_not_found'],
+    [405, 'feature_method_not_allowed'],
+  ])('treats HTTP %s as unsupported with real hanaFetch semantics', async (status, reasonCode) => {
     useConnection(remoteConnection, remoteAssessment(null));
-    mockFetch.mockResolvedValueOnce({ ok: false, status, json: async () => ({}) } as Response);
+    mockHanaFetchHttpFailure(status);
     await hydrateInputDrafts();
-    expect(inputDraftRemoteMode(useStore.getState()).mode).toBe('fallback');
+    expect(inputDraftRemoteMode(useStore.getState())).toMatchObject({ mode: 'fallback', reasonCode });
+    expect(mockFetch).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ throwOnHttpError: false }));
+    await vi.advanceTimersByTimeAsync(60_000);
     await hydrateInputDrafts();
 
     initInputDraftPersistence();
@@ -192,13 +210,88 @@ describe('input draft persistence', () => {
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
-  it.each([401, 403, 500])('backs off HTTP %s without claiming unsupported', async (status) => {
+  it.each([
+    [401, 'feature_probe_auth_failure'],
+    [403, 'feature_probe_auth_failure'],
+    [500, 'feature_probe_transient_failure'],
+  ])('records HTTP %s with real hanaFetch semantics', async (status, reasonCode) => {
     useConnection(remoteConnection, remoteAssessment(null));
-    mockFetch.mockResolvedValueOnce({ ok: false, status, json: async () => ({}) } as Response);
+    mockHanaFetchHttpFailure(status);
     await hydrateInputDrafts();
-    expect(inputDraftRemoteMode(useStore.getState()).mode).toBe('fallback');
+    expect(inputDraftRemoteMode(useStore.getState())).toMatchObject({
+      mode: 'fallback',
+      reasonCode,
+    });
+    expect(mockFetch).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ throwOnHttpError: false }));
     await hydrateInputDrafts();
     expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('backs off declared support after a failed push and suppresses repeated warnings', async () => {
+    useConnection(remoteConnection, remoteAssessment({
+      schemaVersion: 1,
+      complete: true,
+      entries: { 'chat.core': 1, 'input.drafts': 1 },
+    }));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    mockFetch.mockRejectedValue(new Error('offline'));
+    initInputDraftPersistence();
+    const { notifyDraftSet } = await import('../../stores/input-draft-sync');
+
+    notifyDraftSet('sess-1', 'first failure', null);
+    await vi.advanceTimersByTimeAsync(600);
+    expect(inputDraftRemoteMode(useStore.getState())).toMatchObject({
+      mode: 'fallback',
+      reasonCode: 'feature_probe_transient_failure',
+    });
+
+    notifyDraftSet('sess-1', 'second failure', null);
+    await vi.advanceTimersByTimeAsync(600);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    [],
+    { sessions: [] },
+    { sessions: 'not-a-map' },
+  ])('keeps malformed 2xx hydrate bodies in transient fallback', async (body) => {
+    useConnection(remoteConnection, remoteAssessment(null));
+    mockFetch.mockResolvedValueOnce(jsonResponse(body));
+
+    await hydrateInputDrafts();
+    expect(inputDraftRemoteMode(useStore.getState())).toMatchObject({
+      mode: 'fallback',
+      reasonCode: 'feature_probe_transient_failure',
+    });
+
+    initInputDraftPersistence();
+    const { notifyDraftSet } = await import('../../stores/input-draft-sync');
+    notifyDraftSet('sess-1', 'memory only', null);
+    await vi.advanceTimersByTimeAsync(600);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not enable PUT while a 2xx hydrate body is still being validated', async () => {
+    useConnection(remoteConnection, remoteAssessment(null));
+    let resolveJson: (body: unknown) => void;
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => new Promise((resolve) => { resolveJson = resolve; }),
+    } as Response);
+
+    const hydration = hydrateInputDrafts();
+    await Promise.resolve();
+    await Promise.resolve();
+    initInputDraftPersistence();
+    const { notifyDraftSet } = await import('../../stores/input-draft-sync');
+    notifyDraftSet('sess-1', 'must stay in memory', null);
+    await vi.advanceTimersByTimeAsync(600);
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    resolveJson!([]);
+    await hydration;
+    expect(inputDraftRemoteMode(useStore.getState()).mode).toBe('fallback');
   });
 
   it('backs off network failures and reconnect clearing permits a new probe', async () => {
