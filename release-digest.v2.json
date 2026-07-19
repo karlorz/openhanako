@@ -3,10 +3,10 @@
   "entries": [
     {
       "schemaVersion": 1,
-      "tag": "v0.407.15-karlorz.3",
+      "tag": "v0.407.15-karlorz.4",
       "version": "0.407.15",
       "previousTag": "v0.407.15",
-      "generatedAt": "2026-07-19T11:43:57.634Z",
+      "generatedAt": "2026-07-19T12:03:45.317Z",
       "noUserFacingChanges": false,
       "summary": {
         "zh": "本次更新加入无需 Hana 发布签名密钥的传统原始安装包回退，同时强化远程服务器状态评估、局域网连接、附件预览与服务器安装升级的可靠性。",
@@ -22,7 +22,7 @@
         "owner": "karlorz",
         "repo": "openhanako",
         "commitRange": "v0.407.15..HEAD",
-        "releaseUrl": "https://github.com/karlorz/openhanako/releases/tag/v0.407.15-karlorz.3",
+        "releaseUrl": "https://github.com/karlorz/openhanako/releases/tag/v0.407.15-karlorz.4",
         "releaseNotes": ""
       },
       "items": [
@@ -495,6 +495,11 @@
               "type": "commit",
               "ref": "475eff5abdf5",
               "title": "fix(windows): resolve raw installer include explicitly"
+            },
+            {
+              "type": "commit",
+              "ref": "2111241e8788",
+              "title": "fix(release): run raw publication after skipped renderer"
             }
           ]
         }
