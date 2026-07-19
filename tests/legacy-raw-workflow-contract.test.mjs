@@ -56,7 +56,7 @@ describe("legacy-raw release workflow contract", () => {
     expect(guardIndex).toBeLessThan(createIndex);
     expect(guardIndex).toBeLessThan(uploadIndex);
     expect(release).toContain("scripts/guard-release-profile.mjs");
-    expect(release).toContain(".hana-release-profile-");
+    expect(release).toContain("hana-release-profile-$HANA_RELEASE_PROFILE.json");
   });
 
   it("resolves the profile once and propagates only a concrete output", () => {
