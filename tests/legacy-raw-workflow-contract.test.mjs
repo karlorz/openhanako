@@ -139,21 +139,28 @@ describe("legacy-raw release workflow contract", () => {
 
   it("ad-hoc signs and strictly verifies macOS app bundles when Developer ID credentials are absent", () => {
     const workflow = readWorkflow();
+    const signingSetup = section(workflow, "Setup macOS signing keychain");
     const macBuild = section(workflow, "Build macOS (DMG + ZIP)");
     const verification = section(workflow, "Verify macOS app bundle signatures");
-    const upload = section(workflow, "Upload legacy raw build artifacts");
+    const signedUpload = section(workflow, "Upload signed build artifacts");
+    const rawUpload = section(workflow, "Upload legacy raw build artifacts");
 
+    expect(signingSetup).toContain("SKIP_NOTARIZE=true");
     expect(macBuild).toContain("-c.mac.identity=-");
     expect(macBuild).not.toContain("-c.mac.identity=null");
+    expect(macBuild).toContain("-c.mac.hardenedRuntime=false");
     expect(verification).toContain("if: runner.os == 'macOS'");
     expect(verification).toContain("codesign --verify --deep --strict");
     expect(workflow.indexOf("Verify macOS app bundle signatures")).toBeGreaterThan(
       workflow.indexOf("Build macOS (DMG + ZIP)"),
     );
-    expect(workflow.indexOf("Verify macOS app bundle signatures")).toBeLessThan(
-      workflow.indexOf("Upload legacy raw build artifacts"),
-    );
-    expect(upload).not.toBe("");
+    for (const uploadHeading of ["Upload signed build artifacts", "Upload legacy raw build artifacts"]) {
+      expect(workflow.indexOf("Verify macOS app bundle signatures")).toBeLessThan(
+        workflow.indexOf(uploadHeading),
+      );
+    }
+    expect(signedUpload).not.toBe("");
+    expect(rawUpload).not.toBe("");
   });
 
   it("keeps signed-only train and AtomGit jobs out of raw releases", () => {
