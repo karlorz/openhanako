@@ -126,6 +126,42 @@ describe("sync-upstream rule engine", () => {
     expect(patterns.some((p) => p.startsWith("examples/plugins/office-workflow"))).toBe(true);
   });
 
+  it("inventories the complete fork-only legacy raw release surface", () => {
+    const forkPaths = [
+      "build/installer-legacy-raw.nsh",
+      "desktop/src/shared/release-runtime-policy.cjs",
+      "desktop/src/shared/server-reuse-policy.cjs",
+      "scripts/electron-builder-config.cjs",
+      "scripts/electron-builder.config.cjs",
+      "scripts/guard-release-profile.mjs",
+      "scripts/prepare-desktop-package.mjs",
+      "scripts/release-desktop-with-profile.mjs",
+      "scripts/resolve-release-profile.mjs",
+      "shared/release-profile.cjs",
+    ];
+    const focusedTests = [
+      "tests/build-server-mode.test.mjs",
+      "tests/desktop-artifact-profile-contract.test.mjs",
+      "tests/electron-builder-config.test.mjs",
+      "tests/legacy-raw-workflow-contract.test.mjs",
+      "tests/prepare-desktop-package.test.mjs",
+      "tests/release-desktop-with-profile.test.mjs",
+      "tests/release-profile-guard.test.mjs",
+      "tests/release-profile.test.mjs",
+      "tests/release-runtime-policy.test.mjs",
+      "tests/resolve-release-profile.test.mjs",
+      "tests/server-reuse-policy.test.mjs",
+    ];
+    const forkOnlyPatterns = forkOnlyFilePatterns(loadRules());
+    const releaseContract = loadMigrationContracts().migrationContracts.find(
+      (item) => item.id === "legacy-raw-release-profile",
+    );
+
+    expect(forkOnlyPatterns).toEqual(expect.arrayContaining([...forkPaths, ...focusedTests]));
+    expect(releaseContract?.forkPaths).toEqual(expect.arrayContaining(forkPaths));
+    expect(releaseContract?.focusedTests).toEqual(expect.arrayContaining(focusedTests));
+  });
+
   it("matches glob patterns with the built-in minimatch helper", () => {
     expect(minimatch("docs/upstream-issues/README.md", "docs/upstream-issues/**")).toBe(true);
     expect(minimatch("docs/upstream-issues/drafts/foo.md", "docs/upstream-issues/**")).toBe(true);

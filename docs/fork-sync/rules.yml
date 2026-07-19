@@ -59,6 +59,8 @@ conflictRules:
     - scripts/release-desktop-with-profile.mjs
     - scripts/prepare-desktop-package.mjs
     - scripts/guard-release-profile.mjs
+    - scripts/electron-builder-config.cjs
+    - scripts/electron-builder.config.cjs
     - scripts/install-server.mjs
     - scripts/pack-server-bundle.mjs
     - scripts/hana-desktop-smoke-helper.mjs
@@ -74,6 +76,11 @@ conflictRules:
     - tests/prepare-desktop-package.test.mjs
     - tests/release-profile-guard.test.mjs
     - tests/legacy-raw-workflow-contract.test.mjs
+    - tests/build-server-mode.test.mjs
+    - tests/desktop-artifact-profile-contract.test.mjs
+    - tests/electron-builder-config.test.mjs
+    - tests/release-runtime-policy.test.mjs
+    - tests/server-reuse-policy.test.mjs
     - build/installer-legacy-raw.nsh
     - tests/office-workflow-plugin.test.ts
     - tests/desktop-network-security-contract.test.ts
@@ -97,6 +104,8 @@ conflictRules:
     - shared/remote-server-release-*.ts
     - shared/server-build-info.*
     - shared/release-profile.cjs
+    - desktop/src/shared/release-runtime-policy.cjs
+    - desktop/src/shared/server-reuse-policy.cjs
     - desktop/src/react/services/remote-feature-*.ts
     - desktop/src/react/services/remote-server-assessment-*.ts
     - desktop/src/react/__tests__/services/remote-feature-*.test.ts
