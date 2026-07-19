@@ -33,6 +33,14 @@ describe("server reuse build identity policy", () => {
       .toMatchObject({ matches: false, reason: expect.stringMatching(/missing.*git sha/i) });
   });
 
+  it("rejects malformed source SHA metadata when a release tag claims exact identity", () => {
+    const { compareExpectedRuntimeBuild } = require(policyPath);
+    expect(compareExpectedRuntimeBuild(
+      { releaseTag: "v0.407.15-karlorz.1", gitSha: "not-a-full-sha" },
+      { releaseTag: "v0.407.15-karlorz.1", gitSha: SHA_A },
+    )).toMatchObject({ matches: false, reason: expect.stringMatching(/invalid.*git sha/i) });
+  });
+
   it("accepts exact release tag and SHA matches", () => {
     const { compareExpectedRuntimeBuild } = require(policyPath);
     expect(compareExpectedRuntimeBuild(
