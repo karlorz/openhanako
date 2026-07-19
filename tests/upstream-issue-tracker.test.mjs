@@ -31,6 +31,7 @@ describe("upstream issue tracker", () => {
       "server-reinit-data-failsafe",
       "server-reinit-restore-backup-verification",
       "node-test-ci-file-mode-hygiene",
+      "legacy-raw-release-profile-evidence",
     ]);
   });
 
@@ -58,6 +59,7 @@ describe("upstream issue tracker", () => {
     expect(status).toContain("server-reinit-restore-backup-verification");
     expect(status).toContain("draft/pending-approval");
     expect(status).toContain("tracked/no-upstream-issue");
+    expect(status).toContain("legacy-raw-release-profile-evidence");
   });
 
   it("escapes markdown table cells", () => {
