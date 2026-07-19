@@ -5,6 +5,7 @@ import {
   buildScopedConnectSources,
   buildConnectionUrl,
   buildConnectionWsUrl,
+  canUseQueryToken,
   connectDeviceServerConnection,
   createDeviceServerConnection,
   createLocalServerConnection,
@@ -15,10 +16,58 @@ import {
   readPersistedServerConnectionState,
   refreshLocalServerConnection,
   refreshLocalServerConnectionState,
+  requestConnectionWsTicket,
+  resolveConnectionWsAuth,
   resolveServerConnection,
   upsertServerConnection,
+  warnIfServerProtocolMismatch,
   writePersistedServerConnectionState,
 } from '../../services/server-connection';
+import { SERVER_PROTOCOL_VERSION } from '../../../../../shared/contract-versions.ts';
+import { assessRemoteServer } from '../../../../../shared/remote-server-assessment.cjs';
+
+type WsAuthCapability = 'loopback-owner' | 'ticket' | 'legacy-query-token' | 'unsupported';
+
+/**
+ * Read-only capability probe for migration characterization.
+ * Classifies a server by probing POST /api/ws-ticket.
+ * Kept in test/support code; does not change runtime selection.
+ */
+async function probeWsAuthCapability(
+  baseUrl: string,
+  credential: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<WsAuthCapability> {
+  const trimmed = String(baseUrl || '').replace(/\/+$/, '');
+  if (!trimmed) return 'unsupported';
+  try {
+    const loopback = new URL(trimmed);
+    if (loopback.hostname === '127.0.0.1' || loopback.hostname === 'localhost') {
+      return 'loopback-owner';
+    }
+  } catch {
+    return 'unsupported';
+  }
+
+  let response: Response;
+  try {
+    response = await fetchImpl(`${trimmed}/api/ws-ticket`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${credential}`,
+        'Content-Type': 'application/json',
+      },
+    });
+  } catch {
+    return 'unsupported';
+  }
+
+  if (response.status === 200) return 'ticket';
+  if (response.status === 404) return 'legacy-query-token';
+  // Authenticated principal missing/forbidden still means the ticket surface exists.
+  if (response.status === 401 || response.status === 403) return 'ticket';
+  return 'unsupported';
+}
 
 const remoteExecutionBoundary = {
   kind: 'remote_process',
@@ -183,6 +232,37 @@ describe('server connection helpers', () => {
     expect(buildConnectionUrl(remote, '/api/resources/res_1/content', { includeTokenQuery: true }))
       .toBe('https://hana.example/api/resources/res_1/content');
     expect(buildConnectionWsUrl(remote, '/ws')).toBe('wss://hana.example/ws');
+  });
+
+  it('keeps additive server assessment evidence out of persisted connection state', () => {
+    const connection = createDeviceServerConnection({
+      baseUrl: 'http://192.168.1.20:14500',
+      credential: 'device-secret',
+      identity: {
+        connectionKind: 'lan',
+        serverId: 'server_evidence',
+        serverNodeId: 'node_evidence',
+        studioId: 'studio_evidence',
+        label: 'Evidence Server',
+        runtimeBuild: {
+          schemaVersion: 1,
+          runtimeVersion: '0.407.15',
+          releaseTag: 'v0.407.15-karlorz.1',
+          gitSha: '0123456789abcdef0123456789abcdef01234567',
+          sourceRepository: 'karlorz/openhanako',
+        },
+        featureContracts: {
+          schemaVersion: 1,
+          complete: true,
+          entries: { 'chat.core': 1, 'input.drafts': 1, 'websocket.ticket': 1 },
+        },
+        runtimeFacts: { platform: 'linux', arch: 'arm64' },
+      },
+    });
+
+    expect(connection).not.toHaveProperty('runtimeBuild');
+    expect(connection).not.toHaveProperty('featureContracts');
+    expect(connection).not.toHaveProperty('runtimeFacts');
   });
 
   it('identifies the local owner connection by the same contract as server route security', () => {
@@ -729,6 +809,27 @@ describe('server connection helpers', () => {
     });
   });
 
+  it('warnIfServerProtocolMismatch: stays silent when serverProtocol matches this build', () => {
+    const log = vi.fn();
+    warnIfServerProtocolMismatch({ serverId: 's', studioId: 'st', label: 'L', serverProtocol: SERVER_PROTOCOL_VERSION } as any, log);
+    expect(log).not.toHaveBeenCalled();
+  });
+
+  it('warnIfServerProtocolMismatch: stays silent when the server predates this field entirely (read-time compat, not a mismatch)', () => {
+    const log = vi.fn();
+    warnIfServerProtocolMismatch({ serverId: 's', studioId: 'st', label: 'L' } as any, log);
+    expect(log).not.toHaveBeenCalled();
+  });
+
+  it('warnIfServerProtocolMismatch: logs a diagnostic (does not throw) when serverProtocol disagrees with this build', () => {
+    const log = vi.fn();
+    warnIfServerProtocolMismatch({ serverId: 's', studioId: 'st', label: 'L', serverProtocol: SERVER_PROTOCOL_VERSION + 1 } as any, log);
+    expect(log).toHaveBeenCalledTimes(1);
+    const [message] = log.mock.calls[0];
+    expect(message).toContain(String(SERVER_PROTOCOL_VERSION));
+    expect(message).toContain(String(SERVER_PROTOCOL_VERSION + 1));
+  });
+
   it('preserves remote identity metadata when merging a refreshed server identity', () => {
     const connection = createDeviceServerConnection({
       baseUrl: 'https://hana.example',
@@ -816,5 +917,217 @@ describe('server connection helpers', () => {
       platformAccountId: null,
       officialServiceKind: null,
     });
+  });
+});
+
+
+describe('websocket auth migration characterization', () => {
+  const localOwnerConnection = createLocalServerConnection({
+    serverPort: '3210',
+    serverToken: 'local-token',
+  })!;
+
+  const lanConnection = {
+    ...localOwnerConnection,
+    connectionId: 'lan:node_lan:studio_lan',
+    kind: 'lan' as const,
+    label: 'LAN Studio',
+    baseUrl: 'http://192.168.31.75:14500',
+    wsUrl: 'ws://192.168.31.75:14500',
+    token: 'hana_dev_test-key',
+    trustState: 'lan' as const,
+    credentialKind: 'device_credential' as const,
+  };
+
+  const tunnelConnection = {
+    ...localOwnerConnection,
+    connectionId: 'custom:remote',
+    kind: 'custom_remote' as const,
+    label: 'Remote Studio',
+    baseUrl: 'https://hana.example',
+    wsUrl: 'wss://hana.example',
+    token: 'remote-token',
+    trustState: 'tunnel' as const,
+    credentialKind: 'device_credential' as const,
+  };
+
+  it('does not request a ws ticket for loopback local-owner connections', async () => {
+    const fetchImpl = vi.fn();
+    await expect(requestConnectionWsTicket(localOwnerConnection, fetchImpl as unknown as typeof fetch))
+      .resolves.toBeNull();
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(canUseQueryToken(localOwnerConnection)).toBe(true);
+  });
+
+  it('prefers a declared LAN ticket and never puts the long-lived credential in its URL', async () => {
+    const fetchImpl = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ ticket: 'ticket-1' }),
+    }));
+    const assessment = assessRemoteServer({
+      connectionId: lanConnection.connectionId,
+      boundary: { status: 'assessed', ok: true, reasonCodes: [], warningCodes: [] },
+      server: {
+        connectionKind: 'lan',
+        featureContracts: { schemaVersion: 1, complete: true, entries: { 'chat.core': 1, 'websocket.ticket': 1 } },
+      },
+    });
+    await expect(resolveConnectionWsAuth(lanConnection, assessment, fetchImpl as unknown as typeof fetch))
+      .resolves.toEqual({ mode: 'ticket', ticket: 'ticket-1', warningCode: null });
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'http://192.168.31.75:14500/api/ws-ticket',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    expect(canUseQueryToken(lanConnection)).toBe(true);
+    const ticketed = buildConnectionWsUrl(lanConnection, '/ws', { wsTicket: 'ticket-1' });
+    expect(ticketed).toBe('ws://192.168.31.75:14500/ws?wsTicket=ticket-1');
+    expect(ticketed).not.toContain(lanConnection.token!);
+  });
+
+  it('attempts a ticket for LAN when assessment is absent and falls back only if the ticket surface fails', async () => {
+    const ticketFetch = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ ticket: 'ticket-optimistic' }),
+    }));
+    await expect(resolveConnectionWsAuth(lanConnection, null, ticketFetch as unknown as typeof fetch))
+      .resolves.toEqual({ mode: 'ticket', ticket: 'ticket-optimistic', warningCode: null });
+    expect(ticketFetch).toHaveBeenCalledWith(
+      'http://192.168.31.75:14500/api/ws-ticket',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    expect(buildConnectionWsUrl(lanConnection, '/ws', { wsTicket: 'ticket-optimistic' }))
+      .not.toContain(lanConnection.token!);
+
+    const missingFetch = vi.fn(async () => ({
+      ok: false,
+      status: 404,
+      statusText: 'Not Found',
+      json: async () => ({}),
+    }));
+    await expect(resolveConnectionWsAuth(lanConnection, null, missingFetch as unknown as typeof fetch))
+      .resolves.toEqual({ mode: 'legacy-query-token', ticket: null, warningCode: 'legacy_websocket_query_token' });
+    expect(missingFetch).toHaveBeenCalled();
+  });
+
+  it('marks complete LAN declarations missing websocket tickets for migration', async () => {
+    const assessment = assessRemoteServer({
+      connectionId: lanConnection.connectionId,
+      boundary: { status: 'assessed', ok: true, reasonCodes: [], warningCodes: [] },
+      server: {
+        connectionKind: 'lan',
+        featureContracts: { schemaVersion: 1, complete: true, entries: { 'chat.core': 1 } },
+      },
+    });
+    await expect(resolveConnectionWsAuth(lanConnection, assessment, vi.fn() as unknown as typeof fetch))
+      .resolves.toEqual({ mode: 'legacy-query-token', ticket: null, warningCode: 'websocket_ticket_contract_missing' });
+  });
+
+  it('falls back to the LAN query token when a declared ticket request fails', async () => {
+    const assessment = assessRemoteServer({
+      connectionId: lanConnection.connectionId,
+      boundary: { status: 'assessed', ok: true, reasonCodes: [], warningCodes: [] },
+      server: {
+        connectionKind: 'lan',
+        featureContracts: { schemaVersion: 1, complete: true, entries: { 'chat.core': 1, 'websocket.ticket': 1 } },
+      },
+    });
+    const fetchImpl = vi.fn(async () => ({ ok: false, status: 503, statusText: 'Unavailable', json: async () => ({}) }));
+    await expect(resolveConnectionWsAuth(lanConnection, assessment, fetchImpl as unknown as typeof fetch))
+      .resolves.toEqual({ mode: 'legacy-query-token', ticket: null, warningCode: 'ticket_request_failed_legacy_fallback' });
+  });
+
+  it('requests a ws ticket for tunnel device credentials without putting the credential in the ws URL', async () => {
+    const fetchImpl = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ ticket: 'ticket-1', expiresAt: '2026-06-20T00:00:30.000Z' }),
+    }));
+
+    const ticket = await requestConnectionWsTicket(
+      tunnelConnection,
+      fetchImpl as unknown as typeof fetch,
+    );
+    expect(ticket).toBe('ticket-1');
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'https://hana.example/api/ws-ticket',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer remote-token',
+        }),
+      }),
+    );
+    expect(buildConnectionWsUrl(tunnelConnection, '/ws', { wsTicket: ticket }))
+      .toBe('wss://hana.example/ws?wsTicket=ticket-1');
+    expect(buildConnectionWsUrl(tunnelConnection, '/ws', { wsTicket: ticket }))
+      .not.toContain(tunnelConnection.token!);
+  });
+
+  it('uses a declared ticket for custom remote connections and fails closed without one', async () => {
+    const assessment = assessRemoteServer({
+      connectionId: tunnelConnection.connectionId,
+      boundary: { status: 'assessed', ok: true, reasonCodes: [], warningCodes: [] },
+      server: {
+        connectionKind: 'custom_remote',
+        featureContracts: { schemaVersion: 1, complete: true, entries: { 'chat.core': 1, 'websocket.ticket': 1 } },
+      },
+    });
+    const fetchImpl = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ ticket: 'ticket-2' }) }));
+    await expect(resolveConnectionWsAuth(tunnelConnection, assessment, fetchImpl as unknown as typeof fetch))
+      .resolves.toEqual({ mode: 'ticket', ticket: 'ticket-2', warningCode: null });
+    await expect(resolveConnectionWsAuth(tunnelConnection, null, vi.fn() as unknown as typeof fetch))
+      .resolves.toEqual({ mode: 'unsupported', ticket: null, warningCode: 'websocket_ticket_required' });
+  });
+
+  it('classifies servers with a read-only ws auth capability probe', async () => {
+    await expect(probeWsAuthCapability('http://127.0.0.1:3210', 'local-token', vi.fn() as any))
+      .resolves.toBe('loopback-owner');
+
+    const ticketFetch = vi.fn(async () => ({ status: 200 })) as unknown as typeof fetch;
+    await expect(probeWsAuthCapability('http://192.168.1.9:14500', 'device-key', ticketFetch))
+      .resolves.toBe('ticket');
+
+    const forbiddenTicketFetch = vi.fn(async () => ({ status: 403 })) as unknown as typeof fetch;
+    await expect(probeWsAuthCapability('http://192.168.1.9:14500', 'device-key', forbiddenTicketFetch))
+      .resolves.toBe('ticket');
+
+    const legacyFetch = vi.fn(async () => ({ status: 404 })) as unknown as typeof fetch;
+    await expect(probeWsAuthCapability('http://192.168.1.9:14500', 'device-key', legacyFetch))
+      .resolves.toBe('legacy-query-token');
+
+    const unsupportedFetch = vi.fn(async () => ({ status: 500 })) as unknown as typeof fetch;
+    await expect(probeWsAuthCapability('http://192.168.1.9:14500', 'device-key', unsupportedFetch))
+      .resolves.toBe('unsupported');
+  });
+
+  it('is ticket-primary for incomplete LAN assessments that have not declared contract missing', async () => {
+    // Incomplete assessment (not the complete contract-missing path) must still
+    // attempt a ticket rather than short-circuiting to legacy.
+    const assessment = assessRemoteServer({
+      connectionId: lanConnection.connectionId,
+      boundary: { status: 'assessed', ok: true, reasonCodes: [], warningCodes: [] },
+      server: {
+        connectionKind: 'lan',
+        featureContracts: { schemaVersion: 1, complete: false, entries: {} },
+      },
+    });
+    const fetchImpl = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ ticket: 'ticket-incomplete' }),
+    }));
+    await expect(resolveConnectionWsAuth(lanConnection, assessment, fetchImpl as unknown as typeof fetch))
+      .resolves.toEqual({ mode: 'ticket', ticket: 'ticket-incomplete', warningCode: null });
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'http://192.168.31.75:14500/api/ws-ticket',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    // Resource/HTTP helpers may still attach token query; WS ticket path must not.
+    expect(canUseQueryToken(lanConnection)).toBe(true);
+    expect(buildConnectionWsUrl(lanConnection, '/ws', { wsTicket: 'ticket-incomplete' }))
+      .not.toContain(lanConnection.token!);
+    expect(buildConnectionWsUrl(lanConnection, '/ws')).toContain('token=');
   });
 });

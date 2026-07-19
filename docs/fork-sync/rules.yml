@@ -56,6 +56,8 @@ conflictRules:
     - tests/upstream-issue-tracker.test.mjs
     - tests/office-workflow-plugin.test.ts
     - tests/desktop-network-security-contract.test.ts
+    - tests/connect-probe.test.mjs
+    - desktop/src/shared/connect-probe.cjs
     - docs/fork-sync/rules.yml
     - docs/server-install.md
     - docs/reinit-data-failsafe.md
@@ -125,8 +127,8 @@ conflictRules:
     desktop/src/react/services/resource-url.ts:
       class: remote_attachment_preview
       risk: critical
-      resolution: HUMAN REVIEW. Preserve remote session resource URL synthesis and the fork transport invariant that local/LAN connections use `!connection || connection.kind === 'local'`, not `isLocalOwnerConnection(connection)`.
-      plannedAction: Keep fork `isLocalTransport` as `!connection || connection.kind === 'local'`, preserve the synthetic `/api/resources/res_sf_.../content` fallback for `sf_*` session files, and keep token-query resource URLs for LAN device-credential connections.
+      resolution: HUMAN REVIEW. Native file URLs only for true local-owner connections (`canUseNativeResourcePath` / `isLocalOwnerConnection`). LAN and custom_remote must use HTTP resource content URLs with token query, plus synthetic `/api/resources/res_sf_.../content` for `sf_*` fileIds without explicit resource links.
+      plannedAction: Keep `canUseNativeResourcePath` as the native-path gate (not a bare `kind === 'local'` check), preserve synthetic `sf_*` resource content fallback, and keep token-query resource URLs for LAN device-credential connections.
     desktop/src/react/utils/preview-file-refresh.ts:
       class: remote_attachment_preview
       risk: medium
