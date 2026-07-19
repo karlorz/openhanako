@@ -1,5 +1,11 @@
 const fs = require("fs");
 const path = require("path");
+const {
+  LEGACY_RAW_PROFILE,
+  SIGNED_PROFILE,
+  artifactUpdatesEnabledForProfile,
+  normalizeReleaseProfile,
+} = require("../../../shared/release-profile.cjs");
 
 const BUILD_INFO_FILE_NAME = "build-info.json";
 
@@ -9,8 +15,11 @@ const DEFAULT_BUILD_INFO = Object.freeze({
   sourceRepo: "liliMozi/openhanako",
   gitSha: null,
   baseTag: null,
+  releaseTag: null,
   dirty: null,
+  releaseProfile: SIGNED_PROFILE,
   updateEnabled: true,
+  artifactUpdatesEnabled: true,
   signatureKind: null,
 });
 
@@ -21,14 +30,23 @@ function stringOrNull(value) {
 function normalizeBuildInfo(value = {}) {
   const input = value && typeof value === "object" ? value : {};
   const channel = stringOrNull(input.channel) || DEFAULT_BUILD_INFO.channel;
+  const releaseProfile = normalizeReleaseProfile(input.releaseProfile);
+  const updateEnabled = releaseProfile === LEGACY_RAW_PROFILE
+    ? false
+    : input.updateEnabled === false ? false : true;
   return {
     appVersion: stringOrNull(input.appVersion),
     channel,
     sourceRepo: stringOrNull(input.sourceRepo) || DEFAULT_BUILD_INFO.sourceRepo,
     gitSha: stringOrNull(input.gitSha),
     baseTag: stringOrNull(input.baseTag),
+    releaseTag: stringOrNull(input.releaseTag),
     dirty: typeof input.dirty === "boolean" ? input.dirty : null,
-    updateEnabled: input.updateEnabled === false ? false : true,
+    releaseProfile,
+    updateEnabled,
+    artifactUpdatesEnabled: input.artifactUpdatesEnabled === false
+      ? false
+      : artifactUpdatesEnabledForProfile(releaseProfile, updateEnabled),
     signatureKind: stringOrNull(input.signatureKind),
   };
 }
