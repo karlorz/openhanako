@@ -181,7 +181,7 @@ jobs:
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
         run: |
           if [ -z "${CSC_LINK:-}" ] || [ -z "${CSC_KEY_PASSWORD:-}" ]; then
-            echo "::warning::CSC_LINK or CSC_KEY_PASSWORD is missing; building unsigned macOS artifacts"
+            echo "::warning::CSC_LINK or CSC_KEY_PASSWORD is missing; building ad-hoc signed, unnotarized macOS artifacts"
             {
               echo "HANA_MAC_SIGNING_ENABLED=false"
               echo "CSC_IDENTITY_AUTO_DISCOVERY=false"
@@ -330,7 +330,7 @@ jobs:
             npx electron-builder --mac dmg zip --${{ matrix.arch }} --config scripts/electron-builder.config.cjs --publish never
           else
             npx electron-builder --mac dmg zip --${{ matrix.arch }} --config scripts/electron-builder.config.cjs --publish never \
-              -c.mac.identity=null \
+              -c.mac.identity=- \
               -c.mac.hardenedRuntime=false
           fi
         env:
@@ -338,6 +338,21 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      - name: Verify macOS app bundle signatures
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          if [ "${{ matrix.arch }}" = "arm64" ]; then
+            APP_PATH="dist/mac-arm64/HanaAgent.app"
+          else
+            APP_PATH="dist/mac/HanaAgent.app"
+          fi
+          if [ ! -d "$APP_PATH" ]; then
+            echo "::error::Packaged macOS app is missing: $APP_PATH"
+            exit 1
+          fi
+          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
 
       # Windows 打包
       # --publish never：和 mac 同理，由 release job 单点上传。
