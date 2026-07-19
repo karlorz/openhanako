@@ -81,4 +81,50 @@ describe("attended desktop release command", () => {
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it("preserves a valid explicit key path without forwarding redundant inline PEM", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-dual-key-"));
+    const keyPath = path.join(dir, "signing.pem");
+    const inlinePem = validPem();
+    fs.writeFileSync(keyPath, validPem(), { mode: 0o600 });
+    const spawn = vi.fn((_command, _args, options) => {
+      expect(options.env.HANA_SIGN_KEY).toBe(keyPath);
+      expect(options.env.HANA_SIGN_KEY_PEM).toBeUndefined();
+      return { status: 0 };
+    });
+
+    try {
+      runDesktopRelease({
+        requested: "signed",
+        env: { HANA_SIGN_KEY: keyPath, HANA_SIGN_KEY_PEM: inlinePem },
+        platform: "linux",
+        spawn,
+      });
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("treats a whitespace key path as absent and materializes inline PEM", () => {
+    let materializedPath;
+    const inlinePem = validPem();
+    const spawn = vi.fn((_command, _args, options) => {
+      materializedPath = options.env.HANA_SIGN_KEY;
+      expect(materializedPath.trim()).not.toBe("");
+      expect(fs.readFileSync(materializedPath, "utf8")).toBe(inlinePem);
+      expect(options.env.HANA_SIGN_KEY_PEM).toBeUndefined();
+      expect(fs.statSync(materializedPath).mode & 0o777).toBe(0o600);
+      return { status: 0 };
+    });
+
+    runDesktopRelease({
+      requested: "signed",
+      env: { HANA_SIGN_KEY: "   ", HANA_SIGN_KEY_PEM: inlinePem },
+      platform: "linux",
+      spawn,
+    });
+
+    expect(materializedPath).toBeTruthy();
+    expect(fs.existsSync(materializedPath)).toBe(false);
+  });
 });
