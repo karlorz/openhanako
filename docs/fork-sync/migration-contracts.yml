@@ -214,6 +214,8 @@ migrationContracts:
   - id: legacy-raw-release-profile
     surface: explicit signed and legacy-raw desktop release packaging policy
     forkPaths:
+      - desktop/src/shared/release-runtime-policy.cjs
+      - desktop/src/shared/server-reuse-policy.cjs
       - shared/release-profile.cjs
       - scripts/resolve-release-profile.mjs
       - scripts/release-desktop-with-profile.mjs
@@ -221,6 +223,7 @@ migrationContracts:
       - scripts/guard-release-profile.mjs
       - scripts/fix-modules.cjs
       - scripts/electron-builder-config.cjs
+      - scripts/electron-builder.config.cjs
       - build/installer-legacy-raw.nsh
       - .github/workflows/build.yml
     upstreamPaths:
@@ -236,6 +239,11 @@ migrationContracts:
       - tests/prepare-desktop-package.test.mjs
       - tests/release-profile-guard.test.mjs
       - tests/legacy-raw-workflow-contract.test.mjs
+      - tests/build-server-mode.test.mjs
+      - tests/desktop-artifact-profile-contract.test.mjs
+      - tests/electron-builder-config.test.mjs
+      - tests/release-runtime-policy.test.mjs
+      - tests/server-reuse-policy.test.mjs
       - tests/fix-modules-server-deps.test.ts
       - tests/pack-server-bundle.test.mjs
       - tests/release-mirror-workflow.test.ts
