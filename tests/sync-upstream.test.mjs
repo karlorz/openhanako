@@ -106,6 +106,61 @@ describe("sync-upstream rule engine", () => {
     expect(releaseContract?.focusedTests).toEqual(expect.arrayContaining(focusedTests));
   });
 
+  it("protects the durable installer bootstrap and its status dependencies", () => {
+    const forkOnlyPatterns = forkOnlyFilePatterns(loadRules());
+    const installerContract = loadMigrationContracts().migrationContracts.find(
+      (item) => item.id === "server-installer-artifact-activation",
+    );
+
+    expect(forkOnlyPatterns).toContain("scripts/install-server-bootstrap.sh");
+    expect(installerContract?.forkPaths).toContain("scripts/install-server-bootstrap.sh");
+    expect(installerContract?.liveSmoke).toContain(
+      "tag-pinned CLI bootstrap detects installer shared imports and installs the status dependency closure before replacing install-server.mjs",
+    );
+    expect(installerContract?.stopConditions).toContain(
+      "the durable installer cannot load its status or release-assessment dependencies",
+    );
+  });
+
+  it("records the no-certificate macOS fallback and its upload gate", () => {
+    const rules = loadRules();
+    const workflowPolicy = rules.conflictRules.policies[".github/workflows/build.yml"];
+    const releaseContract = loadMigrationContracts().migrationContracts.find(
+      (item) => item.id === "legacy-raw-release-profile",
+    );
+
+    expect(workflowPolicy.macosNoCertificateFallback).toMatchObject({
+      trigger: "missing Apple Developer ID credentials",
+      signingDomain: "Apple Developer ID",
+      unrelatedInputs: expect.arrayContaining(["HANA_SIGN_KEY", "HANA_SIGN_KEY_PEM"]),
+      credentialInputs: ["CSC_LINK", "CSC_KEY_PASSWORD"],
+      activationCondition: "any-input-blank",
+      environment: ["SKIP_NOTARIZE=true"],
+      electronBuilderFlags: ["-c.mac.identity=-", "-c.mac.hardenedRuntime=false"],
+      verification: {
+        command: "codesign --verify --deep --strict --verbose=2",
+        requireResourceSeal: true,
+        beforeArtifactUploads: ["signed", "legacy-raw"],
+      },
+    });
+    expect(releaseContract?.focusedTests).toContain(
+      "tests/legacy-raw-workflow-contract.test.mjs",
+    );
+    expect(releaseContract?.liveSmoke).toEqual(expect.arrayContaining([
+      "either CSC_LINK or CSC_KEY_PASSWORD blank activates the no-certificate macOS fallback",
+      "complete HanaAgent.app bundles are ad-hoc signed and resource-sealed while DMG and ZIP containers remain unsigned and unnotarized when Apple credentials are absent",
+      "strict macOS bundle verification runs before signed and legacy-raw artifact uploads",
+    ]));
+    expect(releaseContract?.stopConditions).toEqual(expect.arrayContaining([
+      "a raw macOS fallback omits SKIP_NOTARIZE=true",
+      "a raw macOS fallback uses an identity other than -",
+      "a raw macOS fallback leaves hardened runtime enabled",
+      "artifact upload starts before strict macOS bundle verification",
+      "a raw macOS app has no resource seal",
+      "strict macOS codesign verification fails",
+    ]));
+  });
+
   it("matches glob patterns with the built-in minimatch helper", () => {
     expect(minimatch("docs/upstream-issues/README.md", "docs/upstream-issues/**")).toBe(true);
     expect(minimatch("docs/upstream-issues/drafts/foo.md", "docs/upstream-issues/**")).toBe(true);
