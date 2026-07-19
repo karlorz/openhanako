@@ -283,17 +283,21 @@ Phases executed on `dev` without a stable rebase onto prerelease `main`:
    `websocket_ticket_contract_missing`. `websocket.ts` no longer short-circuits
    LAN first-connect to legacy query-token. Resource HTTP URLs may still use
    token query via `canUseQueryToken`.
-2. **CSP probe isolation (retain):** probe logic lives in
+2. **Packaged dual-profile boot planning (retain):** pure plan/result builders
+   live in `desktop/src/shared/packaged-artifact-boot.cjs`; main applies state and
+   still owns prepareArtifactBoot / splash / GC orchestration.
+3. **CSP probe isolation (retain):** probe logic lives in
    `desktop/src/shared/connect-probe.cjs`; `desktop/main.cjs` only registers
    `wrapIpcHandler("connect:probe", createConnectProbeHandler(...))`. Preload
    still exposes `probeConnection`. SSRF/sender/`redirect: "manual"` policy is
    unit-tested via `tests/connect-probe.test.mjs`.
-3. **Remote resource ownership (retain):** documented LAN transport invariant in
+4. **Remote resource ownership (retain):** documented LAN transport invariant in
    `resource-url.ts`; LAN device-credential + synthetic `sf_*` resource content
    paths covered by focused resource-url tests.
-4. **Packaging isolation:** no package/lockfile pre-bump. Dual-profile release
+5. **Packaging isolation:** no package/lockfile pre-bump. Dual-profile release
    and install-server remain fork-only. New fork-only entries:
-   `desktop/src/shared/connect-probe.cjs`, `tests/connect-probe.test.mjs`.
+   `desktop/src/shared/connect-probe.cjs`, `tests/connect-probe.test.mjs`,
+   `desktop/src/shared/packaged-artifact-boot.cjs`, `tests/packaged-artifact-boot.test.mjs`.
 
 Machine-readable dispositions: `docs/fork-sync/migration-contracts.yml`
 (`implementationStatus` fields for websocket-ticket-auth, connection-csp-bootstrap,
