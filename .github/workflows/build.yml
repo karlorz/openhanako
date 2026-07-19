@@ -5,6 +5,13 @@ on:
     tags: ['v*']
   workflow_dispatch:
 
+# Guard, marker upload, and profile-specific asset publication must be a single
+# serialized transaction per ref. Queue retries rather than cancelling the
+# earlier run while it is between the guard and marker-upload steps.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   # renderer 归档（renderer-<version>.tar.gz）是纯 web 静态资源，构建结果平台
   # 无关。这里单点构建一次，四个平台的 build job 下载同一份字节复用——避免
