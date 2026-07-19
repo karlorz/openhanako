@@ -71,6 +71,23 @@ CRCCheck off
     StrCpy $R2 "$R2$\r$\n- ${_LABEL}: ${_PATH}"
 !macroend
 
+; Parse the generated build-info marker instead of trusting the compile-time
+; installer selection alone. This prevents a stale/raw resource tree from
+; being accepted by an installer built for the wrong profile.
+!macro hanakoRequireLegacyRawBuildInfo _PATH _LABEL
+  Push $0
+  Push $1
+  System::Call 'kernel32::SetEnvironmentVariable(t "HANA_RELEASE_BUILD_INFO", t "${_PATH}") i.r0'
+  nsExec::ExecToLog `"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$$ErrorActionPreference='Stop'; $$info=Get-Content -Raw -LiteralPath $$env:HANA_RELEASE_BUILD_INFO | ConvertFrom-Json; if ($$info.releaseProfile -ne 'legacy-raw') { exit 1 }"`
+  Pop $1
+  ${If} $1 != 0
+    StrCpy $R2 "$R2$\r$\n- ${_LABEL}: ${_PATH}"
+  ${EndIf}
+  System::Call 'kernel32::SetEnvironmentVariable(t "HANA_RELEASE_BUILD_INFO", t "") i.r0'
+  Pop $1
+  Pop $0
+!macroend
+
 ; 归档文件名带版本号（如 server-<version>-<platform>-<arch>.tar.gz），无法用固定路径
 ; 校验，用 FindFirst/FindClose 做通配存在性检查；找不到时把目录+通配模式一起写进
 ; 诊断信息，跟 hanakoRequireInstallSurfaceFile 走同一条报错/弹窗流程。
@@ -100,10 +117,19 @@ CRCCheck off
   !insertmacro hanakoRequireInstallSurfaceFile "$INSTDIR\${APP_EXECUTABLE_FILENAME}" "HanaAgent.exe"
   !insertmacro hanakoRequireInstallSurfaceFile "$INSTDIR\resources\app.asar" "resources\app.asar"
   !insertmacro hanakoRequireInstallSurfaceFile "$INSTDIR\resources\app-update.yml" "resources\app-update.yml"
+!ifdef HANA_RELEASE_PROFILE_LEGACY_RAW
+  !insertmacro hanakoRequireLegacyRawBuildInfo "$INSTDIR\resources\build-info.json" "resources\build-info.json releaseProfile=legacy-raw"
+  !insertmacro hanakoRequireInstallSurfaceFile "$INSTDIR\resources\server\hana-server.exe" "resources\server\hana-server.exe"
+  !insertmacro hanakoRequireInstallSurfaceFile "$INSTDIR\resources\server\bootstrap.js" "resources\server\bootstrap.js"
+  !insertmacro hanakoRequireInstallSurfaceFile "$INSTDIR\resources\server\bundle\index.js" "resources\server\bundle\index.js"
+  !insertmacro hanakoRequireInstallSurfaceFile "$INSTDIR\resources\server\server-build-info.json" "resources\server\server-build-info.json"
+  !insertmacro hanakoRequireInstallSurfaceFile "$INSTDIR\resources\server\desktop\dist-renderer\mobile.html" "resources\server\desktop\dist-renderer\mobile.html"
+!else
   !insertmacro hanakoRequireInstallSurfaceFile "$INSTDIR\resources\seed\seed-train.json" "resources\seed\seed-train.json"
   !insertmacro hanakoRequireInstallSurfaceFile "$INSTDIR\resources\seed\seed-train.json.sig" "resources\seed\seed-train.json.sig"
   !insertmacro hanakoRequireInstallSurfaceGlob "$INSTDIR\resources\seed" "server-*.tar.gz" "resources\seed\server-*.tar.gz"
   !insertmacro hanakoRequireInstallSurfaceGlob "$INSTDIR\resources\seed" "renderer-*.tar.gz" "resources\seed\renderer-*.tar.gz"
+!endif
   !insertmacro hanakoRequireInstallSurfaceFile "$INSTDIR\resources\git\cmd\git.exe" "MinGit git.exe"
   !insertmacro hanakoRequireInstallSurfaceFile "$INSTDIR\resources\git\usr\bin\sh.exe" "MinGit sh.exe"
 
@@ -442,9 +468,10 @@ CRCCheck off
   !insertmacro hanakoInstallTimingMark "removeOwnedInstallTrees" "start"
   DetailPrint "Removing HanaAgent-owned install files"
   SetOutPath "$TEMP"
-  ; 老版本安装面是散装 resources\server 目录；现在改成 resources\seed 归档，
-  ; 这行只在升级覆盖老版本时才会真正命中，负责清掉旧安装留下的散装树。
+  ; Signed and legacy-raw packages own different resource trees. Remove both
+  ; before overlaying so either profile can safely replace the other.
   RMDir /r "$INSTDIR\resources\server"
+  RMDir /r "$INSTDIR\resources\seed"
   RMDir /r "$INSTDIR\resources\git"
   RMDir /r "$INSTDIR\resources\screenshot-themes"
   RMDir /r "$INSTDIR\resources\app"

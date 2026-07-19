@@ -14,6 +14,7 @@
  */
 
 const { execSync } = require("child_process");
+const asar = require("@electron/asar");
 const fs = require("fs");
 const path = require("path");
 const { normalizeBuildInfo } = require("../desktop/src/shared/build-info.cjs");
@@ -114,7 +115,7 @@ function assertSeedResourcesReady(resourcesDir) {
  * kept separate from the seed assertion so a malformed raw package cannot be
  * mistaken for a signed package at build or launch time.
  * @param {string} resourcesDir
- * @param {{appDir?: string, sourceRendererDir?: string}} [opts]
+ * @param {{appDir?: string, allowUnpackedApp?: boolean}} [opts]
  */
 function assertRawResourcesReady(resourcesDir, opts = {}) {
   const serverDir = path.join(resourcesDir, "server");
@@ -145,15 +146,33 @@ function assertRawResourcesReady(resourcesDir, opts = {}) {
   if (!buildInfo || typeof buildInfo !== "object") {
     throw new Error(`[fix-modules] legacy-raw server-build-info.json must contain an object`);
   }
-  const rendererCandidates = [
-    path.join(appDir, "desktop", "dist-renderer", "index.html"),
-    opts.sourceRendererDir ? path.join(opts.sourceRendererDir, "index.html") : null,
-  ].filter(Boolean);
-  const rendererEntry = rendererCandidates.find((candidate) => fs.existsSync(candidate));
-  if (!rendererEntry) {
-    throw new Error(`[fix-modules] legacy-raw bundled renderer missing: ${rendererCandidates.join(" or ")}`);
+  const rendererRelativePath = path.join("desktop", "dist-renderer", "index.html");
+  const asarPath = path.join(resourcesDir, "app.asar");
+  let rendererEntry;
+  if (fs.existsSync(asarPath)) {
+    const packagedEntries = new Set(asar.listPackage(asarPath).map((entry) => entry.replace(/^[/\\]/, "").replaceAll("\\", "/")));
+    const expectedRendererEntry = rendererRelativePath.replaceAll(path.sep, "/");
+    if (!packagedEntries.has(expectedRendererEntry)) {
+      throw new Error(`[fix-modules] legacy-raw bundled renderer missing from ${asarPath}: ${expectedRendererEntry}`);
+    }
+    rendererEntry = `${asarPath}:${expectedRendererEntry}`;
+  } else {
+    if (opts.allowUnpackedApp !== true) {
+      throw new Error(`[fix-modules] legacy-raw packaged app.asar missing: ${asarPath}`);
+    }
+    rendererEntry = path.join(appDir, rendererRelativePath);
+    if (!fs.existsSync(rendererEntry)) {
+      throw new Error(`[fix-modules] legacy-raw bundled renderer missing: ${rendererEntry}`);
+    }
   }
-  return { serverDir, rendererEntry, wrapper, buildInfo };
+  const serverRendererRoot = path.join(serverDir, "desktop", "dist-renderer");
+  const serverRendererEntry = path.join(serverRendererRoot, "mobile.html");
+  if (!fs.existsSync(serverRendererEntry)) {
+    throw new Error(
+      `[fix-modules] legacy-raw standalone server renderer missing: ${serverRendererEntry}`,
+    );
+  }
+  return { serverDir, rendererEntry, serverRendererRoot, wrapper, buildInfo };
 }
 
 function createPackagedBuildInfo({ rootDir = path.resolve(__dirname, ".."), env = process.env, appVersion }) {
@@ -257,14 +276,12 @@ exports.default = async function (context) {
   if (profile === LEGACY_RAW_PROFILE) {
     const raw = assertRawResourcesReady(resourcesDir, {
       appDir,
-      sourceRendererDir: path.resolve(__dirname, "..", "desktop", "dist-renderer"),
     });
     const osDirName = platformName === "mac" ? "mac" : platformName === "windows" || platformName === "win" ? "win" : "linux";
     const serverBuildModules = path.join(__dirname, "..", "dist-server", `${osDirName}-${arch}`, "node_modules");
     copyBundledServerNodeModules(raw.serverDir, serverBuildModules);
     assertRawResourcesReady(resourcesDir, {
       appDir,
-      sourceRendererDir: path.resolve(__dirname, "..", "desktop", "dist-renderer"),
     });
     assertBundledServerNodeModulesReady(path.join(raw.serverDir, "node_modules"));
     console.log("[fix-modules] legacy-raw resources verified (bundled renderer + Resources/server)");

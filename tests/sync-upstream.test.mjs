@@ -42,6 +42,7 @@ describe("sync-upstream rule engine", () => {
       "remote-resource-ownership",
       "server-installer-artifact-activation",
       "fork-build-identity",
+      "legacy-raw-release-profile",
     ];
 
     expect(config.schemaVersion).toBe(1);
@@ -111,6 +112,17 @@ describe("sync-upstream rule engine", () => {
     expect(patterns).toContain("shared/server-build-info.*");
     expect(patterns).toContain("tests/remote-server-*.test.*");
     expect(patterns).toContain("docs/upstream-issues/**");
+    expect(patterns).toContain("scripts/resolve-release-profile.mjs");
+    expect(patterns).toEqual(expect.arrayContaining([
+      "scripts/release-desktop-with-profile.mjs",
+      "scripts/prepare-desktop-package.mjs",
+      "scripts/guard-release-profile.mjs",
+      "tests/release-desktop-with-profile.test.mjs",
+      "tests/prepare-desktop-package.test.mjs",
+      "tests/release-profile-guard.test.mjs",
+      "build/installer-legacy-raw.nsh",
+    ]));
+    expect(patterns).toContain("shared/release-profile.cjs");
     expect(patterns.some((p) => p.startsWith("examples/plugins/office-workflow"))).toBe(true);
   });
 
@@ -133,6 +145,9 @@ describe("sync-upstream rule engine", () => {
       "scripts/hana-desktop-smoke-helper.mjs",
       "desktop/src/react/services/remote-server-assessment-coordinator.ts",
       "server/index.ts",
+      ".github/workflows/build.yml",
+      "shared/release-profile.cjs",
+      "scripts/resolve-release-profile.mjs",
     ]));
     expect(rules.conflictRules.policies["scripts/generate-release-digest.mjs"]).toMatchObject({
       class: "fork_release_digest",
@@ -141,6 +156,10 @@ describe("sync-upstream rule engine", () => {
     expect(rules.conflictRules.policies["scripts/install-server.mjs"]).toMatchObject({
       class: "server_release_compatibility",
       risk: "critical",
+    });
+    expect(rules.conflictRules.policies["shared/release-profile.cjs"]).toMatchObject({
+      class: "release_profile_policy",
+      strategy: "preserve-both",
     });
   });
 

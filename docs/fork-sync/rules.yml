@@ -39,6 +39,7 @@ criticalFileClasses:
   - remote_boundary_recovery
   - websocket_session_identity
   - desktop_packaging
+  - release_profile_policy
   - fork_sync_maintenance
 
 conflictRules:
@@ -54,6 +55,10 @@ conflictRules:
     - .env.example
     - scripts/sync-upstream.mjs
     - scripts/track-upstream-issues.mjs
+    - scripts/resolve-release-profile.mjs
+    - scripts/release-desktop-with-profile.mjs
+    - scripts/prepare-desktop-package.mjs
+    - scripts/guard-release-profile.mjs
     - scripts/install-server.mjs
     - scripts/pack-server-bundle.mjs
     - scripts/hana-desktop-smoke-helper.mjs
@@ -63,6 +68,13 @@ conflictRules:
     - tests/pack-server-bundle.test.mjs
     - tests/hana-desktop-smoke-helper.test.mjs
     - tests/upstream-issue-tracker.test.mjs
+    - tests/release-profile.test.mjs
+    - tests/resolve-release-profile.test.mjs
+    - tests/release-desktop-with-profile.test.mjs
+    - tests/prepare-desktop-package.test.mjs
+    - tests/release-profile-guard.test.mjs
+    - tests/legacy-raw-workflow-contract.test.mjs
+    - build/installer-legacy-raw.nsh
     - tests/office-workflow-plugin.test.ts
     - tests/desktop-network-security-contract.test.ts
     - docs/fork-sync/rules.yml
@@ -84,6 +96,7 @@ conflictRules:
     - shared/remote-server-release-*.d.cts
     - shared/remote-server-release-*.ts
     - shared/server-build-info.*
+    - shared/release-profile.cjs
     - desktop/src/react/services/remote-feature-*.ts
     - desktop/src/react/services/remote-server-assessment-*.ts
     - desktop/src/react/__tests__/services/remote-feature-*.test.ts
@@ -135,6 +148,9 @@ conflictRules:
     - tests/office-workflow-plugin.test.ts
     - desktop/src/react/settings/widgets/KeyInput.tsx
     - package.json
+    - .github/workflows/build.yml
+    - shared/release-profile.cjs
+    - scripts/resolve-release-profile.mjs
     - package-lock.json
     - release-digest.v1.json
     - scripts/generate-release-digest.mjs
@@ -300,10 +316,23 @@ conflictRules:
       strategy: preserve-both
       resolution: Preserve assessment reset and connection-switch behavior.
     .github/workflows/build.yml:
-      class: server_release_compatibility
+      class: release_profile_policy
       risk: high
       strategy: preserve-both
-      resolution: Preserve fork asset naming, compatibility manifest publication, and digest/history generation while retaining upstream CI changes.
+      resolution: Preserve fork asset naming, compatibility manifest publication, digest/history generation, and the single resolved release-profile output while retaining upstream CI changes.
+      plannedAction: Tag pushes and attended local commands resolve auto to signed only with validated Ed25519 material and otherwise to legacy-raw. Preserve the immutable release-profile marker, raw updater/train/mirror exclusions, and runtime-only standalone bundles.
+    shared/release-profile.cjs:
+      class: release_profile_policy
+      risk: high
+      strategy: preserve-both
+      resolution: Preserve concrete signed or legacy-raw normalization and the fail-closed auto resolver boundary.
+      plannedAction: Never allow auto into package metadata or allow an unreadable configured key to downgrade to legacy-raw.
+    scripts/resolve-release-profile.mjs:
+      class: release_profile_policy
+      risk: medium
+      strategy: preserve-both
+      resolution: Preserve the shared resolver CLI and non-secret GitHub job output contract.
+      plannedAction: Keep the CLI limited to concrete profile/reason output and do not print signing material.
     scripts/build-server.mjs:
       class: server_release_compatibility
       risk: high

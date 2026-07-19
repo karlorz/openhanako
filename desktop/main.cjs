@@ -1374,6 +1374,7 @@ async function resolvePackagedArtifactBoot() {
       console.log(`[desktop] legacy-raw server resolved: ${layout.serverRoot}`);
       return {
         serverRoot: layout.serverRoot,
+        serverRendererRoot: layout.serverRendererRoot,
         train: null,
         channel: null,
         artifactManaged: false,
@@ -1745,7 +1746,10 @@ async function _spawnServerOnce(serverInfoPath, artifactBootContext) {
   // 议一次，不逐请求判断"的语义一致，重启进程后两者自然重新对齐，不在
   // 本次修复范围内。
   if (artifactBootContext) {
-    serverEnv.HANA_RENDERER_DIST = _distRenderer;
+    // A raw package keeps the desktop's renderer in app.asar, but the spawned
+    // standalone Node server cannot resolve Electron's asar virtual path. Use
+    // the verified copy carried inside Resources/server for server web routes.
+    serverEnv.HANA_RENDERER_DIST = artifactBootContext.serverRendererRoot || _distRenderer;
   }
   serverEnv = await serverEnvironmentForNetworkProxy(serverEnv);
   serverEnv = withWindowsSystemCaEnv(serverEnv);

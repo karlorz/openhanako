@@ -38,6 +38,7 @@ Current status:
 | Provider model-removal persistence | `draft/pending-approval` | No exact issue found | Review `docs/upstream-issues/drafts/provider-model-removal-persistence.md`; submit only after owner approval. |
 | Remote skill viewer local-file IPC | `draft/pending-approval` | No exact issue found | Review `docs/upstream-issues/drafts/remote-skill-viewer-local-file-ipc.md`; submit only after owner approval. |
 | Remote skill install client-local path | `draft/pending-approval` | No exact issue found | Review `docs/upstream-issues/drafts/remote-skill-install-client-local-path.md`; submit only after owner approval. |
+| Legacy raw release profile and evidence | `tracked/no-upstream-issue` | Fork-only release policy | Keep the explicit signed/auto/legacy-raw resolver, raw asset exclusions, and runtime-only standalone server bundle evidence under local review. |
 | Fork-only maintenance | `tracked/no-upstream-issue` | Local build identity, fork-sync/dev-loop runbooks, office-workflow examples, server installer/reinit safety, and CI file-mode hygiene | Keep local. The complete generated inventory is `docs/upstream-issues/README.md`; do not create upstream issue noise for fork-only work. |
 
 ## Sync cadence
@@ -53,6 +54,15 @@ Current status:
 - **Package version ownership:** package version and lockfile root metadata changes are deferred to the attended stable production fork sync. Do not pre-bump `package.json` or `package-lock.json` just to reduce dashboard conflicts.
 - **Prerelease review:** run `node scripts/sync-upstream.mjs --include-prerelease --check` only when intentionally reviewing a prerelease candidate. This is not the normal production update path.
 - **Issue check:** as part of every sync, run `node scripts/track-upstream-issues.mjs search` and glance at [#1749](https://github.com/liliMozi/openhanako/issues/1749) plus the pending draft list. If upstream accepted equivalent fixes, the divergence shrinks.
+
+## Release profile policy
+
+- **Tag fallback is automatic:** an ordinary `v*` tag push requests `auto`, which resolves to `signed` only with validated Ed25519 material and otherwise selects the marked `legacy-raw` fallback when both signing inputs are blank. Malformed, unreadable, or incompatible nonblank material is an error.
+- **Attended commands share the resolver:** manual workflow dispatch and local `npm run dist:auto`, `npm run pack:auto`, and `npm run install:local:auto` resolve once through the same policy before packaging.
+- **Concrete downstream contract:** only `signed` or `legacy-raw` may reach package metadata, builders, asset verification, train publication, or mirroring. `auto` is a selector, not a release profile.
+- **Release assets are profile-immutable:** the release job writes a profile marker before other uploads, accepts only same-profile reruns, and rejects opposite-profile or unmarked nonempty asset sets before mutation.
+- **Raw evidence boundary:** legacy-raw installers are visibly marked and ship the bundled renderer plus runtime-only server tree. They publish installers, standalone server bundles, compatibility metadata, checksums, and the committed digest, but never shell updater metadata, hot-update archives, train pointers, or AtomGit mirror assets.
+- **Server installation remains separate:** runtime-only standalone bundles stay installable through `scripts/install-server.mjs`; selecting a profile does not deploy, upgrade, tag, or publish anything.
 
 ## Diverging files
 

@@ -14,6 +14,7 @@ import {
   packRendererArtifact,
   packServerArchive,
   resolveBuildKeyset,
+  signAndSmokeTestServerRuntime,
 } from "../scripts/build-server-artifact.mjs";
 
 const tempDirs: string[] = [];
@@ -210,6 +211,30 @@ describe("build-server-artifact: keyset resolution", () => {
 });
 
 describe("build-server-artifact: packServerArchive (pack-only, no manifest)", () => {
+  it("reuses the exact sign-then-smoke operation for unpacked legacy raw runtimes", async () => {
+    const root = makeTempDir("hana-sign-raw-server-");
+    const outDir = makeServerTree(root);
+    const order: string[] = [];
+    let seenEnv: unknown = null;
+
+    await signAndSmokeTestServerRuntime(outDir, {
+      env: { HANA_MACHO_SIGN_IDENTITY: "CAFEBABE" },
+      log: () => {},
+      deps: {
+        signMachOFiles: async (_outDir: string, _log: (message: string) => void, env: unknown) => {
+          order.push("sign");
+          seenEnv = env;
+        },
+        smokeTestNodeStartup: async () => {
+          order.push("smoke");
+        },
+      },
+    });
+
+    expect(order).toEqual(["sign", "smoke"]);
+    expect(seenEnv).toEqual({ HANA_MACHO_SIGN_IDENTITY: "CAFEBABE" });
+  });
+
   it("packs the server tree into an archive without touching manifests", async () => {
     const root = makeTempDir("hana-pack-server-");
     const outDir = makeServerTree(root);
