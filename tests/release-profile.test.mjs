@@ -6,6 +6,7 @@ import {
   normalizeReleaseProfile,
   resolveServerBuildMode,
 } from "../shared/release-profile.cjs";
+import { normalizeBuildInfo } from "../desktop/src/shared/build-info.cjs";
 
 describe("release profile contract", () => {
   it("defaults to the fail-closed signed profile", () => {
@@ -25,5 +26,19 @@ describe("release profile contract", () => {
     expect(resolveServerBuildMode({ HANA_SERVER_BUILD_MODE: "runtime-only" })).toBe("runtime-only");
     expect(() => resolveServerBuildMode({ HANA_SERVER_BUILD_MODE: "raw-but-unknown" }))
       .toThrow(/HANA_SERVER_BUILD_MODE/);
+  });
+
+  it("forces update paths off for a marked legacy package", () => {
+    expect(normalizeBuildInfo({
+      releaseProfile: LEGACY_RAW_PROFILE,
+      updateEnabled: true,
+      artifactUpdatesEnabled: true,
+    })).toMatchObject({
+      releaseProfile: LEGACY_RAW_PROFILE,
+      updateEnabled: false,
+      artifactUpdatesEnabled: false,
+    });
+    expect(normalizeBuildInfo({ releaseProfile: SIGNED_PROFILE }))
+      .toMatchObject({ releaseProfile: SIGNED_PROFILE, updateEnabled: true, artifactUpdatesEnabled: true });
   });
 });
