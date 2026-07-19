@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "tag": "v0.407.15-karlorz.5",
+  "tag": "v0.407.15-karlorz.6",
   "version": "0.407.15",
   "previousTag": "v0.407.15",
-  "generatedAt": "2026-07-19T12:36:56.246Z",
+  "generatedAt": "2026-07-19T13:23:31.124Z",
   "noUserFacingChanges": false,
   "summary": {
     "zh": "本次更新加入无需 Hana 发布签名密钥的传统原始安装包回退，同时强化远程服务器状态评估、局域网连接、附件预览与服务器安装升级的可靠性。",
@@ -19,7 +19,7 @@
     "owner": "karlorz",
     "repo": "openhanako",
     "commitRange": "v0.407.15..HEAD",
-    "releaseUrl": "https://github.com/karlorz/openhanako/releases/tag/v0.407.15-karlorz.5",
+    "releaseUrl": "https://github.com/karlorz/openhanako/releases/tag/v0.407.15-karlorz.6",
     "releaseNotes": ""
   },
   "items": [
@@ -463,6 +463,10 @@
           "en": "Invalid or unreadable nonblank signing material fails closed instead of silently downgrading"
         },
         {
+          "zh": "缺少 Apple Developer ID 凭证时，macOS 原始应用包会进行临时签名（并非 Developer ID 签名或公证），并在安装包上传前严格验签",
+          "en": "When Developer ID credentials are absent, raw macOS app bundles are ad-hoc signed—not Developer ID-signed or notarized—and strictly verified before their installers are uploaded"
+        },
+        {
           "zh": "更新摘要生成继续支持提供商无关的 BYOK 配置",
           "en": "Release digest generation retains provider-neutral BYOK configuration"
         }
@@ -502,6 +506,11 @@
           "type": "commit",
           "ref": "33d8f8f7cd67",
           "title": "fix(release): use stable profile marker asset name"
+        },
+        {
+          "type": "commit",
+          "ref": "56464a8fa950",
+          "title": "fix(release): ad-hoc sign raw macOS bundles"
         }
       ]
     }
