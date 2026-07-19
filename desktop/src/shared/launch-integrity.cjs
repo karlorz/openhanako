@@ -120,6 +120,12 @@ function buildWindowsInstallSurfaceContext({ execPath, resourcesPath } = {}) {
       listEntries: true,
       maxEntries: 40,
     }),
+    rawServerDirectory: inspectInstallPath({
+      filePath: path.join(resourcesRoot, "server"),
+      relativePath: "resources/server",
+      listEntries: true,
+      maxEntries: 60,
+    }),
   };
 }
 
@@ -141,15 +147,30 @@ function findSeedArchive(seedDir, prefix) {
   }
 }
 
-function buildWindowsInstallSurfaceChecks({ execPath, resourcesPath } = {}) {
+function resolveInstallProfile(resourcesRoot, suppliedBuildInfo) {
+  if (suppliedBuildInfo && typeof suppliedBuildInfo === "object") {
+    return suppliedBuildInfo.releaseProfile === "legacy-raw" ? "legacy-raw" : "signed";
+  }
+  try {
+    const parsed = JSON.parse(fs.readFileSync(path.join(resourcesRoot, "build-info.json"), "utf8"));
+    return parsed?.releaseProfile === "legacy-raw" ? "legacy-raw" : "signed";
+  } catch {
+    return "signed";
+  }
+}
+
+function isDirectory(filePath) {
+  try { return fs.statSync(filePath).isDirectory(); } catch { return false; }
+}
+
+function buildWindowsInstallSurfaceChecks({ execPath, resourcesPath, buildInfo } = {}) {
   const executablePath = execPath || "";
   const appRoot = executablePath ? path.dirname(executablePath) : "";
   const resourcesRoot = resourcesPath || (appRoot ? path.join(appRoot, "resources") : "");
+  const profile = resolveInstallProfile(resourcesRoot, buildInfo);
   const seedRoot = path.join(resourcesRoot, "seed");
   const seedManifestPath = path.join(seedRoot, "seed-train.json");
   const seedSignaturePath = `${seedManifestPath}.sig`;
-  const seedServerArchivePath = findSeedArchive(seedRoot, "server-");
-  const seedRendererArchivePath = findSeedArchive(seedRoot, "renderer-");
   const gitRoot = path.join(resourcesRoot, "git");
   const gitExe = path.join(gitRoot, "cmd", "git.exe");
   const appExecutableLabel = executablePath ? path.basename(executablePath) : "HanaAgent.exe";
@@ -160,8 +181,7 @@ function buildWindowsInstallSurfaceChecks({ execPath, resourcesPath } = {}) {
     path.join(gitRoot, "bin", "bash.exe"),
     path.join(gitRoot, "usr", "bin", "bash.exe"),
   ];
-
-  return [
+  const commonChecks = [
     {
       id: "app-exe",
       label: appExecutableLabel,
@@ -181,6 +201,99 @@ function buildWindowsInstallSurfaceChecks({ execPath, resourcesPath } = {}) {
       relativePath: "resources/app-update.yml",
       paths: [path.join(resourcesRoot, "app-update.yml")],
     },
+  ];
+
+  if (profile === "legacy-raw") {
+    const serverRoot = path.join(resourcesRoot, "server");
+    const appAsarPath = path.join(resourcesRoot, "app.asar");
+    const rendererPath = path.join(resourcesRoot, "app", "desktop", "dist-renderer", "index.html");
+    const wrapperPath = ["hana-server.exe", "hana-server"]
+      .map(name => path.join(serverRoot, name))
+      .find(canRead);
+    const runtimePath = ["hana-server.exe", "node", "node.exe"]
+      .map(name => path.join(serverRoot, name))
+      .find(canRead);
+    const checks = [
+      ...commonChecks,
+      {
+        id: "raw-build-info",
+        label: "resources/build-info.json (legacy-raw marker)",
+        relativePath: "resources/build-info.json",
+        paths: [path.join(resourcesRoot, "build-info.json")],
+        exists: () => {
+          try {
+            const info = JSON.parse(fs.readFileSync(path.join(resourcesRoot, "build-info.json"), "utf8"));
+            return info?.releaseProfile === "legacy-raw";
+          } catch {
+            return false;
+          }
+        },
+      },
+      {
+        id: "raw-server-wrapper",
+        label: "resources/server/hana-server(.exe)",
+        relativePath: "resources/server/hana-server(.exe)",
+        paths: [wrapperPath || path.join(serverRoot, "hana-server")],
+        exists: () => !!wrapperPath,
+      },
+      {
+        id: "raw-server-bootstrap",
+        label: "resources/server/bootstrap.js",
+        relativePath: "resources/server/bootstrap.js",
+        paths: [path.join(serverRoot, "bootstrap.js")],
+      },
+      {
+        id: "raw-server-bundle",
+        label: "resources/server/bundle/index.js",
+        relativePath: "resources/server/bundle/index.js",
+        paths: [path.join(serverRoot, "bundle", "index.js")],
+      },
+      {
+        id: "raw-server-build-info",
+        label: "resources/server/server-build-info.json",
+        relativePath: "resources/server/server-build-info.json",
+        paths: [path.join(serverRoot, "server-build-info.json")],
+      },
+      {
+        id: "raw-server-runtime",
+        label: "resources/server/node(.exe)",
+        relativePath: "resources/server/node(.exe)",
+        paths: [runtimePath || path.join(serverRoot, "node")],
+        exists: () => !!runtimePath,
+      },
+      {
+        id: "raw-renderer",
+        label: "Bundled legacy renderer",
+        relativePath: "resources/app.asar/desktop/dist-renderer/index.html",
+        paths: [appAsarPath, rendererPath],
+        // app.asar is the normal production surface; the unpacked path is
+        // retained for installer diagnostics and test fixtures.
+        exists: () => canRead(appAsarPath) || canRead(rendererPath),
+      },
+      {
+        id: "bundled-git",
+        label: "Bundled Git runtime (MinGit)",
+        relativePath: "resources/git",
+        paths: [gitExe, ...posixShellCandidates],
+        exists: () => canRead(gitExe) && posixShellCandidates.some(canRead),
+      },
+    ];
+    if (isDirectory(seedRoot) && isDirectory(serverRoot)) {
+      checks.splice(4, 0, {
+        id: "layout-mixed",
+        label: "Single packaged resource layout",
+        relativePath: "resources/{seed,server}",
+        paths: [seedRoot, serverRoot],
+        exists: () => false,
+      });
+    }
+    return checks;
+  }
+
+  const seedServerArchivePath = findSeedArchive(seedRoot, "server-");
+  const seedRendererArchivePath = findSeedArchive(seedRoot, "renderer-");
+  const checks = [
+    ...commonChecks,
     {
       id: "seed-manifest",
       label: "resources/seed/seed-train.json",
@@ -216,6 +329,16 @@ function buildWindowsInstallSurfaceChecks({ execPath, resourcesPath } = {}) {
       exists: () => canRead(gitExe) && posixShellCandidates.some(canRead),
     },
   ];
+  if (isDirectory(seedRoot) && isDirectory(path.join(resourcesRoot, "server"))) {
+    checks.splice(4, 0, {
+      id: "layout-mixed",
+      label: "Single packaged resource layout",
+      relativePath: "resources/{seed,server}",
+      paths: [seedRoot, path.join(resourcesRoot, "server")],
+      exists: () => false,
+    });
+  }
+  return checks;
 }
 
 function serializeCheck(item) {
@@ -236,6 +359,10 @@ function checkWindowsInstallSurface(opts = {}) {
   const missing = checked.filter(item => !item.exists);
   return {
     ok: missing.length === 0,
+    profile: resolveInstallProfile(
+      opts.resourcesPath || (opts.execPath ? path.join(path.dirname(opts.execPath), "resources") : ""),
+      opts.buildInfo,
+    ),
     checked,
     missing,
     context: buildWindowsInstallSurfaceContext(opts),
