@@ -5,7 +5,11 @@ import { createRequire } from "module";
 import { afterEach, describe, expect, it } from "vitest";
 
 const require = createRequire(import.meta.url);
-const { assertSeedResourcesReady, removeNodeModulesBinDirs } = require("../scripts/fix-modules.cjs");
+const {
+  assertRawResourcesReady,
+  assertSeedResourcesReady,
+  removeNodeModulesBinDirs,
+} = require("../scripts/fix-modules.cjs");
 
 const tempDirs: string[] = [];
 
@@ -106,6 +110,48 @@ describe("fix-modules dual-kind seed resources assertion", () => {
     const resourcesDir = makeTempDir();
     writeSeedFixture(resourcesDir, { includeRenderer: false });
     expect(() => assertSeedResourcesReady(resourcesDir)).toThrow(/renderer/i);
+  });
+});
+
+describe("fix-modules legacy raw resources assertion", () => {
+  it("accepts a complete raw Resources/server tree and bundled renderer", () => {
+    const resourcesDir = makeTempDir();
+    writeFile(resourcesDir, "server/hana-server", "#!/bin/sh\n");
+    writeFile(resourcesDir, "server/node", "node\n");
+    writeFile(resourcesDir, "server/bootstrap.js", "// bootstrap\n");
+    writeFile(resourcesDir, "server/bundle/index.js", "// server\n");
+    writeFile(resourcesDir, "server/server-build-info.json", JSON.stringify({ runtimeVersion: "0.407.15" }));
+    writeFile(resourcesDir, "app/desktop/dist-renderer/index.html", "<!doctype html>");
+
+    expect(() => assertRawResourcesReady(resourcesDir, { appDir: path.join(resourcesDir, "app") })).not.toThrow();
+  });
+
+  it("rejects a raw package without the renderer marker", () => {
+    const resourcesDir = makeTempDir();
+    writeFile(resourcesDir, "server/hana-server", "#!/bin/sh\n");
+    writeFile(resourcesDir, "server/node", "node\n");
+    writeFile(resourcesDir, "server/bootstrap.js", "// bootstrap\n");
+    writeFile(resourcesDir, "server/bundle/index.js", "// server\n");
+    writeFile(resourcesDir, "server/server-build-info.json", JSON.stringify({ runtimeVersion: "0.407.15" }));
+
+    expect(() => assertRawResourcesReady(resourcesDir, { appDir: path.join(resourcesDir, "app") }))
+      .toThrow(/renderer/i);
+  });
+
+  it("accepts the source renderer marker when afterPack has already produced app.asar", () => {
+    const resourcesDir = makeTempDir();
+    const sourceRendererDir = path.join(resourcesDir, "source-renderer");
+    writeFile(resourcesDir, "server/hana-server", "#!/bin/sh\n");
+    writeFile(resourcesDir, "server/node", "node\n");
+    writeFile(resourcesDir, "server/bootstrap.js", "// bootstrap\n");
+    writeFile(resourcesDir, "server/bundle/index.js", "// server\n");
+    writeFile(resourcesDir, "server/server-build-info.json", JSON.stringify({ runtimeVersion: "0.407.15" }));
+    writeFile(sourceRendererDir, "index.html", "<!doctype html>");
+
+    expect(() => assertRawResourcesReady(resourcesDir, {
+      appDir: path.join(resourcesDir, "missing-app-directory"),
+      sourceRendererDir,
+    })).not.toThrow();
   });
 });
 

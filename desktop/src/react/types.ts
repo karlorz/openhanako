@@ -144,8 +144,13 @@ export interface BuildInfo {
   sourceRepo: string;
   gitSha: string | null;
   baseTag: string | null;
+  /** Exact fork release tag when this is a published build. */
+  releaseTag?: string | null;
   dirty: boolean | null;
+  /** Explicit package layout contract; absent means the historical signed default. */
+  releaseProfile?: 'signed' | 'legacy-raw';
   updateEnabled: boolean;
+  artifactUpdatesEnabled?: boolean;
   signatureKind: string | null;
 }
 
