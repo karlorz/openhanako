@@ -190,7 +190,9 @@ describe("generate-release-digest", () => {
     };
     const fetchImpl = vi.fn().mockResolvedValue({
       ok: true,
-      json: vi.fn().mockResolvedValue({ choices: [{ message: { content: JSON.stringify(digest) } }] }),
+      json: vi.fn().mockResolvedValue({
+        choices: [{ message: { content: `\`\`\`json\n${JSON.stringify(digest)}\n\`\`\`` } }],
+      }),
     });
 
     const result = await generateDigestWithOpenAI(
