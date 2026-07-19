@@ -8,10 +8,7 @@ import { pathToFileURL } from "node:url";
 
 const require = createRequire(import.meta.url);
 const {
-  LEGACY_RAW_PROFILE,
-  inspectSigningKeyState,
-  normalizeReleaseProfileRequest,
-  resolveRequestedReleaseProfile,
+  resolveReleaseProfileFromEnv,
 } = require("../shared/release-profile.cjs");
 
 export function buildDesktopReleaseCommand({
@@ -24,11 +21,7 @@ export function buildDesktopReleaseCommand({
   if (!npmScripts[action]) {
     throw new TypeError(`Unknown desktop release action: ${action}. Expected dist, pack, or install.`);
   }
-  const normalizedRequest = normalizeReleaseProfileRequest(requested);
-  const keyState = normalizedRequest === LEGACY_RAW_PROFILE
-    ? "absent"
-    : inspectSigningKeyState(env);
-  const result = resolveRequestedReleaseProfile({ requested: normalizedRequest, keyState });
+  const result = resolveReleaseProfileFromEnv({ requested, env });
   return {
     ...result,
     command: platform === "win32" ? "npm.cmd" : "npm",
@@ -52,14 +45,7 @@ function parseArgs(argv) {
   return args;
 }
 
-export function runDesktopRelease({
-  requested = "auto",
-  action = "dist",
-  env = process.env,
-  platform = process.platform,
-  spawn = spawnSync,
-} = {}) {
-  const release = buildDesktopReleaseCommand({ requested, action, env, platform });
+function executeDesktopRelease(release, spawn = spawnSync) {
   let tempDir = null;
   try {
     if (release.profile === "signed" && !release.env.HANA_SIGN_KEY && release.env.HANA_SIGN_KEY_PEM) {
@@ -78,11 +64,22 @@ export function runDesktopRelease({
   }
 }
 
+export function runDesktopRelease({
+  requested = "auto",
+  action = "dist",
+  env = process.env,
+  platform = process.platform,
+  spawn = spawnSync,
+} = {}) {
+  const release = buildDesktopReleaseCommand({ requested, action, env, platform });
+  return executeDesktopRelease(release, spawn);
+}
+
 export function main(argv = process.argv.slice(2)) {
   const args = parseArgs(argv);
   const release = buildDesktopReleaseCommand(args);
   console.log(`[release-desktop] resolved ${release.profile} (${release.reason})`);
-  const child = runDesktopRelease(args);
+  const child = executeDesktopRelease(release);
   if (child.status !== 0) process.exitCode = child.status ?? 1;
 }
 

@@ -4,10 +4,7 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const {
-  LEGACY_RAW_PROFILE,
-  inspectSigningKeyState,
-  normalizeReleaseProfileRequest,
-  resolveRequestedReleaseProfile,
+  resolveReleaseProfileFromEnv,
 } = require("../shared/release-profile.cjs");
 
 function parseArgs(argv) {
@@ -35,11 +32,11 @@ function parseArgs(argv) {
 
 function main() {
   const args = parseArgs(process.argv.slice(2));
-  const requested = normalizeReleaseProfileRequest(args.requested);
-  const keyState = requested === LEGACY_RAW_PROFILE
-    ? "absent"
-    : inspectSigningKeyState(process.env, fs);
-  const result = resolveRequestedReleaseProfile({ requested, keyState });
+  const result = resolveReleaseProfileFromEnv({
+    requested: args.requested,
+    env: process.env,
+    fs,
+  });
   if (args.githubOutput) {
     fs.appendFileSync(
       args.githubOutput,
