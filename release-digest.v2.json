@@ -3,14 +3,14 @@
   "entries": [
     {
       "schemaVersion": 1,
-      "tag": "v0.407.15-karlorz.1",
+      "tag": "v0.407.15-karlorz.2",
       "version": "0.407.15",
       "previousTag": "v0.407.15",
-      "generatedAt": "2026-07-18T22:52:10.995Z",
+      "generatedAt": "2026-07-19T11:21:27.755Z",
       "noUserFacingChanges": false,
       "summary": {
-        "zh": "本次更新强化远程服务器状态评估与设置展示，修复局域网连接/WebSocket 鉴权与图片消息回放问题，并提升草稿、附件预览与服务器安装升级的可靠性。",
-        "en": "This update improves remote server assessment in Settings, fixes LAN connect/WebSocket auth and image-message replay issues, and makes drafts, attachment previews, and server install/upgrade more reliable."
+        "zh": "本次更新加入无需 Hana 发布签名密钥的传统原始安装包回退，同时强化远程服务器状态评估、局域网连接、附件预览与服务器安装升级的可靠性。",
+        "en": "This update adds a legacy raw installer fallback when Hana release-signing keys are unavailable, while improving remote server assessment, LAN connectivity, attachment previews, and server install/upgrade reliability."
       },
       "counts": {
         "feature": 5,
@@ -19,10 +19,10 @@
         "migration": 0
       },
       "source": {
-        "owner": "liliMozi",
+        "owner": "karlorz",
         "repo": "openhanako",
         "commitRange": "v0.407.15..HEAD",
-        "releaseUrl": "https://github.com/liliMozi/openhanako/releases/tag/v0.407.15-karlorz.1",
+        "releaseUrl": "https://github.com/karlorz/openhanako/releases/tag/v0.407.15-karlorz.2",
         "releaseNotes": ""
       },
       "items": [
@@ -445,28 +445,51 @@
           ]
         },
         {
-          "id": "release-digest-byok",
+          "id": "legacy-raw-release-fallback",
           "kind": "feature",
-          "importance": "low",
+          "importance": "high",
           "title": {
-            "zh": "提供商无关的更新说明（BYOK）",
-            "en": "Provider-neutral release digest (BYOK)"
+            "zh": "缺少 Hana 发布签名密钥时仍可安装",
+            "en": "Installable fallback without Hana release-signing keys"
           },
           "summary": {
-            "zh": "新增不绑定特定模型提供商的更新摘要能力，便于在自备密钥场景下生成/展示本次更新内容。",
-            "en": "Adds a provider-neutral release digest path so update notes can be generated/shown in BYOK setups."
+            "zh": "发布流程会在 Hana 签名材料缺失时生成带明确标记的传统原始桌面安装包，并继续提供带校验和的独立服务器包。",
+            "en": "When Hana signing material is absent, releases can produce clearly marked legacy raw desktop installers while retaining checksummed standalone server bundles."
           },
           "details": [
             {
-              "zh": "更新摘要流程不再绑定单一提供商",
-              "en": "Release digest flow is no longer tied to a single provider"
+              "zh": "原始安装包禁用 OTA、更新列车与修复通道，避免混用已签名发布资产",
+              "en": "Raw packages disable OTA, update trains, and repair paths to prevent mixed signed-release assets"
+            },
+            {
+              "zh": "无效或不可读的非空签名材料会直接失败，不会静默降级",
+              "en": "Invalid or unreadable nonblank signing material fails closed instead of silently downgrading"
+            },
+            {
+              "zh": "更新摘要生成继续支持提供商无关的 BYOK 配置",
+              "en": "Release digest generation retains provider-neutral BYOK configuration"
             }
           ],
           "sources": [
             {
               "type": "commit",
-              "ref": "cafdbcb73e68",
-              "title": "feat: add provider-neutral release digest BYOK"
+              "ref": "c1050524275d",
+              "title": "feat(release): add explicit release profile contract"
+            },
+            {
+              "type": "commit",
+              "ref": "11e6a566b48e",
+              "title": "feat(desktop): boot and gate legacy raw packages safely"
+            },
+            {
+              "type": "commit",
+              "ref": "305d30e72caa",
+              "title": "fix(release): fail closed across raw release paths"
+            },
+            {
+              "type": "commit",
+              "ref": "af655a6eced6",
+              "title": "fix(release): accept fenced digest JSON"
             }
           ]
         }
