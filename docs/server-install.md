@@ -27,10 +27,28 @@ curl -fsSL https://raw.githubusercontent.com/karlorz/openhanako/<tag>/scripts/in
 ```
 
 The bootstrap script defaults to `--install-cli-only` behavior unless
-`--execute` is passed. It installs:
+`--execute` is passed. It always installs:
 
 - `/opt/hanaagent/install/install-server.mjs`
 - `/usr/local/bin/install-server`
+
+When the downloaded `install-server.mjs` imports the shared status/release
+modules (current refs), it also installs the same-ref dependency closure under
+`/opt/hanaagent/shared/`:
+
+- `/opt/hanaagent/shared/remote-server-assessment.cjs`
+- `/opt/hanaagent/shared/remote-server-release-catalog.cjs`
+- `/opt/hanaagent/shared/remote-server-release-loader.cjs`
+- `/opt/hanaagent/shared/remote-server-policy.json`
+- `/opt/hanaagent/shared/remote-feature-contracts.cjs`
+- `/opt/hanaagent/shared/remote-feature-contracts.json`
+
+Historical single-file installer refs (for example `v0.357.17-karlorz.1`) do
+not import those modules, so the bootstrap skips the shared fetch and remains
+installable. Current refs download the installer first, detect the import
+markers, stage the complete dependency closure, and replace
+`install-server.mjs` only after every required download succeeds, so a failed
+dependency fetch cannot leave a newer CLI pointing at missing modules.
 
 It does not run local builds, git resets, SSH deploy commands, or service
 mutation unless the operator explicitly passes `--execute`.
@@ -58,7 +76,11 @@ The first install creates:
 - `/etc/hanaagent/`
 - `/etc/systemd/system/hanaagent.service`
 
-`/usr/local/bin/install-server` should be a small stable shim that executes the versioned implementation under `/opt/hanaagent/install/`. Upgrading HanaAgent may replace the implementation, but the shim path remains stable.
+`/usr/local/bin/install-server` is a small stable shim that executes the
+implementation under `/opt/hanaagent/install/`. Runtime-only `install-server
+upgrade` does not replace that implementation. The bootstrap refreshes the CLI
+and its same-ref dependency closure before optionally forwarding an attended
+`install` or `upgrade --execute`; the shim path remains stable.
 
 Minimum command surface:
 
@@ -191,13 +213,13 @@ target from the GitHub releases API:
 
 ```sh
 # latest stable (auto-resolved from karlorz/openhanako)
-node scripts/install-server.mjs upgrade --current-version v0.346.18-karlorz.1 --dry-run
+node scripts/install-server.mjs upgrade --current-version v0.346.18-karlorz.6 --dry-run
 # pinned fork release tag
-node scripts/install-server.mjs upgrade --version v0.349.5-karlorz.1 --channel prerelease --current-version v0.346.18-karlorz.1 --dry-run
+node scripts/install-server.mjs upgrade --version v0.407.15-karlorz.6 --channel prerelease --current-version v0.346.18-karlorz.6 --dry-run
 # apply
-node scripts/install-server.mjs upgrade --version v0.349.5-karlorz.1 --channel prerelease --current-version v0.346.18-karlorz.1 --execute
+node scripts/install-server.mjs upgrade --version v0.407.15-karlorz.6 --channel prerelease --current-version v0.346.18-karlorz.6 --execute
 # explicit metadata still accepted (skips the GitHub fetch)
-node scripts/install-server.mjs upgrade --metadata release.json --current-version v0.346.18-karlorz.1 --execute
+node scripts/install-server.mjs upgrade --metadata release.json --current-version v0.346.18-karlorz.6 --execute
 ```
 
 `--current-version` is required unless `/opt/hanaagent/current` resolves a
@@ -207,12 +229,31 @@ Releases does not expose asset sha256, so the download step fetches the
 `<asset>.sha256` sidecar published alongside each server bundle and verifies
 the archive against it before extraction.
 
-Current verified pinned example: `v0.349.5-karlorz.1` was published by
-GitHub Actions run `28586662807` with all required desktop installers, update
-metadata, and server bundles. The workflow publishes fork tags as prereleases
-by default, so unattended "latest stable" resolution may skip that tag until
-an operator explicitly promotes it; use `--version` with `--channel prerelease`
-to pin it.
+Current verified pinned example: `v0.407.15-karlorz.6` was published by
+GitHub Actions run `29688911528` as a `legacy-raw` prerelease with 20 audited
+assets: independently installable desktop packages, five standalone server
+bundles with SHA-256 sidecars, the compatibility manifest, the immutable
+release-profile marker, and `release-digest.v1.json`. It intentionally has no
+updater metadata or signed-only train/mirror assets. The workflow publishes
+fork tags as prereleases by default, so unattended "latest stable" resolution
+may skip that tag; use `--version v0.407.15-karlorz.6 --channel prerelease` to
+pin it.
+
+The immutable `.6` tag predates the dependency-complete bootstrap revision.
+During the `.6` sg01 closeout, the reviewed post-release bootstrap was staged
+temporarily while still fetching `install-server.mjs` and all six shared
+dependencies from the exact `.6` tag. The corrected bootstrap now lives on
+`dev`, detects whether a ref's installer needs the shared modules, and must be
+included in the next fork tag; do not move or rewrite `.6`.
+
+The historical `v0.357.17-karlorz.1` install path did not require the newer
+Hana Ed25519 seed key: its server archive was a standalone runtime verified by
+its SHA-256 sidecar, while the local macOS install copied the app and ran the
+recursive ad-hoc `scripts/sign-local.cjs` fallback. Those are separate from
+Apple Developer ID credentials and from release-digest API keys. The current
+legacy-raw profile preserves that installability explicitly: the complete
+`HanaAgent.app` is ad-hoc signed and resource-sealed, while its DMG and ZIP
+containers remain unsigned and unnotarized when Apple credentials are absent.
 
 When upgrading a host with an existing `hanaagent.service`, the executable
 upgrade preserves the unit's `User=`, `Group=`, and `HANA_*` environment
@@ -258,9 +299,9 @@ Fresh install resolution uses the same GitHub release API path as upgrade:
 # latest stable from karlorz/openhanako
 install-server install --dry-run
 # pinned fork prerelease tag
-install-server install --version v0.349.5-karlorz.1 --channel prerelease --dry-run
+install-server install --version v0.407.15-karlorz.6 --channel prerelease --dry-run
 # apply on a fresh host
-install-server install --version v0.349.5-karlorz.1 --channel prerelease --execute
+install-server install --version v0.407.15-karlorz.6 --channel prerelease --execute
 ```
 
 Upgrade sequence:
@@ -306,6 +347,11 @@ network request:
 ```bash
 install-server status --json
 ```
+
+If an older durable CLI rejects `--json` or `--check-updates`, refresh it with
+the first tag- or commit-pinned `--install-cli-only` bootstrap form in this
+document before using status. A direct runtime upgrade does not self-update the
+durable CLI.
 
 To explicitly check the fork's published server releases and include update
 evidence, use:
@@ -400,6 +446,7 @@ Before implementation starts:
 - Unit-test upgrade rollback when health verification fails.
 - Unit-test generated systemd unit content.
 - Unit-test durable `/usr/local/bin/install-server` shim installation.
-- Unit-test bootstrap script root/non-root/sudo behavior by static contract and shell lint where available.
+- Unit-test bootstrap script root/non-root/sudo behavior, conditional same-ref
+  status dependency closure detection, and shell lint where available.
 - Integration-test install/upgrade in a disposable Linux container or VM.
 - Verify that the old sg01 SSH deploy helper is not invoked by the new flow.

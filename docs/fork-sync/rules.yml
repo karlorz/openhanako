@@ -62,6 +62,7 @@ conflictRules:
     - scripts/electron-builder-config.cjs
     - scripts/electron-builder.config.cjs
     - scripts/install-server.mjs
+    - scripts/install-server-bootstrap.sh
     - scripts/pack-server-bundle.mjs
     - scripts/hana-desktop-smoke-helper.mjs
     - scripts/write-local-build-info.mjs
@@ -330,6 +331,27 @@ conflictRules:
       strategy: preserve-both
       resolution: Preserve fork asset naming, compatibility manifest publication, digest/history generation, and the single resolved release-profile output while retaining upstream CI changes.
       plannedAction: Tag pushes and attended local commands resolve auto to signed only with validated Ed25519 material and otherwise to legacy-raw. Preserve the immutable release-profile marker, raw updater/train/mirror exclusions, and runtime-only standalone bundles.
+      macosNoCertificateFallback:
+        trigger: missing Apple Developer ID credentials
+        signingDomain: Apple Developer ID
+        unrelatedInputs:
+          - HANA_SIGN_KEY
+          - HANA_SIGN_KEY_PEM
+        credentialInputs:
+          - CSC_LINK
+          - CSC_KEY_PASSWORD
+        activationCondition: any-input-blank
+        environment:
+          - SKIP_NOTARIZE=true
+        electronBuilderFlags:
+          - "-c.mac.identity=-"
+          - "-c.mac.hardenedRuntime=false"
+        verification:
+          command: "codesign --verify --deep --strict --verbose=2"
+          requireResourceSeal: true
+          beforeArtifactUploads:
+            - signed
+            - legacy-raw
     shared/release-profile.cjs:
       class: release_profile_policy
       risk: high
