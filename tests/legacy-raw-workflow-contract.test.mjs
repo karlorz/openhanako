@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import YAML from "yaml";
 
 const rootDir = process.cwd();
 const workflowPath = path.join(rootDir, ".github", "workflows", "build.yml");
@@ -81,6 +82,18 @@ describe("legacy-raw release workflow contract", () => {
     expect(build).toContain("always()");
     expect(build).toContain("needs.renderer-box.result");
     expect(build).toContain("legacy-raw");
+  });
+
+  it("lets a raw release continue past the intentionally skipped renderer job", () => {
+    const workflow = YAML.parse(readWorkflow());
+    const condition = workflow.jobs.release.if.replace(/\s+/g, " ").trim();
+
+    expect(condition).toBe(
+      "always() && !cancelled() && startsWith(github.ref, 'refs/tags/v') && " +
+      "needs.resolve-release-profile.result == 'success' && " +
+      "needs.build.result == 'success' && " +
+      "needs.server-bundles.result == 'success'",
+    );
   });
 
   it("materializes signing material and shared renderer inputs only for signed packages", () => {
