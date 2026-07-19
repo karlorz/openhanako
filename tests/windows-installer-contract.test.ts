@@ -37,6 +37,14 @@ describe("Windows NSIS installer contract", () => {
     expect(source).toContain('RMDir /r "$INSTDIR\\resources\\server"');
   });
 
+  it("removes stale signed seed resources when overlaying a legacy raw install", () => {
+    const source = fs.readFileSync(path.join(root, "build", "installer.nsh"), "utf-8");
+    const macro = extractMacro(source, "hanakoRemoveOwnedInstallTrees");
+
+    expect(macro).toContain('RMDir /r "$INSTDIR\\resources\\server"');
+    expect(macro).toContain('RMDir /r "$INSTDIR\\resources\\seed"');
+  });
+
   it("removes legacy unpacked Electron app directories before overlaying new files", () => {
     const source = fs.readFileSync(path.join(root, "build", "installer.nsh"), "utf-8");
     const macro = extractMacro(source, "hanakoRemoveOwnedInstallTrees");
@@ -163,6 +171,33 @@ describe("Windows NSIS installer contract", () => {
     expect(verify).toContain('$INSTDIR\\resources\\git\\usr\\bin\\sh.exe');
     expect(verify).toContain('MessageBox MB_OK|MB_ICONSTOP');
     expect(verify).toContain('Quit');
+  });
+
+  it("ships a profile-specific NSIS entrypoint for legacy raw packages", () => {
+    const entrypoint = fs.readFileSync(path.join(root, "build", "installer-legacy-raw.nsh"), "utf-8");
+    expect(entrypoint).toContain("HANA_RELEASE_PROFILE_LEGACY_RAW");
+    expect(entrypoint).toContain('!include "installer.nsh"');
+  });
+
+  it("keeps signed checks isolated while validating the complete legacy raw surface", () => {
+    const source = fs.readFileSync(path.join(root, "build", "installer.nsh"), "utf-8");
+    const verify = extractMacro(source, "hanakoVerifyInstallSurface");
+    const rawStart = verify.indexOf("!ifdef HANA_RELEASE_PROFILE_LEGACY_RAW");
+    const rawEnd = verify.indexOf("!else", rawStart);
+    const raw = verify.slice(rawStart, rawEnd);
+    const signed = verify.slice(rawEnd);
+
+    expect(rawStart).toBeGreaterThanOrEqual(0);
+    expect(raw).toContain("hanakoRequireLegacyRawBuildInfo");
+    expect(raw).toContain('$INSTDIR\\resources\\server\\hana-server.exe');
+    expect(raw).toContain('$INSTDIR\\resources\\server\\bootstrap.js');
+    expect(raw).toContain('$INSTDIR\\resources\\server\\bundle\\index.js');
+    expect(raw).toContain('$INSTDIR\\resources\\server\\server-build-info.json');
+    expect(raw).toContain('$INSTDIR\\resources\\server\\desktop\\dist-renderer\\mobile.html');
+    expect(verify).toContain('$INSTDIR\\resources\\git\\cmd\\git.exe');
+    expect(verify).toContain('$INSTDIR\\resources\\git\\usr\\bin\\sh.exe');
+    expect(signed).toContain('$INSTDIR\\resources\\seed\\seed-train.json');
+    expect(signed).toContain('$INSTDIR\\resources\\seed\\seed-train.json.sig');
   });
 
   it("resolves seed archive wildcards through FindFirst/FindClose without hardcoding a version", () => {

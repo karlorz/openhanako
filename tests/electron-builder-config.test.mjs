@@ -13,6 +13,7 @@ function baseConfig() {
       { from: "dist-server-artifact/${os}-${arch}/", to: "seed/" },
       { from: "desktop/src/assets/", to: "assets/" },
     ],
+    nsis: { include: "build/installer.nsh" },
     mac: { artifactName: "${productName}-${version}-macOS-${arch}.${ext}" },
     win: { artifactName: "${productName}-${version}-Windows-${arch}.${ext}" },
     linux: { artifactName: "${productName}-${version}-Linux-${arch}.${ext}" },
@@ -34,6 +35,7 @@ describe("electron-builder release profile config", () => {
       to: "server/",
     });
     expect(config.extraResources).not.toContainEqual(expect.objectContaining({ to: "seed/" }));
+    expect(config.nsis.include).toBe("build/installer-legacy-raw.nsh");
     expect(config.mac.artifactName).toContain("-legacy-raw.");
     expect(config.win.artifactName).toContain("-legacy-raw.");
     expect(config.linux.artifactName).toContain("-legacy-raw.");

@@ -2,6 +2,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { createRequire } from "module";
+import { createPackage } from "@electron/asar";
 import { afterEach, describe, expect, it } from "vitest";
 
 const require = createRequire(import.meta.url);
@@ -121,9 +122,10 @@ describe("fix-modules legacy raw resources assertion", () => {
     writeFile(resourcesDir, "server/bootstrap.js", "// bootstrap\n");
     writeFile(resourcesDir, "server/bundle/index.js", "// server\n");
     writeFile(resourcesDir, "server/server-build-info.json", JSON.stringify({ runtimeVersion: "0.407.15" }));
+    writeFile(resourcesDir, "server/desktop/dist-renderer/mobile.html", "<!doctype html>");
     writeFile(resourcesDir, "app/desktop/dist-renderer/index.html", "<!doctype html>");
 
-    expect(() => assertRawResourcesReady(resourcesDir, { appDir: path.join(resourcesDir, "app") })).not.toThrow();
+    expect(() => assertRawResourcesReady(resourcesDir, { appDir: path.join(resourcesDir, "app"), allowUnpackedApp: true })).not.toThrow();
   });
 
   it("rejects a raw package without the renderer marker", () => {
@@ -133,12 +135,13 @@ describe("fix-modules legacy raw resources assertion", () => {
     writeFile(resourcesDir, "server/bootstrap.js", "// bootstrap\n");
     writeFile(resourcesDir, "server/bundle/index.js", "// server\n");
     writeFile(resourcesDir, "server/server-build-info.json", JSON.stringify({ runtimeVersion: "0.407.15" }));
+    writeFile(resourcesDir, "server/desktop/dist-renderer/mobile.html", "<!doctype html>");
 
-    expect(() => assertRawResourcesReady(resourcesDir, { appDir: path.join(resourcesDir, "app") }))
+    expect(() => assertRawResourcesReady(resourcesDir, { appDir: path.join(resourcesDir, "app"), allowUnpackedApp: true }))
       .toThrow(/renderer/i);
   });
 
-  it("accepts the source renderer marker when afterPack has already produced app.asar", () => {
+  it("rejects an app.asar missing the renderer even when the source renderer exists", async () => {
     const resourcesDir = makeTempDir();
     const sourceRendererDir = path.join(resourcesDir, "source-renderer");
     writeFile(resourcesDir, "server/hana-server", "#!/bin/sh\n");
@@ -146,12 +149,27 @@ describe("fix-modules legacy raw resources assertion", () => {
     writeFile(resourcesDir, "server/bootstrap.js", "// bootstrap\n");
     writeFile(resourcesDir, "server/bundle/index.js", "// server\n");
     writeFile(resourcesDir, "server/server-build-info.json", JSON.stringify({ runtimeVersion: "0.407.15" }));
+    writeFile(resourcesDir, "server/desktop/dist-renderer/mobile.html", "<!doctype html>");
     writeFile(sourceRendererDir, "index.html", "<!doctype html>");
+    const asarSource = path.join(resourcesDir, "asar-source");
+    writeFile(asarSource, "desktop/bootstrap.cjs", "module.exports = {};");
+    await createPackage(asarSource, path.join(resourcesDir, "app.asar"));
 
-    expect(() => assertRawResourcesReady(resourcesDir, {
-      appDir: path.join(resourcesDir, "missing-app-directory"),
-      sourceRendererDir,
-    })).not.toThrow();
+    expect(() => assertRawResourcesReady(resourcesDir))
+      .toThrow(/app\.asar.*desktop[/\\]dist-renderer[/\\]index\.html/i);
+  });
+
+  it("rejects a raw package when the standalone server renderer copy is missing", () => {
+    const resourcesDir = makeTempDir();
+    writeFile(resourcesDir, "server/hana-server", "#!/bin/sh\n");
+    writeFile(resourcesDir, "server/node", "node\n");
+    writeFile(resourcesDir, "server/bootstrap.js", "// bootstrap\n");
+    writeFile(resourcesDir, "server/bundle/index.js", "// server\n");
+    writeFile(resourcesDir, "server/server-build-info.json", JSON.stringify({ runtimeVersion: "0.407.15" }));
+    writeFile(resourcesDir, "app/desktop/dist-renderer/index.html", "<!doctype html>");
+
+    expect(() => assertRawResourcesReady(resourcesDir, { appDir: path.join(resourcesDir, "app"), allowUnpackedApp: true }))
+      .toThrow(/mobile\.html/i);
   });
 });
 
