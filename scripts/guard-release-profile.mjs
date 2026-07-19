@@ -5,10 +5,10 @@ import { pathToFileURL } from "node:url";
 const require = createRequire(import.meta.url);
 const { normalizeReleaseProfile } = require("../shared/release-profile.cjs");
 
-const MARKER_PREFIX = ".hana-release-profile-";
+const MARKER_PREFIX = "hana-release-profile-";
 
 export function releaseProfileMarkerName(profile) {
-  return `${MARKER_PREFIX}${normalizeReleaseProfile(profile)}`;
+  return `${MARKER_PREFIX}${normalizeReleaseProfile(profile)}.json`;
 }
 
 export function assertReleaseProfileCompatibility({ requested, assetNames = [] }) {
