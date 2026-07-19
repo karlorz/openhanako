@@ -13,6 +13,16 @@ export interface ResourceUrlPlatform {
   getFileUrl?: (path: string) => string;
 }
 
+/**
+ * Resolve a FileRef to a display URL.
+ *
+ * Fork LAN transport invariant (retain): native file:// is only for true local
+ * owner connections (loopback + loopback_token). LAN device-credential and
+ * custom_remote connections use HTTP resource content URLs, including a
+ * synthetic `/api/resources/res_<sf_*>/content` path when older session rows
+ * only carry fileId. Do not switch this to owner-only local transport checks
+ * from upstream — that breaks remote preview after chat switch.
+ */
 export function resolveFileRefUrl(ref: FileRef, {
   connection,
   platform,
@@ -22,6 +32,8 @@ export function resolveFileRefUrl(ref: FileRef, {
   platform?: ResourceUrlPlatform | null;
   preferLocalFile?: boolean;
 }): FileRefUrlResult {
+  // canUseNativeResourcePath → isLocalOwnerConnection (loopback owner only).
+  // LAN device credentials intentionally fail this check so resource URLs win.
   const canUseNativePath = canUseNativeResourcePath({ connection });
   const isRemoteResourceOwner = !!connection && !canUseNativePath && connection.kind !== 'local';
   const getFileUrl = platform?.getFileUrl;

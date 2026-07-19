@@ -9,6 +9,7 @@ migrationContracts:
     forkPaths:
       - desktop/main.cjs
       - desktop/preload.cjs
+      - desktop/src/shared/connect-probe.cjs
       - desktop/src/modules/connection-csp.js
       - desktop/src/react/services/server-connection.ts
     upstreamPaths:
@@ -16,9 +17,12 @@ migrationContracts:
       - desktop/preload.cjs
       - desktop/src/react/services/server-connection.ts
     preliminaryDisposition: retain
+    implementationStatus: isolated-probe-module-2026-07-20
     activationGate: next-stable-only
     focusedTests:
       - tests/csp-sync.test.ts
+      - tests/connect-probe.test.mjs
+      - tests/desktop-network-security-contract.test.ts
       - desktop/src/react/__tests__/services/server-connection.test.ts
     liveSmoke:
       - first LAN connect succeeds without a localStorage workaround
@@ -32,6 +36,7 @@ migrationContracts:
     forkPaths:
       - core/server-auth.ts
       - desktop/src/react/services/server-connection.ts
+      - desktop/src/react/services/websocket.ts
       - server/routes/ws-auth.ts
       - server/http/route-security.ts
     upstreamPaths:
@@ -40,6 +45,13 @@ migrationContracts:
       - server/routes/ws-auth.ts
       - server/http/route-security.ts
     preliminaryDisposition: adapt
+    implementationStatus: ticket-primary-lan-2026-07-20
+    notes: >
+      Client prefers POST /api/ws-ticket for non-loopback (including first connect
+      before assessment). Long-lived LAN query-token remains gated fallback only
+      when the ticket surface fails or the complete assessment declares the
+      websocket.ticket contract missing. Resource HTTP URLs may still use token
+      query via canUseQueryToken; WS happy path must not embed hana_dev tokens.
     activationGate: next-stable-only
     focusedTests:
       - tests/server-auth.test.ts
@@ -50,7 +62,7 @@ migrationContracts:
       - ticket-authenticated LAN WebSocket opens without embedding long-lived credentials in the URL
       - reconnect after ticket expiry re-acquires a fresh ticket
     stopConditions:
-      - non-loopback WebSocket URL retains a long-lived device credential
+      - non-loopback WebSocket URL retains a long-lived device credential on ticket-ready servers
       - /api/ws-ticket is unavailable and no compatible auth path remains
 
   - id: remote-recovery-credentials
@@ -149,6 +161,7 @@ migrationContracts:
       - desktop/src/react/services/resource-url.ts
       - server/routes/upload.ts
     preliminaryDisposition: retain
+    implementationStatus: lan-transport-invariant-documented-2026-07-20
     activationGate: next-stable-only
     focusedTests:
       - desktop/src/react/__tests__/components/InputArea.media-send.test.tsx
