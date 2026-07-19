@@ -461,7 +461,15 @@ jobs:
 
   release:
     needs: [resolve-release-profile, build, server-bundles]
-    if: startsWith(github.ref, 'refs/tags/v')
+    # `build` deliberately tolerates the signed-only renderer-box job being
+    # skipped for legacy-raw. Use always() here as well so GitHub does not
+    # propagate that skipped transitive dependency into this release job, then
+    # explicitly require every direct prerequisite to have succeeded.
+    if: >-
+      always() && !cancelled() && startsWith(github.ref, 'refs/tags/v') &&
+      needs.resolve-release-profile.result == 'success' &&
+      needs.build.result == 'success' &&
+      needs.server-bundles.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write
