@@ -26,6 +26,13 @@ function job(source, name) {
 }
 
 describe("legacy-raw release workflow contract", () => {
+  it("serializes release runs for the same ref without cancelling the earlier guard", () => {
+    const workflow = readWorkflow();
+
+    expect(workflow).toMatch(/concurrency:\s*\n\s+group:\s*\$\{\{\s*github\.workflow\s*\}\}-\$\{\{\s*github\.ref\s*\}\}/);
+    expect(workflow).toMatch(/concurrency:[\s\S]{0,180}cancel-in-progress:\s*false/);
+  });
+
   it("uses automatic raw fallback for tag pushes", () => {
     const workflow = readWorkflow();
 

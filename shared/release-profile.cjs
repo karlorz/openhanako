@@ -81,6 +81,18 @@ function resolveRequestedReleaseProfile({ requested = AUTO_PROFILE, keyState }) 
     : { profile: LEGACY_RAW_PROFILE, reason: "auto-no-signing-key" };
 }
 
+function resolveReleaseProfileFromEnv({
+  requested = AUTO_PROFILE,
+  env = process.env,
+  fs = require("fs"),
+} = {}) {
+  const normalizedRequest = normalizeReleaseProfileRequest(requested);
+  const keyState = normalizedRequest === LEGACY_RAW_PROFILE
+    ? "absent"
+    : inspectSigningKeyState(env, fs);
+  return resolveRequestedReleaseProfile({ requested: normalizedRequest, keyState });
+}
+
 function resolveServerBuildMode(env = process.env) {
   const explicit = typeof env?.HANA_SERVER_BUILD_MODE === "string"
     ? env.HANA_SERVER_BUILD_MODE.trim().toLowerCase()
@@ -112,6 +124,7 @@ module.exports = {
   inspectSigningKeyState,
   normalizeReleaseProfile,
   normalizeReleaseProfileRequest,
+  resolveReleaseProfileFromEnv,
   resolveRequestedReleaseProfile,
   resolveServerBuildMode,
 };

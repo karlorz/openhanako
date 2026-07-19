@@ -5,9 +5,8 @@ const path = require("path");
 const {
   LEGACY_RAW_PROFILE,
   SIGNED_PROFILE,
-  artifactUpdatesEnabledForProfile,
-  normalizeReleaseProfile,
 } = require("../../../shared/release-profile.cjs");
+const { normalizeBuildInfo } = require("./build-info.cjs");
 
 const RAW_SERVER_REQUIRED_FILES = [
   "bootstrap.js",
@@ -52,14 +51,9 @@ function readObject(fsImpl, filePath) {
 
 function normalizeBuildMetadata(buildInfo) {
   const value = buildInfo && typeof buildInfo === "object" ? buildInfo : {};
-  const releaseProfile = normalizeReleaseProfile(value.releaseProfile);
   return {
     ...value,
-    releaseProfile,
-    artifactUpdatesEnabled: artifactUpdatesEnabledForProfile(
-      releaseProfile,
-      value.artifactUpdatesEnabled !== false && value.updateEnabled !== false,
-    ) && value.artifactUpdatesEnabled !== false,
+    ...normalizeBuildInfo(value),
   };
 }
 
