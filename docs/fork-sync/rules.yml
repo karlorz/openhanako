@@ -58,6 +58,8 @@ conflictRules:
     - tests/desktop-network-security-contract.test.ts
     - tests/connect-probe.test.mjs
     - desktop/src/shared/connect-probe.cjs
+    - desktop/src/shared/packaged-artifact-boot.cjs
+    - tests/packaged-artifact-boot.test.mjs
     - docs/fork-sync/rules.yml
     - docs/server-install.md
     - docs/reinit-data-failsafe.md
