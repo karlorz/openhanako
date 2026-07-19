@@ -87,9 +87,7 @@ function resolveReleaseProfileFromEnv({
   fs = require("fs"),
 } = {}) {
   const normalizedRequest = normalizeReleaseProfileRequest(requested);
-  const keyState = normalizedRequest === LEGACY_RAW_PROFILE
-    ? "absent"
-    : inspectSigningKeyState(env, fs);
+  const keyState = inspectSigningKeyState(env, fs);
   return resolveRequestedReleaseProfile({ requested: normalizedRequest, keyState });
 }
 
