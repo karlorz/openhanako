@@ -210,3 +210,44 @@ migrationContracts:
     stopConditions:
       - installed desktop version differs from package.json or build-info.json
       - local builds enable updater behavior
+
+  - id: legacy-raw-release-profile
+    surface: explicit signed and legacy-raw desktop release packaging policy
+    forkPaths:
+      - shared/release-profile.cjs
+      - scripts/resolve-release-profile.mjs
+      - scripts/release-desktop-with-profile.mjs
+      - scripts/prepare-desktop-package.mjs
+      - scripts/guard-release-profile.mjs
+      - scripts/fix-modules.cjs
+      - scripts/electron-builder-config.cjs
+      - build/installer-legacy-raw.nsh
+      - .github/workflows/build.yml
+    upstreamPaths:
+      - .github/workflows/build.yml
+      - scripts/build-server.mjs
+      - shared/artifact-core
+    preliminaryDisposition: retain
+    activationGate: attended-fork-release-only
+    focusedTests:
+      - tests/release-profile.test.mjs
+      - tests/resolve-release-profile.test.mjs
+      - tests/release-desktop-with-profile.test.mjs
+      - tests/prepare-desktop-package.test.mjs
+      - tests/release-profile-guard.test.mjs
+      - tests/legacy-raw-workflow-contract.test.mjs
+      - tests/fix-modules-server-deps.test.ts
+      - tests/pack-server-bundle.test.mjs
+      - tests/release-mirror-workflow.test.ts
+    liveSmoke:
+      - manual auto resolves to signed only with usable signing material
+      - a tag push with blank signing inputs resolves to a marked legacy-raw release
+      - a same-profile rerun is accepted and an opposite-profile rerun is rejected before upload
+      - a legacy-raw installer marks its profile and has no updater or train surface
+      - standalone server bundles remain installable through scripts/install-server.mjs
+    stopConditions:
+      - a tag push without signing material cannot use the legacy-raw fallback
+      - a configured unreadable signing key is treated as absent
+      - auto reaches package metadata or a downstream publish job
+      - a release can contain both signed and legacy-raw desktop installers
+      - legacy-raw release uploads updater, train, or mirror assets
