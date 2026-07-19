@@ -268,6 +268,12 @@ function extractResponseText(payload, backend = DEFAULT_BACKEND) {
   throw new Error("Responses provider response did not include text output");
 }
 
+function parseProviderDigestText(text) {
+  const trimmed = text.trim();
+  const fenced = trimmed.match(/^```(?:json)?\s*\n([\s\S]*?)\n```$/i);
+  return JSON.parse(fenced ? fenced[1].trim() : trimmed);
+}
+
 export async function generateDigestWithProvider(source, {
   env = process.env,
   fetchImpl = fetch,
@@ -336,7 +342,7 @@ export async function generateDigestWithProvider(source, {
 
   const payload = await response.json();
   const text = extractResponseText(payload, config.backend);
-  const digest = JSON.parse(text);
+  const digest = parseProviderDigestText(text);
   assertValidReleaseDigest(digest);
   return digest;
 }
