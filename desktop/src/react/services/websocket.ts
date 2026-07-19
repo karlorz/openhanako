@@ -20,7 +20,6 @@ import {
   buildConnectionWsUrl,
   createLocalServerConnection,
   isLocalOwnerConnection,
-  requestConnectionWsTicket,
   resolveConnectionWsAuth,
   type ConnectionWsAuth,
   resolveServerConnection,
@@ -117,21 +116,10 @@ async function openConnectionWebSocket(connection: ServerConnection): Promise<vo
     });
     useStore.setState({ remoteServerAssessment: assessment });
   }
-  // Before the first remote assessment completes, keep LAN startup available
-  // through the known legacy query-token path.
-  let auth;
-  if (assessment) {
-    auth = await resolveConnectionWsAuth(connection, assessment);
-  } else if (connection.kind === 'lan') {
-    auth = { mode: 'legacy-query-token' as const, ticket: null, warningCode: 'legacy_websocket_query_token' as const };
-  } else {
-    const wsTicket = await requestConnectionWsTicket(connection);
-    auth = wsTicket
-      ? { mode: 'ticket' as const, ticket: wsTicket, warningCode: null }
-      : (isLocalOwnerConnection(connection)
-        ? { mode: 'local-query-token' as const, ticket: null, warningCode: null }
-        : { mode: 'unsupported' as const, ticket: null, warningCode: 'websocket_ticket_required' as const });
-  }
+  // Ticket-primary for non-loopback (including first connect before assessment):
+  // resolveConnectionWsAuth tries POST /api/ws-ticket first and only falls back
+  // to the gated LAN long-lived query-token path when the ticket surface fails.
+  const auth = await resolveConnectionWsAuth(connection, assessment);
   if (auth.mode === 'unsupported') throw new Error(auth.warningCode);
 
   if (auth.mode === 'legacy-query-token') {
