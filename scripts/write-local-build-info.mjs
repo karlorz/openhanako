@@ -3,6 +3,10 @@ import fs from "fs";
 import path from "path";
 import { execFileSync } from "child_process";
 import { fileURLToPath, pathToFileURL } from "url";
+import { createRequire } from "module";
+
+const require = createRequire(import.meta.url);
+const { LEGACY_RAW_PROFILE, normalizeReleaseProfile } = require("../shared/release-profile.cjs");
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -32,7 +36,7 @@ export function createLocalBuildInfo({
   execFileSyncImpl = execFileSync,
 } = {}) {
   const gitSha = env.HANA_LOCAL_BUILD_SHA
-    || gitOutput(["rev-parse", "--short=12", "HEAD"], { rootDir, execFileSyncImpl });
+    || gitOutput(["rev-parse", "HEAD"], { rootDir, execFileSyncImpl });
   const baseTag = env.HANA_LOCAL_BUILD_BASE_TAG
     || gitOutput(["describe", "--tags", "--abbrev=0", "--match", "v[0-9]*", "HEAD"], { rootDir, execFileSyncImpl });
   const dirtyOutput = gitOutput(["status", "--porcelain"], { rootDir, execFileSyncImpl });
@@ -43,9 +47,12 @@ export function createLocalBuildInfo({
     sourceRepo: env.HANA_LOCAL_BUILD_SOURCE_REPO || "karlorz/openhanako",
     gitSha,
     baseTag,
+    releaseTag: env.HANA_LOCAL_RELEASE_TAG || null,
     dirty: dirtyOutput === null ? null : dirtyOutput.length > 0,
+    releaseProfile: normalizeReleaseProfile(env.HANA_RELEASE_PROFILE),
     updateEnabled: false,
-    signatureKind: "adhoc",
+    artifactUpdatesEnabled: false,
+    signatureKind: normalizeReleaseProfile(env.HANA_RELEASE_PROFILE) === LEGACY_RAW_PROFILE ? "legacy-raw" : "adhoc",
   };
 }
 
