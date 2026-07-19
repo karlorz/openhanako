@@ -146,6 +146,42 @@ describe('resolveFileRefUrl', () => {
     expect(platform.getFileUrl).not.toHaveBeenCalled();
   });
 
+  it('keeps LAN device-credential resource URLs with token query (not owner-only local transport)', () => {
+    const platform = { getFileUrl: vi.fn((p: string) => `file:///mock${p}`) };
+
+    const result = resolveFileRefUrl(fileRef({ version: { mtimeMs: 11, size: 22 } }), {
+      connection: lanDeviceConnection,
+      platform,
+    });
+
+    expect(result.mode).toBe('resource-content');
+    expect(result.url.startsWith('http://100.125.173.118:14500/api/resources/res_sf_asset/content?')).toBe(true);
+    expect(result.url).toMatch(/[?&]token=lan[+%20]token/);
+    expect(result.url).toMatch(/[?&]v=11-22/);
+    expect(platform.getFileUrl).not.toHaveBeenCalled();
+  });
+
+  it('synthesizes session-file resource URLs for LAN device credentials with only fileId', () => {
+    const platform = { getFileUrl: vi.fn((p: string) => `file:///mock${p}`) };
+
+    const result = resolveFileRefUrl(fileRef({
+      fileId: 'sf_uploaded_image',
+      resource: undefined,
+      version: { mtimeMs: 11, size: 22 },
+    }), {
+      connection: lanDeviceConnection,
+      platform,
+    });
+
+    expect(result.mode).toBe('resource-content');
+    expect(result.url.startsWith(
+      'http://100.125.173.118:14500/api/resources/res_sf_uploaded_image/content?',
+    )).toBe(true);
+    expect(result.url).toMatch(/[?&]token=lan[+%20]token/);
+    expect(result.url).toMatch(/[?&]v=11-22/);
+    expect(platform.getFileUrl).not.toHaveBeenCalled();
+  });
+
   it('rejects a custom remote path-only ref that has no resource content link', () => {
     const platform = { getFileUrl: vi.fn((p: string) => `file:///mock${p}`) };
 
