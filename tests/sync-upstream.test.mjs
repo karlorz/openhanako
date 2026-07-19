@@ -349,11 +349,13 @@ describe("sync-upstream rule engine", () => {
         strategy: "human-review",
         source: "policy",
         risk: "critical",
-        plannedAction: expect.stringContaining("connection.kind === 'local'"),
+        plannedAction: expect.stringContaining("canUseNativeResourcePath"),
       }),
     ]);
     expect(plan.conflicts[0].plannedAction).toContain("sf_*");
     expect(plan.conflicts[0].plannedAction).toContain("LAN device-credential");
+    // Must not teach the obsolete kind==='local' transport predicate as the native-path gate.
+    expect(plan.conflicts[0].plannedAction).toMatch(/not a bare `kind === 'local'` check/);
   });
 
   it("parses conflicted files from git merge-tree output", () => {
