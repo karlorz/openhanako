@@ -48,12 +48,20 @@ function parseArgs(argv) {
 function executeDesktopRelease(release, spawn = spawnSync) {
   let tempDir = null;
   try {
-    if (release.profile === "signed" && !release.env.HANA_SIGN_KEY && release.env.HANA_SIGN_KEY_PEM) {
-      tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-sign-key-"));
-      const keyPath = path.join(tempDir, "signing.pem");
-      fs.writeFileSync(keyPath, release.env.HANA_SIGN_KEY_PEM, { mode: 0o600 });
-      fs.chmodSync(keyPath, 0o600);
-      release.env.HANA_SIGN_KEY = keyPath;
+    if (release.profile === "signed") {
+      const explicitKeyPath = typeof release.env.HANA_SIGN_KEY === "string"
+        && release.env.HANA_SIGN_KEY.trim() !== "";
+      const inlinePem = typeof release.env.HANA_SIGN_KEY_PEM === "string"
+        && release.env.HANA_SIGN_KEY_PEM.trim() !== ""
+        ? release.env.HANA_SIGN_KEY_PEM
+        : null;
+      if (!explicitKeyPath && inlinePem) {
+        tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-sign-key-"));
+        const keyPath = path.join(tempDir, "signing.pem");
+        fs.writeFileSync(keyPath, inlinePem, { mode: 0o600 });
+        fs.chmodSync(keyPath, 0o600);
+        release.env.HANA_SIGN_KEY = keyPath;
+      }
       delete release.env.HANA_SIGN_KEY_PEM;
     }
     const child = spawn(release.command, release.args, { env: release.env, stdio: "inherit" });
