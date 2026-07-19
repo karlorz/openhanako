@@ -137,6 +137,25 @@ describe("legacy-raw release workflow contract", () => {
     expect(workflow.indexOf("signAndSmokeTestServerRuntime")).toBeLessThan(packageIndex);
   });
 
+  it("ad-hoc signs and strictly verifies macOS app bundles when Developer ID credentials are absent", () => {
+    const workflow = readWorkflow();
+    const macBuild = section(workflow, "Build macOS (DMG + ZIP)");
+    const verification = section(workflow, "Verify macOS app bundle signatures");
+    const upload = section(workflow, "Upload legacy raw build artifacts");
+
+    expect(macBuild).toContain("-c.mac.identity=-");
+    expect(macBuild).not.toContain("-c.mac.identity=null");
+    expect(verification).toContain("if: runner.os == 'macOS'");
+    expect(verification).toContain("codesign --verify --deep --strict");
+    expect(workflow.indexOf("Verify macOS app bundle signatures")).toBeGreaterThan(
+      workflow.indexOf("Build macOS (DMG + ZIP)"),
+    );
+    expect(workflow.indexOf("Verify macOS app bundle signatures")).toBeLessThan(
+      workflow.indexOf("Upload legacy raw build artifacts"),
+    );
+    expect(upload).not.toBe("");
+  });
+
   it("keeps signed-only train and AtomGit jobs out of raw releases", () => {
     const workflow = readWorkflow();
 
