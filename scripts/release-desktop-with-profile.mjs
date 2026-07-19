@@ -63,6 +63,9 @@ function executeDesktopRelease(release, spawn = spawnSync) {
         release.env.HANA_SIGN_KEY = keyPath;
       }
       delete release.env.HANA_SIGN_KEY_PEM;
+    } else {
+      delete release.env.HANA_SIGN_KEY;
+      delete release.env.HANA_SIGN_KEY_PEM;
     }
     const child = spawn(release.command, release.args, { env: release.env, stdio: "inherit" });
     if (child.error) throw child.error;
