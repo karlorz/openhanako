@@ -36,6 +36,7 @@ const {
   artifactUpdateAvailability,
   resolvePackagedLayout,
 } = require("./src/shared/release-runtime-policy.cjs");
+const { compareExpectedRuntimeBuild } = require("./src/shared/server-reuse-policy.cjs");
 const {
   completeOnboardingAndOpenMain,
   submitOnboardingCompleteIntent,
@@ -1126,7 +1127,7 @@ async function verifyReusableServerInfo(existingInfo) {
     return {
       reusable: false,
       trusted: true,
-      terminate: true,
+      terminate: isDesktopOwnedServerInfo(existingInfo),
       reason: "version mismatch",
       health,
       identity,
@@ -1135,6 +1136,18 @@ async function verifyReusableServerInfo(existingInfo) {
 
   if (existingInfo.studioId && existingInfo.studioId !== identity.studioId) {
     return { reusable: false, trusted: true, terminate: false, reason: "studio identity mismatch", health, identity };
+  }
+
+  const runtimeBuildCheck = compareExpectedRuntimeBuild(readBuildInfo(), identity.runtimeBuild);
+  if (!runtimeBuildCheck.matches) {
+    return {
+      reusable: false,
+      trusted: true,
+      terminate: isDesktopOwnedServerInfo(existingInfo),
+      reason: runtimeBuildCheck.reason,
+      health,
+      identity,
+    };
   }
 
   const desiredNetwork = readDesiredServerNetworkConfig();
