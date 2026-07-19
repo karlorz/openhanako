@@ -85,18 +85,24 @@ describe("resolve-release-profile CLI", () => {
     expect(child.stderr).toMatch(/requires a value/i);
   });
 
-  it("does not inspect a configured local key when legacy raw is explicit", () => {
-    const output = execFileSync(process.execPath, [scriptPath, "--requested", "legacy-raw", "--json"], {
+  it("fails explicit legacy raw for configured but unusable signing material", () => {
+    const missingPath = spawnSync(process.execPath, [scriptPath, "--requested", "legacy-raw", "--json"], {
       cwd: rootDir,
-      env: {
-        ...process.env,
-        HANA_SIGN_KEY_PEM: "",
-        HANA_SIGN_KEY: "/definitely/missing/hana-sign-key.pem",
-      },
+      env: cleanEnv({ HANA_SIGN_KEY: "/definitely/missing/hana-sign-key.pem" }),
+      encoding: "utf8",
+    });
+    const malformedInline = spawnSync(process.execPath, [scriptPath, "--requested", "legacy-raw", "--json"], {
+      cwd: rootDir,
+      env: cleanEnv({ HANA_SIGN_KEY_PEM: "malformed" }),
       encoding: "utf8",
     });
 
-    expect(JSON.parse(output)).toEqual({ profile: "legacy-raw", reason: "explicit-legacy-raw" });
+    expect(missingPath.status).not.toBe(0);
+    expect(missingPath.stderr).toMatch(/HANA_SIGN_KEY/i);
+    expect(malformedInline.status).not.toBe(0);
+    expect(malformedInline.stderr).toMatch(/Ed25519/i);
+    expect(missingPath.stdout).not.toContain("legacy-raw");
+    expect(malformedInline.stdout).not.toContain("legacy-raw");
   });
 
   it("rejects an output option without a file path", () => {

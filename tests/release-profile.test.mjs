@@ -61,10 +61,16 @@ describe("release profile contract", () => {
   it("resolves an environment request through the shared concrete-profile boundary", () => {
     expect(resolveReleaseProfileFromEnv({ requested: AUTO_PROFILE, env: {} }))
       .toEqual({ profile: LEGACY_RAW_PROFILE, reason: "auto-no-signing-key" });
-    expect(resolveReleaseProfileFromEnv({
+    expect(() => resolveReleaseProfileFromEnv({
       requested: LEGACY_RAW_PROFILE,
       env: { HANA_SIGN_KEY: "/definitely/missing/hana-sign-key.pem" },
-    })).toEqual({ profile: LEGACY_RAW_PROFILE, reason: "explicit-legacy-raw" });
+    })).toThrow(/HANA_SIGN_KEY/);
+    expect(() => resolveReleaseProfileFromEnv({
+      requested: LEGACY_RAW_PROFILE,
+      env: { HANA_SIGN_KEY_PEM: "malformed signing material" },
+    })).toThrow(/Ed25519/i);
+    expect(resolveReleaseProfileFromEnv({ requested: LEGACY_RAW_PROFILE, env: {} }))
+      .toEqual({ profile: LEGACY_RAW_PROFILE, reason: "explicit-legacy-raw" });
   });
 
   it("fails closed for an explicit signed request without signing material", () => {
