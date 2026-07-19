@@ -145,12 +145,15 @@ describe("legacy-raw release workflow contract", () => {
     const signedUpload = section(workflow, "Upload signed build artifacts");
     const rawUpload = section(workflow, "Upload legacy raw build artifacts");
 
+    expect(signingSetup).toContain(
+      'if [ -z "${CSC_LINK:-}" ] || [ -z "${CSC_KEY_PASSWORD:-}" ]; then',
+    );
     expect(signingSetup).toContain("SKIP_NOTARIZE=true");
     expect(macBuild).toContain("-c.mac.identity=-");
     expect(macBuild).not.toContain("-c.mac.identity=null");
     expect(macBuild).toContain("-c.mac.hardenedRuntime=false");
     expect(verification).toContain("if: runner.os == 'macOS'");
-    expect(verification).toContain("codesign --verify --deep --strict");
+    expect(verification).toContain("codesign --verify --deep --strict --verbose=2");
     expect(workflow.indexOf("Verify macOS app bundle signatures")).toBeGreaterThan(
       workflow.indexOf("Build macOS (DMG + ZIP)"),
     );
