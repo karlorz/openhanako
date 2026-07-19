@@ -35,14 +35,16 @@ describe("desktop network security contracts", () => {
   });
 
   it("pins connect:probe to non-following fetches so redirects cannot expand its network boundary", () => {
-    const source = fs.readFileSync(path.join(root, "desktop", "main.cjs"), "utf8");
-    const handlerIndex = source.indexOf('wrapIpcHandler("connect:probe"');
-    const handlerEnd = source.indexOf("// ── 窗口控制 IPC", handlerIndex);
-    const handler = source.slice(handlerIndex, handlerEnd);
-
-    expect(handlerIndex).toBeGreaterThan(-1);
-    expect(handler).toContain('redirect: "manual"');
-    expect(handler).toMatch(/status\s*>=\s*300/);
-    expect(handler).toMatch(/status\s*<\s*400/);
+    const main = fs.readFileSync(path.join(root, "desktop", "main.cjs"), "utf8");
+    const probeModule = fs.readFileSync(
+      path.join(root, "desktop", "src", "shared", "connect-probe.cjs"),
+      "utf8",
+    );
+    // Registration stays in main; redirect/SSRF policy lives in the isolated module.
+    expect(main).toContain('wrapIpcHandler("connect:probe"');
+    expect(main).toContain("createConnectProbeHandler");
+    expect(probeModule).toContain('redirect: "manual"');
+    expect(probeModule).toMatch(/status\s*>=\s*300/);
+    expect(probeModule).toMatch(/status\s*<\s*400/);
   });
 });
