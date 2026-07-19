@@ -33,6 +33,13 @@ function compareExpectedRuntimeBuild(expected, actual) {
     };
   }
 
+  if (expectedTag && expectedSha && !FULL_GIT_SHA_RE.test(expectedSha)) {
+    return {
+      matches: false,
+      reason: `invalid expected runtime git SHA: ${expectedSha}`,
+    };
+  }
+
   if (FULL_GIT_SHA_RE.test(expectedSha || "")) {
     const actualSha = nonEmptyString(actualObject.gitSha);
     if (!actualSha) {
