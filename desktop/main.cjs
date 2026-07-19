@@ -34,6 +34,15 @@ const { createConnectProbeHandler } = require("./src/shared/connect-probe.cjs");
 const themeRegistry = require('./src/shared/theme-registry.cjs');
 const { readBuildInfo } = require("./src/shared/build-info.cjs");
 const {
+  artifactUpdateAvailability,
+  resolvePackagedLayout,
+} = require("./src/shared/release-runtime-policy.cjs");
+const {
+  planPackagedArtifactBoot,
+  buildSignedPackagedBootResult,
+} = require("./src/shared/packaged-artifact-boot.cjs");
+const { compareExpectedRuntimeBuild } = require("./src/shared/server-reuse-policy.cjs");
+const {
   completeOnboardingAndOpenMain,
   submitOnboardingCompleteIntent,
 } = require("./src/shared/onboarding-completion.cjs");
@@ -328,9 +337,6 @@ if (!gpuStartupPolicy.hardwareAccelerationEnabled) {
   console.warn(`[desktop] GPU safe mode enabled (${gpuStartupPolicy.reason}); hardware acceleration disabled for this launch`);
 }
 const desktopStartupId = `${Date.now()}-${process.pid}`;
-// 壳身份用途：启动诊断记录"哪个壳进程在跑"，不是"用户在用哪个内容版本"——
-// 此处语义是壳版本，不经 getCurrentContentVersion()（该访问器此时也还没
-// 被赋值：resolvePackagedArtifactBoot 在启动流程里晚于这里执行）。
 const desktopLaunchDiagnostics = createDesktopLaunchDiagnostics({
   hanakoHome,
   startupId: desktopStartupId,
@@ -971,6 +977,19 @@ const { resolvePostUpdateAnnouncement, coerceDigestHistory, sliceDigestHistory, 
 // / 停 server / 重新 spawn / 重载窗口）仍然全部走本文件已有的基础设施。
 const trainUpdateApply = require("./src/shared/train-update-apply.cjs");
 
+function getArtifactUpdateAvailability() {
+  if (!app.isPackaged) {
+    // Keep the explicit HANA_ARTIFACT_MANIFEST rehearsal path usable in dev.
+    // Ordinary source runs remain disabled, while tests/operators that opt in
+    // to the existing artifact OTA harness retain train status/apply/repair.
+    if (artifactOta.hasDevOverrideConfigured()) {
+      return { enabled: true, reason: null };
+    }
+    return { enabled: false, reason: "Artifact OTA is disabled for local development builds" };
+  }
+  return artifactUpdateAvailability(readBuildInfo());
+}
+
 /**
  * 轮询 server-info.json 等待 server 就绪
  */
@@ -1150,11 +1169,30 @@ async function verifyReusableServerInfo(existingInfo) {
     && (!healthVersion || healthVersion === currentVersion)
     && (!identityVersion || identityVersion === currentVersion);
   if (!versionMatches) {
-    return { reusable: false, trusted: true, terminate: true, reason: "version mismatch", health, identity };
+    return {
+      reusable: false,
+      trusted: true,
+      terminate: isDesktopOwnedServerInfo(existingInfo),
+      reason: "version mismatch",
+      health,
+      identity,
+    };
   }
 
   if (existingInfo.studioId && existingInfo.studioId !== identity.studioId) {
     return { reusable: false, trusted: true, terminate: false, reason: "studio identity mismatch", health, identity };
+  }
+
+  const runtimeBuildCheck = compareExpectedRuntimeBuild(readBuildInfo(), identity.runtimeBuild);
+  if (!runtimeBuildCheck.matches) {
+    return {
+      reusable: false,
+      trusted: true,
+      terminate: isDesktopOwnedServerInfo(existingInfo),
+      reason: runtimeBuildCheck.reason,
+      health,
+      identity,
+    };
   }
 
   const desiredNetwork = readDesiredServerNetworkConfig();
@@ -1341,7 +1379,8 @@ async function startServer() {
 }
 
 /**
- * 打包模式启动解析：签名 seed 同时覆盖 server 与 renderer。
+ * 打包模式启动解析：签名 seed 同时覆盖 server 与 renderer；明确标记的
+ * legacy-raw 包则直接使用 Resources/server + bundled renderer。
  * - Resources/seed/ 在场 → 走 artifact-boot 的双 kind 组合入口
  *   `prepareArtifactBoot`（两个 kind 都必须在场，缺一硬报错 → server 走
  *   promote → 三连败降级 → 验签 → resolveBoot → 必要时首启解压 seed；
@@ -1353,15 +1392,44 @@ async function startServer() {
  *   renderer 崩溃回退闭环靠这两个模块级变量非 null 判断"当前是否处于
  *   artifact 模式"。返回 {serverRoot, train}（server 半——renderer 半的
  *   下游消费者读上面那两个模块级变量，不需要走返回值）。
- * - seed 不在场且未打包 → dev 模式，返回 null（原有 source server 路径，
- *   `_distRenderer` 维持默认值，逐字节不变，`_rendererBootChannel` 维持
- *   null）。
- * - 已打包却没有 seed → 安装损坏，硬报错（禁止静默落进 dev 分支）。
+ * - dev 模式由 shared release-runtime-policy 明确返回 null；
+ * - 已打包却没有合法 seed/raw 布局 → 安装损坏，硬报错（禁止静默落进
+ *   dev 分支）；
+ * - legacy-raw 不经过 artifact-boot、哨兵、GC 或 renderer 回退闭环。
  */
 async function resolvePackagedArtifactBoot() {
   const resourcesPath = process.resourcesPath || "";
-  const platformArch = `${process.platform}-${process.arch}`;
-  if (!artifactBoot.hasSeed(resourcesPath, platformArch)) {
+  // The fallback keeps the source-extracted channel-consistency contract tests
+  // usable outside Electron. In the real bundle both helpers are always loaded.
+  if (typeof resolvePackagedLayout === "function" && typeof readBuildInfo === "function") {
+    const buildInfo = readBuildInfo();
+    const layout = resolvePackagedLayout({
+      appIsPackaged: app.isPackaged,
+      resourcesPath,
+      buildInfo,
+      rendererRoot: _distRenderer,
+    });
+    // Dual-profile decision is pure (planPackagedArtifactBoot); main only applies state.
+    const plan = planPackagedArtifactBoot({
+      layout,
+      buildInfo,
+      appVersion: app.getVersion(),
+    });
+    if (plan.kind === "dev") return null;
+    if (plan.kind === "legacy-raw") {
+      const state = plan.rendererState;
+      _distRenderer = state.distRenderer;
+      _rendererBootChannel = state.rendererBootChannel;
+      _rendererBootTrain = state.rendererBootTrain;
+      _artifactBootChannel = state.artifactBootChannel;
+      _currentContentVersion = state.contentVersion || _currentContentVersion;
+      console.log(`[desktop] legacy-raw server resolved: ${plan.context.serverRoot}`);
+      return plan.context;
+    }
+    // signed: fall through to artifact-boot prepare below
+  } else if (!artifactBoot.hasSeed(resourcesPath)) {
+    // Compatibility path for source-level VM tests and older development
+    // bundles; packaged production code takes the policy branch above.
     if (app.isPackaged) {
       throw new Error(
         `Packaged app is missing its artifact seed (expected under ${path.join(resourcesPath, "seed")}). `
@@ -1375,11 +1443,10 @@ async function resolvePackagedArtifactBoot() {
   // prepareArtifactBoot 用 beta 拆箱激活，GC 却拿 stable 账本清点，把刚
   // 激活的 beta 目录当"不在保留集"删掉）。
   const bootChannel = readUpdateChannelPreference();
-  _artifactBootChannel = bootChannel;
   const boot = await artifactBoot.prepareArtifactBoot({
     homeDir: hanakoHome,
     resourcesPath,
-    platformArch,
+    platformArch: `${process.platform}-${process.arch}`,
     keyset: loadPinnedKeyset(),
     // 通道选择驱动的是"这台设备落在哪条列车线上"：OTA 把
     // 产物暂存进选中通道的指针命名空间，boot 端的 promote/resolve 也必须
@@ -1400,19 +1467,23 @@ async function resolvePackagedArtifactBoot() {
   });
   console.log(`[desktop] server artifact resolved: train ${boot.server.train} (${boot.server.version}) slot=${boot.server.slot}${boot.server.activatedSeed ? " [seed activated]" : ""}${boot.server.crashFallback ? " [crash fallback]" : ""}`);
   console.log(`[desktop] renderer artifact resolved: train ${boot.renderer.train} (${boot.renderer.version}) slot=${boot.renderer.slot}${boot.renderer.activatedSeed ? " [seed activated]" : ""}${boot.renderer.crashFallback ? " [crash fallback]" : ""}`);
-  _distRenderer = boot.renderer.versionDir;
-  _rendererBootChannel = artifactBoot.rendererPointerChannel(bootChannel);
-  _rendererBootTrain = boot.renderer.train;
-  // 内容版本单一源的赋值点之一：这是每次启动（含 apply-now 触发的 server
-  // 重启，见 applyTrainUpdateNow 里对 startServer 的重新调用）都会走到的
-  // 决议路径，renderer 与 server 归档按发布约定共享同一个产品版本号，
-  // renderer 优先只是两者不巧不一致时的兜底顺序，不代表 renderer 更权威。
-  _currentContentVersion = boot.renderer.version || boot.server.version || _currentContentVersion;
+
+  const signed = buildSignedPackagedBootResult({
+    boot,
+    bootChannel,
+    rendererPointerChannel: (channel) => artifactBoot.rendererPointerChannel(channel),
+    previousContentVersion: _currentContentVersion,
+  });
+  _distRenderer = signed.rendererState.distRenderer;
+  _rendererBootChannel = signed.rendererState.rendererBootChannel;
+  _rendererBootTrain = signed.rendererState.rendererBootTrain;
+  _artifactBootChannel = signed.rendererState.artifactBootChannel;
+  _currentContentVersion = signed.rendererState.contentVersion || _currentContentVersion;
 
   // 隔离事件的不阻塞提示：只在真的写入了 quarantine.json
   // 条目时提示（train 0 的"降级但不隔离"分支不算），server/renderer 任一
   // 侧触发都算——两者用同一条通用文案，用户不需要关心是哪个 kind。
-  if (boot.server.quarantinedTrain != null || boot.renderer.quarantinedTrain != null) {
+  if (signed.notices.quarantine) {
     notifyComponentQuarantined();
   }
 
@@ -1424,7 +1495,7 @@ async function resolvePackagedArtifactBoot() {
   // 这次没轮到它展示，下次它自己触发时会用自己的 fromVersion/toVersion 重新
   // announce 一次。
   const crashFallbackNotice =
-    buildCrashFallbackNotice("server", boot.server) || buildCrashFallbackNotice("renderer", boot.renderer);
+    buildCrashFallbackNotice("server", signed.notices.server) || buildCrashFallbackNotice("renderer", signed.notices.renderer);
   if (crashFallbackNotice) {
     announceCrashFallbackNotice(crashFallbackNotice);
   }
@@ -1445,7 +1516,7 @@ async function resolvePackagedArtifactBoot() {
     log: (msg) => console.log(redactMainLogText(msg)),
   });
 
-  return { serverRoot: boot.server.versionDir, train: boot.server.train, channel: bootChannel };
+  return signed.context;
 }
 
 /**
@@ -1545,7 +1616,6 @@ async function handleRendererArtifactLoadFailure({ win, pageName, opts, label, r
     resolved = await artifactBoot.prepareArtifactRendererBoot({
       homeDir: hanakoHome,
       resourcesPath: process.resourcesPath || "",
-      platformArch: `${process.platform}-${process.arch}`,
       keyset: loadPinnedKeyset(),
       // 必须显式传入本次启动的通道。若回落到
       // `artifactBoot.SEED_CHANNEL`（"stable"），beta 偏好机器 renderer
@@ -1642,6 +1712,11 @@ function attachRendererArtifactCrashSentinel(win, pageName, opts) {
  * 空自然重新解压 seed，一条代码路径，没有特例。
  */
 async function triggerArtifactRepairFlow() {
+  const artifactAvailability = getArtifactUpdateAvailability();
+  if (!artifactAvailability.enabled) {
+    console.warn(`[desktop] artifact repair ignored: ${artifactAvailability.reason}`);
+    return { ok: false, reason: artifactAvailability.reason };
+  }
   const result = await dialog.showMessageBox({
     type: "warning",
     buttons: [
@@ -1669,6 +1744,7 @@ async function triggerArtifactRepairFlow() {
   isQuitting = true;
   app.relaunch();
   app.quit();
+  return { ok: true };
 }
 
 /**
@@ -1720,7 +1796,10 @@ async function _spawnServerOnce(serverInfoPath, artifactBootContext) {
   // 议一次，不逐请求判断"的语义一致，重启进程后两者自然重新对齐，不在
   // 本次修复范围内。
   if (artifactBootContext) {
-    serverEnv.HANA_RENDERER_DIST = _distRenderer;
+    // A raw package keeps the desktop's renderer in app.asar, but the spawned
+    // standalone Node server cannot resolve Electron's asar virtual path. Use
+    // the verified copy carried inside Resources/server for server web routes.
+    serverEnv.HANA_RENDERER_DIST = artifactBootContext.serverRendererRoot || _distRenderer;
   }
   serverEnv = await serverEnvironmentForNetworkProxy(serverEnv);
   serverEnv = withWindowsSystemCaEnv(serverEnv);
@@ -1785,7 +1864,7 @@ async function _spawnServerOnce(serverInfoPath, artifactBootContext) {
 
   // crash 哨兵：spawn 前登记，健康观察期满后清除；进程在观察期内
   // 死亡则哨兵留存，同一 train 连续 3 次未清除 → 下次启动降级 previous。
-  if (artifactBootContext) {
+  if (artifactBootContext?.artifactManaged === true) {
     await artifactBoot.writeBootSentinel(hanakoHome, artifactBootContext.channel, artifactBootContext.train);
   }
 
@@ -1876,7 +1955,7 @@ async function _spawnServerOnce(serverInfoPath, artifactBootContext) {
   serverProcess.unref(); // 脱离 Electron 事件循环，允许 Electron 独立退出
 
   // server 就绪：进入健康观察期，期满清除 crash 哨兵（timer 已 unref）
-  if (artifactBootContext) {
+  if (artifactBootContext?.artifactManaged === true) {
     artifactBoot.scheduleHealthySentinelClear({
       homeDir: hanakoHome,
       channel: artifactBootContext.channel,
@@ -1961,8 +2040,6 @@ function monitorServer() {
       } catch (err) {
         console.error("[desktop] Server 重启失败:", err.message);
         writeCrashLog(`Server 重启失败: ${err.message}`);
-        // 壳身份用途：崩溃诊断对话框，问的是"哪个壳进程崩了"，见
-        // getCurrentContentVersion() 声明处对这类诊断文案的例外说明。
         dialog.showErrorBox("HanaAgent Server", mt("dialog.serverRestartFailed", {
           version: app?.getVersion?.() || "unknown",
           error: err.message,
@@ -1970,7 +2047,6 @@ function monitorServer() {
       }
     } else {
       writeCrashLog(`Server 多次崩溃 (${reason})，放弃重启`);
-      // 壳身份用途：同上。
       dialog.showErrorBox("HanaAgent Server", mt("dialog.serverMultipleCrash", {
         version: app?.getVersion?.() || "unknown",
         reason,
@@ -2017,6 +2093,20 @@ function loadTrayImageFromCandidates(fileNames) {
   throw new Error(`Tray icon asset unavailable; checked: ${attempted.join(", ")}`);
 }
 
+function buildTrayMenuTemplate() {
+  const artifactAvailability = getArtifactUpdateAvailability();
+  return [
+    { label: mt("tray.show", null, "Show HanaAgent"), click: () => showPrimaryWindow() },
+    { label: mt("tray.settings", null, "Settings"), click: () => createSettingsWindow() },
+    { type: "separator" },
+    ...(artifactAvailability.enabled
+      ? [{ label: mt("tray.repairArtifacts", null, "Repair Components…"), click: () => { triggerArtifactRepairFlow().catch((err) => console.error(`[desktop] repair flow failed: ${err.message}`)); } }]
+      : []),
+    ...(artifactAvailability.enabled ? [{ type: "separator" }] : []),
+    { label: mt("tray.quit", null, "Quit"), click: () => { isExitingServer = true; isQuitting = true; app.quit(); } },
+  ];
+}
+
 function createTray() {
   const isDev = !app.isPackaged;
   let resolved;
@@ -2033,17 +2123,7 @@ function createTray() {
   tray = new Tray(resolved.image);
   tray.setToolTip(isDev ? "HanaAgent (dev)" : "HanaAgent");
 
-  const buildMenu = () => Menu.buildFromTemplate([
-    { label: mt("tray.show", null, "Show HanaAgent"), click: () => showPrimaryWindow() },
-    { label: mt("tray.settings", null, "Settings"), click: () => createSettingsWindow() },
-    { type: "separator" },
-    // 修复逃生门：本仓库没有独立的应用菜单栏基础设施
-    // （grep 全仓只有这一处 + 下面 locale 重建那一处 Menu.buildFromTemplate，
-    // 都是托盘右键菜单），因此复用这个"现有等价菜单组"，不新起一套应用菜单栏。
-    { label: mt("tray.repairArtifacts", null, "Repair Components…"), click: () => { triggerArtifactRepairFlow().catch((err) => console.error(`[desktop] repair flow failed: ${err.message}`)); } },
-    { type: "separator" },
-    { label: mt("tray.quit", null, "Quit"), click: () => { isExitingServer = true; isQuitting = true; app.quit(); } },
-  ]);
+  const buildMenu = () => Menu.buildFromTemplate(buildTrayMenuTemplate());
 
   tray.setContextMenu(buildMenu());
   tray.on("right-click", () => tray.setContextMenu(buildMenu()));
@@ -2737,16 +2817,15 @@ function broadcastToAllWindows(channel, payload) {
 function startBackgroundOtaSchedulerOnce() {
   if (_otaSchedulerStarted) return;
   if (!app.isPackaged && !artifactOta.hasDevOverrideConfigured()) return;
+  if (app.isPackaged) {
+    const artifactAvailability = getArtifactUpdateAvailability();
+    if (!artifactAvailability.enabled) {
+      console.log(`[desktop] background artifact OTA disabled: ${artifactAvailability.reason}`);
+      return;
+    }
+  }
   _otaSchedulerStarted = true;
   try {
-    // 壳身份用途：currentShellVersion 喂给 isShellVersionSufficient() 跟
-    // manifest.minShell 比较，问的是"这个壳二进制新不新"——这必须是壳自己
-    // 的版本，换成已激活内容版本会让 minShell 闸门失去意义（内容版本随
-    // OTA 变化，minShell 门槛检查的是壳能不能跑得动候选内容，不是内容
-    // 本身多新）。见 shared/artifact-core/ota-core.cjs 的
-    // isShellVersionSufficient() 与本函数下游 checkOnce() 对 minShell 的
-    // 处理；与之相邻的"这班车是否比已激活内容更新"判断走的是
-    // pointerStore 记录的 train/version，完全不经 app.getVersion()。
     artifactOta.scheduleBackgroundOtaChecks({
       homeDir: hanakoHome,
       keyset: loadPinnedKeyset(),
@@ -5014,6 +5093,10 @@ function reloadAllWindowsForTrainUpdate() {
  * @returns {Promise<{ok: true} | {ok: false, error: string}>}
  */
 async function applyTrainUpdateNow(senderWebContents) {
+  const artifactAvailability = getArtifactUpdateAvailability();
+  if (!artifactAvailability.enabled) {
+    return { ok: false, error: artifactAvailability.reason };
+  }
   const channel = readUpdateChannelPreference();
 
   try {
@@ -5022,8 +5105,6 @@ async function applyTrainUpdateNow(senderWebContents) {
     return { ok: false, error: err.message };
   }
 
-  // 壳身份用途：同 startBackgroundOtaSchedulerOnce() 里的说明——minShell
-  // 闸门问的是壳二进制新不新，必须是 app.getVersion()，不是内容版本。
   const downloadResult = await artifactOta.downloadAndApplyArtifacts({
     homeDir: hanakoHome,
     keyset: loadPinnedKeyset(),
@@ -5084,7 +5165,6 @@ async function applyTrainUpdateNow(senderWebContents) {
       // 旧 server 已经停了、新 server 也没起来：没有任何页内恢复手段，
       // 用跟现有崩溃重启失败同款的错误对话框告知用户重启应用（复用既有
       // installFailedTitle 键——同属"更新失败"这一类对话框标题）。
-      // 壳身份用途：诊断对话框，见 getCurrentContentVersion() 声明处的例外说明。
       dialog.showErrorBox(mt("dialog.installFailedTitle", null, "HanaAgent Update"), mt(
         "dialog.trainUpdateApplyFailedBody",
         { version: app?.getVersion?.() || "unknown", error: result.error },
@@ -5097,6 +5177,22 @@ async function applyTrainUpdateNow(senderWebContents) {
 }
 
 wrapIpcHandler("train-update-status", async () => {
+  const artifactAvailability = getArtifactUpdateAvailability();
+  if (!artifactAvailability.enabled) {
+    return {
+      enabled: false,
+      reason: artifactAvailability.reason,
+      staged: false,
+      train: null,
+      version: null,
+      minShellBlocked: false,
+      available: null,
+      lastError: null,
+      lastCheckedAt: null,
+      currentVersion: getCurrentContentVersion(),
+      fallbackNotice: null,
+    };
+  }
   const status = await artifactOta.readStagedTrainStatus(hanakoHome, { channel: readUpdateChannelPreference() });
   // currentVersion 是内容版本单一源的唯一 IPC 出口：渲染进程不再单独调用
   // get-app-version 来决定"我在用哪个版本"，一律从这里读。
@@ -5117,8 +5213,11 @@ wrapIpcHandler("train-fallback-notice-ack", () => {
 // 手动检查：跟后台自动检查共用 checkOnce，同样绝不下载/写指针，只拉清单、
 // 验签、过闸门、把发现的结果写进 ota-state.json 并原样返回给渲染进程。
 wrapIpcHandler("train-update-check", async () => {
+  const artifactAvailability = getArtifactUpdateAvailability();
+  if (!artifactAvailability.enabled) {
+    return { outcome: "disabled", reason: artifactAvailability.reason };
+  }
   if (!app.isPackaged) return { outcome: "dev-skipped" };
-  // 壳身份用途：同 startBackgroundOtaSchedulerOnce() 里的说明。
   return artifactOta.checkOnce({
     homeDir: hanakoHome,
     keyset: loadPinnedKeyset(),
@@ -5184,12 +5283,6 @@ wrapIpcHandler("run-edit-command", (event, command) => {
   event.sender[command]();
   return true;
 });
-// 壳身份用途：这个 IPC 通道字面意思是"app 版本"，容易被误认成产品版本
-// 出口，但它读的是壳的 app.getVersion()，不是已激活内容版本。渲染进程侧
-// 的 getAppVersion() 桥接方法目前也没有任何调用点会拿它做面向用户的版本
-// 展示——那类展示一律走 train-update-status 的 currentVersion 字段（见
-// desktop/src/react/types.ts 里 TrainUpdateStatus 的文档注释）。保留这个
-// handler 作为壳版本自省的通道，不删、不改语义。
 wrapIpcHandler("get-app-version", () => app.getVersion());
 wrapIpcBestEffortHandler("get-pending-announcement", () => computePendingAnnouncement());
 // 书签必须写内容版本——跟 computePendingAnnouncement 读书签时用的比较基准
@@ -5446,14 +5539,7 @@ wrapIpcOn("settings-changed", (_event, type, data) => {
     resetMainI18n();
     // 重建托盘菜单，使标签跟随新 locale
     if (tray && !tray.isDestroyed()) {
-      const buildMenu = () => Menu.buildFromTemplate([
-        { label: mt("tray.show", null, "Show HanaAgent"), click: () => showPrimaryWindow() },
-        { label: mt("tray.settings", null, "Settings"), click: () => createSettingsWindow() },
-        { type: "separator" },
-        { label: mt("tray.repairArtifacts", null, "Repair Components…"), click: () => { triggerArtifactRepairFlow().catch((err) => console.error(`[desktop] repair flow failed: ${err.message}`)); } },
-        { type: "separator" },
-        { label: mt("tray.quit", null, "Quit"), click: () => { isExitingServer = true; isQuitting = true; app.quit(); } },
-      ]);
+      const buildMenu = () => Menu.buildFromTemplate(buildTrayMenuTemplate());
       tray.setContextMenu(buildMenu());
     }
   }
@@ -6070,11 +6156,16 @@ app.whenReady().then(async () => {
     // 之前跑：先清空 artifacts/ 下的已知子路径，再让正常启动路径把 seed
     // 重新解压出来，一条代码路径，没有特例。清理失败静默记日志，不阻塞启动。
     if (process.argv.includes("--repair-artifacts")) {
-      console.log("[desktop] --repair-artifacts flag detected; resetting artifact components before startup");
-      await artifactRepair.repairArtifacts({
-        homeDir: hanakoHome,
-        log: (msg) => console.log(redactMainLogText(msg)),
-      });
+      const artifactAvailability = getArtifactUpdateAvailability();
+      if (!artifactAvailability.enabled) {
+        console.warn(`[desktop] --repair-artifacts ignored: ${artifactAvailability.reason}`);
+      } else {
+        console.log("[desktop] --repair-artifacts flag detected; resetting artifact components before startup");
+        await artifactRepair.repairArtifacts({
+          homeDir: hanakoHome,
+          log: (msg) => console.log(redactMainLogText(msg)),
+        });
+      }
     }
 
     _startHiddenAtLogin = getAutoLaunchStatus({ app }).openedAtLogin === true && isSetupComplete();
@@ -6210,8 +6301,6 @@ app.whenReady().then(async () => {
     // 写入 crash.log 并获取详细日志
     const crashInfo = writeCrashLog(err.message);
     const detail = buildLaunchFailureDialogDetail(err, crashInfo);
-    // 壳身份用途：启动失败对话框，见 getCurrentContentVersion() 声明处的
-    // 例外说明——这里问的是"哪个壳进程启动失败"。
     dialog.showErrorBox(
       mt("dialog.launchFailedTitle", null, "HanaAgent Launch Failed"),
       mt("dialog.launchFailedBody", {
