@@ -127,4 +127,26 @@ describe("attended desktop release command", () => {
     expect(materializedPath).toBeTruthy();
     expect(fs.existsSync(materializedPath)).toBe(false);
   });
+
+  it("does not forward validated signing inputs to a legacy-raw build child", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-raw-key-"));
+    const keyPath = path.join(dir, "signing.pem");
+    fs.writeFileSync(keyPath, validPem(), { mode: 0o600 });
+    const spawn = vi.fn((_command, _args, options) => {
+      expect(options.env.HANA_SIGN_KEY).toBeUndefined();
+      expect(options.env.HANA_SIGN_KEY_PEM).toBeUndefined();
+      return { status: 0 };
+    });
+
+    try {
+      runDesktopRelease({
+        requested: "legacy-raw",
+        env: { HANA_SIGN_KEY: keyPath, HANA_SIGN_KEY_PEM: validPem() },
+        platform: "linux",
+        spawn,
+      });
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
