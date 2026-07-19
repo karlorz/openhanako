@@ -29,12 +29,17 @@ Current status:
 | Fix | Status | Upstream issue state | Action |
 |-----|--------|----------------------|--------|
 | LAN/Tailscale CSP + WebSocket auth | `existing/open` | [#1749](https://github.com/liliMozi/openhanako/issues/1749) OPEN; [#1811](https://github.com/liliMozi/openhanako/issues/1811) CLOSED | Check during every sync; close or shrink divergence only if upstream accepts equivalent behavior. |
+| LAN query-token network hardening | `draft/pending-approval` | No exact issue found; related [#1749](https://github.com/liliMozi/openhanako/issues/1749) and [#1811](https://github.com/liliMozi/openhanako/issues/1811) | Review `docs/upstream-issues/drafts/lan-query-token-network-hardening.md`; normally fold into the LAN auth issue unless reviewed separately. |
 | Remote plugin iframe credential query leak | `draft/pending-approval` | No exact issue found; related [#1493](https://github.com/liliMozi/openhanako/issues/1493), [#1546](https://github.com/liliMozi/openhanako/issues/1546) | Review `docs/upstream-issues/drafts/plugin-iframe-remote-credential-query-leak.md`; submit only after owner approval. |
 | Remote attachment preview persistence | `draft/pending-approval` | No exact issue found | Review `docs/upstream-issues/drafts/remote-attachment-preview-persistence.md`; submit only after owner approval. |
+| Desktop temp upload session-cache materialization | `draft/pending-approval` | No exact issue found | Review `docs/upstream-issues/drafts/desktop-temp-upload-session-cache-materialization.md`; submit only after owner approval. |
 | Marker-only image replay regenerate 400 | `draft/pending-approval` | No exact issue found | Review `docs/upstream-issues/drafts/session-replay-marker-only-image-regenerate.md`; submit only after owner approval. |
 | ToolGroup file-detail link context | `draft/pending-approval` | No exact issue found | Review `docs/upstream-issues/drafts/toolgroup-file-detail-link-context.md`; submit only after owner approval. |
-| Local fork build identity + disabled local auto-update | `tracked/no-upstream-issue` | Fork-only | Keep local; no upstream issue unless this becomes a general local-build-channel feature request. |
-| Fork sync issue tracking + prerelease policy | `tracked/no-upstream-issue` | Fork-only | Keep local; documents and automates this fork's maintenance workflow. |
+| Provider model-removal persistence | `draft/pending-approval` | No exact issue found | Review `docs/upstream-issues/drafts/provider-model-removal-persistence.md`; submit only after owner approval. |
+| Remote skill viewer local-file IPC | `draft/pending-approval` | No exact issue found | Review `docs/upstream-issues/drafts/remote-skill-viewer-local-file-ipc.md`; submit only after owner approval. |
+| Remote skill install client-local path | `draft/pending-approval` | No exact issue found | Review `docs/upstream-issues/drafts/remote-skill-install-client-local-path.md`; submit only after owner approval. |
+| Legacy raw release profile and evidence | `tracked/no-upstream-issue` | Fork-only release policy | Keep the explicit signed/auto/legacy-raw resolver, raw asset exclusions, and runtime-only standalone server bundle evidence under local review. |
+| Fork-only maintenance | `tracked/no-upstream-issue` | Local build identity, fork-sync/dev-loop runbooks, office-workflow examples, server installer/reinit safety, and CI file-mode hygiene | Keep local. The complete generated inventory is `docs/upstream-issues/README.md`; do not create upstream issue noise for fork-only work. |
 
 ## Sync cadence
 
@@ -50,6 +55,18 @@ Current status:
 - **Prerelease review:** run `node scripts/sync-upstream.mjs --include-prerelease --check` only when intentionally reviewing a prerelease candidate. This is not the normal production update path.
 - **Issue check:** as part of every sync, run `node scripts/track-upstream-issues.mjs search` and glance at [#1749](https://github.com/liliMozi/openhanako/issues/1749) plus the pending draft list. If upstream accepted equivalent fixes, the divergence shrinks.
 
+## Release profile policy
+
+- **Tag fallback is automatic:** an ordinary `v*` tag push requests `auto`, which resolves to `signed` only with validated Ed25519 material and otherwise selects the marked `legacy-raw` fallback when both signing inputs are blank. Malformed, unreadable, or incompatible nonblank material is an error.
+- **The signing domains are independent:** `HANA_SIGN_KEY` (key-file path) and `HANA_SIGN_KEY_PEM` (inline PEM) are the two resolver inputs for Hana Ed25519 seed/train metadata and therefore `signed` versus `legacy-raw`; `CSC_LINK` and `CSC_KEY_PASSWORD` control Apple Developer ID signing. Neither domain can substitute for the other, and release-digest BYOK credentials are unrelated to both.
+- **No-certificate macOS fallback:** when either `CSC_LINK` or `CSC_KEY_PASSWORD` is blank, Electron Builder uses ad-hoc identity `-`, hardened runtime is disabled, `SKIP_NOTARIZE=true`, and the complete `HanaAgent.app` bundle must pass `codesign --verify --deep --strict --verbose=2` before either signed-profile or legacy-raw artifacts can be uploaded. The complete app bundle is ad-hoc signed and resource-sealed; the DMG and ZIP containers themselves are unsigned and unnotarized.
+- **Why the `.357` path installed:** `v0.357.17-karlorz.1` predated the required Hana signed seed/train path. Its local `npm run install:local` copied the app, recursively ad-hoc signed nested code through `scripts/sign-local.cjs`, and ran strict verification; its standalone server archive used a SHA-256 sidecar rather than either macOS or Ed25519 signing. The explicit legacy-raw profile preserves that installability while making its exclusions and evidence visible.
+- **Attended commands share the resolver:** manual workflow dispatch and local `npm run dist:auto`, `npm run pack:auto`, and `npm run install:local:auto` resolve once through the same policy before packaging.
+- **Concrete downstream contract:** only `signed` or `legacy-raw` may reach package metadata, builders, asset verification, train publication, or mirroring. `auto` is a selector, not a release profile.
+- **Release assets are profile-immutable:** the release job writes a profile marker before other uploads, accepts only same-profile reruns, and rejects opposite-profile or unmarked nonempty asset sets before mutation.
+- **Raw evidence boundary:** legacy-raw installers are visibly marked and ship the bundled renderer plus runtime-only server tree. They publish installers, standalone server bundles, compatibility metadata, checksums, and the committed digest, but never shell updater metadata, hot-update archives, train pointers, or AtomGit mirror assets.
+- **Server installation remains separate:** runtime-only standalone bundles stay installable through `scripts/install-server.mjs`; selecting a profile does not deploy, upgrade, tag, or publish anything.
+
 ## Diverging files
 
 ### LAN connect/auth fixes
@@ -58,7 +75,7 @@ Current status:
 |------|--------|--------------------------|-------------------|
 | `core/server-auth.ts` | `80ea81ae` | **HIGH** — security-critical; upstream may ship CVE fixes | **HUMAN REVIEW ALWAYS.** Never auto-resolve. Our change is 1 line in `parseCredential` (allows query tokens for LAN). Upstream changes here may intersect semantically. |
 | `desktop/src/react/services/server-connection.ts` | `ae7fd31c` | **HIGH** — connection logic evolves | **HUMAN REVIEW.** Our changes are additive (probe path in `connectDeviceServerConnection`, `canUseQueryToken` device_credential branch). Upstream likely adds new features; conflicts usually merge cleanly but verify. |
-| `desktop/main.cjs` | `ae7fd31c` | **MEDIUM** — IPC handlers added occasionally | **Usually auto-mergeable.** Our change adds `net` to the electron import line + a new `wrapIpcHandler("connect:probe", ...)` block. Verify the `net` import survives any upstream rewrite of line 11. |
+| `desktop/main.cjs` | `ae7fd31c` | **MEDIUM** — IPC handlers added occasionally | **Usually auto-mergeable.** Probe logic lives in `desktop/src/shared/connect-probe.cjs`; main only requires that module and registers `wrapIpcHandler("connect:probe", createConnectProbeHandler({ fetchImpl: net.fetch.bind(net) }))`. Verify the `net` import and one-line registration survive upstream rewrites. |
 | `desktop/preload.cjs` | `ae7fd31c` | **MEDIUM** — new channels exposed occasionally | **Usually auto-mergeable.** Our change adds one line (`probeConnection`) inside the existing `contextBridge.exposeInMainWorld` block. |
 | `tests/server-auth.test.ts` | `80ea81ae` | Medium | **Prefer ours**, but if upstream restructures the test file heavily, review. |
 | `tests/server-connection.test.ts` | stable `v0.333.6` inherited test + fork B1 behavior | Medium | **Preserve both.** LAN device-credential WebSockets must keep token query fallback; non-LAN `custom_remote` device connections should keep upstream `wsTicket` behavior. |
@@ -71,7 +88,7 @@ These files fix remote desktop attachment import and preview when the macOS desk
 | File | Risk if upstream touches | Resolution policy |
 |------|--------------------------|-------------------|
 | `desktop/src/modules/connection-csp.js` | **HIGH** — renderer CSP controls whether persisted remote resources can render | **HUMAN REVIEW.** Active remote HTTP(S) origin must be present in `img-src` and `media-src`, while WS origins stay in `connect-src` only. Do not widen to bare `http:`/`https:`. |
-| `desktop/src/react/services/resource-url.ts` | **CRITICAL** — resource URL resolution for remote session files and LAN device-credential connections | **HUMAN REVIEW.** Remote `sf_*` session files without explicit resource links must synthesize `/api/resources/res_<fileId>/content` with token query support. Preserve the fork transport invariant: `isLocalTransport` is `!connection || connection.kind === 'local'`, not `isLocalOwnerConnection(connection)`, because LAN device-credential connections still need token-query resource URLs. |
+| `desktop/src/react/services/resource-url.ts` | **CRITICAL** — resource URL resolution for remote session files and LAN device-credential connections | **HUMAN REVIEW.** Native `file://` only for true local-owner connections (`isLocalOwnerConnection` / loopback + `loopback_token` via `canUseNativeResourcePath`). LAN and custom_remote device credentials must use HTTP resource content URLs (token query allowed) and must synthesize `/api/resources/res_<sf_*>/content` when older session rows only carry `fileId`. Do not reintroduce a `kind === 'local'`-only transport predicate that would treat non-loopback `kind: 'local'` device credentials as native file owners. |
 | `desktop/src/react/utils/user-attachment-media.ts` | Medium | Prefer resource URLs for remote attachments after inline bytes are gone; local `platform.getFileUrl` remains the fallback for local transport. |
 | `desktop/src/react/MainContent.tsx` | Medium | Preserve path ownership rules: native paste/drop/select from macOS uploads client-owned blobs over `/api/upload-blob`; app/workspace drags of server-owned files must not re-upload. |
 | `desktop/src/react/components/InputArea.tsx` | Medium | Preserve optimistic inline media bytes for the current chat render, but keep persisted `displayMessage.attachments` free of `base64Data`. |
@@ -91,12 +108,19 @@ These files fix remote desktop attachment import and preview when the macOS desk
 |------|--------------------------|-------------------|
 | `desktop/src/react/services/ws-message-handler.ts` | **HIGH** — session-scoped browser status, preview refresh, and optimistic attachment hydration can interact across production code and test fixtures | **HUMAN REVIEW.** If upstream changes `desktop/src/react/__tests__/services/ws-message-handler.test.ts`, inspect the production service file too. A test-only dashboard conflict reduction must not hide regressions in fork session identity routing or replayed optimistic attachment hydration. |
 
+### Remote boundary credential UI
+
+| File | Risk if upstream touches | Resolution policy |
+|------|--------------------------|-------------------|
+| `desktop/src/react/settings/widgets/KeyInput.tsx` | **HIGH** — the fork uses external-value detection to clear a transient revealed remote credential, while upstream now uses wrapper-level blur handling for Bridge credential drafts | **PRESERVE BOTH.** Start from upstream's stable version and keep its wrapper blur/accessibility behavior, then restore the fork `previousValueRef` / `internalChangeRef` reset-and-rehide behavior. Verify remote recovery, Access settings, provider credentials, and Bridge credentials together. |
+
 ### Desktop packaging metadata
 
 | File | Risk if upstream touches | Resolution policy |
 |------|--------------------------|-------------------|
 | `package.json` | Medium | **DEFER.** Stable production fork sync owns package version alignment. Dashboard-only conflict reduction must not pre-bump the version; preserve the fork baseline and `install:local` behavior until the attended sync resolves both together. |
 | `package-lock.json` | Medium | **DEFER.** Do not regenerate or pre-bump lockfile root metadata for the dashboard. Regenerate only during the stable production fork sync after the package version decision. |
+| `release-digest.v1.json` | Medium | **TAKE UPSTREAM STABLE, THEN FORK-ALIGN AFTER VERIFICATION.** Do not copy a prerelease digest into `dev`. During the attended stable rebase, accept the upstream stable digest; only after Tier 0-3 succeeds should the fork release closeout align `tag` and `version` to `vX.Y.Z-karlorz.N`. |
 
 ## The fixed commits / divergence clusters
 
@@ -105,7 +129,7 @@ These files fix remote desktop attachment import and preview when the macOS desk
    - `desktop/src/react/services/server-connection.ts`: `canUseQueryToken` includes `device_credential`
    - + tests in both suites
 2. **`ae7fd31c`** — Bug A: main-process pre-validation for LAN connect (CSP bootstrapping)
-   - `desktop/main.cjs`: `ipcMain.handle("connect:probe", ...)` using `net.fetch` with SSRF guard + sender validation
+   - `desktop/main.cjs`: registers `connect:probe` via `createConnectProbeHandler` from `desktop/src/shared/connect-probe.cjs` (SSRF/sender/redirect policy lives in that module)
    - `desktop/preload.cjs`: exposes `probeConnection`
    - `desktop/src/react/services/server-connection.ts`: `connectDeviceServerConnection` probes via main, persists, reloads
    - + tests in `server-connection.test.ts`
@@ -146,6 +170,7 @@ Dashboard rules:
 - Unknown conflicts default to `take-main` in the dry-run plan.
 - Fork exceptions live in `docs/fork-sync/rules.yml` and include explicit `plannedAction` text.
 - Package version and lockfile conflicts are reported as deferred; dashboard-only cleanup must not change them.
+- `KeyInput.tsx` is an explicit `preserve-both` exception; `release-digest.v1.json` takes the eventual upstream stable digest and is fork-aligned only after full verification.
 - PR #1 body is updated only inside the generated dashboard block.
 
 What the script does:
@@ -246,17 +271,155 @@ git reset --hard <pre-rebase-sha>
 
 The server on sg01 and the desktop app stay on the last-known-good bundles until we explicitly redeploy.
 
-## Latest sync closeout
 
-- 2026-07-07: `dev` was rebased from upstream stable `v0.350.2` onto `v0.357.17`; package metadata is aligned to `0.357.17`, and the upstream plain tag remains the release baseline at `acb1b2b860d0`.
-- One rebase conflict batch occurred while replaying the fork local-build identity / disabled auto-update commit. Resolution preserved upstream AtomGit/GitHub fallback feeds plus release digest state, kept the fork `readBuildInfo().updateEnabled === false` guard, and kept both upstream digest locale keys and fork local-build locale keys.
-- The upstream delta absorbed 45 non-merge commits across 187 files, including release digest/AtomGit updater flow, memory pipeline/editor work, streaming/bridge stabilization, UI/tooling fixes, and i18n parity work.
-- `node scripts/sync-upstream.mjs --post-rebase` passed Tier 0 fork-only file presence, Tier 1 focused tests, and Tier 2 bundle greps for `connect:probe`, `probeConnection`, and scoped runtime CSP remote resource-origin logic.
-- Additional gates passed: `npx vitest run tests/auto-updater.test.ts --exclude "**/node_modules/**"`, `npx vitest run tests/sync-upstream.test.mjs`, `node scripts/sync-upstream.mjs --conflict-plan --json --local-only`, `npm run typecheck`, and `git diff --check`.
-- Tier 3A local desktop install/version verification passed: `/Applications/HanaAgent.app` was rebuilt with `SKIP_NOTARIZE=true npm run install:local`, codesign verified, `CFBundleShortVersionString`, `CFBundleVersion`, and `build-info.json.appVersion` all reported `0.357.17`; `build-info.json` reported `channel: local`, `sourceRepo: karlorz/openhanako`, `baseTag: v0.357.17`, `gitSha: 36d715f8e259`, `dirty: false`, `updateEnabled: false`, and `signatureKind: adhoc`.
-- Tier 3B live sg01 smoke passed: the helper restart/verify path returned identity HTTP 200 and WebSocket open; CDP UI smoke sent `Pasted image.png`, switched to `Recent Changelogs Guide`, returned to `Image Preview Smoke Test`, confirmed the transcript attachment and Conversation Files row still rendered, then opened MediaViewer from Conversation Files and loaded the image at `64x64` from scoped remote `/api/resources/res_sf_60152d5c1617a6bc/content?...` with no CSP refusal, WebSocket disconnect, or fresh preview failure.
-- Fork release tag `v0.357.17-karlorz.1` was published from `c9a88215` as a non-draft prerelease after aligning `release-digest.v1.json` to the fork tag and adding an AtomGit mirror skip guard for fork runners without `ATOMGIT_TOKEN`; workflow run `28843292226` completed green. The release has 21 assets, including `hanaagent-server-v0.357.17-karlorz.1-linux-arm64.tar.gz` and its `.sha256`. The plain upstream tag `v0.357.17` must not be pushed to `origin`.
-- PR #1 remains the permanent draft dashboard and was not merged, auto-merged, or closed.
+## Conflict-reduction implementation (2026-07-20)
+
+Phases executed on `dev` without a stable rebase onto prerelease `main`:
+
+1. **WebSocket ticket-primary (adapt):** `resolveConnectionWsAuth` now attempts
+   `POST /api/ws-ticket` for non-loopback connections when assessment is absent
+   or ticket-ready. Long-lived LAN query-token is only a gated fallback when the
+   ticket surface fails or a complete assessment reports
+   `websocket_ticket_contract_missing`. `websocket.ts` no longer short-circuits
+   LAN first-connect to legacy query-token. Resource HTTP URLs may still use
+   token query via `canUseQueryToken`.
+2. **CSP probe isolation (retain):** probe logic lives in
+   `desktop/src/shared/connect-probe.cjs`; `desktop/main.cjs` only registers
+   `wrapIpcHandler("connect:probe", createConnectProbeHandler(...))`. Preload
+   still exposes `probeConnection`. SSRF/sender/`redirect: "manual"` policy is
+   unit-tested via `tests/connect-probe.test.mjs`.
+3. **Remote resource ownership (retain):** documented LAN transport invariant in
+   `resource-url.ts`; LAN device-credential + synthetic `sf_*` resource content
+   paths covered by focused resource-url tests.
+4. **Packaging isolation:** no package/lockfile pre-bump. Dual-profile release
+   and install-server remain fork-only. New fork-only entries:
+   `desktop/src/shared/connect-probe.cjs`, `tests/connect-probe.test.mjs`.
+
+Machine-readable dispositions: `docs/fork-sync/migration-contracts.yml`
+(`implementationStatus` fields for websocket-ticket-auth, connection-csp-bootstrap,
+remote-resource-ownership).
+
+## Next stable pre-sync outlook (2026-07-20 main-refresh)
+
+Read-only dashboard refresh after the completed `v0.407.15` / `v0.407.15-karlorz.7` line. No attended stable sync, rebase of `dev`, package bump, install, deploy, tag, or PR #1 merge was performed.
+
+| Signal | Observed value |
+|--------|----------------|
+| Working branch / HEAD | `dev` @ `22f4b68c` (unchanged by this refresh) |
+| Package / lockfile version | `0.407.15` (unchanged) |
+| Latest stable upstream | `v0.407.15` |
+| Last synced stable | `v0.407.15` |
+| Stable production sync available | **no** |
+| Prerelease ceiling (review-only) | `train-13` / `v0.412.7` at `9a5b8e9d` (same commit as `upstream/main`) |
+| `origin/main` mirror | refreshed to `9a5b8e9d` (`:= upstream/main`) |
+| PR #1 | OPEN, draft, mergeable `CONFLICTING`; never merged/auto-merged/closed |
+| Planned conflict paths | **15** (4 preserve-both, 9 take-main, 1 human-review, 1 defer-to-stable-production-sync) |
+| Risky overlapping paths | **57** (fork-critical + packaging surfaces touched on main since the stable baseline) |
+| Migration contracts | 10 (retain 5 / adapt 5 / retire 0 / defer 0); `stableActivationAllowed: false` |
+| Upstream issue search | #1749 OPEN, #1811 CLOSED, #1493 OPEN, #1546 CLOSED; no exact matches for pending drafts; tracker remains status/search/draft only |
+
+Planned conflict paths from `--conflict-plan --json --local-only`:
+
+| Path | Strategy | Risk |
+|------|----------|------|
+| `.github/workflows/build.yml` | preserve-both | high |
+| `build/cli-runtime-closure.json` | take-main | low |
+| `build/installer.nsh` | take-main | low |
+| `build/persistence-schema-fingerprint.json` | take-main | low |
+| `build/persistence-store-inventory.json` | take-main | low |
+| `core/engine.ts` | preserve-both | high |
+| `desktop/main.cjs` | human-review | high |
+| `desktop/src/shared/launch-integrity.cjs` | take-main | low |
+| `package.json` | defer-to-stable-production-sync | medium |
+| `release-digest.v1.json` | take-main | medium |
+| `release-digest.v2.json` | take-main | low |
+| `scripts/build-server.mjs` | preserve-both | high |
+| `scripts/fix-modules.cjs` | take-main | low |
+| `server/index.ts` | preserve-both | high |
+| `tests/build-server-artifact.test.ts` | take-main | low |
+
+`--include-prerelease --check` is review-only: it reports `train-13` as a new tag and flags diverging-file intersections (including `build.yml`, `desktop/main.cjs`, package metadata, release digest, and `server/index.ts`). That must **not** activate production sync. Wait for a non-prerelease tag newer than `v0.407.15`.
+
+## Stable sync activation and closeout boundary
+
+- 2026-07-18: upstream stable `v0.407.15` was activated as the attended sync target and `dev` was rebased onto upstream commit `ab8d508e3ca4`. Package and lockfile metadata now report `0.407.15`; the upstream release digest remains `v0.407.15` / `0.407.15`.
+- The pre-rebase state is preserved by `codex/backup-dev-before-v0.407.15-sync-20260718` at `28125675b667a`. The completed local sync head before this documentation closeout is `b51f150a2c1a`.
+- The rebase required multiple conflict batches and semantic adaptations across session-scoped stores, attachment hydration, updater/announcement identity, compaction, provider credentials, `KeyInput`, installer activation, server protocol diagnostics, resource transport, and the signed train/renderer pipeline. Resolutions preserved compatible upstream and fork behavior rather than choosing one side wholesale.
+- The obsolete fork replay that would have restored the old `v0.357.17-karlorz.1` release digest was skipped. Do not align `release-digest.v1.json` to a new fork tag until a separately attended fork-release publication phase.
+- Upstream's artifact-core activation is now present. The fork retains its current-symlink server activation, checksum blocking, and rollback behavior; installer characterization was updated to assert that combined contract.
+- Local build metadata initially selected the co-located `train-12` tag instead of stable `v0.407.15`. Commit `b51f150a` restricts build-info tag discovery to stable `v[0-9]*` tags and adds regression coverage.
+- Tier 0-3 verification is complete, including post-rebase fork-presence/focused/bundle gates, broad migration and conflict suites, typecheck, local-only conflict planning, an installed/codesigned `0.407.15` desktop app, helper identity/WebSocket verification, and live remote image upload plus chat-switch/Conversation Files preview persistence.
+- The live smoke observed non-blocking `/api/input-drafts` 404 responses because sg01 still runs an older server, plus one unrelated stale historical resource returning 410. The newly uploaded resource loaded successfully, with no CSP refusal or WebSocket disconnect.
+- At this stable-sync-only boundary, no sg01 deployment, push, fork tag, fork release, PR #1 merge/close/auto-merge, or release-digest fork alignment had occurred. The later attended `.6` release/deployment closeout is recorded below. The detailed SkillWiki changelog note remains deferred because the shared vault contains unrelated dirty and review-required work; do not absorb or auto-stage it.
+
+## Stable sync-only closeout (historical)
+
+- 2026-07-18: `dev` was rebased from the prior stable baseline `v0.357.17` onto upstream stable `v0.407.15` (`ab8d508e3ca4`). Package metadata and the retained upstream digest report `0.407.15`; `dev` reached `b51f150a2c1a` after characterization and local-build tag-selection follow-ups.
+- Conflict resolution preserved upstream session-ID ownership, train announcements, signed artifact-core/renderer behavior, provider widgets, compaction, and protocol diagnostics while retaining fork LAN auth/probing, scoped remote-resource CSP, optimistic attachment bytes, resource previews, disabled updater identity, current-symlink installer safety, and remote-boundary assertions.
+- The old fork release-digest replay was intentionally skipped. The stable digest remains upstream-owned; no `v0.407.15-karlorz.N` tag or release has been created.
+- `node scripts/sync-upstream.mjs --post-rebase` passed Tier 0 fork-only file presence, Tier 1 focused LAN/auth/CSP/remote-preview tests, Tier 2 main/preload builds and marker greps, and scoped remote resource-origin checks.
+- Additional fresh and accumulated gates passed: broad conflict/migration/provider/resource suites, installer migration safety, WebSocket/cache characterization, `tests/sync-upstream.test.mjs`, `tests/local-build-info.test.mjs`, `tests/auto-updater.test.ts`, `tests/install-server-upgrade.test.mjs`, `tests/csp-sync.test.ts`, `npm run typecheck`, `git diff --check`, and local-only conflict planning.
+- Tier 3A rebuilt `/Applications/HanaAgent.app` as local `0.407.15`. The upstream signed seed requirement was validated with a one-time temporary Ed25519 key/keyset that was deleted immediately afterward; no production signing material was used. Codesign passed, and installed build info reports local channel, upstream base tag `v0.407.15`, updates disabled, and ad-hoc app signing.
+- Tier 3B helper verification returned identity HTTP 200, valid token-auth identity, and WebSocket open. The UI smoke uploaded `Hanako.jpg`, sent it, switched chats and returned, confirmed its transcript thumbnail and Conversation Files entry, and opened a complete `1024x1024` MediaViewer image. No CSP refusal or WebSocket disconnect occurred; old-server input-draft 404s and one stale historical-resource 410 were non-blocking.
+- PR #1 remained the permanent draft dashboard and was not merged, auto-merged, closed, or remotely refreshed during this sync-only closeout. At that point no push, sg01 deployment, fork tag, or fork release had occurred. The later attended `.6` actions below supersede only that no-action snapshot; the SkillWiki changelog note remains deferred pending safe isolation of the dirty shared vault.
+
+## Latest fork-release and deployment closeout
+
+- 2026-07-20: fork prerelease `v0.407.15-karlorz.7` was published from exact commit `73d46c38fe483de3d277eed133780038bf54c04c` on `origin/dev`. GitHub Actions run `29695065868` completed successfully. The release remains a prerelease, targets `dev`, and contains the expected 20-asset legacy-raw surface: seven desktop installers, five standalone server bundles, five SHA-256 sidecars, one compatibility manifest, one immutable profile marker, and `release-digest.v1.json`.
+- Signed-only assets are intentionally absent: no `latest*.yml`, blockmaps, renderer/server hot-update archives, seed/train assets, AtomGit mirror output, or `release-digest.v2.json` release asset. The committed v1/v2 digests both validate for tag `.7`, but the binding legacy-raw upload policy publishes v1 only.
+- The release profile is `legacy-raw`. With Apple Developer ID credentials absent, both macOS architectures were built with ad-hoc identity `-`, hardened runtime disabled, and notarization skipped. CI strictly verified each complete `HanaAgent.app` before upload; each app bundle is ad-hoc signed and resource-sealed, while the DMG and ZIP containers are unsigned and unnotarized.
+- This tag includes the conditional install-server bootstrap: download `install-server.mjs` first, detect `../shared/(remote-server-|remote-feature-contracts)` imports, and only then stage the six same-ref shared modules before replacing the CLI. Historical single-file tags such as `v0.357.17-karlorz.1` remain bootstrappable.
+- The arm64 DMG checksum matched GitHub (`a52dd4a1a744e5faf84cd302034e1dba631991e698e617bf804e9eb9d764cf27`). `/Applications/HanaAgent.app` now reports app version `0.407.15`, release tag `v0.407.15-karlorz.7`, git SHA `73d46c38...`, profile/signature kind `legacy-raw`, and updater/artifact updates disabled; `codesign --verify --deep --strict --verbose=2` passed.
+- sg01 first refreshed the durable CLI from tag-pinned `install-server-bootstrap.sh --install-cli-only` (installed installer + status dependencies). Online status then recommended `.7` while still on `.6`. Upgrade used `install-server upgrade --version v0.407.15-karlorz.7 --channel prerelease` dry-run then execute; result was `ok: true`, `rolledBack: false`. Current symlink is `/opt/hanaagent/releases/v0.407.15-karlorz.7-linux-arm64` with server archive checksum `595a9d2c1df6be2c43bd56b541d22d80f956d6a2474f599de74a75c588272f6c`.
+- Fresh post-deploy evidence shows `hanaagent` active and enabled, `/mobile/`, `/mobile/locales/zh.json`, and `/mobile/locales/en.json` HTTP 200, identity HTTP 200 (token-auth via desktop smoke helper), WebSocket open, exact release match, eligible deployability, valid compatibility manifest, no release-policy drift, and declared `chat.core@1`, `input.drafts@1`, and `websocket.ticket@1` contracts. Online status check reports `.7` as current.
+- Live desktop smoke attached the 64×64 `smoke-image.png`, opened Conversation Files (row `smoke-image.png`), switched to `Image Preview Smoke Test`, returned to the new chat, and recorded zero CSP refusals and zero WebSocket disconnects in the CDP console sample.
+- Upstream issue search was refreshed on 2026-07-20: #1749 remains open, #1811 remains closed, #1493 remains open, #1546 remains closed, and no exact matches were found for the pending local drafts. The tracker remains status/search/draft only; no issue was submitted.
+- PR #1 remains open and draft and was not merged, closed, auto-merged, or used as a release vehicle. Immutable tags `.6` and `.7` were not moved. Ignored UAT media and unrelated dirty SkillWiki work were not absorbed.
+
+### Prior closeout snapshot (`v0.407.15-karlorz.6`)
+
+- 2026-07-19: fork prerelease `v0.407.15-karlorz.6` was published from `7365233a0d0a36c467e3a97d9243f4620e80562a` (workflow `29688911528`), 20-asset legacy-raw surface, sg01 upgraded from older line to `.6`, then post-release bootstrap repair staged for dependency-complete CLI while leaving the immutable `.6` tag unmoved.
+
+## Attended fork-release closeout (v0.407.15 line)
+
+The post-sync development line now includes the Phase 1-3 remote-server
+assessment and feature-contract work, the unified server installer/build
+identity and compatibility-manifest flow, and provider-neutral BYOK release
+digest generation. These are fork-maintained surfaces and are protected by the
+expanded `forkOnlyFiles` and explicit divergence policies in
+`docs/fork-sync/rules.yml`.
+
+Before a fork release is created, the attended gate is:
+
+1. Run the upstream stable/issue checks and record the result. On this line,
+   upstream stable is still `v0.407.15`; issue search confirms #1749 remains
+   open, #1811 remains closed, and no exact matches were found for the pending
+   local drafts. The tracker is search/status-only and never submits issues.
+2. Run the sync rule, focused remote-assessment/release suites, typecheck,
+   diff check, desktop/server builds, and compatibility-manifest validation.
+3. Generate a temporary digest through the configured generic
+   `model`/`base_url`/`api_key`/`api_backend` environment, validate it, inspect
+   its commit range and secret scan, and only then align the committed digest
+   to the exact final fork release commit and tag.
+4. Publish the fork-scoped tag `v0.407.15-karlorz.N` and verify the selected
+   profile's exact asset surface. A legacy-raw release requires its profile
+   marker, seven marked desktop installers, five standalone server bundles and
+   sidecars, compatibility manifest, and `release-digest.v1.json`; it must not
+   be rejected for omitting `release-digest.v2.json` or signed-only updater,
+   train, renderer, blockmap, or mirror assets.
+5. On sg01, first use the selected tag or commit's bootstrap to refresh the
+   durable CLI and its same-ref status dependencies. Then run `install-server
+   status --check-updates --json`, a pinned stable upgrade dry-run, backup, and
+   only then the attended execute step. Verify the current symlink, service
+   health, build identity, compatibility contracts, `/mobile/`, and localized
+   mobile strings.
+6. Reinstall/codesign the local desktop if required and complete the live
+   smoke: identity, WebSocket, image paste/upload/send, chat switch/return,
+   transcript thumbnail, and Conversation Files preview.
+
+No release, tag, push, or sg01 deployment is implied by this checklist until
+each corresponding command and artifact has fresh evidence. PR #1 remains a
+permanent draft dashboard and is never a merge vehicle.
 
 ## Latest fork patch closeout
 
@@ -281,3 +444,6 @@ The server on sg01 and the desktop app stay on the last-known-good bundles until
 | 2026-07-02 | `v0.349.5` | Rebase conflicts in session metadata compaction tests/code and provider model deletion UI/store tests/code. | Preserved upstream aggregate compaction and provider metadata behavior while keeping fork forced legacy sidecar compaction, memory-reflection sidecar hydration, replacement-list model deletion, and encoded DELETE model removal. | `node scripts/sync-upstream.mjs --post-rebase` passed Tier 0/1/2; conflict-focused Vitest passed 167 tests; `npm run typecheck`, `git diff --check`, and conflict-plan local-only passed. | Tier 3A installed/codesigned local HanaAgent `0.349.5`; Tier 3B helper verified identity 200 and WS open; CDP UI smoke pasted/sent a generated image, switched away/back, confirmed transcript image plus Conversation Files row, then opened MediaViewer from remote `/api/resources/res_sf_.../content` with no CSP or WebSocket failure. | PR #1 remains the permanent draft dashboard and was untouched. Fork release tag: `v0.349.5-karlorz.1`. |
 | 2026-07-04 | `v0.350.2` | No manual rebase conflicts; precheck flagged likely overlap in `desktop/main.cjs`, `InputArea` and `ws-message-handler` tests/code, plus package metadata files. | Accepted upstream `0.350.2` package metadata and clean upstream fixes while preserving the fork Tier 0 file-presence gate, LAN auth probe path, scoped runtime CSP, remote attachment preview, and Conversation Files MediaViewer behavior. | `node scripts/sync-upstream.mjs` and `--post-rebase` passed Tier 0/1/2; `tests/sync-upstream.test.mjs` passed 19 tests; `npm run typecheck`, `git diff --check`, and conflict-plan local-only passed. | Tier 3A installed/codesigned local HanaAgent `0.350.2`; Tier 3B helper verified identity 200 and WS open; CDP UI smoke uploaded/sent `openhanako-sync-smoke-v0.350.2.jpg`, switched to `Recent Changelogs Guide`, returned to `Image Preview Smoke Test`, confirmed the new smoke turn plus Conversation Files row, then opened MediaViewer from remote `/api/resources/res_sf_2a746d039596aeca/content?...` at `1024x1024` with no CSP or WebSocket failure. | PR #1 remains the permanent draft dashboard and was untouched. Fork release tag: `v0.350.2-karlorz.1`. |
 | 2026-07-07 | `v0.357.17` | Conflict batch in `desktop/auto-updater.cjs`, auto-update locale keys, and `tests/auto-updater.test.ts` while replaying local build identity / disabled auto-update. | Preserved upstream AtomGit/GitHub fallback and release digest behavior, retained fork local-build `updateEnabled: false` guard, kept both digest and local-build locale keys, and kept upstream plus fork auto-updater tests. | `node scripts/sync-upstream.mjs --post-rebase` passed Tier 0/1/2; `tests/auto-updater.test.ts` passed 20 tests; `tests/sync-upstream.test.mjs` passed 19 tests; `npm run typecheck`, `git diff --check`, conflict-plan local-only, release digest validation, and `tests/release-mirror-workflow.test.ts` passed. | Tier 3A installed/codesigned local HanaAgent `0.357.17`; Tier 3B helper verified identity 200 and WS open; CDP UI smoke sent `Pasted image.png`, switched away/back, confirmed transcript attachment plus Conversation Files row, then opened MediaViewer from remote `/api/resources/res_sf_60152d5c1617a6bc/content?...` at `64x64` with no CSP or WebSocket failure. | PR #1 remains the permanent draft dashboard and was untouched. Fork release `v0.357.17-karlorz.1` published from `c9a88215`; workflow `28843292226` green; release has 21 assets including linux-arm64 server tarball and checksum. |
+| 2026-07-18 | `v0.407.15` | Multiple textual and semantic batches across session stores/IDs, attachment hydration, updater/announcements, compaction, providers, `KeyInput`, installer/artifact-core activation, protocol diagnostics, signed build pipelines, tests, and the release digest. | Preserved compatible upstream and fork behavior; retained stable session IDs and signed artifact-core while keeping LAN/scoped-resource/preview/current-symlink safety. Skipped the obsolete `v0.357.17-karlorz.1` digest replay, adapted characterization to stable behavior, and fixed stable-tag selection when `train-12` shared the release commit. | `--post-rebase` passed Tier 0/1/2; broad conflict/migration/provider/resource/installer suites passed; sync/build-info/updater/server-upgrade/CSP tests passed; `npm run typecheck`, `git diff --check`, and local-only conflict planning passed. | Tier 3A installed/codesigned local HanaAgent `0.407.15` using a deleted one-time validation key for the required signed seed. Tier 3B verified identity 200 and WS open; upload/send/switch/return preserved the `Hanako.jpg` thumbnail and Conversation Files preview, and MediaViewer loaded it at `1024x1024` with no CSP or WS failure. | Backup branch `codex/backup-dev-before-v0.407.15-sync-20260718` preserves the pre-rebase head. No push, deployment, fork tag/release, digest fork alignment, or PR #1 mutation occurred. Old-server input-draft 404s and one stale 410 were non-blocking. SkillWiki changelog deferred because the shared vault is dirty. |
+| 2026-07-19 | `v0.407.15` | Post-sync remote assessment, release-profile, digest, installer, bootstrap dependency, and macOS no-certificate fallback closeout. | Published immutable fork prerelease `v0.407.15-karlorz.6` from `7365233a`; selected legacy-raw when Hana signing material was absent; used complete ad-hoc macOS app-bundle signing plus strict pre-upload verification when Apple credentials were absent; preserved runtime-only server/checksum deployment; fixed the post-release bootstrap to install the durable CLI's same-ref dependency closure before the implementation. | Run `29688911528` succeeded; the reviewed release/code gates passed 22 Vitest files and 296 tests, typecheck, main build, both digest validators, YAML parsing, and diff checks. Bootstrap/sync regressions additionally passed 108 focused tests. | Installed the verified arm64 DMG; upgraded sg01 with the supported installer; refreshed the durable CLI, then confirmed exact/current update detection, build identity, HTTP 200, WS open, active/enabled service, localized mobile assets, and image send/switch/return plus complete `834x775` Conversation Files preview with zero console errors/warnings. | Release has the audited 20-asset legacy-raw surface. Issue search reconfirmed #1749 open and #1811 closed with no exact draft matches. PR #1 and the immutable `.6` tag remained untouched after publication; the bootstrap fix lands on `dev` for the next tag. Unrelated SkillWiki work and ignored UAT media were preserved. |
+| 2026-07-20 | `v0.407.15` | Conditional bootstrap dependency fetch, fork-sync policy/docs closeout, and attended `.7` release/redeploy. | Published immutable fork prerelease `v0.407.15-karlorz.7` from `73d46c38`; bootstrap detects installer shared imports so legacy single-file tags remain installable while current refs stage the six-module status dependency closure first; recorded Apple no-certificate macOS fallback and CSC blank-gate in fork-sync rules. | Run `29695065868` succeeded with 20 legacy-raw assets; focused Vitest 134 tests, typecheck, YAML parse, bootstrap `sh -n`, and digest validators passed; PR #1 left open/draft. | Tag-pinned bootstrap CLI refresh; sg01 upgrade `ok: true`/`rolledBack: false` to `.7-linux-arm64`; service active/enabled; mobile/locales 200; smoke helper identity 200 + WS open; arm64 DMG install + strict codesign; image attach + Conversation Files `smoke-image.png` + chat switch/return with zero CSP/WS errors. | Issue search reconfirmed #1749 open, #1811 closed, no exact draft matches. Immutable `.6`/`.7` tags not moved. SkillWiki dirty work not absorbed. |

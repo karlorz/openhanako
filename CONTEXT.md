@@ -18,6 +18,8 @@ This is a permanent personal fork unless upstream accepts equivalent fixes. See 
 
 Use release-tag syncs from upstream, not continuous upstream `main` tracking. Preserve local fixes by behavior and tests, not by blindly preferring either side during conflicts.
 
+Current pre-sync state (2026-07-20): the fork is already on upstream stable `v0.407.15` (package `0.407.15`, latest fork prerelease `v0.407.15-karlorz.7`). No newer non-prerelease release exists, so production sync remains inactive. Upstream prerelease ceiling is `train-13` / `v0.412.7` at `9a5b8e9d` (same commit as `upstream/main` and the refreshed `origin/main` mirror). The dry-run dashboard reports 15 planned conflict paths (4 preserve-both, 9 take-main, 1 human-review on `desktop/main.cjs`, 1 deferred `package.json`), 57 risky overlapping paths, and 10 migration contracts with `stableActivationAllowed: false`. See `FORK_SYNC.md` for the exact list. Conflict-reduction on `dev` (2026-07-20): LAN WS is ticket-primary with gated query-token fallback; CSP probe is isolated in `connect-probe.cjs`; resource-url LAN invariant retained. Do not start a production sync or bump package metadata until a new stable release exists.
+
 ## Core Terms
 
 - **Local owner connection**: Electron desktop owns and spawns its own local server; local file URLs can use `platform.getFileUrl`.
@@ -83,11 +85,33 @@ Manual smoke for the remote server:
 
 1. Connect to `http://100.125.173.118:14500`.
    - To clear `localStorage` and reconnect without retyping a previously saved key, run `node scripts/hana-desktop-smoke-helper.mjs --restart --verify --url http://100.125.173.118:14500`.
+   - Contract gates are explicit and repeatable, for example `--require-contract input.drafts@1`; evidence defaults to `.claude/remote-assessment/latest.json` and can be changed with `--assessment-out PATH`. Exit `3` means functional verification passed but a requested contract is missing, unconfirmed, or deployment-coupled. `websocket.ticket@1` is migration-readiness evidence, not a generic LAN core requirement.
    - If the LAN connection has never been saved in this app profile, prefer `HANA_DESKTOP_SMOKE_TOKEN=<device-key>` over `--token` for the first helper run.
+   - A normal `--verify` run always reports two independent results: `functional.status` for identity/WebSocket operation and `environment.status` for server release freshness, feature-contract evidence, and host compatibility. `functional.status: pass` does not mean the Remote Server is current. Environment attention or an unavailable GitHub release lookup remains non-fatal in Phase 1; identity or WebSocket failure still exits nonzero.
 2. Paste/upload an image.
 3. Send it.
 4. Switch chats and return.
 5. Confirm chat thumbnail and Conversation Files preview still render, including older sessions.
+
+### Offline work-item prerequisite check
+
+Candidate specs may declare `remote_requirements` in YAML frontmatter. An
+attended operator sets `WORK_ITEM_SPEC` to the candidate spec's absolute path,
+refreshes `.claude/remote-assessment/latest.json` with the desktop smoke helper,
+and then runs the configured `check-remote-prerequisites.mjs` command. Refresh
+evidence only with attended authority.
+Attended refresh is the only supported evidence refresh workflow.
+
+The checker is offline, credential-free, and read-only: it reads only the
+supplied work-item and assessment paths. It reports `unknown` when evidence is
+absent, invalid, or stale. Prep must not scrape credentials, read renderer or
+localStorage state, or contact sg01 merely because a candidate has remote
+requirements. Generic `/dev-loop prep` does not invoke this checker.
+
+When the result is `deployment-coupled`, split the work into explicit client,
+server, release, upgrade, and post-upgrade verification stages. Automatic prep
+integration requires a separate dev-loop plugin source change and release; do
+not patch an installed plugin cache.
 
 ## Dev-Loop Notes
 
