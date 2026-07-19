@@ -176,7 +176,8 @@ describe("Windows NSIS installer contract", () => {
   it("ships a profile-specific NSIS entrypoint for legacy raw packages", () => {
     const entrypoint = fs.readFileSync(path.join(root, "build", "installer-legacy-raw.nsh"), "utf-8");
     expect(entrypoint).toContain("HANA_RELEASE_PROFILE_LEGACY_RAW");
-    expect(entrypoint).toContain('!include "installer.nsh"');
+    expect(entrypoint).toContain('!include "${BUILD_RESOURCES_DIR}\\installer.nsh"');
+    expect(entrypoint).not.toContain('!include "installer.nsh"');
   });
 
   it("keeps signed checks isolated while validating the complete legacy raw surface", () => {
