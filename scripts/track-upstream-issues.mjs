@@ -673,6 +673,21 @@ export const TRACKED_FIXES = [
       "Included because it protects the fork-only install-server/upstream-issue tooling tests.",
     ],
   },
+  {
+    id: "legacy-raw-release-profile-evidence",
+    title: "Explicit legacy raw fallback profile and release evidence policy",
+    classification: "fork-only",
+    status: "tracked/no-upstream-issue",
+    commits: ["pending-local-fix"],
+    grouping: "ci/release: explicit signed and legacy-raw fallback with runtime-only server evidence",
+    searches: [],
+    notes: [
+      "Fork release policy, not an upstream product issue.",
+      "Tag pushes and attended manual/local commands resolve auto to signed only with validated Ed25519 material, or to marked legacy-raw when both signing inputs are blank.",
+      "A release-profile marker allows same-profile reruns and rejects cross-profile or mixed installer uploads before mutation.",
+      "Raw releases retain installers, runtime-only server bundles, compatibility metadata, checksums, and the committed digest while excluding updater, train, and mirror assets.",
+    ],
+  },
 ];
 
 export function markdownTable(rows) {
