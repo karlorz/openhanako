@@ -11,6 +11,7 @@ import {
   inspectSigningKeyState,
   normalizeReleaseProfile,
   normalizeReleaseProfileRequest,
+  resolveReleaseProfileFromEnv,
   resolveRequestedReleaseProfile,
   resolveServerBuildMode,
 } from "../shared/release-profile.cjs";
@@ -55,6 +56,15 @@ describe("release profile contract", () => {
     expect(resolveRequestedReleaseProfile({ requested: AUTO_PROFILE, keyState: "absent" }))
       .toEqual({ profile: LEGACY_RAW_PROFILE, reason: "auto-no-signing-key" });
     expect(() => normalizeReleaseProfile("auto")).toThrow(/release profile/i);
+  });
+
+  it("resolves an environment request through the shared concrete-profile boundary", () => {
+    expect(resolveReleaseProfileFromEnv({ requested: AUTO_PROFILE, env: {} }))
+      .toEqual({ profile: LEGACY_RAW_PROFILE, reason: "auto-no-signing-key" });
+    expect(resolveReleaseProfileFromEnv({
+      requested: LEGACY_RAW_PROFILE,
+      env: { HANA_SIGN_KEY: "/definitely/missing/hana-sign-key.pem" },
+    })).toEqual({ profile: LEGACY_RAW_PROFILE, reason: "explicit-legacy-raw" });
   });
 
   it("fails closed for an explicit signed request without signing material", () => {

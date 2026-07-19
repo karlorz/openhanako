@@ -85,6 +85,11 @@ describe("release runtime policy", () => {
       serverRoot: path.join(resourcesPath, "server"),
       rendererRoot,
       serverRendererRoot: path.join(resourcesPath, "server", "desktop", "dist-renderer"),
+      buildInfo: {
+        releaseProfile: "legacy-raw",
+        updateEnabled: false,
+        artifactUpdatesEnabled: false,
+      },
     });
 
     expect(() => resolvePackagedLayout({

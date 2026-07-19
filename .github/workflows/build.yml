@@ -15,6 +15,13 @@ on:
           - signed
           - legacy-raw
 
+# Guard, marker upload, and profile-specific asset publication must be a single
+# serialized transaction per ref. Queue retries rather than cancelling the
+# earlier run while it is between the guard and marker-upload steps.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   # Resolve once so no package, uploader, or publishing job can accidentally
   # reinterpret `auto`. Tag pushes use signed material when valid and fall back
