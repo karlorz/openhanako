@@ -5,6 +5,11 @@ import {
 } from "../scripts/guard-release-profile.mjs";
 
 describe("release profile immutability guard", () => {
+  it("uses a GitHub-stable non-hidden asset name for profile markers", () => {
+    expect(releaseProfileMarkerName("legacy-raw")).toBe("hana-release-profile-legacy-raw.json");
+    expect(releaseProfileMarkerName("signed")).toBe("hana-release-profile-signed.json");
+  });
+
   it("accepts a clean release and same-profile reruns", () => {
     expect(() => assertReleaseProfileCompatibility({ requested: "legacy-raw", assetNames: [] })).not.toThrow();
     expect(() => assertReleaseProfileCompatibility({
