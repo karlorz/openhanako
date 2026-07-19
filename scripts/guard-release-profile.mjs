@@ -28,6 +28,18 @@ export function assertReleaseProfileCompatibility({ requested, assetNames = [] }
     if (oppositeInstallers.length > 0) {
       throw new Error(`Existing release assets contain opposite-profile installers (${oppositeInstallers.join(", ")}); refusing mixed assets.`);
     }
+    if (profile === "legacy-raw") {
+      const forbiddenAssets = assetNames.filter((name) => (
+        /^latest.*\.yml$/.test(name)
+        || /^server-.*\.tar\.gz$/.test(name)
+        || /^renderer-.*\.tar\.gz$/.test(name)
+        || /seed-train/.test(name)
+        || /\.blockmap$/.test(name)
+      ));
+      if (forbiddenAssets.length > 0) {
+        throw new Error(`Existing legacy-raw release contains forbidden updater/train assets (${forbiddenAssets.join(", ")}); refusing mixed assets.`);
+      }
+    }
     return { profile, marker: expected };
   }
 
