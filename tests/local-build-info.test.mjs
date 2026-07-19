@@ -26,4 +26,27 @@ describe("local build info", () => {
       expect.any(Object),
     );
   });
+
+  it("uses the full commit SHA for local runtime provenance", () => {
+    const fullSha = "0123456789abcdef0123456789abcdef01234567";
+    const execFileSyncImpl = vi.fn((_command, args) => {
+      if (args[0] === "rev-parse") return `${fullSha}\n`;
+      if (args[0] === "describe") return "v0.407.15\n";
+      if (args[0] === "status") return "";
+      throw new Error(`unexpected git command: ${args.join(" ")}`);
+    });
+
+    const buildInfo = createLocalBuildInfo({
+      rootDir: process.cwd(),
+      execFileSyncImpl,
+      env: {},
+    });
+
+    expect(buildInfo.gitSha).toBe(fullSha);
+    expect(execFileSyncImpl).toHaveBeenCalledWith(
+      "git",
+      ["rev-parse", "HEAD"],
+      expect.any(Object),
+    );
+  });
 });
