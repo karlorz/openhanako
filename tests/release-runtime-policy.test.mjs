@@ -26,6 +26,7 @@ function makeRawLayout(resourcesPath) {
   writeFile(resourcesPath, "server/bundle/index.js");
   writeFile(resourcesPath, "server/node");
   writeFile(resourcesPath, "server/server-build-info.json", JSON.stringify({ gitSha: "a" }));
+  writeFile(resourcesPath, "server/desktop/dist-renderer/mobile.html", "<!doctype html>");
   writeFile(resourcesPath, "app/desktop/dist-renderer/index.html", "<!doctype html>");
 }
 
@@ -79,7 +80,12 @@ describe("release runtime policy", () => {
       resourcesPath,
       buildInfo: { releaseProfile: "legacy-raw", artifactUpdatesEnabled: false },
       rendererRoot,
-    })).toMatchObject({ mode: "legacy-raw", serverRoot: path.join(resourcesPath, "server"), rendererRoot });
+    })).toMatchObject({
+      mode: "legacy-raw",
+      serverRoot: path.join(resourcesPath, "server"),
+      rendererRoot,
+      serverRendererRoot: path.join(resourcesPath, "server", "desktop", "dist-renderer"),
+    });
 
     expect(() => resolvePackagedLayout({
       appIsPackaged: true,
@@ -107,6 +113,20 @@ describe("release runtime policy", () => {
       buildInfo: { releaseProfile: "legacy-raw" },
       rendererRoot: path.join(resourcesPath, "app", "desktop", "dist-renderer"),
     })).toThrow(/bundle\/index\.js/i);
+  });
+
+  it("rejects a raw layout whose ordinary Node server cannot read its renderer tree", () => {
+    const { resolvePackagedLayout } = require(policyPath);
+    const resourcesPath = makeResources();
+    makeRawLayout(resourcesPath);
+    fs.rmSync(path.join(resourcesPath, "server", "desktop", "dist-renderer"), { recursive: true });
+
+    expect(() => resolvePackagedLayout({
+      appIsPackaged: true,
+      resourcesPath,
+      buildInfo: { releaseProfile: "legacy-raw" },
+      rendererRoot: path.join(resourcesPath, "app", "desktop", "dist-renderer"),
+    })).toThrow(/server\/desktop\/dist-renderer\/mobile\.html/i);
   });
 });
 
