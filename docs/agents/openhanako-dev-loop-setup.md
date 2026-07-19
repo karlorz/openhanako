@@ -1,6 +1,6 @@
 # OpenHanako Dev-Loop Setup Notes
 
-Generated during the 2026-06-15 remote attachment preview fix closeout. Last revised during the 2026-07-11 main-refresh pre-sync review.
+Generated during the 2026-06-15 remote attachment preview fix closeout. Last revised during the 2026-07-20 main-refresh pre-sync review.
 
 ## Discovery
 
@@ -8,15 +8,15 @@ Generated during the 2026-06-15 remote attachment preview fix closeout. Last rev
 - Upstream: `liliMozi/openhanako`
 - Current branch: `dev`
 - GitHub CLI default repo: `karlorz/openhanako`
-- App version: `0.357.17` after the latest completed stable sync. Tier 3A local desktop install/version verification and Tier 3B sg01 desktop smoke passed on 2026-07-07 before the fork release tag was published.
+- App version: `0.407.15` after the completed stable sync and the attended fork prerelease line through `v0.407.15-karlorz.7`.
 - SkillWiki vault: resolved by `skillwiki path`; project wiki path `projects/openhanako`
 - SkillWiki doctor: 32 pass, 6 info, 0 warn, 0 errors
 - Dev-loop dependency probe: usable; required dependencies present
 - Missing optional dependency: `claude-mem` only
 - Existing CI: `.github/workflows/ci.yml`, targets `main` and `dev`
 - Release workflow: `.github/workflows/build.yml`, tag-triggered `v*`
-- Latest fork release tag: `v0.357.17-karlorz.1`; this stable sync includes upstream `v0.357.17` plus the remote-boundary recovery, replay, ToolGroup link-context, provider model-removal, LAN auth, scoped CSP, remote skill, and remote resource-preview fork behavior.
-- Next stable status: upstream prereleases currently reach `v0.380.10`, but the latest non-prerelease release remains `v0.357.17`; do not start a stable sync or pre-bump package metadata yet. The current read-only outlook remains seven textual conflicts and 42 overlapping paths.
+- Latest fork release tag: `v0.407.15-karlorz.7` on upstream-stable package `0.407.15`; includes LAN auth, scoped CSP, remote resource preview, remote assessment/contracts, install-server bootstrap dependency closure, and legacy-raw release-profile evidence.
+- Next stable status (2026-07-20 main-refresh): stable detector reports latest and last-synced both `v0.407.15` (no production sync available). Review-only prerelease ceiling is `train-13` / `v0.412.7` at `9a5b8e9d`. Dry-run dashboard: 15 planned conflict paths, 57 risky overlapping paths, 10 migration contracts with `stableActivationAllowed: false`. Do not start a stable sync or pre-bump package metadata yet.
 - Upstream sync workflow: `node scripts/sync-upstream.mjs --check` checks stable upstream releases by default; prerelease candidate review requires `--include-prerelease`
 - Fork sync rules: `docs/fork-sync/rules.yml` is the machine-readable policy used by `scripts/sync-upstream.mjs`.
 - Post-rebase fork sync verification: `node scripts/sync-upstream.mjs --post-rebase` prints Tier 3A local desktop install/version verification before Tier 3B sg01 live smoke. The installed `/Applications/HanaAgent.app` bundle metadata, `build-info.json`, and Settings → About must match `package.json` before the live smoke counts.
@@ -115,8 +115,8 @@ Ran a manual core `/dev-loop` cycle audit on 2026-06-15 after the remote preview
 - Vault sync caveat: installed SkillWiki v0.9.4 exposes `skillwiki sync lock/unlock`, while dev-loop v1.24.4 probes for the older `--acquire-lock` flag. `vault_sync.peer_aware` is set to `false` until that probe is updated; launchd vault-sync remains active outside dev-loop.
 - Doctor caveat: `skillwiki doctor` reports `32 pass`, `1 warn`, `0 errors`, but exits non-zero with the warning. Treat the JSON summary as authoritative for blocking decisions, not the exit code alone.
 - GitHub CLI caveat: plain `gh repo view` initially resolved to upstream `liliMozi/openhanako`. Ran `gh repo set-default karlorz/openhanako`; future CI/PR checks should still prefer explicit `--repo karlorz/openhanako` when scripted.
-- CI health: the `dev` branch trigger remains valid; release workflow run `28843292226` for tag `v0.357.17-karlorz.1` completed successfully and published the prerelease assets.
-- Upstream release check: the 2026-07-07 stable sync rebased local `dev` from the `v0.350.2` baseline onto upstream `v0.357.17`. On 2026-07-11, the stable detector still reports `v0.357.17` as latest and already synced; upstream `v0.380.10` is prerelease-only. `--include-prerelease --check` remains review-only and must not activate production sync work.
+- CI health: the `dev` branch trigger remains valid; release workflow run `29695065868` for tag `v0.407.15-karlorz.7` completed successfully and published the 20-asset legacy-raw prerelease surface.
+- Upstream release check: the 2026-07-18 stable sync rebased local `dev` onto upstream `v0.407.15`. On 2026-07-20, the stable detector still reports `v0.407.15` as latest and already synced; upstream `train-13` / `v0.412.7` are prerelease-only. `--include-prerelease --check` remains review-only and must not activate production sync work. Main-refresh dashboard: `origin/main := upstream/main` at `9a5b8e9d`; PR #1 stays open draft; 15 planned conflict paths; package versions untouched.
 - Codex cache caveat: dev-loop's cached skill copy references `skills/dev-loop/scripts/preflight-inventory.js`, but the Codex plugin package currently stores that helper at plugin root `scripts/preflight-inventory.js`. Use the plugin-root script as the fallback until the packaging layout is repaired upstream.
 
 ## Claude Review Follow-Up
@@ -174,3 +174,12 @@ After the 2026-06-16 maintenance cycle, the compact config now treats fork-sync 
 - Tier 3B sg01 desktop smoke passed against `http://100.125.173.118:14500`: helper identity returned HTTP 200, WebSocket opened, a generated image was uploaded/sent, chat switch/return preserved the new smoke turn and Conversation Files row, and MediaViewer loaded the scoped remote resource URL at `1024x1024` without CSP or WebSocket regressions.
 - Fork release target for this sync is `v0.350.2-karlorz.1`; the plain upstream tag `v0.350.2` remains unpushed to `origin`.
 - Permanent dashboard PR #1 remains open, draft, and unmerged.
+
+## Main-refresh pre-sync review - 2026-07-20
+
+- Refreshed `origin/main` from `upstream/main` via `node scripts/sync-upstream.mjs --conflict-plan` (base `9a5b8e9d`, prerelease `v0.412.7` / `train-13` digest).
+- Stable `--check`: latest and last-synced both `v0.407.15`; no production sync available.
+- Prerelease `--include-prerelease --check`: review-only new tag `train-13`; diverging-file intersections flagged; must not start sync.
+- Issue `status`/`search`: #1749 OPEN, #1811 CLOSED, #1493 OPEN, #1546 CLOSED; no exact matches for pending drafts; no issue submitted.
+- Local-only conflict plan: 15 planned paths (preserve-both 4, take-main 9, human-review 1 on `desktop/main.cjs`, deferred package version 1), 57 risky overlapping paths, 10 migration contracts, `stableActivationAllowed: false`.
+- Safety: `dev` HEAD remained `22f4b68c`; package/lockfile stayed `0.407.15`; PR #1 remained OPEN draft with no auto-merge; no install, deploy, tag, or release.
