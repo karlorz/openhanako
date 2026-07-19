@@ -65,6 +65,7 @@ function normalizeBuildMetadata(buildInfo) {
 
 function validateRawLayout({ fsImpl, serverRoot, rendererRoot }) {
   const missing = [];
+  const serverRendererRoot = path.join(serverRoot, "desktop", "dist-renderer");
   const wrappers = ["hana-server", "hana-server.exe"];
   if (!wrappers.some((name) => fileExists(fsImpl, path.join(serverRoot, name)))) {
     missing.push("server/hana-server or server/hana-server.exe");
@@ -80,6 +81,9 @@ function validateRawLayout({ fsImpl, serverRoot, rendererRoot }) {
   }
   if (!fileExists(fsImpl, path.join(rendererRoot, "index.html"))) {
     missing.push("bundled renderer index.html");
+  }
+  if (!fileExists(fsImpl, path.join(serverRendererRoot, "mobile.html"))) {
+    missing.push("server/desktop/dist-renderer/mobile.html");
   }
 
   if (missing.length > 0) {
@@ -138,6 +142,7 @@ function resolvePackagedLayout({
       mode: LEGACY_RAW_PROFILE,
       serverRoot,
       rendererRoot: rendererRoot || path.join(resourcesPath, "app", "desktop", "dist-renderer"),
+      serverRendererRoot: path.join(serverRoot, "desktop", "dist-renderer"),
       buildInfo: metadata,
     };
   }

@@ -245,6 +245,24 @@ async function defaultSmokeTestNodeStartup(outDir, log) {
 }
 
 /**
+ * Apply the same sign-then-startup-smoke contract to a runtime-only package.
+ * Legacy raw installers do not create a seed archive, but their unpacked
+ * Resources/server tree still contains the same Mach-O files that must be
+ * signed before Electron Builder touches the app bundle.
+ *
+ * @param {string} outDir
+ * @param {{env?: NodeJS.ProcessEnv | Record<string, string | undefined>, log?: (msg: string) => void, deps?: {signMachOFiles?: Function, smokeTestNodeStartup?: Function}}} [options]
+ */
+export async function signAndSmokeTestServerRuntime(outDir, options = {}) {
+  const env = options.env || process.env;
+  const log = options.log || console.log;
+  const signMachOFiles = options.deps?.signMachOFiles || defaultSignMachOFiles;
+  const smokeTestNodeStartup = options.deps?.smokeTestNodeStartup || defaultSmokeTestNodeStartup;
+  await signMachOFiles(outDir, log, env);
+  await smokeTestNodeStartup(outDir, log);
+}
+
+/**
  * 默认 manifest 签名器：走 scripts/artifact-sign.mjs（与 æ­£å¼ CI 用同一入口），
  * 在 manifest 旁写 `.sig`。
  * @param {{manifestPath: string, signKeyPath: string}} opts

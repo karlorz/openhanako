@@ -23,6 +23,7 @@ This file tracks local fork fixes against upstream GitHub issues. The source of 
 | server-reinit-data-failsafe | fork-only | tracked/no-upstream-issue | none | install-server: backup-gated reinit-data with operational preserve and latest full-state restore |
 | server-reinit-restore-backup-verification | fork-only | tracked/no-upstream-issue | none | install-server: reject wrong-root restore backups before data-root replacement |
 | node-test-ci-file-mode-hygiene | fork-only | tracked/no-upstream-issue | none | tests/lint: .mjs node tests, LF enforcement, and eslint coverage |
+| legacy-raw-release-profile-evidence | fork-only | tracked/no-upstream-issue | none | ci/release: explicit signed and legacy-raw fallback with runtime-only server evidence |
 
 ## Rules
 

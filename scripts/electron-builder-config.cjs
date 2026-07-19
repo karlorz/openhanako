@@ -30,6 +30,12 @@ function createElectronBuilderConfig({ profile, baseConfig }) {
     config.extraResources.push({ from: "dist-server/${os}-${arch}/", to: "server/" });
   }
 
+  // The signed and legacy-raw installers have different install-surface
+  // contracts. Keep the signed entrypoint as the package default, and select
+  // the raw-aware checks only when the profile explicitly asks for them.
+  config.nsis = config.nsis && typeof config.nsis === "object" ? { ...config.nsis } : {};
+  config.nsis.include = "build/installer-legacy-raw.nsh";
+
   for (const platform of ["mac", "win", "linux"]) {
     if (!config[platform] || typeof config[platform] !== "object") continue;
     if (config[platform].artifactName) {
