@@ -171,8 +171,15 @@ migrationContracts:
     surface: server installer, checksum, backup, and artifact-activation compatibility
     forkPaths:
       - scripts/install-server.mjs
+      - scripts/install-server-bootstrap.sh
       - scripts/build-server-runtime-assets.mjs
       - scripts/pack-server-bundle.mjs
+      - shared/remote-server-assessment.cjs
+      - shared/remote-server-release-catalog.cjs
+      - shared/remote-server-release-loader.cjs
+      - shared/remote-server-policy.json
+      - shared/remote-feature-contracts.cjs
+      - shared/remote-feature-contracts.json
     upstreamPaths:
       - shared/artifact-core
       - scripts/artifact-keygen.mjs
@@ -187,9 +194,11 @@ migrationContracts:
     liveSmoke:
       - installer dry-run selects the expected fork-scoped asset and backup path
       - rollback can restore the previous current release symlink
+      - tag-pinned CLI bootstrap detects installer shared imports and installs the status dependency closure before replacing install-server.mjs
     stopConditions:
       - checksum failure activates a release
       - runtime-start failure leaves no restore path to the previous release
+      - the durable installer cannot load its status or release-assessment dependencies
 
   - id: fork-build-identity
     surface: local desktop build identity and disabled local updater
@@ -252,6 +261,9 @@ migrationContracts:
       - a tag push with blank signing inputs resolves to a marked legacy-raw release
       - a same-profile rerun is accepted and an opposite-profile rerun is rejected before upload
       - a legacy-raw installer marks its profile and has no updater or train surface
+      - either CSC_LINK or CSC_KEY_PASSWORD blank activates the no-certificate macOS fallback
+      - complete HanaAgent.app bundles are ad-hoc signed and resource-sealed while DMG and ZIP containers remain unsigned and unnotarized when Apple credentials are absent
+      - strict macOS bundle verification runs before signed and legacy-raw artifact uploads
       - standalone server bundles remain installable through scripts/install-server.mjs
     stopConditions:
       - a tag push without signing material cannot use the legacy-raw fallback
@@ -259,3 +271,9 @@ migrationContracts:
       - auto reaches package metadata or a downstream publish job
       - a release can contain both signed and legacy-raw desktop installers
       - legacy-raw release uploads updater, train, or mirror assets
+      - a raw macOS fallback omits SKIP_NOTARIZE=true
+      - a raw macOS fallback uses an identity other than -
+      - a raw macOS fallback leaves hardened runtime enabled
+      - artifact upload starts before strict macOS bundle verification
+      - a raw macOS app has no resource seal
+      - strict macOS codesign verification fails

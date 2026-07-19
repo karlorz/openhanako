@@ -1899,6 +1899,31 @@ describe("install-server bootstrap script", () => {
     expect(source).toContain("/opt/hanaagent/install/install-server.mjs");
   });
 
+  it("installs the status dependency closure before replacing the installer", () => {
+    const source = fs.readFileSync(path.join(process.cwd(), "scripts/install-server-bootstrap.sh"), "utf8");
+    const requiredSharedFiles = [
+      "remote-server-assessment.cjs",
+      "remote-server-release-catalog.cjs",
+      "remote-server-release-loader.cjs",
+      "remote-server-policy.json",
+      "remote-feature-contracts.cjs",
+      "remote-feature-contracts.json",
+    ];
+
+    expect(source).toContain('RAW_BASE_URL="https://raw.githubusercontent.com/${REPO}/${REF}"');
+    expect(source).toContain('SHARED_ROOT="/opt/hanaagent/shared"');
+    expect(source).toContain("NEEDS_STATUS_DEPENDENCIES=0");
+    expect(source).toContain("grep -Eq '\\\.\\./shared/(remote-server-|remote-feature-contracts)'");
+    expect(source).toContain('if [ "$NEEDS_STATUS_DEPENDENCIES" = "1" ]; then');
+    expect(source).toContain('curl -fsSL "${RAW_BASE_URL}/shared/${file}" -o "${SHARED_TMP_DIR}/${file}"');
+    for (const file of requiredSharedFiles) {
+      expect(source).toContain(file);
+    }
+    expect(source.indexOf('as_root cp "${SHARED_TMP_DIR}/${file}" "${SHARED_ROOT}/${file}"')).toBeLessThan(
+      source.indexOf('as_root cp "$INSTALLER_TMP" "$INSTALL_IMPL"'),
+    );
+  });
+
   it("only mutates the service when --execute is explicitly forwarded", () => {
     const source = fs.readFileSync(path.join(process.cwd(), "scripts/install-server-bootstrap.sh"), "utf8");
     expect(source).toContain("--install-cli-only");
