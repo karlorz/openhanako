@@ -18,6 +18,8 @@ describe("legacy raw desktop runtime contract", () => {
     expect(source).toContain('mode === "legacy-raw"');
     expect(source).toContain("artifactManaged: false");
     expect(source).toContain("artifactBootContext?.artifactManaged === true");
+    expect(source).toContain("serverRendererRoot: layout.serverRendererRoot");
+    expect(source).toContain("artifactBootContext.serverRendererRoot || _distRenderer");
   });
 
   it("gates all artifact OTA, train, repair, and repair-flag paths", () => {
