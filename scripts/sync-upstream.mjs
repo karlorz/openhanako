@@ -11,6 +11,7 @@ const __dirname = path.dirname(__filename);
 const ROOT = path.resolve(__dirname, "..");
 const DEFAULT_RULES_PATH = path.join(ROOT, "docs", "fork-sync", "rules.yml");
 const DEFAULT_MIGRATION_CONTRACTS_PATH = path.join(ROOT, "docs", "fork-sync", "migration-contracts.yml");
+const DEFAULT_PICK_FROM_MAIN_PATH = path.join(ROOT, "docs", "fork-sync", "pick-from-main-decisions.yml");
 
 export const ISSUE_COMMANDS = ["status", "search", "draft"];
 
@@ -84,6 +85,236 @@ export function resolveMigrationContractsPath(rules = loadRules()) {
 export function loadMigrationContracts(contractsPath = resolveMigrationContractsPath()) {
   return yaml.load(fs.readFileSync(contractsPath, "utf8"));
 }
+
+export function resolvePickFromMainPath(rules = loadRules()) {
+  const relativePath = rules?.pickFromMain?.inventory || "docs/fork-sync/pick-from-main-decisions.yml";
+  return path.isAbsolute(relativePath) ? relativePath : path.join(ROOT, relativePath);
+}
+
+export function loadPickFromMainDecisions(decisionsPath = resolvePickFromMainPath()) {
+  return yaml.load(fs.readFileSync(decisionsPath, "utf8"));
+}
+
+/**
+ * Index path -> decision row. Includes adoptNow list as adopt-now when present.
+ */
+export function pickFromMainDecisionIndex(decisions = loadPickFromMainDecisions()) {
+  const index = new Map();
+  for (const row of decisions?.paths ?? []) {
+    if (row?.path) index.set(row.path, row);
+  }
+  for (const pathName of decisions?.adoptNow ?? []) {
+    const existing = index.get(pathName) ?? { path: pathName };
+    index.set(pathName, { ...existing, decision: "adopt-now" });
+  }
+  return index;
+}
+
+export function decisionForConflictPath(file, decisions = loadPickFromMainDecisions()) {
+  const index = pickFromMainDecisionIndex(decisions);
+  return index.get(file) ?? null;
+}
+
+/**
+ * Attach pick-from-main decision fields onto each conflict plan entry.
+ * Does not change strategy; documents whether dashboard may adopt main tip now.
+ */
+export function attachPickFromMainDecisions(plan, decisions = loadPickFromMainDecisions()) {
+  const index = pickFromMainDecisionIndex(decisions);
+  const conflicts = (plan.conflicts ?? []).map((item) => {
+    const row = index.get(item.file);
+    if (!row) {
+      return {
+        ...item,
+        pickFromMain: {
+          decision: "unlisted",
+          forceAdoptForbidden: true,
+          reason: "No pick-from-main row; default forbid force-adopt until decided",
+        },
+      };
+    }
+    const decision = row.decision || "wait-stable";
+    return {
+      ...item,
+      pickFromMain: {
+        decision,
+        forceAdoptForbidden: decision !== "adopt-now",
+        reason: row.reason || "",
+        plannerStrategy: row.plannerStrategy || item.strategy,
+      },
+    };
+  });
+  const adoptNow = [...index.entries()]
+    .filter(([, row]) => row.decision === "adopt-now")
+    .map(([pathName]) => pathName)
+    .sort();
+  return {
+    ...plan,
+    conflicts,
+    pickFromMain: {
+      schemaVersion: decisions?.schemaVersion ?? 1,
+      inventory: "docs/fork-sync/pick-from-main-decisions.yml",
+      adoptNow,
+      adoptNowCount: adoptNow.length,
+      pathCount: (decisions?.paths ?? []).length,
+      reclaimGuardCount: (decisions?.reclaimGuards ?? []).length,
+      baseline: decisions?.baseline ?? null,
+    },
+  };
+}
+
+/**
+ * Structural reclaim guards — detect duplicate re-application of already-landed
+ * fork fixes (anti-patterns that would re-introduce pre-migration shapes).
+ * Reads real working-tree sources; returns list of violations.
+ */
+export function checkForkReclaimGuards(options = {}) {
+  const root = options.rootDir || ROOT;
+  const read = options.readFileSync || ((rel) => fs.readFileSync(path.join(root, rel), "utf8"));
+  const violations = [];
+
+  function tryRead(rel) {
+    try {
+      return read(rel);
+    } catch {
+      return null;
+    }
+  }
+
+  const serverConnection = tryRead("desktop/src/react/services/server-connection.ts");
+  const websocket = tryRead("desktop/src/react/services/websocket.ts");
+  const mainCjs = tryRead("desktop/main.cjs");
+  const preload = tryRead("desktop/preload.cjs");
+  const connectProbe = tryRead("desktop/src/shared/connect-probe.cjs");
+  const resourceUrl = tryRead("desktop/src/react/services/resource-url.ts");
+  const rulesYml = tryRead("docs/fork-sync/rules.yml");
+  const packagedBoot = tryRead("desktop/src/shared/packaged-artifact-boot.cjs");
+
+  // Guard: ticket-primary — resolveConnectionWsAuth must try tickets; websocket must not short-circuit LAN to legacy only
+  if (serverConnection) {
+    if (!serverConnection.includes("requestConnectionWsTicket")) {
+      violations.push({
+        id: "ticket-primary-ws",
+        detail: "server-connection.ts missing requestConnectionWsTicket (ticket path reclaimed away)",
+      });
+    }
+    if (!serverConnection.includes("mode: 'ticket'") && !serverConnection.includes('mode: "ticket"')) {
+      violations.push({
+        id: "ticket-primary-ws",
+        detail: "server-connection.ts missing ticket mode in ConnectionWsAuth",
+      });
+    }
+  }
+  if (websocket) {
+    // Reclaim shape: first-connect LAN forced to legacy without resolveConnectionWsAuth
+    if (
+      websocket.includes("connection.kind === 'lan'")
+      && websocket.includes("legacy-query-token")
+      && !websocket.includes("resolveConnectionWsAuth")
+    ) {
+      violations.push({
+        id: "ticket-primary-ws",
+        detail: "websocket.ts LAN path does not use resolveConnectionWsAuth (legacy short-circuit reclaim)",
+      });
+    }
+    if (!websocket.includes("resolveConnectionWsAuth")) {
+      violations.push({
+        id: "ticket-primary-ws",
+        detail: "websocket.ts missing resolveConnectionWsAuth",
+      });
+    }
+  }
+
+  // Guard: connect-probe isolation
+  if (!connectProbe || !connectProbe.includes("createConnectProbeHandler")) {
+    violations.push({
+      id: "connect-probe-isolation",
+      detail: "desktop/src/shared/connect-probe.cjs missing createConnectProbeHandler",
+    });
+  }
+  if (mainCjs) {
+    if (!mainCjs.includes("createConnectProbeHandler") || !mainCjs.includes("connect-probe.cjs")) {
+      violations.push({
+        id: "connect-probe-isolation",
+        detail: "main.cjs does not register createConnectProbeHandler from connect-probe.cjs",
+      });
+    }
+    // Reclaim: large inline probe body back in main
+    if (mainCjs.includes('baseUrl must be http(s)') && mainCjs.includes("login redirect blocked")) {
+      violations.push({
+        id: "connect-probe-isolation",
+        detail: "main.cjs re-inlined connect:probe SSRF body (duplicate apply / reclaim)",
+      });
+    }
+  }
+  if (preload && !preload.includes("connect:probe")) {
+    violations.push({
+      id: "connect-probe-isolation",
+      detail: "preload.cjs missing connect:probe exposure",
+    });
+  }
+
+  // Guard: resource-url policy not teaching obsolete isLocalTransport kind===local
+  const obsolete = "isLocalTransport is `!connection || connection.kind === 'local'`";
+  if (rulesYml && rulesYml.includes(obsolete)) {
+    violations.push({
+      id: "resource-url-owner-only-native",
+      detail: "rules.yml reclaims obsolete isLocalTransport kind===local transport predicate",
+    });
+  }
+  if (resourceUrl) {
+    if (!resourceUrl.includes("canUseNativeResourcePath") && !resourceUrl.includes("isLocalOwnerConnection")) {
+      violations.push({
+        id: "resource-url-owner-only-native",
+        detail: "resource-url.ts missing native owner-only path gate helpers",
+      });
+    }
+  }
+
+  // Guard: packaged-artifact-boot planning extracted
+  if (!packagedBoot || !packagedBoot.includes("planPackagedArtifactBoot")) {
+    violations.push({
+      id: "packaged-artifact-boot-planning",
+      detail: "packaged-artifact-boot.cjs missing planPackagedArtifactBoot",
+    });
+  }
+  if (mainCjs && (!mainCjs.includes("planPackagedArtifactBoot") || !mainCjs.includes("packaged-artifact-boot.cjs"))) {
+    violations.push({
+      id: "packaged-artifact-boot-planning",
+      detail: "main.cjs missing packaged-artifact-boot planning helper wiring",
+    });
+  }
+
+  return {
+    ok: violations.length === 0,
+    violationCount: violations.length,
+    violations,
+  };
+}
+
+/**
+ * Assert force-adopt of wait-stable/preserve-fork paths is forbidden for dashboard work.
+ * Returns { ok, forbidden, attempted } — does not mutate the tree.
+ */
+export function assertNoForceAdoptFromMain(options = {}) {
+  const decisions = options.decisions || loadPickFromMainDecisions();
+  const attempted = options.attemptedPaths || [];
+  const index = pickFromMainDecisionIndex(decisions);
+  const forbidden = [];
+  for (const file of attempted) {
+    const row = index.get(file);
+    const decision = row?.decision || "unlisted";
+    if (decision !== "adopt-now") {
+      forbidden.push({ file, decision, reason: row?.reason || "force-adopt forbidden" });
+    }
+  }
+  return {
+    ok: forbidden.length === 0,
+    forbidden,
+    attempted,
+  };
+}
+
 
 export function migrationSummary(migrationContracts = [], productionSync = {}) {
   const contracts = Array.isArray(migrationContracts) ? migrationContracts : [];
@@ -292,13 +523,20 @@ export function buildConflictPlan(conflictingFiles, rules = loadRules(), options
       seen.add(linkedPolicy.file);
     }
   }
-  return {
+  const plan = {
     kind: "openhanako-fork-conflict-plan",
     dryRun: options.dryRun ?? rules.conflictRules?.dryRunDefault ?? true,
     generatedAt: options.generatedAt ?? new Date().toISOString(),
     defaultResolution: rules.conflictRules?.defaultResolution ?? "main",
     conflicts,
   };
+  if (options.skipPickFromMain) return plan;
+  try {
+    return attachPickFromMainDecisions(plan, options.pickFromMainDecisions ?? loadPickFromMainDecisions());
+  } catch {
+    // Inventory optional for unit tests that pass synthetic rules without files.
+    return plan;
+  }
 }
 
 export function parseMergeTreeConflictingFiles(output) {
@@ -337,7 +575,10 @@ export function renderPrDashboardBlock(report) {
       `- \`${item.file}\``,
       `  - strategy: \`${item.strategy}\` (${item.source}${item.risk ? `, ${item.risk}` : ""})`,
       `  - planned action: ${item.plannedAction}`,
-    ].join("\n")).join("\n")
+      item.pickFromMain
+        ? `  - pick-from-main: \`${item.pickFromMain.decision}\`${item.pickFromMain.forceAdoptForbidden ? " (force-adopt forbidden)" : ""}`
+        : null,
+    ].filter(Boolean).join("\n")).join("\n")
     : "- No merge-tree conflicts detected.";
   const latestCommits = (report.upstreamSignals?.latestCommits ?? []).map((line) => `\`${line}\``);
   const riskyFiles = (report.upstreamSignals?.riskyFilesTouched ?? []).map((file) => `\`${file}\``);
