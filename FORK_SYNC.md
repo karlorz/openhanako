@@ -275,12 +275,21 @@ The server on sg01 and the desktop app stay on the last-known-good bundles until
 
 ## Pick-from-main decisions (dashboard conflict reduction)
 
-Machine-readable worklist decisions for the current dry-run set live in
-`docs/fork-sync/pick-from-main-decisions.md`. Summary: **no** policy-safe
-`adopt-now` paths while stable remains `v0.407.15` and main tip is unreleased
-`0.415.15` train content. Digests, package version, dual-profile packaging, and
-legacy-raw install surfaces stay on `dev` until attended stable sync. PR #1
-stays a permanent draft dashboard (never merge for a green scoreboard).
+Machine-readable source: `docs/fork-sync/pick-from-main-decisions.yml` (loaded by
+`scripts/sync-upstream.mjs` into every conflict plan as `pickFromMain` / per-file
+`pickFromMain.decision`). Human table: `docs/fork-sync/pick-from-main-decisions.md`.
+
+**Enforced:** force-adopt of `wait-stable` / `preserve-fork` paths from mirrored
+main is forbidden for dashboard cosmetics (`assertNoForceAdoptFromMain`).
+**Adopt-now set is empty** while stable remains `v0.407.15` and main tip is
+unreleased `0.415.15` train content.
+
+**Reclaim guards** (`checkForkReclaimGuards`): prevent duplicate re-application
+of already-landed fork fixes — ticket-primary WS, isolated `connect-probe`,
+resource-url owner-only native gate, packaged-artifact-boot planning. Focused
+tests: `tests/pick-from-main-reclaim.test.mjs`.
+
+PR #1 stays a permanent draft dashboard (never merge for a green scoreboard).
 
 ## Conflict-reduction implementation (2026-07-20)
 
