@@ -1,5 +1,8 @@
 # Pick-from-main decisions (2026-07-21)
 
+> **Machine-readable source of truth:** `docs/fork-sync/pick-from-main-decisions.yml`
+> (loaded by `scripts/sync-upstream.mjs`). Keep this human table aligned when editing.
+
 Baseline: `dev` @ `6234ac28`, package `0.407.15`, mirrored `origin/main` @ `8a3cbbfc`
 (package tip `0.415.15` / tag `v0.415.15`, **no published GitHub release**).
 Stable production sync: **not available** (latest stable still `v0.407.15`).
