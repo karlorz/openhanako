@@ -1,6 +1,6 @@
 # OpenHanako Dev-Loop Setup Notes
 
-Generated during the 2026-06-15 remote attachment preview fix closeout. Last revised during the 2026-07-20 main-refresh pre-sync review.
+Generated during the 2026-06-15 remote attachment preview fix closeout. Last revised during the 2026-07-21 main-refresh pre-sync review.
 
 ## Discovery
 
@@ -16,7 +16,7 @@ Generated during the 2026-06-15 remote attachment preview fix closeout. Last rev
 - Existing CI: `.github/workflows/ci.yml`, targets `main` and `dev`
 - Release workflow: `.github/workflows/build.yml`, tag-triggered `v*`
 - Latest fork release tag: `v0.407.15-karlorz.7` on upstream-stable package `0.407.15`; includes LAN auth, scoped CSP, remote resource preview, remote assessment/contracts, install-server bootstrap dependency closure, and legacy-raw release-profile evidence.
-- Next stable status (2026-07-20 main-refresh): stable detector reports latest and last-synced both `v0.407.15` (no production sync available). Review-only prerelease ceiling is `train-13` / `v0.412.7` at `9a5b8e9d`. Dry-run dashboard: 15 planned conflict paths, 57 risky overlapping paths, 10 migration contracts with `stableActivationAllowed: false`. Do not start a stable sync or pre-bump package metadata yet.
+- Next stable status (2026-07-21 main-refresh): stable detector reports latest and last-synced both `v0.407.15` (no production sync available). Review-only prerelease ceiling remains `train-13`; mirrored main tip is `8a3cbbfc` (package `0.415.15` / tag `v0.415.15` without a published GitHub release). Dry-run dashboard: 16 planned conflict paths, 57 risky overlapping paths, 10 migration contracts with `stableActivationAllowed: false`. Do not start a stable sync or pre-bump package metadata yet.
 - Upstream sync workflow: `node scripts/sync-upstream.mjs --check` checks stable upstream releases by default; prerelease candidate review requires `--include-prerelease`
 - Fork sync rules: `docs/fork-sync/rules.yml` is the machine-readable policy used by `scripts/sync-upstream.mjs`.
 - Post-rebase fork sync verification: `node scripts/sync-upstream.mjs --post-rebase` prints Tier 3A local desktop install/version verification before Tier 3B sg01 live smoke. The installed `/Applications/HanaAgent.app` bundle metadata, `build-info.json`, and Settings → About must match `package.json` before the live smoke counts.
@@ -116,7 +116,7 @@ Ran a manual core `/dev-loop` cycle audit on 2026-06-15 after the remote preview
 - Doctor caveat: `skillwiki doctor` reports `32 pass`, `1 warn`, `0 errors`, but exits non-zero with the warning. Treat the JSON summary as authoritative for blocking decisions, not the exit code alone.
 - GitHub CLI caveat: plain `gh repo view` initially resolved to upstream `liliMozi/openhanako`. Ran `gh repo set-default karlorz/openhanako`; future CI/PR checks should still prefer explicit `--repo karlorz/openhanako` when scripted.
 - CI health: the `dev` branch trigger remains valid; release workflow run `29695065868` for tag `v0.407.15-karlorz.7` completed successfully and published the 20-asset legacy-raw prerelease surface.
-- Upstream release check: the 2026-07-18 stable sync rebased local `dev` onto upstream `v0.407.15`. On 2026-07-20, the stable detector still reports `v0.407.15` as latest and already synced; upstream `train-13` / `v0.412.7` are prerelease-only. `--include-prerelease --check` remains review-only and must not activate production sync work. Main-refresh dashboard: `origin/main := upstream/main` at `9a5b8e9d`; PR #1 stays open draft; 15 planned conflict paths; package versions untouched.
+- Upstream release check: the 2026-07-18 stable sync rebased local `dev` onto upstream `v0.407.15`. On 2026-07-21, the stable detector still reports `v0.407.15` as latest and already synced; `--include-prerelease --check` reports review-only `train-13` and must not activate production sync. Main-refresh dashboard: `origin/main := upstream/main` at `8a3cbbfc` (package tip `0.415.15`); PR #1 stays open draft; 16 planned conflict paths; package versions untouched.
 - Codex cache caveat: dev-loop's cached skill copy references `skills/dev-loop/scripts/preflight-inventory.js`, but the Codex plugin package currently stores that helper at plugin root `scripts/preflight-inventory.js`. Use the plugin-root script as the fallback until the packaging layout is repaired upstream.
 
 ## Claude Review Follow-Up
@@ -175,11 +175,11 @@ After the 2026-06-16 maintenance cycle, the compact config now treats fork-sync 
 - Fork release target for this sync is `v0.350.2-karlorz.1`; the plain upstream tag `v0.350.2` remains unpushed to `origin`.
 - Permanent dashboard PR #1 remains open, draft, and unmerged.
 
-## Main-refresh pre-sync review - 2026-07-20
+## Main-refresh pre-sync review - 2026-07-21
 
-- Refreshed `origin/main` from `upstream/main` via `node scripts/sync-upstream.mjs --conflict-plan` (base `9a5b8e9d`, prerelease `v0.412.7` / `train-13` digest).
+- Refreshed `origin/main` from `upstream/main` via `node scripts/sync-upstream.mjs --conflict-plan` (base moved `9a5b8e9d` → `8a3cbbfc`; package tip `0.415.15` / tag `v0.415.15` without published GitHub release).
 - Stable `--check`: latest and last-synced both `v0.407.15`; no production sync available.
 - Prerelease `--include-prerelease --check`: review-only new tag `train-13`; diverging-file intersections flagged; must not start sync.
-- Issue `status`/`search`: #1749 OPEN, #1811 CLOSED, #1493 OPEN, #1546 CLOSED; no exact matches for pending drafts; no issue submitted.
-- Local-only conflict plan: 15 planned paths (preserve-both 4, take-main 9, human-review 1 on `desktop/main.cjs`, deferred package version 1), 57 risky overlapping paths, 10 migration contracts, `stableActivationAllowed: false`.
-- Safety: `dev` HEAD remained `22f4b68c`; package/lockfile stayed `0.407.15`; PR #1 remained OPEN draft with no auto-merge; no install, deploy, tag, or release.
+- Issue `status`/`search`: #1749 OPEN, #1811 CLOSED; inventory still tracks #1493/#1546 for plugin-iframe draft; no exact matches for pending drafts; no issue submitted.
+- Local-only conflict plan: 16 planned paths (preserve-both 4, take-main 10 including `core/session-turn-actions.ts`, human-review 1 on `desktop/main.cjs`, deferred package version 1), 57 risky overlapping paths, 10 migration contracts, `stableActivationAllowed: false`.
+- Safety: `dev` HEAD remained `6234ac28`; package/lockfile stayed `0.407.15`; PR #1 remained OPEN draft with no auto-merge; no install, deploy, tag, or release.
