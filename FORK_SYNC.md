@@ -272,6 +272,16 @@ git reset --hard <pre-rebase-sha>
 The server on sg01 and the desktop app stay on the last-known-good bundles until we explicitly redeploy.
 
 
+
+## Pick-from-main decisions (dashboard conflict reduction)
+
+Machine-readable worklist decisions for the current dry-run set live in
+`docs/fork-sync/pick-from-main-decisions.md`. Summary: **no** policy-safe
+`adopt-now` paths while stable remains `v0.407.15` and main tip is unreleased
+`0.415.15` train content. Digests, package version, dual-profile packaging, and
+legacy-raw install surfaces stay on `dev` until attended stable sync. PR #1
+stays a permanent draft dashboard (never merge for a green scoreboard).
+
 ## Conflict-reduction implementation (2026-07-20)
 
 Phases executed on `dev` without a stable rebase onto prerelease `main`:
@@ -303,24 +313,27 @@ Machine-readable dispositions: `docs/fork-sync/migration-contracts.yml`
 (`implementationStatus` fields for websocket-ticket-auth, connection-csp-bootstrap,
 remote-resource-ownership).
 
-## Next stable pre-sync outlook (2026-07-20 main-refresh)
+## Next stable pre-sync outlook (2026-07-21 main-refresh)
 
-Read-only dashboard refresh after the completed `v0.407.15` / `v0.407.15-karlorz.7` line. No attended stable sync, rebase of `dev`, package bump, install, deploy, tag, or PR #1 merge was performed.
+Read-only dashboard refresh on `dev` @ `6234ac28` (includes ticket-primary WS,
+isolated connect-probe, and packaged-artifact-boot planning). No attended stable
+sync, rebase of `dev`, package bump, install, deploy, tag, or PR #1 merge.
 
 | Signal | Observed value |
 |--------|----------------|
-| Working branch / HEAD | `dev` @ `22f4b68c` (unchanged by this refresh) |
+| Working branch / HEAD | `dev` @ `6234ac28` (unchanged by this refresh) |
 | Package / lockfile version | `0.407.15` (unchanged) |
 | Latest stable upstream | `v0.407.15` |
 | Last synced stable | `v0.407.15` |
 | Stable production sync available | **no** |
-| Prerelease ceiling (review-only) | `train-13` / `v0.412.7` at `9a5b8e9d` (same commit as `upstream/main`) |
-| `origin/main` mirror | refreshed to `9a5b8e9d` (`:= upstream/main`) |
+| Prerelease ceiling (`--include-prerelease --check`) | `train-13` (review-only) |
+| Main tip (mirror) | `8a3cbbfc` — package `0.415.15`, git tag `v0.415.15` (no published GitHub release; not a production sync target) |
+| `origin/main` mirror | refreshed `9a5b8e9d` → `8a3cbbfc` (`:= upstream/main`) |
 | PR #1 | OPEN, draft, mergeable `CONFLICTING`; never merged/auto-merged/closed |
-| Planned conflict paths | **15** (4 preserve-both, 9 take-main, 1 human-review, 1 defer-to-stable-production-sync) |
-| Risky overlapping paths | **57** (fork-critical + packaging surfaces touched on main since the stable baseline) |
-| Migration contracts | 10 (retain 5 / adapt 5 / retire 0 / defer 0); `stableActivationAllowed: false` |
-| Upstream issue search | #1749 OPEN, #1811 CLOSED, #1493 OPEN, #1546 CLOSED; no exact matches for pending drafts; tracker remains status/search/draft only |
+| Planned conflict paths | **16** (4 preserve-both, 10 take-main, 1 human-review, 1 defer-to-stable-production-sync) |
+| Risky overlapping paths | **57** |
+| Migration contracts | 10 (retain 5 / adapt 5); `stableActivationAllowed: false` |
+| Upstream issue search | #1749 OPEN, #1811 CLOSED; status inventory still lists #1493 OPEN / #1546 CLOSED for plugin-iframe draft; no exact matches for pending drafts; tracker remains status/search/draft only |
 
 Planned conflict paths from `--conflict-plan --json --local-only`:
 
@@ -332,6 +345,7 @@ Planned conflict paths from `--conflict-plan --json --local-only`:
 | `build/persistence-schema-fingerprint.json` | take-main | low |
 | `build/persistence-store-inventory.json` | take-main | low |
 | `core/engine.ts` | preserve-both | high |
+| `core/session-turn-actions.ts` | take-main | low |
 | `desktop/main.cjs` | human-review | high |
 | `desktop/src/shared/launch-integrity.cjs` | take-main | low |
 | `package.json` | defer-to-stable-production-sync | medium |
@@ -342,7 +356,12 @@ Planned conflict paths from `--conflict-plan --json --local-only`:
 | `server/index.ts` | preserve-both | high |
 | `tests/build-server-artifact.test.ts` | take-main | low |
 
-`--include-prerelease --check` is review-only: it reports `train-13` as a new tag and flags diverging-file intersections (including `build.yml`, `desktop/main.cjs`, package metadata, release digest, and `server/index.ts`). That must **not** activate production sync. Wait for a non-prerelease tag newer than `v0.407.15`.
+Delta vs 2026-07-20 refresh: main tip advanced from `9a5b8e9d` (`v0.412.7`) to
+`8a3cbbfc` (`v0.415.15` tip); planned conflicts **15 → 16** with new
+`core/session-turn-actions.ts` take-main. Stable detector unchanged.
+
+`--include-prerelease --check` remains review-only and must **not** activate
+production sync. Wait for a non-prerelease GitHub release newer than `v0.407.15`.
 
 ## Stable sync activation and closeout boundary
 
