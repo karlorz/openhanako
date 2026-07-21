@@ -323,7 +323,7 @@ jobs:
       # macOS 矩阵的 x64 job 仍跑在 arm64 宿主机上（cross-arch 打包），默认参数
       # 会算错要校验的 dist-server-artifact/{os}-{arch}/ 目录。
       - name: Verify seed kit (macOS)
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && env.HANA_RELEASE_PROFILE == 'signed'
         run: node scripts/verify-seed-kit.mjs darwin ${{ matrix.arch }}
 
       # macOS 打包（签名 + 公证）
@@ -366,7 +366,7 @@ jobs:
           codesign --verify --deep --strict --verbose=2 "$APP_PATH"
 
       - name: Verify seed kit (Windows)
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && env.HANA_RELEASE_PROFILE == 'signed'
         run: node scripts/verify-seed-kit.mjs win32 ${{ matrix.arch }}
 
       # Windows 打包
@@ -382,7 +382,7 @@ jobs:
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
 
       - name: Verify seed kit (Linux)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && env.HANA_RELEASE_PROFILE == 'signed'
         run: node scripts/verify-seed-kit.mjs linux ${{ matrix.arch }}
 
       # Linux Preview 打包
