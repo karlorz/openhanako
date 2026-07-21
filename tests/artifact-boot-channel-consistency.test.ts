@@ -148,11 +148,56 @@ async function runResolvePackagedArtifactBoot(
 
   const context = vm.createContext({
     hanakoHome: "/tmp/hana-home-fixture",
-    app: { isPackaged: true },
+    app: { isPackaged: true, getVersion: () => "0.412.7" },
     process: { resourcesPath: "/tmp/resources", platform: "darwin", arch: "arm64" },
     path,
     artifactBoot,
     artifactGc,
+    // Source-extracted resolvePackagedArtifactBoot imports these helpers by name.
+    // Without them the dual-profile branch throws ReferenceError; inject no-ops so
+    // the compatibility path (hasSeed + prepareArtifactBoot) exercises the channel
+    // consistency contract under test.
+    resolvePackagedLayout: undefined,
+    readBuildInfo: undefined,
+    planPackagedArtifactBoot: undefined,
+    buildSignedPackagedBootResult: ({
+      boot,
+      bootChannel,
+      rendererPointerChannel,
+      previousContentVersion = null,
+    }: {
+      boot: { server: BootResultStub; renderer: BootResultStub };
+      bootChannel: string;
+      rendererPointerChannel: (channel: string) => string;
+      previousContentVersion?: string | null;
+    }) => {
+      const contentVersion = boot.renderer.version
+        || boot.server.version
+        || previousContentVersion
+        || null;
+      return {
+        kind: "signed",
+        context: {
+          serverRoot: boot.server.versionDir,
+          train: boot.server.train,
+          channel: bootChannel,
+          artifactManaged: true,
+          releaseProfile: "signed",
+        },
+        rendererState: {
+          distRenderer: boot.renderer.versionDir,
+          rendererBootChannel: rendererPointerChannel(bootChannel),
+          rendererBootTrain: boot.renderer.train,
+          artifactBootChannel: bootChannel,
+          contentVersion,
+        },
+        notices: {
+          quarantine: boot.server.quarantinedTrain != null || boot.renderer.quarantinedTrain != null,
+          server: boot.server,
+          renderer: boot.renderer,
+        },
+      };
+    },
     splashWindow: null,
     loadSplashWindowURL: () => {},
     loadPinnedKeyset: () => [],
@@ -165,6 +210,7 @@ async function runResolvePackagedArtifactBoot(
     _rendererBootChannel: null,
     _rendererBootTrain: null,
     _artifactBootChannel: null,
+    _currentContentVersion: null,
     _crashFallbackNotice: null,
   });
 

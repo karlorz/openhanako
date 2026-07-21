@@ -62,7 +62,13 @@ export function PlatformSection({
     const nextTarget = event.relatedTarget;
     if (
       nextTarget instanceof Element
-      && nextTarget.closest('[data-bridge-test-control="true"]')
+      && (
+        nextTarget.closest('[data-bridge-test-control="true"]')
+        // Secret visibility toggle + key wrapper are credential chrome; focus
+        // moving between input and reveal must not autosave mid-edit.
+        || nextTarget.closest('[data-settings-key-toggle="true"]')
+        || nextTarget.closest('[data-settings-key-wrapper="true"]')
+      )
     ) {
       skipNextCredentialBlurRef.current = false;
       return;

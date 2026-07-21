@@ -208,8 +208,8 @@ describe("Windows NSIS installer contract", () => {
     expect(raw).toContain('$INSTDIR\\resources\\server\\desktop\\dist-renderer\\mobile.html');
     expect(verify).toContain('$INSTDIR\\resources\\git\\cmd\\git.exe');
     expect(verify).toContain('$INSTDIR\\resources\\git\\usr\\bin\\sh.exe');
-    expect(signed).toContain('$INSTDIR\\resources\\seed\\seed-train.json');
-    expect(signed).toContain('$INSTDIR\\resources\\seed\\seed-train.json.sig');
+    expect(signed).toContain('seed-train-*.json');
+    expect(signed).toContain('seed-train-*.json.sig');
   });
 
   it("resolves seed archive wildcards through FindFirst/FindClose without hardcoding a version", () => {

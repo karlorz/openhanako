@@ -178,8 +178,8 @@ describe("desktop launch integrity helper", () => {
     writeFile(resourcesPath, "app.asar");
     writeFile(resourcesPath, "app-update.yml");
     writeFile(resourcesPath, "build-info.json", JSON.stringify({ releaseProfile: "legacy-raw" }));
-    writeFile(resourcesPath, "seed/seed-train.json");
-    writeFile(resourcesPath, "seed/seed-train.json.sig");
+    writeFile(resourcesPath, "seed/seed-train-win32-x64.json");
+    writeFile(resourcesPath, "seed/seed-train-win32-x64.json.sig");
     writeFile(resourcesPath, "seed/server-1.2.3.tar.gz");
     writeFile(resourcesPath, "seed/renderer-1.2.3.tar.gz");
     writeFile(resourcesPath, "server/hana-server.exe");
