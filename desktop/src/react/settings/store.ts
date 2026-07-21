@@ -3,9 +3,13 @@
  * 独立于主窗口 store，设置窗口有自己的 BrowserWindow + JS context
  */
 import { create } from 'zustand';
+import { assessRemoteServer, type RemoteServerAssessment } from '../../../../shared/remote-server-assessment';
 import type { RemoteConnectionRecoveryState } from '../stores/connection-slice';
-import type { ServerConnection, ServerConnectionRegistry } from '../services/server-connection';
+import { isLocalOwnerConnection, type ServerConnection, type ServerConnectionRegistry } from '../services/server-connection';
+import { createRemoteServerAssessmentCoordinator } from '../services/remote-server-assessment-coordinator';
+import { writeRemoteServerAssessment } from '../services/remote-server-assessment-cache';
 import { createRemoteResource, type RemoteResource, type RemoteResourceStatus } from './resource-state';
+import { hanaFetch } from './api';
 
 export interface Agent {
   id: string;
@@ -13,6 +17,7 @@ export interface Agent {
   yuan: string;
   isPrimary: boolean;
   hasAvatar?: boolean;
+  avatarRevision?: string | null;
   memoryMasterEnabled?: boolean;
 }
 
@@ -99,6 +104,7 @@ export interface SettingsState {
   activeServerConnectionId: string | null;
   activeServerConnection: ServerConnection | null;
   remoteConnectionRecovery: RemoteConnectionRecoveryState | null;
+  remoteServerAssessment: RemoteServerAssessment | null;
 
   // agents
   agents: Agent[];
@@ -148,6 +154,8 @@ export interface SettingsActions {
   set: (partial: Partial<SettingsState>) => void;
   getSettingsAgentId: () => string | null;
   showToast: (message: string, type: 'success' | 'error') => void;
+  refreshRemoteServerAssessment: (options?: { force?: boolean }) => Promise<void>;
+  clearRemoteServerAssessment: () => void;
 }
 
 export type SettingsStore = SettingsState & SettingsActions;
@@ -162,6 +170,7 @@ export const useSettingsStore = create<SettingsStore>()((set, get) => ({
   activeServerConnectionId: null,
   activeServerConnection: null,
   remoteConnectionRecovery: null,
+  remoteServerAssessment: null,
 
   // agents
   agents: [],
@@ -207,7 +216,23 @@ export const useSettingsStore = create<SettingsStore>()((set, get) => ({
   toastVisible: false,
 
   // actions
-  set: (partial) => set(partial),
+  set: (partial) => set((state) => {
+    const next = { ...partial };
+    if ('activeServerConnection' in partial || 'activeServerConnectionId' in partial) {
+      const activeConnection = 'activeServerConnection' in partial
+        ? partial.activeServerConnection
+        : state.activeServerConnection;
+      const activeConnectionId = 'activeServerConnectionId' in partial
+        ? partial.activeServerConnectionId
+        : activeConnection?.connectionId ?? null;
+      const assessment = partial.remoteServerAssessment ?? state.remoteServerAssessment;
+      if (!activeConnection || isLocalOwnerConnection(activeConnection)
+          || assessment?.connectionId !== activeConnectionId) {
+        next.remoteServerAssessment = null;
+      }
+    }
+    return next;
+  }),
 
   getSettingsAgentId: () => {
     const { settingsAgentId, currentAgentId } = get();
@@ -221,4 +246,37 @@ export const useSettingsStore = create<SettingsStore>()((set, get) => ({
       set({ toastVisible: false });
     }, 1500);
   },
+
+  refreshRemoteServerAssessment: async (options) => {
+    const connection = get().activeServerConnection;
+    if (!connection) {
+      set({ remoteServerAssessment: null });
+      return;
+    }
+    await settingsAssessmentCoordinator.assessConnection(connection, options);
+  },
+
+  clearRemoteServerAssessment: () => {
+    const connectionId = get().activeServerConnectionId;
+    settingsAssessmentCoordinator.invalidate(connectionId ?? undefined);
+    set({ remoteServerAssessment: null });
+  },
 }));
+
+const settingsAssessmentCoordinator = createRemoteServerAssessmentCoordinator({
+  getActiveConnectionId: () => useSettingsStore.getState().activeServerConnectionId,
+  fetchIdentity: async () => {
+    const response = await hanaFetch('/api/server/identity');
+    return response.json();
+  },
+  loadRelease: async (options) => {
+    if (typeof window.hana?.checkRemoteServerRelease !== 'function') {
+      throw new Error('remote server release bridge unavailable');
+    }
+    return window.hana.checkRemoteServerRelease(options);
+  },
+  evaluate: assessRemoteServer,
+  applyAssessment: (remoteServerAssessment) => useSettingsStore.setState({ remoteServerAssessment }),
+  persistAssessment: writeRemoteServerAssessment,
+  now: () => new Date(),
+});

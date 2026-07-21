@@ -1,6 +1,7 @@
 import type { RemoteCompatibilityReasonCode } from '../services/remote-boundary-contract';
+import type { RemoteServerAssessment } from '../../../../shared/remote-server-assessment';
 import type { ServerConnection, ServerConnectionRegistry } from '../services/server-connection';
-import { LOCAL_CONNECTION_ID, refreshLocalServerConnection, upsertServerConnection } from '../services/server-connection';
+import { LOCAL_CONNECTION_ID, isLocalOwnerConnection, refreshLocalServerConnection, upsertServerConnection } from '../services/server-connection';
 
 export interface RemoteConnectionRecoveryState {
   status: 'identity_failed' | 'compatibility_failed';
@@ -17,6 +18,7 @@ export interface ConnectionSlice {
   activeServerConnectionId: string | null;
   activeServerConnection: ServerConnection | null;
   remoteConnectionRecovery: RemoteConnectionRecoveryState | null;
+  remoteServerAssessment: RemoteServerAssessment | null;
   connected: boolean;
   statusKey: string;
   statusVars: Record<string, string | number>;
@@ -24,20 +26,21 @@ export interface ConnectionSlice {
   bridgeDotConnected: boolean;
   wsState: 'connected' | 'reconnecting' | 'disconnected';
   wsReconnectAttempt: number;
-  oauthSessionId: string | null;
   setServerPort: (port: string | number | null) => void;
   setServerToken: (token: string | null) => void;
   setActiveServerConnection: (connection: ServerConnection | null) => void;
   setLocalServerConnection: (port: string | number | null, token: string | null) => void;
   upsertServerConnection: (connection: ServerConnection) => void;
   selectServerConnection: (connectionId: string) => void;
+  setRemoteServerAssessment: (assessment: RemoteServerAssessment | null) => void;
   setConnected: (connected: boolean) => void;
+  oauthSessionId: string | null;
   setOauthSessionId: (id: string | null) => void;
 }
 
 export const createConnectionSlice = (
   set: (partial: Partial<ConnectionSlice>) => void,
-  get?: () => Pick<ConnectionSlice, 'serverPort' | 'serverToken' | 'serverConnections' | 'activeServerConnectionId' | 'activeServerConnection'>,
+  get?: () => Pick<ConnectionSlice, 'serverPort' | 'serverToken' | 'serverConnections' | 'activeServerConnectionId' | 'activeServerConnection' | 'remoteServerAssessment' | 'oauthSessionId'>,
 ): ConnectionSlice => ({
   serverPort: null,
   serverToken: null,
@@ -45,6 +48,7 @@ export const createConnectionSlice = (
   activeServerConnectionId: null,
   activeServerConnection: null,
   remoteConnectionRecovery: null,
+  remoteServerAssessment: null,
   connected: false,
   statusKey: 'status.connecting',
   statusVars: {},
@@ -70,11 +74,13 @@ export const createConnectionSlice = (
             activeServerConnectionId: activeServerConnection.connectionId,
             activeServerConnection,
             remoteConnectionRecovery: null,
+            remoteServerAssessment: null,
           }
         : {
             activeServerConnectionId: null,
             activeServerConnection: null,
             remoteConnectionRecovery: null,
+            remoteServerAssessment: null,
           }),
     });
   },
@@ -95,11 +101,13 @@ export const createConnectionSlice = (
             activeServerConnectionId: activeServerConnection.connectionId,
             activeServerConnection,
             remoteConnectionRecovery: null,
+            remoteServerAssessment: null,
           }
         : {
             activeServerConnectionId: null,
             activeServerConnection: null,
             remoteConnectionRecovery: null,
+            remoteServerAssessment: null,
           }),
     });
   },
@@ -109,11 +117,16 @@ export const createConnectionSlice = (
         activeServerConnectionId: connection.connectionId,
         activeServerConnection: connection,
         remoteConnectionRecovery: null,
+        remoteServerAssessment: isLocalOwnerConnection(connection)
+          || get?.().remoteServerAssessment?.connectionId !== connection.connectionId
+          ? null
+          : get?.().remoteServerAssessment ?? null,
       }
     : {
         activeServerConnectionId: null,
         activeServerConnection: null,
         remoteConnectionRecovery: null,
+        remoteServerAssessment: null,
       }),
   setLocalServerConnection: (port, token) => {
     const serverPort = port === null || port === undefined ? null : String(port);
@@ -133,11 +146,13 @@ export const createConnectionSlice = (
             activeServerConnectionId: activeServerConnection.connectionId,
             activeServerConnection,
             remoteConnectionRecovery: null,
+            remoteServerAssessment: null,
           }
         : {
             activeServerConnectionId: null,
             activeServerConnection: null,
             remoteConnectionRecovery: null,
+            remoteServerAssessment: null,
           }),
     });
   },
@@ -151,6 +166,22 @@ export const createConnectionSlice = (
       activeServerConnectionId: connectionId,
       activeServerConnection: connection,
       remoteConnectionRecovery: null,
+      remoteServerAssessment: isLocalOwnerConnection(connection)
+        || get?.().remoteServerAssessment?.connectionId !== connectionId
+        ? null
+        : get?.().remoteServerAssessment ?? null,
+    });
+  },
+  setRemoteServerAssessment: (assessment) => {
+    const state = get?.();
+    const active = state?.activeServerConnection;
+    set({
+      remoteServerAssessment: assessment
+        && active
+        && !isLocalOwnerConnection(active)
+        && assessment.connectionId === state?.activeServerConnectionId
+        ? assessment
+        : null,
     });
   },
   setConnected: (connected) => set({ connected }),
