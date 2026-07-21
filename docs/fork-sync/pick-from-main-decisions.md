@@ -3,10 +3,11 @@
 > **Machine-readable source of truth:** `docs/fork-sync/pick-from-main-decisions.yml`
 > (loaded by `scripts/sync-upstream.mjs`). Keep this human table aligned when editing.
 
-Baseline: `dev` @ `6234ac28`, package `0.407.15`, mirrored `origin/main` @ `8a3cbbfc`
-(package tip `0.415.15` / tag `v0.415.15`, **no published GitHub release**).
-Stable production sync: **not available** (latest stable still `v0.407.15`).
-Conflict plan baseline: **16** paths.
+Baseline (updated 2026-07-21 after attended prerelease channel): `dev` rebased onto
+upstream GitHub prerelease **`train-13`**, package **`0.412.7`**. Latest stable
+upstream remains `v0.407.15`. Dashboard pick-from-main still forbids cosmetic
+force-adopt; residual PR #1 conflicts are expected under permanent-fork dual-profile.
+Pre-rebase backup: `backup/dev-before-prerelease-train-13-20260721` @ `611fd08d`.
 
 ## Objective honesty
 
