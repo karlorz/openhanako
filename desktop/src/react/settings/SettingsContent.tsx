@@ -10,6 +10,7 @@ import {
   type ServerConnection,
 } from '../services/server-connection';
 import { readRemoteConnectionRecoveryState, remoteRecoveryForActiveConnection } from '../services/remote-connection-recovery';
+import { readRemoteServerAssessment } from '../services/remote-server-assessment-cache';
 import { t } from './helpers';
 import { loadAgents, loadAvatars, loadSettingsSnapshot } from './actions';
 import { ErrorBoundary } from '../components/ErrorBoundary';
@@ -42,6 +43,7 @@ import { ClearMemoryConfirm } from './overlays/ClearMemoryConfirm';
 import { BridgeTutorial } from './overlays/BridgeTutorial';
 import { WechatQrcodeOverlay } from './overlays/WechatQrcodeOverlay';
 import { InputContextMenu } from '../components/InputContextMenu';
+import { SettingsPage } from './components/SettingsPrimitives';
 import styles from './Settings.module.css';
 
 const TAB_COMPONENTS: Record<string, React.ComponentType> = {
@@ -82,6 +84,9 @@ function connectionState(connection: ServerConnection | null) {
     activeServerConnectionId: activeServerConnection?.connectionId ?? null,
     activeServerConnection,
     remoteConnectionRecovery,
+    remoteServerAssessment: activeServerConnection
+      ? readRemoteServerAssessment(activeServerConnection.connectionId)
+      : null,
   };
 }
 
@@ -212,8 +217,6 @@ export function SettingsContent({
   const activeTabTitle = tabTitleKey ? t(tabTitleKey) : titleToLabel(dynamicTab?.title);
   const activeTabDescriptionKey = TAB_DESCRIPTION_KEYS[effectiveActiveTab];
   const activeTabDescription = activeTabDescriptionKey ? t(activeTabDescriptionKey) : '';
-  const isWideTab = effectiveActiveTab === 'plugin-marketplace' || effectiveActiveTab === 'providers';
-
   const reportActiveTabChange = useCallback((tab: string) => {
     const nextTab = normalizeSettingsTab(tab);
     lastReportedActiveTabRef.current = nextTab;
@@ -232,69 +235,74 @@ export function SettingsContent({
 
   return (
     <ErrorBoundary region="settings">
-      <div
-        className={`settings-panel ${isModal ? styles['settings-panel-modal'] : ''}${isWideTab ? ' ' + styles['settings-panel-wide'] : ''}`}
-        id="settingsPanel"
-      >
-        <div className={`settings-header ${isModal ? styles['settings-header-modal'] : ''}`}>
-          {isModal ? (
-            <>
-              <div className={styles['settings-title-group']}>
-                <button
-                  type="button"
-                  className={styles['settings-return-btn']}
-                  onClick={onClose}
-                  aria-label={t('settings.back')}
-                  data-settings-return
-                >
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M15 18l-6-6 6-6" />
-                  </svg>
-                </button>
-                <h1 className={styles['settings-title']}>{t('settings.title')}</h1>
-              </div>
-              <h1 className={styles['settings-header-tab-title']}>{activeTabTitle}</h1>
-            </>
-          ) : (
-            <h1 className={styles['settings-title']}>{t('settings.title')}</h1>
-          )}
-        </div>
-        <div className={styles['settings-body']}>
-          <SettingsNav onTabChange={reportActiveTabChange} />
-          <div className={`${styles['settings-main']}${isWideTab ? ' ' + styles['settings-main-wide'] : ''}`}>
-            {!isModal && (
-              <div className={styles['settings-tab-heading']}>
-                <h1 className={styles['settings-tab-title']}>{activeTabTitle}</h1>
-                {activeTabDescription && (
-                  <p className={styles['settings-tab-description']}>{activeTabDescription}</p>
-                )}
-              </div>
+      <div className={styles['settings-content-root']} data-input-ctx-zone="settings">
+        <div
+          className={`settings-panel ${isModal ? styles['settings-panel-modal'] : ''}`}
+          id="settingsPanel"
+        >
+          <div className={`settings-header ${isModal ? styles['settings-header-modal'] : ''}`}>
+            {isModal ? (
+              <>
+                <div className={styles['settings-title-group']}>
+                  <button
+                    type="button"
+                    className={styles['settings-return-btn']}
+                    onClick={onClose}
+                    aria-label={t('settings.back')}
+                    data-settings-return
+                  >
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M15 18l-6-6 6-6" />
+                    </svg>
+                  </button>
+                  <h1 className={styles['settings-title']}>{t('settings.title')}</h1>
+                </div>
+                <h1 className={styles['settings-header-tab-title']}>{activeTabTitle}</h1>
+              </>
+            ) : (
+              <h1 className={styles['settings-title']}>{t('settings.title')}</h1>
             )}
-            <ErrorBoundary region={effectiveActiveTab} resetKeys={[effectiveActiveTab]}>
-              <ActiveTab />
-            </ErrorBoundary>
           </div>
+          <div className={styles['settings-body']}>
+            <SettingsNav onTabChange={reportActiveTabChange} />
+            <div className={styles['settings-main']}>
+              {!isModal && (
+                <div className={styles['settings-tab-heading']}>
+                  <h1 className={styles['settings-tab-title']}>{activeTabTitle}</h1>
+                  {activeTabDescription && (
+                    <p className={styles['settings-tab-description']}>{activeTabDescription}</p>
+                  )}
+                </div>
+              )}
+              <ErrorBoundary region={effectiveActiveTab} resetKeys={[effectiveActiveTab]}>
+                <SettingsPage tab={effectiveActiveTab}>
+                  <ActiveTab />
+                </SettingsPage>
+              </ErrorBoundary>
+            </div>
+          </div>
+          <CompiledMemoryViewer />
         </div>
-        <CompiledMemoryViewer />
+
+        <Toast />
+        <CropOverlay />
+        <AgentCreateOverlay />
+        <AgentDeleteOverlay />
+        <MemoryViewer />
+        <ClearMemoryConfirm />
+        <BridgeTutorial />
+        <WechatQrcodeOverlay />
+        {/* 独立设置窗口需要自己的右键菜单；应用内 modal 复用 App 已挂载的那份，避免叠两层 */}
+        {variant === 'window' && <InputContextMenu />}
+
+        {!ready && (
+          <div className="settings-loading-mask" id="settingsLoadingMask">
+            <div className={styles['settings-loading-text']}>
+              loading...
+            </div>
+          </div>
+        )}
       </div>
-
-      <Toast />
-      <CropOverlay />
-      <AgentCreateOverlay />
-      <AgentDeleteOverlay />
-      <MemoryViewer />
-      <ClearMemoryConfirm />
-      <BridgeTutorial />
-      <WechatQrcodeOverlay />
-      <InputContextMenu />
-
-      {!ready && (
-        <div className="settings-loading-mask" id="settingsLoadingMask">
-          <div className={styles['settings-loading-text']}>
-            loading...
-          </div>
-        </div>
-      )}
     </ErrorBoundary>
   );
 }
@@ -334,6 +342,9 @@ async function initSettings() {
       serverToken,
       platformName,
       ...connectionState(createLocalServerConnection({ serverPort, serverToken })),
+    });
+    void useSettingsStore.getState().refreshRemoteServerAssessment().catch((err) => {
+      console.warn('[settings] remote server assessment skipped:', err);
     });
 
     // i18n
