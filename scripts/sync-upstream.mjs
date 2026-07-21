@@ -908,7 +908,10 @@ function lastSyncedTag(rules) {
     .readFileSync(syncLogPath, "utf8")
     .split("\n")
     .filter((line) => /^\| [0-9]{4}-[0-9]{2}-[0-9]{2} /.test(line));
-  const tags = rows.map((row) => row.match(/v[0-9]+(?:\.[0-9]+)+(?:[-.][A-Za-z0-9]+)*/)?.[0]).filter(Boolean);
+  // Prefer the last row's first tag token: stable `vX.Y.Z`, prerelease `vX.Y.Z-…`,
+  // or GitHub prerelease train tags (`train-N`) from the optional prerelease channel.
+  const tagPattern = /\b(v[0-9]+(?:\.[0-9]+)+(?:[-.][A-Za-z0-9]+)*|train-[0-9]+)\b/;
+  const tags = rows.map((row) => row.match(tagPattern)?.[1]).filter(Boolean);
   return tags.at(-1) ?? "";
 }
 
