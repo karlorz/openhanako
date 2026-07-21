@@ -3728,5 +3728,8 @@
     "fileSummaryMore": "- {count} more files",
     "fileSummaryHeader": "Generated files:",
     "mediaNoDisplayableFiles": "Generation result has no displayable files"
+  },
+  "sessionCollab": {
+    "messagePrefix": "From {name}:"
   }
 }
