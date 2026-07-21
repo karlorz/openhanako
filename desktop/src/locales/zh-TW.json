@@ -3436,5 +3436,8 @@
     "fileSummaryMore": "- 还有 {count} 个文件",
     "fileSummaryHeader": "生成文件：",
     "mediaNoDisplayableFiles": "生成结果没有可显示文件"
+  },
+  "sessionCollab": {
+    "messagePrefix": "來自 {name}："
   }
 }

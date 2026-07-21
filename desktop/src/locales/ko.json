@@ -3436,5 +3436,8 @@
     "fileSummaryMore": "- 파일 {count}개 더",
     "fileSummaryHeader": "생성된 파일:",
     "mediaNoDisplayableFiles": "생성 결과에 표시 가능한 파일이 없어요"
+  },
+  "sessionCollab": {
+    "messagePrefix": "{name} 에서:"
   }
 }

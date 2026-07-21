@@ -10,7 +10,15 @@ export const AGENT_MESSAGE_SOURCE = "agent_session";
 const ACCEPT_WINDOW_MS = 1500;
 
 export function buildAgentMessagePrefix(agentName: string): string {
-  return t("sessionCollab.messagePrefix", { name: agentName || "Agent" });
+  const name = agentName || "Agent";
+  const translated = t("sessionCollab.messagePrefix", { name });
+  // When i18n has not been loaded (unit tests / early boot), `t` returns the key
+  // path literally. Keep the agent name in the prefix so delivery still stamps
+  // identity even without locale packs.
+  if (translated === "sessionCollab.messagePrefix" || !String(translated).includes(name)) {
+    return `From ${name}:`;
+  }
+  return translated;
 }
 
 // submit 等完整回合（分钟级）才 resolve；接受窗口竞速：窗口内 rejected = 投递失败上抛，
