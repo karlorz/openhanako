@@ -1,5 +1,6 @@
 import { validateStudioConnectionTrust } from './studio-access';
 import { SERVER_PROTOCOL_VERSION } from '../../../../shared/contract-versions.ts';
+import { HanaHttpError } from './hana-http-error';
 import { assertRemoteBoundaryContract } from './remote-boundary-contract';
 import type { RemoteServerAssessment } from '../../../../shared/remote-server-assessment';
 
@@ -883,7 +884,17 @@ export function appendConnectionAuth(
 async function requestJson(fetchImpl: typeof fetch, url: string, init: RequestInit): Promise<unknown> {
   const res = await fetchImpl(url, init);
   if (!res.ok) {
-    throw new Error(`server connection request failed: ${res.status} ${res.statusText}`);
+    let path: string | null = null;
+    try {
+      path = new URL(url).pathname;
+    } catch {
+      path = null;
+    }
+    throw new HanaHttpError({
+      status: res.status,
+      statusText: res.statusText,
+      path,
+    });
   }
   return res.json();
 }

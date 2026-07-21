@@ -1,6 +1,7 @@
 import type { RemoteConnectionRecoveryState } from '../stores/connection-slice';
 import type { RemoteCompatibilityReasonCode } from './remote-boundary-contract';
 import { RemoteBoundaryContractError } from './remote-boundary-contract';
+import { isHttpAuthFailure } from './hana-http-error';
 import { LOCAL_CONNECTION_ID, isLocalOwnerConnection, type ServerConnection } from './server-connection';
 
 export { RemoteBoundaryContractError } from './remote-boundary-contract';
@@ -48,15 +49,9 @@ export function remoteRecoveryForStartupFailure(
     status: 'identity_failed',
     connectionId: connection.connectionId,
     baseUrl: connection.baseUrl,
-    reasonCodes: [isRemoteAuthFailure(err) ? 'auth_failed' : 'invalid_identity'],
+    reasonCodes: [isHttpAuthFailure(err) ? 'auth_failed' : 'invalid_identity'],
     warningCodes: [],
   };
-}
-
-function isRemoteAuthFailure(err: unknown): boolean {
-  const message = err instanceof Error ? err.message : String(err ?? '');
-  return /\/api\/web-auth\/login: (401|403)\b/.test(message)
-    || /server connection request failed: (401|403)\b/.test(message);
 }
 
 export function readRemoteConnectionRecoveryState(
