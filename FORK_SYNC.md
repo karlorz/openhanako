@@ -55,6 +55,26 @@ Current status:
 - **Prerelease review:** run `node scripts/sync-upstream.mjs --include-prerelease --check` only when intentionally reviewing a prerelease candidate. This is not the normal production update path.
 - **Issue check:** as part of every sync, run `node scripts/track-upstream-issues.mjs search` and glance at [#1749](https://github.com/liliMozi/openhanako/issues/1749) plus the pending draft list. If upstream accepted equivalent fixes, the divergence shrinks.
 
+## Optional prerelease sync channel
+
+Stable-only remains the **default** production path. An **optional**, attended
+prerelease channel exists so a human can rebase `dev` onto a published GitHub
+**prerelease** release when they explicitly mean to — not when agents or the
+dashboard want fewer PR #1 conflicts.
+
+| Rule | Detail |
+|------|--------|
+| Default | `node scripts/sync-upstream.mjs` and `--check` use non-prerelease releases only. |
+| Review only | `node scripts/sync-upstream.mjs --include-prerelease --check` lists the latest eligible prerelease; **no** accept flag and **no** tag confirmation required. |
+| Eligible targets | GitHub Releases with `isPrerelease=true` and not draft (via `gh release list` when available). **Not** `upstream/main` HEAD. |
+| Mutate `dev` | Requires **double consent**: `--include-prerelease` **and** `--i-accept-prerelease-sync` **and** `CONFIRM=<exact-resolved-tag>` (or `SYNC_UPSTREAM_CONFIRM_TAG=<tag>`). Bare `--include-prerelease` without accept/confirm **refuses** and does not rebase. |
+| Example | `CONFIRM=train-13 node scripts/sync-upstream.mjs --include-prerelease --i-accept-prerelease-sync` (only after `--check` showed that exact tag). |
+| After success | Record the prerelease tag as last synced; align package version to that release. Fork publish tags still use `vX.Y.Z-karlorz.N`. |
+| Dashboard | Pick-from-main / PR #1 stay unchanged: no force-adopt for cosmetics. Prerelease content lands only via this attended rebase. |
+| Feature freeze | Orthogonal. Prerelease channel does not redefine remote-feature freeze; freeze/unfreeze is a separate product decision keyed off stable policy when stated. |
+
+Machine-readable fields: `docs/fork-sync/rules.yml` → `releaseTarget.prereleaseSync`.
+
 ## Release profile policy
 
 - **Tag fallback is automatic:** an ordinary `v*` tag push requests `auto`, which resolves to `signed` only with validated Ed25519 material and otherwise selects the marked `legacy-raw` fallback when both signing inputs are blank. Malformed, unreadable, or incompatible nonblank material is an error.

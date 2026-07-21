@@ -334,6 +334,117 @@ export function releaseChannelLabel(includePrerelease = false) {
   return includePrerelease ? "stable + prerelease" : "stable only";
 }
 
+/** Default accept flag for optional prerelease mutate path (rules may override). */
+export const PRERELEASE_ACCEPT_FLAG = "--i-accept-prerelease-sync";
+
+/**
+ * Read prerelease-channel policy from rules (with safe defaults).
+ * Stable remains default; prerelease mutate needs accept + exact-tag confirm.
+ */
+export function prereleaseSyncPolicy(rules = loadRules()) {
+  const configured = rules.releaseTarget?.prereleaseSync ?? {};
+  return {
+    enabled: configured.enabled !== false,
+    defaultChannel: Boolean(configured.defaultChannel),
+    acceptFlag: configured.acceptFlag || PRERELEASE_ACCEPT_FLAG,
+    confirmEnv: configured.confirmEnv || "CONFIRM",
+    confirmEnvAlt: configured.confirmEnvAlt || "SYNC_UPSTREAM_CONFIRM_TAG",
+    requireAcceptFlag: configured.requireAcceptFlag !== false,
+    requireConfirmExactTag: configured.requireConfirmExactTag !== false,
+    allowMainHead: Boolean(configured.allowMainHead),
+    githubPrereleaseReleasesOnly: configured.githubPrereleaseReleasesOnly !== false,
+    recordLastSyncedAsTargetTag: configured.recordLastSyncedAsTargetTag !== false,
+    alignPackageToTargetVersion: configured.alignPackageToTargetVersion !== false,
+  };
+}
+
+/**
+ * Resolve the confirmation tag from env (non-interactive path for CI/tests).
+ * Prefer CONFIRM, then SYNC_UPSTREAM_CONFIRM_TAG (or rules overrides).
+ */
+export function resolvePrereleaseConfirmTag(env = process.env, rules = loadRules()) {
+  const policy = prereleaseSyncPolicy(rules);
+  const primary = env[policy.confirmEnv];
+  const alt = env[policy.confirmEnvAlt];
+  const raw = primary != null && String(primary).trim() !== ""
+    ? primary
+    : alt != null && String(alt).trim() !== ""
+      ? alt
+      : "";
+  return String(raw).trim();
+}
+
+/**
+ * Pure gate for prerelease-channel mutate. Stable-only mutate does not use this.
+ * Check-only callers must not invoke this.
+ *
+ * @returns {{ ok: true } | { ok: false, reason: string }}
+ */
+export function assertPrereleaseMutateAllowed(options = {}) {
+  const {
+    includePrerelease = false,
+    acceptPrereleaseSync = false,
+    resolvedTag = "",
+    confirmTag = "",
+    rules = loadRules(),
+  } = options;
+
+  if (!includePrerelease) {
+    return { ok: true };
+  }
+
+  const policy = prereleaseSyncPolicy(rules);
+  if (!policy.enabled) {
+    return {
+      ok: false,
+      reason:
+        "prerelease sync channel is disabled in docs/fork-sync/rules.yml (releaseTarget.prereleaseSync.enabled)",
+    };
+  }
+
+  if (policy.allowMainHead) {
+    // Defensive: policy forbids HEAD even if someone flips YAML wrongly in a fork of the fork.
+  }
+  if (policy.requireAcceptFlag && !acceptPrereleaseSync) {
+    return {
+      ok: false,
+      reason:
+        `prerelease mutate requires ${policy.acceptFlag} in addition to --include-prerelease ` +
+        `(review-only: node scripts/sync-upstream.mjs --include-prerelease --check). ` +
+        `Refusing silent rebase onto a prerelease tag.`,
+    };
+  }
+
+  if (policy.requireConfirmExactTag) {
+    const expected = String(resolvedTag || "").trim();
+    const got = String(confirmTag || "").trim();
+    if (!expected) {
+      return {
+        ok: false,
+        reason: "prerelease mutate requires a resolved target tag before confirmation",
+      };
+    }
+    if (!got) {
+      return {
+        ok: false,
+        reason:
+          `prerelease mutate requires ${policy.confirmEnv}=${expected} ` +
+          `(or ${policy.confirmEnvAlt}=${expected}) matching the resolved tag exactly`,
+      };
+    }
+    if (got !== expected) {
+      return {
+        ok: false,
+        reason:
+          `prerelease confirm tag mismatch: got ${JSON.stringify(got)}, ` +
+          `expected exact resolved tag ${JSON.stringify(expected)}`,
+      };
+    }
+  }
+
+  return { ok: true };
+}
+
 function releaseTagName(release) {
   return release.tagName ?? release.tag_name ?? release.name ?? release.tag ?? "";
 }
@@ -1053,7 +1164,35 @@ function doConflictPlan(rules, options) {
   }
 }
 
-function doSync(rules, includePrerelease) {
+function doSync(rules, includePrerelease, options = {}) {
+  const acceptPrereleaseSync = Boolean(options.acceptPrereleaseSync);
+
+  // Refuse prerelease mutate early (before fetch/rebase) when accept flag is missing.
+  // Non-empty CONFIRM is required early; exact match is enforced after the tag is resolved.
+  if (includePrerelease && !acceptPrereleaseSync) {
+    const refused = assertPrereleaseMutateAllowed({
+      includePrerelease: true,
+      acceptPrereleaseSync: false,
+      resolvedTag: "pending",
+      confirmTag: "pending",
+      rules,
+    });
+    if (!refused.ok) {
+      die(refused.reason);
+    }
+  }
+  if (includePrerelease && acceptPrereleaseSync) {
+    const earlyConfirm = resolvePrereleaseConfirmTag(process.env, rules);
+    if (!earlyConfirm) {
+      const policy = prereleaseSyncPolicy(rules);
+      die(
+        `prerelease mutate requires ${policy.confirmEnv}=<exact-resolved-tag> ` +
+          `(or ${policy.confirmEnvAlt}=<tag>). Run --include-prerelease --check first, ` +
+          `then re-run with CONFIRM set to the printed latest tag.`,
+      );
+    }
+  }
+
   preflight(rules);
 
   info("verifying working tree clean...");
@@ -1081,6 +1220,22 @@ function doSync(rules, includePrerelease) {
     die("no upstream tags found");
   }
   info(`latest upstream tag: ${latest} (${releaseChannelLabel(includePrerelease)} mode)`);
+
+  if (includePrerelease) {
+    const confirmTag = resolvePrereleaseConfirmTag(process.env, rules);
+    const gate = assertPrereleaseMutateAllowed({
+      includePrerelease: true,
+      acceptPrereleaseSync,
+      resolvedTag: latest,
+      confirmTag,
+      rules,
+    });
+    if (!gate.ok) {
+      die(gate.reason);
+    }
+    ok(`prerelease mutate consent accepted for tag ${latest}`);
+  }
+
   printConflictPolicy(rules);
 
   info(`rebasing ${rules.releaseTarget.forkBranch} onto ${latest}...`);
@@ -1201,11 +1356,16 @@ Usage:
   node scripts/sync-upstream.mjs --include-prerelease --check
   node scripts/sync-upstream.mjs --conflict-plan [--json] [--no-pr-update] [--no-main-sync] [--local-only] [--pr <number>]
   node scripts/sync-upstream.mjs
-  node scripts/sync-upstream.mjs --include-prerelease
+  node scripts/sync-upstream.mjs --include-prerelease --i-accept-prerelease-sync
   node scripts/sync-upstream.mjs --post-rebase
   node scripts/sync-upstream.mjs --help
 
-The default release channel is stable only. Prerelease review requires --include-prerelease.
+The default release channel is stable only.
+Prerelease review (no mutate): --include-prerelease --check (no accept flag).
+Prerelease mutate (attended): --include-prerelease --i-accept-prerelease-sync with
+  CONFIRM=<exact-resolved-tag> (or SYNC_UPSTREAM_CONFIRM_TAG=<tag>).
+  Bare --include-prerelease without accept/confirm refuses and does not rebase.
+  Targets: GitHub prerelease releases only (not upstream/main HEAD).
 Conflict planning is dry-run for dev, replaces origin/main from upstream/main unless --no-main-sync is set, and updates PR #1 unless --no-pr-update is set.
 Use --local-only as shorthand for --no-pr-update --no-main-sync.
 The issue workflow supports status/search/draft only and never submits GitHub issues.`);
@@ -1214,6 +1374,7 @@ The issue workflow supports status/search/draft only and never submits GitHub is
 export function parseSyncArgs(argv) {
   const args = [];
   let includePrerelease = false;
+  let acceptPrereleaseSync = false;
   const conflictOptions = {
     json: false,
     noPrUpdate: false,
@@ -1223,6 +1384,8 @@ export function parseSyncArgs(argv) {
     const arg = argv[index];
     if (arg === "--include-prerelease") {
       includePrerelease = true;
+    } else if (arg === PRERELEASE_ACCEPT_FLAG || arg === "--i-accept-prerelease-sync") {
+      acceptPrereleaseSync = true;
     } else if (arg === "--json") {
       conflictOptions.json = true;
     } else if (arg === "--no-pr-update") {
@@ -1243,16 +1406,16 @@ export function parseSyncArgs(argv) {
       args.push(arg);
     }
   }
-  return { args, includePrerelease, conflictOptions };
+  return { args, includePrerelease, acceptPrereleaseSync, conflictOptions };
 }
 
 function main(argv) {
-  const { args, includePrerelease, conflictOptions } = parseSyncArgs(argv);
+  const { args, includePrerelease, acceptPrereleaseSync, conflictOptions } = parseSyncArgs(argv);
 
   const rules = loadRules();
   switch (args[0] ?? "") {
     case "":
-      doSync(rules, includePrerelease);
+      doSync(rules, includePrerelease, { acceptPrereleaseSync });
       break;
     case "--check":
       preflight(rules);
