@@ -12,6 +12,7 @@ import { togglePreviewPanel } from '../stores/preview-actions';
 import { openSettingsModal } from '../stores/settings-modal-actions';
 import { useStore } from '../stores';
 import { createNewSession, reconcileCurrentSessionMessages } from '../stores/session-actions';
+import { bindSessionForegroundConvergence } from '../services/session-foreground-convergence';
 import {
   initializeMobileRuntime,
   loadMobileSessions,
@@ -197,11 +198,11 @@ function MobileDesktopShell({
   }, []);
 
   const refreshMobileSessions = useCallback(() => {
-    void loadMobileSessions()
+    return Promise.resolve(loadMobileSessions())
       .then(() => {
         // 列表已新鲜：校验当前打开会话的修订点，补拉后台窗口
         // （锁屏 / WS 断连期间 Bridge /rc 等）漏掉的消息（issue #1610）。
-        void reconcileCurrentSessionMessages('mobile_foreground_refresh');
+        return reconcileCurrentSessionMessages('mobile_foreground_refresh');
       })
       .catch((err) => {
         console.warn('[mobile] refresh sessions failed', err);
@@ -209,25 +210,20 @@ function MobileDesktopShell({
   }, []);
 
   useEffect(() => {
-    const refreshWhenVisible = () => {
-      if (document.visibilityState === 'hidden') return;
-      refreshMobileSessions();
-    };
-    window.addEventListener('focus', refreshWhenVisible);
-    window.addEventListener('online', refreshWhenVisible);
-    document.addEventListener('visibilitychange', refreshWhenVisible);
-    return () => {
-      window.removeEventListener('focus', refreshWhenVisible);
-      window.removeEventListener('online', refreshWhenVisible);
-      document.removeEventListener('visibilitychange', refreshWhenVisible);
-    };
-  }, [refreshMobileSessions]);
+    // Shared Desktop/Mobile foreground convergence: list refresh then revision
+    // reconcile for the open session (issue #1610).
+    return bindSessionForegroundConvergence({
+      refreshSessions: () => loadMobileSessions(),
+      reconcile: (reason) => reconcileCurrentSessionMessages(reason),
+      reason: 'mobile_foreground_refresh',
+    });
+  }, []);
 
   useEffect(() => {
     const previous = previousWsStateRef.current;
     previousWsStateRef.current = wsState;
     if (wsState === 'connected' && previous && previous !== 'connected') {
-      refreshMobileSessions();
+      void refreshMobileSessions();
     }
   }, [refreshMobileSessions, wsState]);
 
