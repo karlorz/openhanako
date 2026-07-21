@@ -48,7 +48,9 @@ describe("attended desktop release command", () => {
       materializedPath = options.env.HANA_SIGN_KEY;
       expect(fs.readFileSync(materializedPath, "utf8")).toBe(inlinePem);
       expect(options.env.HANA_SIGN_KEY_PEM).toBeUndefined();
-      expect(fs.statSync(materializedPath).mode & 0o777).toBe(0o600);
+      if (process.platform !== "win32") {
+        expect(fs.statSync(materializedPath).mode & 0o777).toBe(0o600);
+      }
       return { status: 0 };
     });
 
@@ -113,7 +115,9 @@ describe("attended desktop release command", () => {
       expect(materializedPath.trim()).not.toBe("");
       expect(fs.readFileSync(materializedPath, "utf8")).toBe(inlinePem);
       expect(options.env.HANA_SIGN_KEY_PEM).toBeUndefined();
-      expect(fs.statSync(materializedPath).mode & 0o777).toBe(0o600);
+      if (process.platform !== "win32") {
+        expect(fs.statSync(materializedPath).mode & 0o777).toBe(0o600);
+      }
       return { status: 0 };
     });
 
