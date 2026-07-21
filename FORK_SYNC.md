@@ -342,27 +342,28 @@ Machine-readable dispositions: `docs/fork-sync/migration-contracts.yml`
 (`implementationStatus` fields for websocket-ticket-auth, connection-csp-bootstrap,
 remote-resource-ownership).
 
-## Next stable pre-sync outlook (2026-07-21 main-refresh)
+## Next stable pre-sync outlook (2026-07-21 post train-13 prerelease channel)
 
-Read-only dashboard refresh on `dev` @ `6234ac28` (includes ticket-primary WS,
-isolated connect-probe, and packaged-artifact-boot planning). No attended stable
-sync, rebase of `dev`, package bump, install, deploy, tag, or PR #1 merge.
+Attended **optional prerelease-channel** mutate completed: `dev` rebased onto
+upstream GitHub prerelease tag **`train-13`** with double consent
+(`--include-prerelease --i-accept-prerelease-sync` + `CONFIRM=train-13`).
+Package metadata now follows the train tip (`0.412.7`). Stable default channel
+is unchanged: bare `--check` still reports the latest **non-prerelease** release
+(`v0.407.15`) separately from last-synced when the log records a train tag.
 
 | Signal | Observed value |
 |--------|----------------|
-| Working branch / HEAD | `dev` @ `6234ac28` (unchanged by this refresh) |
-| Package / lockfile version | `0.407.15` (unchanged) |
+| Working branch / HEAD | `dev` (post-rebase; see sync log) |
+| Package / lockfile version | `0.412.7` (aligned with train-13 tip metadata) |
 | Latest stable upstream | `v0.407.15` |
-| Last synced stable | `v0.407.15` |
-| Stable production sync available | **no** |
-| Prerelease ceiling (`--include-prerelease --check`) | `train-13` (review-only) |
-| Main tip (mirror) | `8a3cbbfc` — package `0.415.15`, git tag `v0.415.15` (no published GitHub release; not a production sync target) |
-| `origin/main` mirror | refreshed `9a5b8e9d` → `8a3cbbfc` (`:= upstream/main`) |
-| PR #1 | OPEN, draft, mergeable `CONFLICTING`; never merged/auto-merged/closed |
-| Planned conflict paths | **16** (4 preserve-both, 10 take-main, 1 human-review, 1 defer-to-stable-production-sync) |
-| Risky overlapping paths | **57** |
-| Migration contracts | 10 (retain 5 / adapt 5); `stableActivationAllowed: false` |
-| Upstream issue search | #1749 OPEN, #1811 CLOSED; status inventory still lists #1493 OPEN / #1546 CLOSED for plugin-iframe draft; no exact matches for pending drafts; tracker remains status/search/draft only |
+| Last synced tag (sync log) | `train-13` (prerelease channel) |
+| Prior stable last-synced | `v0.407.15` |
+| Stable production sync available | **no** newer non-prerelease than `v0.407.15` |
+| Prerelease channel | **used** for `train-13` (not review-only anymore for this base) |
+| Main tip (mirror) | may still lead train; not a production target without a tag/release |
+| PR #1 | OPEN, draft, never-merge dashboard; still CONFLICTING by design |
+| Backup | `backup/dev-before-prerelease-train-13-20260721` @ `611fd08d` |
+| Upstream issue search | #1749 OPEN, #1811 CLOSED; tracker remains status/search/draft only |
 
 Planned conflict paths from `--conflict-plan --json --local-only`:
 
@@ -385,12 +386,13 @@ Planned conflict paths from `--conflict-plan --json --local-only`:
 | `server/index.ts` | preserve-both | high |
 | `tests/build-server-artifact.test.ts` | take-main | low |
 
-Delta vs 2026-07-20 refresh: main tip advanced from `9a5b8e9d` (`v0.412.7`) to
-`8a3cbbfc` (`v0.415.15` tip); planned conflicts **15 → 16** with new
-`core/session-turn-actions.ts` take-main. Stable detector unchanged.
+Historical dashboard note (pre-mutate): main tip advanced toward `0.415.x` while
+stable stayed `v0.407.15`. That review-only ceiling is **superseded** for `dev`
+by the attended `train-13` rebase below.
 
-`--include-prerelease --check` remains review-only and must **not** activate
-production sync. Wait for a non-prerelease GitHub release newer than `v0.407.15`.
+Default channel remains stable-only. Further prerelease mutates still require
+double consent. Wait for a non-prerelease GitHub release newer than `v0.407.15`
+before claiming a **stable** production sync.
 
 ## Stable sync activation and closeout boundary
 
@@ -499,3 +501,4 @@ permanent draft dashboard and is never a merge vehicle.
 | 2026-07-18 | `v0.407.15` | Multiple textual and semantic batches across session stores/IDs, attachment hydration, updater/announcements, compaction, providers, `KeyInput`, installer/artifact-core activation, protocol diagnostics, signed build pipelines, tests, and the release digest. | Preserved compatible upstream and fork behavior; retained stable session IDs and signed artifact-core while keeping LAN/scoped-resource/preview/current-symlink safety. Skipped the obsolete `v0.357.17-karlorz.1` digest replay, adapted characterization to stable behavior, and fixed stable-tag selection when `train-12` shared the release commit. | `--post-rebase` passed Tier 0/1/2; broad conflict/migration/provider/resource/installer suites passed; sync/build-info/updater/server-upgrade/CSP tests passed; `npm run typecheck`, `git diff --check`, and local-only conflict planning passed. | Tier 3A installed/codesigned local HanaAgent `0.407.15` using a deleted one-time validation key for the required signed seed. Tier 3B verified identity 200 and WS open; upload/send/switch/return preserved the `Hanako.jpg` thumbnail and Conversation Files preview, and MediaViewer loaded it at `1024x1024` with no CSP or WS failure. | Backup branch `codex/backup-dev-before-v0.407.15-sync-20260718` preserves the pre-rebase head. No push, deployment, fork tag/release, digest fork alignment, or PR #1 mutation occurred. Old-server input-draft 404s and one stale 410 were non-blocking. SkillWiki changelog deferred because the shared vault is dirty. |
 | 2026-07-19 | `v0.407.15` | Post-sync remote assessment, release-profile, digest, installer, bootstrap dependency, and macOS no-certificate fallback closeout. | Published immutable fork prerelease `v0.407.15-karlorz.6` from `7365233a`; selected legacy-raw when Hana signing material was absent; used complete ad-hoc macOS app-bundle signing plus strict pre-upload verification when Apple credentials were absent; preserved runtime-only server/checksum deployment; fixed the post-release bootstrap to install the durable CLI's same-ref dependency closure before the implementation. | Run `29688911528` succeeded; the reviewed release/code gates passed 22 Vitest files and 296 tests, typecheck, main build, both digest validators, YAML parsing, and diff checks. Bootstrap/sync regressions additionally passed 108 focused tests. | Installed the verified arm64 DMG; upgraded sg01 with the supported installer; refreshed the durable CLI, then confirmed exact/current update detection, build identity, HTTP 200, WS open, active/enabled service, localized mobile assets, and image send/switch/return plus complete `834x775` Conversation Files preview with zero console errors/warnings. | Release has the audited 20-asset legacy-raw surface. Issue search reconfirmed #1749 open and #1811 closed with no exact draft matches. PR #1 and the immutable `.6` tag remained untouched after publication; the bootstrap fix lands on `dev` for the next tag. Unrelated SkillWiki work and ignored UAT media were preserved. |
 | 2026-07-20 | `v0.407.15` | Conditional bootstrap dependency fetch, fork-sync policy/docs closeout, and attended `.7` release/redeploy. | Published immutable fork prerelease `v0.407.15-karlorz.7` from `73d46c38`; bootstrap detects installer shared imports so legacy single-file tags remain installable while current refs stage the six-module status dependency closure first; recorded Apple no-certificate macOS fallback and CSC blank-gate in fork-sync rules. | Run `29695065868` succeeded with 20 legacy-raw assets; focused Vitest 134 tests, typecheck, YAML parse, bootstrap `sh -n`, and digest validators passed; PR #1 left open/draft. | Tag-pinned bootstrap CLI refresh; sg01 upgrade `ok: true`/`rolledBack: false` to `.7-linux-arm64`; service active/enabled; mobile/locales 200; smoke helper identity 200 + WS open; arm64 DMG install + strict codesign; image attach + Conversation Files `smoke-image.png` + chat switch/return with zero CSP/WS errors. | Issue search reconfirmed #1749 open, #1811 closed, no exact draft matches. Immutable `.6`/`.7` tags not moved. SkillWiki dirty work not absorbed. |
+| 2026-07-21 | `train-13` | 218-commit rebase onto GitHub prerelease train tip; early conflicts on `package.json` (preserve verify:seed-kit + write-local-build-info), `core/engine.ts`/`server/index.ts` (feature contracts + media adapters), LAN/CSP/preview/packaging batches; some historical fork commits skipped as empty/redundant. | Double-consent mutate (`--include-prerelease --i-accept-prerelease-sync` + `CONFIRM=train-13`). Prefer ownership-aware HEAD for resource-url; restore InputArea/CSP/MainContent.drag test suites after heuristic conflict damage. Package aligned to train tip `0.412.7`. | `node scripts/sync-upstream.mjs --post-rebase` Tier 0/1/2 green after test restores; `tests/sync-upstream.test.mjs` + typecheck + diff-check. | Tier 3A/3B **not** run in this session (manual). No host deploy/tag/fork release. | Backup `backup/dev-before-prerelease-train-13-20260721` @ `611fd08d`. PR #1 untouched as permanent draft. Stable channel default unchanged; lastSynced records `train-13`. |
