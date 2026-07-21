@@ -88,6 +88,7 @@ Manual smoke for the remote server:
    - Contract gates are explicit and repeatable, for example `--require-contract input.drafts@1`; evidence defaults to `.claude/remote-assessment/latest.json` and can be changed with `--assessment-out PATH`. Exit `3` means functional verification passed but a requested contract is missing, unconfirmed, or deployment-coupled. `websocket.ticket@1` is migration-readiness evidence, not a generic LAN core requirement.
    - If the LAN connection has never been saved in this app profile, prefer `HANA_DESKTOP_SMOKE_TOKEN=<device-key>` over `--token` for the first helper run.
    - A normal `--verify` run always reports two independent results: `functional.status` for identity/WebSocket operation and `environment.status` for server release freshness, feature-contract evidence, and host compatibility. `functional.status: pass` does not mean the Remote Server is current. Environment attention or an unavailable GitHub release lookup remains non-fatal in Phase 1; identity or WebSocket failure still exits nonzero.
+   - Desktop Settings → Access & Devices (remote mode) surfaces the same layered assessment (core connection, transport, server update/freshness, feature support, host compatibility), not a single recovery-only “Compatibility: Ready” label. Optional host CLI: `install-server status --check-updates --json` (read-only; never upgrades).
 2. Paste/upload an image.
 3. Send it.
 4. Switch chats and return.
