@@ -1,28 +1,58 @@
 {
   "schemaVersion": 1,
-  "tag": "v0.412.7",
+  "tag": "v0.412.7-karlorz.1",
   "version": "0.412.7",
-  "previousTag": "v0.407.15",
-  "generatedAt": "2026-07-18T07:57:18.524Z",
+  "previousTag": "v0.407.15-karlorz.7",
+  "generatedAt": "2026-07-21T04:32:05.236Z",
   "noUserFacingChanges": false,
   "summary": {
-    "zh": "本版重点修启动与升级体验：自动更新进度条会连续走完服务端与渲染层两段下载；修复误把会话事件 ID 当成 Codex 模型写进列表的问题；迁移失败或输入不完整时不再整链卡死，并保留待重试的原始数据；损坏的早期元数据也不会再拦启动。媒体生成运行时并入核心，旧 image-gen 插件会话的展示方式有变化。",
-    "en": "This release hardens startup and upgrades: the update progress bar now runs continuously across both server and renderer downloads; session event IDs are no longer mistaken for Codex model IDs in the catalog; failed or incomplete migrations no longer halt the whole chain, and source bytes are preserved for retry; corrupt early-epoch metadata no longer blocks launch. Media generation runtime moves into core, with a display change for sessions that used the retired image-gen plugin."
+    "zh": "本叉预发布：完成 train-13 预发布通道同步后（包版本 0.412.7）。本版重点修启动与升级体验：自动更新进度条会连续走完服务端与渲染层两段下载；修复误把会话事件 ID 当成 Codex 模型写进列表的问题；迁移失败或输入不完整时不再整链卡死，并保留待重试的原始数据；损坏的早期元数据也不会再拦启动。媒体生成运行时并入核心，旧 image-gen 插件会话的展示方式有变化。",
+    "en": "Fork prerelease after attended train-13 prerelease-channel sync (package 0.412.7). This release hardens startup and upgrades: the update progress bar now runs continuously across both server and renderer downloads; session event IDs are no longer mistaken for Codex model IDs in the catalog; failed or incomplete migrations no longer halt the whole chain, and source bytes are preserved for retry; corrupt early-epoch metadata no longer blocks launch. Media generation runtime moves into core, with a display change for sessions that used the retired image-gen plugin."
   },
   "counts": {
-    "feature": 0,
+    "feature": 1,
     "fix": 5,
     "improvement": 1,
     "migration": 0
   },
   "source": {
-    "owner": "liliMozi",
+    "owner": "karlorz",
     "repo": "openhanako",
-    "commitRange": "v0.407.15..v0.412.7",
-    "releaseUrl": "https://github.com/liliMozi/openhanako/releases/tag/v0.412.7",
+    "commitRange": "v0.407.15-karlorz.7..HEAD",
+    "releaseUrl": "https://github.com/karlorz/openhanako/releases/tag/v0.412.7-karlorz.1",
     "releaseNotes": ""
   },
   "items": [
+    {
+      "id": "fork-train-13-channel-sync",
+      "kind": "feature",
+      "importance": "high",
+      "title": {
+        "zh": "可选预发布通道同步至 train-13",
+        "en": "Optional prerelease-channel sync onto train-13"
+      },
+      "summary": {
+        "zh": "dev 在双重确认下变基到 GitHub 预发布 train-13；lastSynced 记为 train-13；包版本 0.412.7。",
+        "en": "dev rebased onto GitHub prerelease train-13 with double consent; lastSynced records train-13; package 0.412.7."
+      },
+      "details": [
+        {
+          "zh": "使用 --include-prerelease --i-accept-prerelease-sync 与 CONFIRM=train-13。",
+          "en": "Used --include-prerelease --i-accept-prerelease-sync with CONFIRM=train-13."
+        },
+        {
+          "zh": "备份分支 backup/dev-before-prerelease-train-13-20260721。",
+          "en": "Backup branch backup/dev-before-prerelease-train-13-20260721."
+        }
+      ],
+      "sources": [
+        {
+          "type": "commit",
+          "ref": "train-13",
+          "title": "feat(settings): show remote server assessment"
+        }
+      ]
+    },
     {
       "id": "cumulative-update-progress",
       "kind": "fix",
