@@ -66,6 +66,7 @@ Minimum command surface:
 install-server install [--version <tag>] [--channel stable|prerelease]
 install-server upgrade [--version <tag>] [--channel stable|prerelease]
 install-server status
+install-server status --check-updates [--json]
 install-server backup [--output <path>]
 ```
 
@@ -282,16 +283,32 @@ The command prints the backup path and exits nonzero if the archive cannot be ve
 
 ## Status Behavior
 
-`install-server status` reports:
+`install-server status` is **read-only** and never downloads, installs, restarts,
+or mutates the service.
 
-- Installed version and release path.
-- Service enabled/active state.
-- Listening address/port if known.
-- Last backup path if known.
-- Current channel policy.
-- Whether the running binary matches the `current` symlink target.
+Default `install-server status` reports a status plan plus observed host facts
+when available (current symlink, service state, embedded `server-build-info.json`
+when present). It does **not** call GitHub.
 
-Status must be read-only.
+`install-server status --check-updates` (optional `--json`) additionally:
+
+- Loads the fork release catalog via the shared remote-server assessment kernel
+  (bounded GitHub lookup; failure is nonfatal and yields `unknown` freshness,
+  never an implied “current”).
+- Emits an `assessment` object that separates **core readiness**, **transport**,
+  **feature support**, **exact release freshness**, and **host deployability**.
+- May include a **dry-run-only** recommended upgrade command when a matching
+  checksum-paired server asset is eligible; it never executes that command.
+
+Desktop Settings → Access & Devices for a Remote Server connection surfaces the
+same layered assessment (core / transport / update / features / host), not a
+single “Compatibility: Ready” label derived only from boundary recovery codes.
+Old servers that still support core chat remain usable; outdated or legacy
+contract state is shown separately. Desktop never auto-upgrades the host.
+
+Exact freshness never comes from package-version equality alone: `current`
+requires a matching valid fork release tag (for example `v0.412.7-karlorz.1`
+on package `0.412.7`).
 
 ## Failure Policy
 
