@@ -18,7 +18,7 @@ This is a permanent personal fork unless upstream accepts equivalent fixes. See 
 
 Use release-tag syncs from upstream, not continuous upstream `main` tracking. Preserve local fixes by behavior and tests, not by blindly preferring either side during conflicts.
 
-Current state (2026-07-21): `dev` completed an attended **optional prerelease-channel** sync onto upstream GitHub prerelease tag **`train-13`** (double consent: `--include-prerelease --i-accept-prerelease-sync` + `CONFIRM=train-13`). Package reports **`0.412.7`**. Backup: `backup/dev-before-prerelease-train-13-20260721` @ `611fd08d`. Latest **stable** upstream remains `v0.407.15` (no newer non-prerelease); bare `--check` is still stable-channel by default. See `FORK_SYNC.md` optional prerelease channel + sync log. PR #1 remains a permanent draft never-merge dashboard. Pick-from-main / reclaim guards still apply for dashboard cosmetics. Tier 0–2 post-rebase passed; Tier 3A desktop install and Tier 3B sg01 smoke remain manual before any host deploy or fork tag.
+Current state (2026-07-21): fork prerelease **`v0.412.7-karlorz.1`** published from `dev` (package **`0.412.7`**, train-13 channel base). Local macOS `/Applications/HanaAgent.app` installed from published arm64 legacy-raw DMG; sg01 upgraded via install-server to `v0.412.7-karlorz.1-linux-arm64` (service active). See `FORK_SYNC.md` sync log. PR #1 remains permanent draft never-merge. Tier 3B full image smoke may still be re-run from desktop LAN attachment.
 
 ## Core Terms
 
