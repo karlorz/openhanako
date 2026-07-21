@@ -343,7 +343,7 @@ async function initSettings() {
       platformName,
       ...connectionState(createLocalServerConnection({ serverPort, serverToken })),
     });
-    void useSettingsStore.getState().refreshRemoteServerAssessment().catch((err) => {
+    void useSettingsStore.getState().refreshRemoteServerAssessment?.().catch((err) => {
       console.warn('[settings] remote server assessment skipped:', err);
     });
 
