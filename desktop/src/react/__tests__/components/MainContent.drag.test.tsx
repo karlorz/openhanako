@@ -75,7 +75,6 @@ describe('MainContent app file drag attachments', () => {
       attachedFilesBySession: {},
       sessionRegistryFilesByPath: {},
     } as never);
-    window.platform = undefined as never;
   });
 
   afterEach(() => {
@@ -392,25 +391,7 @@ describe('MainContent app file drag attachments', () => {
   it('uploads local PDF bytes for remote connections instead of sending the macOS path', async () => {
     const readFileBase64 = vi.fn(async () => 'PDF_BASE64');
     window.platform = { readFileBase64 } as unknown as typeof window.platform;
-    useStore.setState({
-      serverConnections: {
-        'lan:node:studio': {
-          connectionId: 'lan:node:studio',
-          kind: 'lan',
-          serverId: 'remote',
-          studioId: 'studio',
-          label: 'Remote Hana',
-          baseUrl: 'http://100.125.173.118:14500',
-          wsUrl: 'ws://100.125.173.118:14500',
-          token: 'remote-token',
-          authState: 'paired',
-          trustState: 'lan',
-          credentialKind: 'device_credential',
-          capabilities: ['chat'],
-        },
-      },
-      activeServerConnectionId: 'lan:node:studio',
-    } as never);
+    seedRemoteConnection();
     vi.mocked(hanaFetch).mockResolvedValue({
       json: async () => ({
         uploads: [{
