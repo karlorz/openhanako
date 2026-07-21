@@ -807,6 +807,7 @@ PrivateTmp=true
       "read-service-enabled",
       "read-listening-address",
       "read-last-backup",
+      "probe-activation-compatibility",
     ]);
     expect(plan.steps.map((step) => step.command).join("\n")).toContain("systemctl is-active hanaagent");
     expect(plan.steps.map((step) => step.command).join("\n")).not.toMatch(/restart|stop|start|rm -rf/i);
