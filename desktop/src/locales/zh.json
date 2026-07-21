@@ -3438,5 +3438,8 @@
     "copyPath": "复制路径",
     "copyLink": "复制链接",
     "openInSystemBrowser": "用系统浏览器打开"
+  },
+  "sessionCollab": {
+    "messagePrefix": "来自 {name}："
   }
 }
