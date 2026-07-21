@@ -3435,5 +3435,8 @@
     "fileSummaryMore": "- 他 {count} 件のファイル",
     "fileSummaryHeader": "生成されたファイル:",
     "mediaNoDisplayableFiles": "生成結果に表示可能なファイルがありません"
+  },
+  "sessionCollab": {
+    "messagePrefix": "{name} から："
   }
 }
