@@ -1,4 +1,5 @@
 import { useStore } from '../stores';
+import { HanaHttpError } from '../services/hana-http-error';
 import {
   appendConnectionAuth,
   buildConnectionUrl,
@@ -55,7 +56,12 @@ export async function hanaFetch(
     });
     if (throwOnHttpError && !res.ok) {
       const detail = await readHttpErrorDetail(res);
-      throw new Error(`hanaFetch ${path}: ${res.status} ${res.statusText}${detail ? ` - ${detail}` : ''}`);
+      throw new HanaHttpError({
+        status: res.status,
+        statusText: res.statusText,
+        path,
+        detail: detail || null,
+      });
     }
     return res;
   } finally {
