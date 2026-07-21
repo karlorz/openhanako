@@ -4,6 +4,16 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      release_profile:
+        description: "Packaging/security profile for a manually selected tag"
+        required: true
+        default: auto
+        type: choice
+        options:
+          - auto
+          - signed
+          - legacy-raw
 
 # Guard, marker upload, and profile-specific asset publication must be a single
 # serialized transaction per ref. Queue retries rather than cancelling the
@@ -13,6 +23,25 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Resolve once so no package, uploader, or publishing job can accidentally
+  # reinterpret `auto`. Tag pushes use signed material when valid and fall back
+  # to legacy raw only when both signing inputs are blank.
+  resolve-release-profile:
+    runs-on: ubuntu-latest
+    outputs:
+      release_profile: ${{ steps.resolve.outputs.release_profile }}
+      release_profile_reason: ${{ steps.resolve.outputs.release_profile_reason }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: resolve
+        name: Resolve release profile
+        env:
+          HANA_SIGN_KEY_PEM: ${{ secrets.HANA_SIGN_KEY }}
+        run: >-
+          node scripts/resolve-release-profile.mjs
+          --requested "${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && 'auto' || inputs.release_profile || 'auto' }}"
+          --github-output "$GITHUB_OUTPUT"
+
   # renderer 归档（renderer-<version>.tar.gz）是纯 web 静态资源，构建结果平台
   # 无关。这里单点构建一次，四个平台的 build job 下载同一份字节复用——避免
   # 各平台各自现场打包出"内容相同、字节不同、sha256 不同"的四份归档（packTree
@@ -20,6 +49,8 @@ jobs:
   # scripts/build-server-artifact.mjs 的 packDualKindSeed prebuiltRendererArchive
   # / HANA_PREBUILT_RENDERER_BOX 入参。
   renderer-box:
+    needs: resolve-release-profile
+    if: needs.resolve-release-profile.outputs.release_profile == 'signed'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -54,7 +85,11 @@ jobs:
           if-no-files-found: error
 
   build:
-    needs: renderer-box
+    needs: [resolve-release-profile, renderer-box]
+    if: >-
+      always() && (needs.renderer-box.result == 'success' ||
+      (needs.renderer-box.result == 'skipped' &&
+      needs.resolve-release-profile.outputs.release_profile == 'legacy-raw'))
     permissions:
       contents: write
     strategy:
@@ -80,6 +115,7 @@ jobs:
 
     runs-on: ${{ matrix.runner }}
     env:
+      HANA_RELEASE_PROFILE: ${{ needs.resolve-release-profile.outputs.release_profile }}
       HANA_SERVER_RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
       HANA_SERVER_GIT_SHA: ${{ github.sha }}
       HANA_SERVER_SOURCE_REPOSITORY: ${{ github.repository }}
@@ -117,6 +153,7 @@ jobs:
       # 禁止静默出无签名 seed 的包（本 workflow 只在 tag push / 手动 dispatch
       # 触发，无 fork PR 无 secrets 的场景，硬失败是安全的）。
       - name: Materialize seed signing key
+        if: env.HANA_RELEASE_PROFILE == 'signed'
         shell: bash
         env:
           HANA_SIGN_KEY_PEM: ${{ secrets.HANA_SIGN_KEY }}
@@ -144,7 +181,7 @@ jobs:
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
         run: |
           if [ -z "${CSC_LINK:-}" ] || [ -z "${CSC_KEY_PASSWORD:-}" ]; then
-            echo "::warning::CSC_LINK or CSC_KEY_PASSWORD is missing; building unsigned macOS artifacts"
+            echo "::warning::CSC_LINK or CSC_KEY_PASSWORD is missing; building ad-hoc signed, unnotarized macOS artifacts"
             {
               echo "HANA_MAC_SIGNING_ENABLED=false"
               echo "CSC_IDENTITY_AUTO_DISCOVERY=false"
@@ -215,6 +252,7 @@ jobs:
       # 下载 renderer-box job 单点构建好的共享归档，让四个平台复用同一份字节
       # （而不是各自现场打包出内容相同但 tar mtime 不同、sha256 不同的四份）。
       - name: Download shared renderer box
+        if: env.HANA_RELEASE_PROFILE == 'signed'
         uses: actions/download-artifact@v4
         with:
           name: renderer-box
@@ -229,6 +267,7 @@ jobs:
       # `pwd` 在 Git Bash 里默认返回 /d/... 风格；`pwd -W` 是 MSYS coreutils
       # 提供的扩展，专门用来打印 Windows 原生等价路径，这里按 RUNNER_OS 分支。
       - name: Point seed packer at the shared renderer box
+        if: env.HANA_RELEASE_PROFILE == 'signed'
         shell: bash
         run: |
           BOX=$(ls prebuilt-renderer/renderer-*.tar.gz | head -1)
@@ -254,6 +293,16 @@ jobs:
           else
             node scripts/build-server.mjs win32 ${{ matrix.arch }}
           fi
+
+      # Runtime-only packages do not enter packDualKindSeed, so explicitly
+      # reuse its sign-before-smoke sequence for the unpacked macOS server tree.
+      # This keeps legacy raw binaries launchable under the same Developer ID /
+      # JIT-entitlement contract as signed seed packages.
+      - name: Sign legacy raw macOS server runtime
+        if: runner.os == 'macOS' && env.HANA_RELEASE_PROFILE == 'legacy-raw'
+        shell: bash
+        run: |
+          node --input-type=module -e 'import { signAndSmokeTestServerRuntime } from "./scripts/build-server-artifact.mjs"; await signAndSmokeTestServerRuntime("dist-server/mac-${{ matrix.arch }}");'
 
       - name: Build Computer Use helper
         if: runner.os == 'macOS'
@@ -303,10 +352,10 @@ jobs:
         run: |
           ulimit -n 65536
           if [ "${HANA_MAC_SIGNING_ENABLED:-}" = "true" ]; then
-            npx electron-builder --mac dmg zip --${{ matrix.arch }} --publish never
+            npx electron-builder --mac dmg zip --${{ matrix.arch }} --config scripts/electron-builder.config.cjs --publish never
           else
-            npx electron-builder --mac dmg zip --${{ matrix.arch }} --publish never \
-              -c.mac.identity=null \
+            npx electron-builder --mac dmg zip --${{ matrix.arch }} --config scripts/electron-builder.config.cjs --publish never \
+              -c.mac.identity=- \
               -c.mac.hardenedRuntime=false
           fi
         env:
@@ -315,10 +364,20 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
-      # 同上：Windows job 直调 electron-builder，seed kit 校验必须单独接线。
-      - name: Verify seed kit (Windows)
-        if: runner.os == 'Windows'
-        run: node scripts/verify-seed-kit.mjs win32 ${{ matrix.arch }}
+      - name: Verify macOS app bundle signatures
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          if [ "${{ matrix.arch }}" = "arm64" ]; then
+            APP_PATH="dist/mac-arm64/HanaAgent.app"
+          else
+            APP_PATH="dist/mac/HanaAgent.app"
+          fi
+          if [ ! -d "$APP_PATH" ]; then
+            echo "::error::Packaged macOS app is missing: $APP_PATH"
+            exit 1
+          fi
+          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
 
       # Windows 打包
       # --publish never：和 mac 同理，由 release job 单点上传。
@@ -326,23 +385,18 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          npx electron-builder --win nsis --publish never
+          npx electron-builder --win nsis --config scripts/electron-builder.config.cjs --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
-
-      # 同上：Linux job 直调 electron-builder，seed kit 校验必须单独接线。
-      - name: Verify seed kit (Linux)
-        if: runner.os == 'Linux'
-        run: node scripts/verify-seed-kit.mjs linux ${{ matrix.arch }}
 
       # Linux Preview 打包
       # AppImage 给下载即用体验，deb 给 Ubuntu/Debian 系安装。
       - name: Build Linux preview packages
         if: runner.os == 'Linux'
         run: |
-          npx electron-builder --linux AppImage deb --${{ matrix.arch }} --publish never
+          npx electron-builder --linux AppImage deb --${{ matrix.arch }} --config scripts/electron-builder.config.cjs --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -351,14 +405,11 @@ jobs:
       # The renderer box here is just this platform's copy of the SAME bytes downloaded from
       # the renderer-box job (packDualKindSeed reuses it via HANA_PREBUILT_RENDERER_BOX rather
       # than packing dist-renderer/ on the spot) — all four uploads are byte-identical now.
-      # dist-server-artifact/*/seed-train-*.json(.sig) IS uploaded here (platform-qualified
-      # filename, see seedManifestFileName in build-server-artifact.mjs — each matrix job's
-      # manifest now names the platform-arch it describes, so four same-named-but-different-
-      # content files are no longer possible). This per-platform seed manifest is still NOT
-      # what the release job publishes as the OTA train manifest — that one is generated
-      # separately by scripts/publish-train.mjs from the merged server-*.tar.gz set, not by
-      # copying any one platform's local seed manifest.
-      - name: Upload artifacts
+      # seed-train.json(.sig) living next to the server box is NOT uploaded here — the
+      # release job's train manifest is generated later by scripts/publish-train.mjs, not
+      # copied from any one platform's local seed.
+      - name: Upload signed build artifacts
+        if: env.HANA_RELEASE_PROFILE == 'signed'
         uses: actions/upload-artifact@v4
         with:
           name: installer-${{ matrix.os }}-${{ matrix.arch }}
@@ -371,19 +422,34 @@ jobs:
             dist/*.deb
             dist/latest*.yml
             dist-server-artifact/*/server-*.tar.gz
-            dist-server-artifact/*/seed-train-*.json
-            dist-server-artifact/*/seed-train-*.json.sig
             dist-renderer-artifact/renderer-*.tar.gz
             dist-standalone/HanaCore-*-Windows-x64.tar.gz
             dist-standalone/HanaCore-*-Windows-x64.manifest.json
           if-no-files-found: error
 
+      - name: Upload legacy raw build artifacts
+        if: env.HANA_RELEASE_PROFILE == 'legacy-raw'
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-legacy-raw-${{ matrix.os }}-${{ matrix.arch }}
+          retention-days: 3
+          path: |
+            dist/*.dmg
+            dist/*.zip
+            dist/*.exe
+            dist/*.AppImage
+            dist/*.deb
+          if-no-files-found: error
+
   server-bundles:
+    needs: resolve-release-profile
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: read
     runs-on: ${{ matrix.runner }}
     env:
+      HANA_RELEASE_PROFILE: ${{ needs.resolve-release-profile.outputs.release_profile }}
+      HANA_SERVER_BUILD_MODE: runtime-only
       HANA_SERVER_RELEASE_TAG: ${{ github.ref_name }}
       HANA_SERVER_GIT_SHA: ${{ github.sha }}
       HANA_SERVER_SOURCE_REPOSITORY: ${{ github.repository }}
@@ -436,11 +502,21 @@ jobs:
           if-no-files-found: error
 
   release:
-    needs: [build, server-bundles]
-    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [resolve-release-profile, build, server-bundles]
+    # `build` deliberately tolerates the signed-only renderer-box job being
+    # skipped for legacy-raw. Use always() here as well so GitHub does not
+    # propagate that skipped transitive dependency into this release job, then
+    # explicitly require every direct prerequisite to have succeeded.
+    if: >-
+      always() && !cancelled() && startsWith(github.ref, 'refs/tags/v') &&
+      needs.resolve-release-profile.result == 'success' &&
+      needs.build.result == 'success' &&
+      needs.server-bundles.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      HANA_RELEASE_PROFILE: ${{ needs.resolve-release-profile.outputs.release_profile }}
 
     steps:
       - uses: actions/checkout@v4
@@ -463,6 +539,20 @@ jobs:
         run: >-
           node scripts/build-server-compatibility-manifest.mjs --tag "${{ github.ref_name }}" --git-sha "${{ github.sha }}" --source-repository "${{ github.repository }}" --artifacts artifacts --output "hanaagent-server-compatibility-${{ github.ref_name }}.json"
 
+      - name: Guard immutable release profile
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          if gh release view "${{ github.ref_name }}" >/dev/null 2>&1; then
+            ASSETS_JSON=$(gh release view "${{ github.ref_name }}" --json assets --jq '[.assets[].name]')
+          else
+            ASSETS_JSON='[]'
+          fi
+          node scripts/guard-release-profile.mjs \
+            --profile "$HANA_RELEASE_PROFILE" \
+            --assets-json "$ASSETS_JSON"
+
       # build job 改为 --publish never 后，draft release 不再由 electron-builder 自动创建，
       # 由 release job 显式创建，并通过 --generate-notes 从上一个 tag 的 commit 自动生成 changelog。
       - name: Create draft release
@@ -479,8 +569,17 @@ jobs:
               --generate-notes
           fi
 
+      - name: Upload release profile marker
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          MARKER="hana-release-profile-$HANA_RELEASE_PROFILE.json"
+          printf '{"profile":"%s"}\n' "$HANA_RELEASE_PROFILE" > "$RUNNER_TEMP/$MARKER"
+          gh release upload "${{ github.ref_name }}" "$RUNNER_TEMP/$MARKER" --clobber
+
       # 合并双架构的 latest-mac.yml（本地生成，不上传；上传由下一步统一处理）
       - name: Generate merged latest-mac.yml
+        if: env.HANA_RELEASE_PROFILE == 'signed'
         run: |
           node scripts/merge-latest-mac-yml.cjs artifacts latest-mac.yml
 
@@ -491,8 +590,9 @@ jobs:
             --tag "${{ github.ref_name }}" \
             --file release-digest.v1.json
 
-      # 单点上传所有 release assets（dmg/zip/exe/AppImage/deb/yml），blockmap 不上传
-      - name: Upload release assets
+      # Signed releases retain the complete updater/train asset surface.
+      - name: Upload signed artifacts
+        if: env.HANA_RELEASE_PROFILE == 'signed'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -572,6 +672,36 @@ jobs:
             echo "::warning::latest-linux.yml not found (Linux build may have failed)"
           fi
 
+      # Legacy raw releases intentionally publish only independently installable
+      # desktop/server packages and their evidence. They have no updater metadata,
+      # artifact archives, train pointers, or mirrors.
+      - name: Upload legacy raw artifacts
+        if: env.HANA_RELEASE_PROFILE == 'legacy-raw'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+
+          echo "=== Uploading legacy raw installers ==="
+          find artifacts \( -name '*-legacy-raw.dmg' -o -name '*-legacy-raw.zip' -o -name '*-legacy-raw.exe' -o -name '*-legacy-raw.AppImage' -o -name '*-legacy-raw.deb' \) -print0 |
+            while IFS= read -r -d '' f; do
+              echo "  $f"
+              gh release upload "${{ github.ref_name }}" "$f" --clobber
+            done
+
+          echo "=== Uploading standalone server bundles and checksum sidecars ==="
+          find artifacts -type f \( -name 'hanaagent-server-*.tar.gz' -o -name 'hanaagent-server-*.tar.gz.sha256' \) -print0 |
+            while IFS= read -r -d '' f; do
+              echo "  $f"
+              gh release upload "${{ github.ref_name }}" "$f" --clobber
+            done
+
+          echo "=== Uploading server compatibility manifest ==="
+          gh release upload "${{ github.ref_name }}" "hanaagent-server-compatibility-${{ github.ref_name }}.json" --clobber
+
+          echo "=== Uploading release digest ==="
+          gh release upload "${{ github.ref_name }}" release-digest.v1.json --clobber
+
       # 硬约束：release 必须包含所有必需产物，缺一个 CI 就 fail，draft 状态留给人手动检查。
       # 防止以后再有 shell 写漏 / electron-builder 配置改坏 / 单架构构建挂掉 造成的 yml 缺失。
       - name: Verify release assets
@@ -585,9 +715,7 @@ jobs:
           echo ""
 
           MISSING=()
-          echo "$ASSETS" | grep -qx 'latest-mac.yml' || MISSING+=("latest-mac.yml")
-          echo "$ASSETS" | grep -qx 'latest.yml' || MISSING+=("latest.yml")
-          echo "$ASSETS" | grep -qx 'latest-linux.yml' || MISSING+=("latest-linux.yml")
+          echo "$ASSETS" | grep -qx "hana-release-profile-$HANA_RELEASE_PROFILE.json" || MISSING+=("release profile marker")
           echo "$ASSETS" | grep -qx 'release-digest.v1.json' || MISSING+=("release-digest.v1.json")
           echo "$ASSETS" | grep -qE '^HanaAgent-.*-macOS-arm64\.dmg$' || MISSING+=("macOS-arm64.dmg")
           echo "$ASSETS" | grep -qE '^HanaAgent-.*-macOS-arm64\.zip$' || MISSING+=("macOS-arm64.zip")
@@ -621,10 +749,47 @@ jobs:
           echo "$ASSETS" | grep -qx 'hanaagent-server-${{ github.ref_name }}-win-x64.tar.gz.sha256'    || MISSING+=("server-win-x64.sha256")
           echo "$ASSETS" | grep -qx 'hanaagent-server-compatibility-${{ github.ref_name }}.json' || MISSING+=("server compatibility manifest")
 
-          # 清洁性检查：不应该有 blockmap 漏进来
-          if echo "$ASSETS" | grep -qE '\.blockmap$'; then
-            echo "::warning::blockmap files leaked into release (should be excluded by design):"
-            echo "$ASSETS" | grep -E '\.blockmap$'
+          if [ "$HANA_RELEASE_PROFILE" = "signed" ]; then
+            if echo "$ASSETS" | grep -qE '^HanaAgent-.*-legacy-raw\.(dmg|zip|exe|AppImage|deb)$'; then
+              MISSING+=("signed release contains legacy-raw installer assets")
+            fi
+            echo "$ASSETS" | grep -qx 'latest-mac.yml' || MISSING+=("latest-mac.yml")
+            echo "$ASSETS" | grep -qx 'latest.yml' || MISSING+=("latest.yml")
+            echo "$ASSETS" | grep -qx 'latest-linux.yml' || MISSING+=("latest-linux.yml")
+            echo "$ASSETS" | grep -qE '^HanaAgent-.*-macOS-arm64\.dmg$' || MISSING+=("macOS-arm64.dmg")
+            echo "$ASSETS" | grep -qE '^HanaAgent-.*-macOS-arm64\.zip$' || MISSING+=("macOS-arm64.zip")
+            echo "$ASSETS" | grep -qE '^HanaAgent-.*-macOS-x64\.dmg$' || MISSING+=("macOS-x64.dmg")
+            echo "$ASSETS" | grep -qE '^HanaAgent-.*-macOS-x64\.zip$' || MISSING+=("macOS-x64.zip")
+            echo "$ASSETS" | grep -qE '^HanaAgent-.*-Windows-x64\.exe$' || MISSING+=("Windows-x64.exe")
+            echo "$ASSETS" | grep -qE '^HanaAgent-.*-Linux-(x64|x86_64)\.AppImage$' || MISSING+=("Linux AppImage")
+            echo "$ASSETS" | grep -qE '^HanaAgent-.*-Linux-(x64|amd64)\.deb$' || MISSING+=("Linux deb")
+            echo "$ASSETS" | grep -qE '^server-.*-darwin-arm64\.tar\.gz$' || MISSING+=("server darwin-arm64 hot-update archive")
+            echo "$ASSETS" | grep -qE '^server-.*-darwin-x64\.tar\.gz$' || MISSING+=("server darwin-x64 hot-update archive")
+            echo "$ASSETS" | grep -qE '^server-.*-win32-x64\.tar\.gz$' || MISSING+=("server win32-x64 hot-update archive")
+            echo "$ASSETS" | grep -qE '^server-.*-linux-x64\.tar\.gz$' || MISSING+=("server linux-x64 hot-update archive")
+            echo "$ASSETS" | grep -qE '^renderer-.*\.tar\.gz$' || MISSING+=("renderer hot-update archive")
+          elif [ "$HANA_RELEASE_PROFILE" = "legacy-raw" ]; then
+            LEAKED_SIGNED=$(echo "$ASSETS" | grep -E '^HanaAgent-.*\.(dmg|zip|exe|AppImage|deb)$' | grep -v -- '-legacy-raw\.' || true)
+            if [ -n "$LEAKED_SIGNED" ]; then
+              MISSING+=("legacy-raw release contains signed installer assets")
+            fi
+            echo "$ASSETS" | grep -qE '^HanaAgent-.*-macOS-arm64-legacy-raw\.dmg$' || MISSING+=("legacy raw macOS-arm64.dmg")
+            echo "$ASSETS" | grep -qE '^HanaAgent-.*-macOS-arm64-legacy-raw\.zip$' || MISSING+=("legacy raw macOS-arm64.zip")
+            echo "$ASSETS" | grep -qE '^HanaAgent-.*-macOS-x64-legacy-raw\.dmg$' || MISSING+=("legacy raw macOS-x64.dmg")
+            echo "$ASSETS" | grep -qE '^HanaAgent-.*-macOS-x64-legacy-raw\.zip$' || MISSING+=("legacy raw macOS-x64.zip")
+            echo "$ASSETS" | grep -qE '^HanaAgent-.*-Windows-x64-legacy-raw\.exe$' || MISSING+=("legacy raw Windows-x64.exe")
+            echo "$ASSETS" | grep -qE '^HanaAgent-.*-Linux-(x64|x86_64)-legacy-raw\.AppImage$' || MISSING+=("legacy raw Linux AppImage")
+            echo "$ASSETS" | grep -qE '^HanaAgent-.*-Linux-(x64|amd64)-legacy-raw\.deb$' || MISSING+=("legacy raw Linux deb")
+
+            FORBIDDEN=$(echo "$ASSETS" | grep -E '^(latest.*\.yml|server-.*\.tar\.gz|renderer-.*\.tar\.gz|.*seed-train.*|.*\.blockmap)$' || true)
+            if [ -n "$FORBIDDEN" ]; then
+              echo "::error::legacy-raw release contains signed updater/train assets:"
+              echo "$FORBIDDEN"
+              MISSING+=("legacy-raw forbidden updater/train assets")
+            fi
+          else
+            echo "::error::Unknown HANA_RELEASE_PROFILE: $HANA_RELEASE_PROFILE"
+            MISSING+=("known release profile")
           fi
 
           if [ ${#MISSING[@]} -gt 0 ]; then
@@ -647,8 +812,8 @@ jobs:
   # touches the already-published installer assets. scripts/publish-train.mjs is resumable:
   # rerunning this job after a partial failure is always safe (see the script's file header).
   publish-train:
-    needs: release
-    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [resolve-release-profile, release]
+    if: startsWith(github.ref, 'refs/tags/v') && needs.resolve-release-profile.outputs.release_profile == 'signed'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -730,8 +895,8 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   mirror-atomgit:
-    needs: release
-    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [resolve-release-profile, release]
+    if: startsWith(github.ref, 'refs/tags/v') && needs.resolve-release-profile.outputs.release_profile == 'signed'
     runs-on: ubuntu-latest
     permissions:
       contents: read
