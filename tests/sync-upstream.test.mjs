@@ -7,6 +7,7 @@ import {
   changedDivergingFiles,
   forkOnlyFilePatterns,
   ISSUE_COMMANDS,
+  loadMigrationContracts,
   loadRules,
   minimatch,
   missingForkOnlyFiles,
