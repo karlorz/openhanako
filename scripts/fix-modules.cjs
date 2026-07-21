@@ -2,9 +2,8 @@
  * fix-modules.cjs — electron-builder afterPack 钩子
  *
  * 职责（启用双 artifact 管线后）：
- * 1. 校验 extraResources 落地的 seed/ 四件套齐全（renderer 归档 + server 归档 +
- *    manifest + .sig），归档文件名以 manifest 内容为准 —— extraResources 配置
- *    被误改时在构建机上炸，不留到用户首启。
+ * 1. 校验 profile 对应的 packaged resource layout：signed 需要 seed/ 四件套，
+ *    legacy-raw 需要旧式 Resources/server/ + bundled renderer。
  * 2. 补全 electron-builder 依赖分析漏掉的 app asar 生产依赖，并清理
  *    node_modules/.bin（绝对 symlink 会让 codesign 报错）。
  *
@@ -15,34 +14,49 @@
  */
 
 const { execSync } = require("child_process");
+const asar = require("@electron/asar");
 const fs = require("fs");
 const path = require("path");
+const { normalizeBuildInfo } = require("../desktop/src/shared/build-info.cjs");
+const { normalizeReleaseProfile, LEGACY_RAW_PROFILE } = require("../shared/release-profile.cjs");
+const { CRITICAL_BUNDLED_EXTERNALS } = require("../desktop/src/shared/server-readiness.cjs");
 
-/**
- * 目录内定位平台化命名的 seed manifest（seed-train-<platform>-<arch>.json，
- * 见 scripts/build-server-artifact.mjs 的 seedManifestFileName /
- * desktop/src/shared/artifact-boot.cjs 的同名函数）。afterPack 阶段的
- * platform/arch 是 electron-builder 自己的命名习惯（"mac"/"windows"/"linux"），
- * 跟 manifest 文件名里 process.platform 风格的 "darwin"/"win32"/"linux" 对不
- * 上，与其在这里重新维护一份映射表，不如像归档文件名（带版本号，
- * 同样不可硬编码）一样用前缀/后缀扫描定位——这里只做"文件在不在"的构建期
- * 存在性检查，真正的平台一致性校验由 scripts/verify-seed-kit.mjs 在
- * electron-builder 之前做。
- * @param {string} seedDir
- * @returns {string|null}
- */
-function findSeedManifestPath(seedDir) {
-  let entries;
-  try {
-    entries = fs.readdirSync(seedDir, { withFileTypes: true });
-  } catch {
-    return null;
+const SERVER_NODE_MODULE_REQUIRED_FILES = [
+  ...CRITICAL_BUNDLED_EXTERNALS.map((pkg) => `${pkg}/package.json`),
+  "better-sqlite3/build/Release/better_sqlite3.node",
+];
+
+function missingServerNodeModuleFiles(nodeModulesDir) {
+  return SERVER_NODE_MODULE_REQUIRED_FILES.filter((relativePath) => {
+    try {
+      fs.accessSync(path.join(nodeModulesDir, ...relativePath.split("/")), fs.constants.R_OK);
+      return false;
+    } catch {
+      return true;
+    }
+  });
+}
+
+function assertBundledServerNodeModulesReady(nodeModulesDir) {
+  const missing = missingServerNodeModuleFiles(nodeModulesDir);
+  if (missing.length > 0) {
+    throw new Error(`[fix-modules] Packaged server node_modules is incomplete: ${missing.join(", ")}`);
   }
-  const names = entries
-    .filter((entry) => entry.isFile() && entry.name.startsWith("seed-train-") && entry.name.endsWith(".json"))
-    .map((entry) => entry.name)
-    .sort();
-  return names.length > 0 ? path.join(seedDir, names[0]) : null;
+}
+
+function copyBundledServerNodeModules(serverDir, serverBuildModules, opts = {}) {
+  if (!fs.existsSync(serverDir)) {
+    throw new Error(`[fix-modules] Packaged server directory is missing: ${serverDir}`);
+  }
+  if (!fs.existsSync(serverBuildModules)) {
+    throw new Error(`[fix-modules] Built server node_modules is missing: ${serverBuildModules}`);
+  }
+  const serverNodeModules = path.join(serverDir, "node_modules");
+  fs.rmSync(serverNodeModules, { recursive: true, force: true });
+  fs.cpSync(serverBuildModules, serverNodeModules, { recursive: true });
+  assertBundledServerNodeModulesReady(serverNodeModules);
+  const log = typeof opts.log === "function" ? opts.log : console.log;
+  log(`[fix-modules] rebuilt server node_modules -> ${serverNodeModules}`);
 }
 
 /**
@@ -54,14 +68,14 @@ function findSeedManifestPath(seedDir) {
  */
 function assertSeedResourcesReady(resourcesDir) {
   const seedDir = path.join(resourcesDir, "seed");
-  const manifestPath = findSeedManifestPath(seedDir);
-  if (!manifestPath) {
+  const manifestPath = path.join(seedDir, "seed-train.json");
+  const sigPath = `${manifestPath}.sig`;
+  if (!fs.existsSync(manifestPath)) {
     throw new Error(
-      `[fix-modules] seed manifest missing from packaged resources: ${path.join(seedDir, "seed-train-<platform>-<arch>.json")}. `
+      `[fix-modules] seed manifest missing from packaged resources: ${manifestPath}. `
         + "Run npm run build:server (with HANA_SIGN_KEY) before electron-builder.",
     );
   }
-  const sigPath = `${manifestPath}.sig`;
   if (!fs.existsSync(sigPath)) {
     throw new Error(`[fix-modules] seed manifest signature missing: ${sigPath}`);
   }
@@ -94,6 +108,96 @@ function assertSeedResourcesReady(resourcesDir) {
       `[fix-modules] renderer seed archive referenced by the manifest is missing: ${rendererEntry.path} (expected at ${rendererArchivePath})`,
     );
   }
+}
+
+/**
+ * Validate the intentionally un-updatable legacy raw package layout. This is
+ * kept separate from the seed assertion so a malformed raw package cannot be
+ * mistaken for a signed package at build or launch time.
+ * @param {string} resourcesDir
+ * @param {{appDir?: string, allowUnpackedApp?: boolean}} [opts]
+ */
+function assertRawResourcesReady(resourcesDir, opts = {}) {
+  const serverDir = path.join(resourcesDir, "server");
+  const appDir = opts.appDir || path.join(resourcesDir, "app");
+  const wrapper = [path.join(serverDir, "hana-server"), path.join(serverDir, "hana-server.exe")]
+    .find((candidate) => fs.existsSync(candidate));
+  if (!wrapper) {
+    throw new Error(`[fix-modules] legacy-raw server wrapper missing under ${serverDir}`);
+  }
+  for (const relativePath of ["bootstrap.js", "bundle/index.js", "server-build-info.json"]) {
+    const filePath = path.join(serverDir, ...relativePath.split("/"));
+    if (!fs.existsSync(filePath)) {
+      throw new Error(`[fix-modules] legacy-raw server file missing: ${filePath}`);
+    }
+  }
+  const runtime = [path.join(serverDir, "node"), path.join(serverDir, "hana-server.exe")]
+    .find((candidate) => fs.existsSync(candidate));
+  if (!runtime) {
+    throw new Error(`[fix-modules] legacy-raw server runtime missing under ${serverDir}`);
+  }
+  const buildInfoPath = path.join(serverDir, "server-build-info.json");
+  let buildInfo;
+  try {
+    buildInfo = JSON.parse(fs.readFileSync(buildInfoPath, "utf8"));
+  } catch (err) {
+    throw new Error(`[fix-modules] legacy-raw server-build-info.json is invalid: ${err.message}`);
+  }
+  if (!buildInfo || typeof buildInfo !== "object") {
+    throw new Error(`[fix-modules] legacy-raw server-build-info.json must contain an object`);
+  }
+  const rendererRelativePath = path.join("desktop", "dist-renderer", "index.html");
+  const asarPath = path.join(resourcesDir, "app.asar");
+  let rendererEntry;
+  if (fs.existsSync(asarPath)) {
+    const packagedEntries = new Set(asar.listPackage(asarPath).map((entry) => entry.replace(/^[/\\]/, "").replaceAll("\\", "/")));
+    const expectedRendererEntry = rendererRelativePath.replaceAll(path.sep, "/");
+    if (!packagedEntries.has(expectedRendererEntry)) {
+      throw new Error(`[fix-modules] legacy-raw bundled renderer missing from ${asarPath}: ${expectedRendererEntry}`);
+    }
+    rendererEntry = `${asarPath}:${expectedRendererEntry}`;
+  } else {
+    if (opts.allowUnpackedApp !== true) {
+      throw new Error(`[fix-modules] legacy-raw packaged app.asar missing: ${asarPath}`);
+    }
+    rendererEntry = path.join(appDir, rendererRelativePath);
+    if (!fs.existsSync(rendererEntry)) {
+      throw new Error(`[fix-modules] legacy-raw bundled renderer missing: ${rendererEntry}`);
+    }
+  }
+  const serverRendererRoot = path.join(serverDir, "desktop", "dist-renderer");
+  const serverRendererEntry = path.join(serverRendererRoot, "mobile.html");
+  if (!fs.existsSync(serverRendererEntry)) {
+    throw new Error(
+      `[fix-modules] legacy-raw standalone server renderer missing: ${serverRendererEntry}`,
+    );
+  }
+  return { serverDir, rendererEntry, serverRendererRoot, wrapper, buildInfo };
+}
+
+function createPackagedBuildInfo({ rootDir = path.resolve(__dirname, ".."), env = process.env, appVersion }) {
+  const profile = normalizeReleaseProfile(env.HANA_RELEASE_PROFILE);
+  let gitSha = env.HANA_SERVER_GIT_SHA || null;
+  if (!gitSha) {
+    try {
+      gitSha = execSync("git rev-parse HEAD", { cwd: rootDir, encoding: "utf8" }).trim() || null;
+    } catch {
+      gitSha = null;
+    }
+  }
+  return normalizeBuildInfo({
+    appVersion: appVersion || null,
+    channel: "release",
+    sourceRepo: env.HANA_SERVER_SOURCE_REPOSITORY || "karlorz/openhanako",
+    gitSha,
+    baseTag: env.HANA_SERVER_RELEASE_TAG || null,
+    releaseTag: env.HANA_SERVER_RELEASE_TAG || null,
+    dirty: false,
+    releaseProfile: profile,
+    updateEnabled: profile !== LEGACY_RAW_PROFILE,
+    artifactUpdatesEnabled: profile !== LEGACY_RAW_PROFILE,
+    signatureKind: profile === LEGACY_RAW_PROFILE ? "legacy-raw" : "signed-seed",
+  });
 }
 
 function removeNodeModulesBinDirs(nodeModulesDir) {
@@ -158,9 +262,33 @@ exports.default = async function (context) {
       throw new Error(`[fix-modules] Computer Use helper is not executable: ${computerUseHelper}`);
     }
   }
-  // ── seed 四件套校验（renderer + server 树以签名归档进箱，双 artifact 管线）──
-  assertSeedResourcesReady(resourcesDir);
-  console.log("[fix-modules] seed resources verified (renderer archive + server archive + manifest + sig)");
+  const profile = normalizeReleaseProfile(process.env.HANA_RELEASE_PROFILE);
+  const packagedBuildInfo = createPackagedBuildInfo({
+    appVersion: context.packager.appInfo.version || null,
+    env: process.env,
+  });
+  fs.writeFileSync(
+    path.join(resourcesDir, "build-info.json"),
+    `${JSON.stringify(packagedBuildInfo, null, 2)}\n`,
+    "utf8",
+  );
+
+  if (profile === LEGACY_RAW_PROFILE) {
+    const raw = assertRawResourcesReady(resourcesDir, {
+      appDir,
+    });
+    const osDirName = platformName === "mac" ? "mac" : platformName === "windows" || platformName === "win" ? "win" : "linux";
+    const serverBuildModules = path.join(__dirname, "..", "dist-server", `${osDirName}-${arch}`, "node_modules");
+    copyBundledServerNodeModules(raw.serverDir, serverBuildModules);
+    assertRawResourcesReady(resourcesDir, {
+      appDir,
+    });
+    assertBundledServerNodeModulesReady(path.join(raw.serverDir, "node_modules"));
+    console.log("[fix-modules] legacy-raw resources verified (bundled renderer + Resources/server)");
+  } else {
+    assertSeedResourcesReady(resourcesDir);
+    console.log("[fix-modules] seed resources verified (renderer archive + server archive + manifest + sig)");
+  }
 
   if (!fs.existsSync(distModules)) return;
 
@@ -223,5 +351,7 @@ exports.default = async function (context) {
 };
 
 exports.assertSeedResourcesReady = assertSeedResourcesReady;
-exports.findSeedManifestPath = findSeedManifestPath;
+exports.assertRawResourcesReady = assertRawResourcesReady;
+exports.assertBundledServerNodeModulesReady = assertBundledServerNodeModulesReady;
+exports.createPackagedBuildInfo = createPackagedBuildInfo;
 exports.removeNodeModulesBinDirs = removeNodeModulesBinDirs;

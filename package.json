@@ -45,11 +45,11 @@
     "build:shell": "node scripts/build-shell.mjs",
     "build:packages": "npm run build --workspaces --if-present",
     "generate:windows-icon": "node scripts/generate-windows-icon.cjs",
-    "pack": "npm run build:computer-use-helper && npm run build:client && npm run build:server && npm run verify:seed-kit && electron-builder --dir",
+    "pack": "npm run build:computer-use-helper && npm run build:client && npm run build:server && npm run prepare:desktop-package && electron-builder --dir --config scripts/electron-builder.config.cjs",
     "install:local": "npm run pack && rm -rf /Applications/HanaAgent.app /Applications/Hanako.app && cp -R dist/mac-arm64/HanaAgent.app /Applications/ && node scripts/write-local-build-info.mjs && node scripts/sign-local.cjs",
-    "dist": "npm run build:computer-use-helper && npm run build:client && npm run build:server && npm run verify:seed-kit && electron-builder --mac dmg",
-    "dist:win": "npm run build:computer-use-helper && npm run build:windows-sandbox-helper && npm run generate:windows-icon && npm run build:client && npm run build:server && npm run verify:seed-kit && electron-builder --win nsis",
-    "dist:linux": "npm run build:client && npm run build:server && npm run verify:seed-kit && electron-builder --linux AppImage deb",
+    "dist": "npm run build:computer-use-helper && npm run build:client && npm run build:server && npm run prepare:desktop-package && electron-builder --mac dmg --config scripts/electron-builder.config.cjs",
+    "dist:win": "npm run build:computer-use-helper && npm run build:windows-sandbox-helper && npm run generate:windows-icon && npm run build:client && npm run build:server && electron-builder --win nsis --config scripts/electron-builder.config.cjs",
+    "dist:linux": "npm run build:client && npm run build:server && electron-builder --linux AppImage deb --config scripts/electron-builder.config.cjs",
     "verify:seed-kit": "node scripts/verify-seed-kit.mjs",
     "test": "vitest run --exclude '**/.claude/**' --exclude '**/.cache/**' --exclude '**/dist/**' --exclude '**/dist-server/**' --exclude '**/dist-computer-use/**' --exclude '**/dist-sandbox/**'",
     "build:server": "node scripts/build-server.mjs",
@@ -60,7 +60,11 @@
     "lint": "eslint .",
     "lint:boundary": "node scripts/lint-open-boundary.mjs",
     "test:watch": "vitest --exclude '**/.claude/**' --exclude '**/.cache/**' --exclude '**/dist/**' --exclude '**/dist-server/**' --exclude '**/dist-computer-use/**' --exclude '**/dist-sandbox/**'",
-    "postinstall": "node scripts/patch-pi-sdk.cjs"
+    "postinstall": "node scripts/patch-pi-sdk.cjs",
+    "prepare:desktop-package": "node scripts/prepare-desktop-package.mjs",
+    "pack:auto": "node scripts/release-desktop-with-profile.mjs --profile auto --action pack",
+    "dist:auto": "node scripts/release-desktop-with-profile.mjs --profile auto --action dist",
+    "install:local:auto": "node scripts/release-desktop-with-profile.mjs --profile auto --action install"
   },
   "dependencies": {
     "@codemirror/lang-markdown": "^6.5.0",
