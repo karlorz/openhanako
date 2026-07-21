@@ -58,7 +58,7 @@ paths:
   - path: package.json
     plannerStrategy: defer-to-stable-production-sync
     decision: wait-stable
-    reason: Version 0.407.15 vs main 0.415.15 — no dashboard pre-bump
+    reason: Live package 0.412.7 after train-13 channel sync; do not dashboard pre-bump toward main tip 0.415.15
   - path: package-lock.json
     plannerStrategy: defer-to-stable-production-sync
     decision: wait-stable
