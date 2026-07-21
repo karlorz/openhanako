@@ -30,7 +30,7 @@ Pre-rebase backup: `backup/dev-before-prerelease-train-13-20260721` @ `611fd08d`
 | `core/session-turn-actions.ts` | take-main | **wait-stable** | Trial adopt from main failed: imports missing `session-operation-lock.ts` and other main-only modules — requires full train package, not single-file pick |
 | `desktop/main.cjs` | human-review | **preserve-fork** | Probe + dual-profile boot orchestration; already isolated helpers |
 | `desktop/src/shared/launch-integrity.cjs` | take-main | **wait-stable** | Main is seed-only; fork retains legacy-raw install surface validation |
-| `package.json` | defer-to-stable-production-sync | **wait-stable** | Version `0.407.15` vs main `0.415.15` — no dashboard pre-bump |
+| `package.json` | defer-to-stable-production-sync | **wait-stable** | Live package **`0.412.7`** after attended `train-13` channel sync; dashboard must not pre-bump toward main tip `0.415.15` for cosmetics — further package identity only via attended sync/release |
 | `package-lock.json` | (paired with package) | **wait-stable** | Same as package.json |
 | `release-digest.v1.json` | take-main | **wait-stable** | Prerelease digest for `v0.415.15` — policy forbids early copy into dev |
 | `release-digest.v2.json` | take-main | **wait-stable** | Same prerelease digest family |
@@ -45,7 +45,7 @@ Pre-rebase backup: `backup/dev-before-prerelease-train-13-20260721` @ `611fd08d`
 
 ## Expected residual conflicts
 
-Still **16** until attended stable production sync onto a published non-prerelease newer than `v0.407.15`, at which point take-main packaging noise can land with the full package version alignment.
+Dashboard may still list packaging/digest dual-profile paths as CONFLICTING after `train-13`. Residual conflict count is re-read from live `--conflict-plan`; absolute zero conflicts remains infeasible without abandoning permanent-fork dual-profile. Next **stable** production sync still waits for a published non-prerelease newer than `v0.407.15`.
 
 ## PR #1
 
