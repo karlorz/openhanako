@@ -294,11 +294,22 @@ describe("server home guards — real spawn behavior (fast failure paths, before
       // engine initialization reaches the first post-migration phase so the
       // registry has finished writing its per-step receipts before shutdown.
       const result = await waitForStartupProgress(child, "[init] 1/5 Pi SDK 初始化...");
+      const prefsPath = path.join(realHome, "user", "preferences.json");
+      const deadline = Date.now() + 10_000;
+      let dataVersion = 43;
+      while (Date.now() < deadline) {
+        try {
+          dataVersion = JSON.parse(fs.readFileSync(prefsPath, "utf-8"))._dataVersion;
+          if (Number(dataVersion) > 43) break;
+        } catch {
+          // preferences may be mid-write
+        }
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
 
       expect(result.stderr).toContain("HANA_DATA_EPOCH_BASELINE_WARNING reason=ambiguous-unstamped-home");
       expect(result.stderr).not.toContain("HANA_DATA_EPOCH_TRANSITION_INCOMPLETE");
-      expect(JSON.parse(fs.readFileSync(path.join(realHome, "user", "preferences.json"), "utf-8"))._dataVersion)
-        .toBeGreaterThan(43);
+      expect(dataVersion).toBeGreaterThan(43);
     } finally {
       fs.rmSync(container, { recursive: true, force: true });
     }
