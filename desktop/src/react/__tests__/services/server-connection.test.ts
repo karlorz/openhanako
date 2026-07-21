@@ -559,6 +559,25 @@ describe('server connection helpers', () => {
     });
   });
 
+  it('throws structured HanaHttpError with status on login 401 (no message parsing required)', async () => {
+    const fetchImpl = vi.fn(async (url: string) => {
+      if (url.endsWith('/api/web-auth/login')) {
+        return { ok: false, status: 401, statusText: 'Unauthorized' } as Response;
+      }
+      throw new Error(`unexpected URL ${url}`);
+    });
+
+    await expect(connectDeviceServerConnection({
+      baseUrl: 'http://192.168.31.75:14500',
+      credential: 'bad-key',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    })).rejects.toMatchObject({
+      name: 'HanaHttpError',
+      status: 401,
+      path: '/api/web-auth/login',
+    });
+  });
+
   it('uses main-process probeConnection when available and persists+reloads on success (CSP bootstrapping fix)', async () => {
     const storageData = new Map<string, string>();
     const storage = {
