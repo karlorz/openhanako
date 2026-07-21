@@ -192,3 +192,10 @@ After the 2026-06-16 maintenance cycle, the compact config now treats fork-sync 
 - Post-rebase Tier 0–2 green after restoring conflict-damaged test suites and fork assessment surfaces; typecheck clean.
 - Tier 3A desktop install / Tier 3B sg01 smoke still manual; no host deploy/tag/fork release from this cycle.
 - Docs: `FORK_SYNC.md` sync log + optional channel section; SkillWiki `projects/openhanako/requirements/2026-07-21-prerelease-channel-train-13-sync.md`.
+
+## Fork release + dual deploy - 2026-07-21 (`v0.412.7-karlorz.1`)
+
+- Published fork prerelease tag `v0.412.7-karlorz.1` (package `0.412.7`, legacy-raw profile, 20 assets).
+- Local macOS: installed published `HanaAgent-0.412.7-macOS-arm64-legacy-raw.dmg`; codesign valid; build-info releaseTag matches.
+- sg01: `install-server upgrade --version v0.412.7-karlorz.1 --channel prerelease` → ok, current `...-linux-arm64`, service active/enabled.
+- CI: Build workflow success after dual-profile workflow/fix-modules restore; release job published assets.
