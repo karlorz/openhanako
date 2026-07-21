@@ -379,6 +379,10 @@ jobs:
           fi
           codesign --verify --deep --strict --verbose=2 "$APP_PATH"
 
+      - name: Verify seed kit (Windows)
+        if: runner.os == 'Windows'
+        run: node scripts/verify-seed-kit.mjs win32 ${{ matrix.arch }}
+
       # Windows 打包
       # --publish never：和 mac 同理，由 release job 单点上传。
       - name: Build Windows installer
@@ -390,6 +394,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+
+      - name: Verify seed kit (Linux)
+        if: runner.os == 'Linux'
+        run: node scripts/verify-seed-kit.mjs linux ${{ matrix.arch }}
 
       # Linux Preview 打包
       # AppImage 给下载即用体验，deb 给 Ubuntu/Debian 系安装。
