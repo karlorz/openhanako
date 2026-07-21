@@ -11,9 +11,15 @@ import { useStore } from './stores';
 import { hanaFetch } from './hooks/use-hana-fetch';
 import { fetchConfig } from './hooks/use-config';
 import { applyAgentIdentity, loadAgents, loadAvatars } from './stores/agent-actions';
-import { loadPendingNewSessionPermissionDefault, loadSessions, switchSession } from './stores/session-actions';
+import {
+  loadPendingNewSessionPermissionDefault,
+  loadSessions,
+  reconcileCurrentSessionMessages,
+  switchSession,
+} from './stores/session-actions';
 import { initSessionProjectCatalog } from './stores/session-project-actions';
 import { connectWebSocket, getWebSocket } from './services/websocket';
+import { bindSessionForegroundConvergence } from './services/session-foreground-convergence';
 import { setStatus, loadModels } from './utils/ui-helpers';
 import { initJian } from './stores/desk-actions';
 import { initViewerEvents } from './stores/preview-actions';
@@ -279,6 +285,14 @@ export async function initApp(): Promise<void> {
   await loadPendingNewSessionPermissionDefault();
   await loadAgents();
   await loadSessions();
+
+  // 10a. Desktop foreground convergence (shared with Mobile): session list
+  // refresh + revision reconcile. Resource catch-up is bound from websocket setup.
+  bindSessionForegroundConvergence({
+    refreshSessions: () => loadSessions(),
+    reconcile: (reason) => reconcileCurrentSessionMessages(reason),
+    reason: 'desktop_foreground_refresh',
+  });
 
   // 10b. 加载项目目录（带重试）。放在 sessions 之后：此时 server 已确认可用，
   // 避免项目目录像过去那样只靠 SessionList 挂载时一次性拉取、失败即长期空白，
