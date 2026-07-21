@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  assertPrereleaseMutateAllowed,
   buildConflictPlan,
   buildPrBodyWithDashboard,
   changedDivergingFiles,
@@ -11,9 +12,12 @@ import {
   missingForkOnlyFiles,
   parseMergeTreeConflictingFiles,
   parseSyncArgs,
+  PRERELEASE_ACCEPT_FLAG,
+  prereleaseSyncPolicy,
   releaseChannelLabel,
   renderPrDashboardBlock,
   renderPostRebaseManualGateReport,
+  resolvePrereleaseConfirmTag,
   selectLatestReleaseTag,
   verificationCommands,
 } from "../scripts/sync-upstream.mjs";
@@ -247,6 +251,117 @@ describe("sync-upstream rule engine", () => {
       noPrUpdate: false,
       syncMain: false,
     });
+  });
+
+  it("loads optional prerelease sync policy with double-consent defaults", () => {
+    const rules = loadRules();
+    const policy = prereleaseSyncPolicy(rules);
+
+    expect(rules.releaseTarget.stableOnlyDefault).toBe(true);
+    expect(rules.releaseTarget.prereleaseSync).toMatchObject({
+      enabled: true,
+      defaultChannel: false,
+      requireAcceptFlag: true,
+      requireConfirmExactTag: true,
+      allowMainHead: false,
+      githubPrereleaseReleasesOnly: true,
+    });
+    expect(policy.acceptFlag).toBe(PRERELEASE_ACCEPT_FLAG);
+    expect(policy.confirmEnv).toBe("CONFIRM");
+    expect(policy.allowMainHead).toBe(false);
+  });
+
+  it("parses --i-accept-prerelease-sync for the optional prerelease mutate channel", () => {
+    const without = parseSyncArgs(["--include-prerelease"]);
+    expect(without.includePrerelease).toBe(true);
+    expect(without.acceptPrereleaseSync).toBe(false);
+
+    const withAccept = parseSyncArgs([
+      "--include-prerelease",
+      PRERELEASE_ACCEPT_FLAG,
+    ]);
+    expect(withAccept.includePrerelease).toBe(true);
+    expect(withAccept.acceptPrereleaseSync).toBe(true);
+    expect(withAccept.args).toEqual([]);
+
+    const checkOnly = parseSyncArgs(["--include-prerelease", "--check"]);
+    expect(checkOnly.includePrerelease).toBe(true);
+    expect(checkOnly.acceptPrereleaseSync).toBe(false);
+    expect(checkOnly.args).toEqual(["--check"]);
+  });
+
+  it("refuses prerelease mutate without accept flag or exact-tag confirm", () => {
+    const rules = loadRules();
+
+    const noAccept = assertPrereleaseMutateAllowed({
+      includePrerelease: true,
+      acceptPrereleaseSync: false,
+      resolvedTag: "train-13",
+      confirmTag: "train-13",
+      rules,
+    });
+    expect(noAccept.ok).toBe(false);
+    expect(noAccept.reason).toMatch(/--i-accept-prerelease-sync/);
+    expect(noAccept.reason).toMatch(/--check/);
+
+    const noConfirm = assertPrereleaseMutateAllowed({
+      includePrerelease: true,
+      acceptPrereleaseSync: true,
+      resolvedTag: "train-13",
+      confirmTag: "",
+      rules,
+    });
+    expect(noConfirm.ok).toBe(false);
+    expect(noConfirm.reason).toMatch(/CONFIRM=train-13/);
+
+    const wrongConfirm = assertPrereleaseMutateAllowed({
+      includePrerelease: true,
+      acceptPrereleaseSync: true,
+      resolvedTag: "train-13",
+      confirmTag: "v0.407.15",
+      rules,
+    });
+    expect(wrongConfirm.ok).toBe(false);
+    expect(wrongConfirm.reason).toMatch(/mismatch/);
+  });
+
+  it("allows prerelease mutate only with accept flag and exact resolved tag", () => {
+    const rules = loadRules();
+    const allowed = assertPrereleaseMutateAllowed({
+      includePrerelease: true,
+      acceptPrereleaseSync: true,
+      resolvedTag: "train-13",
+      confirmTag: "train-13",
+      rules,
+    });
+    expect(allowed).toEqual({ ok: true });
+
+    // Stable-only mutate path does not require prerelease consent.
+    expect(
+      assertPrereleaseMutateAllowed({
+        includePrerelease: false,
+        acceptPrereleaseSync: false,
+        resolvedTag: "v0.407.15",
+        confirmTag: "",
+        rules,
+      }),
+    ).toEqual({ ok: true });
+  });
+
+  it("resolves prerelease confirm tag from CONFIRM or SYNC_UPSTREAM_CONFIRM_TAG", () => {
+    expect(resolvePrereleaseConfirmTag({ CONFIRM: "train-13" })).toBe("train-13");
+    expect(
+      resolvePrereleaseConfirmTag({
+        SYNC_UPSTREAM_CONFIRM_TAG: "v0.415.15",
+      }),
+    ).toBe("v0.415.15");
+    expect(
+      resolvePrereleaseConfirmTag({
+        CONFIRM: "train-13",
+        SYNC_UPSTREAM_CONFIRM_TAG: "other",
+      }),
+    ).toBe("train-13");
+    expect(resolvePrereleaseConfirmTag({})).toBe("");
   });
 
   it("builds a dry-run conflict plan that defaults unknown conflicts to main", () => {
