@@ -9,7 +9,7 @@ interface KeyInputProps {
   onChange: (val: string) => void;
   placeholder?: string;
   ariaLabel?: string;
-  onBlur?: () => void;
+  onBlur?: (event: React.FocusEvent<HTMLElement>) => void;
   onReveal?: () => Promise<string | null | undefined>;
   onRevealError?: (err: unknown) => void;
 }
