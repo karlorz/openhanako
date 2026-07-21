@@ -68,6 +68,11 @@ import {
 import { copyServerRuntimeAssets } from "./build-server-runtime-assets.mjs";
 import { packDualKindSeed } from "./build-server-artifact.mjs";
 import { writeServerBuildInfo } from "./write-server-build-info.mjs";
+import {
+  SERVER_BUILD_RUNTIME_ONLY,
+  SERVER_BUILD_SEED,
+  resolveServerBuildMode,
+} from "../shared/release-profile.cjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
@@ -76,8 +81,9 @@ const arch = process.argv[3] || process.arch;
 // electron-builder 的 ${os} 变量：darwin→"mac"、win32→"win"、linux→"linux"
 const osDirName = platform === "darwin" ? "mac" : platform === "win32" ? "win" : platform;
 const outDir = path.join(ROOT, "dist-server", `${osDirName}-${arch}`);
+const serverBuildMode = resolveServerBuildMode(process.env);
 
-console.log(`[build-server] Building for ${platform}-${arch}...`);
+console.log(`[build-server] Building for ${platform}-${arch} (mode=${serverBuildMode})...`);
 
 // ── 0. 清理 ──
 fs.rmSync(outDir, { recursive: true, force: true });
@@ -225,14 +231,19 @@ console.log("[build-server] server-build-info.json created");
 // HANA_SIGN_KEY 未设置时这里硬报错（安装包必须携带签名 seed）；本地验证用
 // artifact-keygen.mjs 生成一次性密钥对，配 HANA_SIGN_KEYSET 指向其 keyset。
 // full 专属：开源产物不装箱、不签名、全程不读 HANA_SIGN_KEY。
-await packDualKindSeed({
-  outDir,
-  rendererDistDir: path.join(ROOT, "desktop", "dist-renderer"),
-  rendererArtifactOutDir: path.join(ROOT, "dist-renderer-artifact"),
-  artifactOutDir: path.join(ROOT, "dist-server-artifact", `${osDirName}-${arch}`),
-  version: rootPkg.version,
-  platform,
-  arch,
-});
+// runtime-only (legacy-raw server bundles) skips signed seed packaging.
+if (serverBuildMode === SERVER_BUILD_SEED) {
+  await packDualKindSeed({
+    outDir,
+    rendererDistDir: path.join(ROOT, "desktop", "dist-renderer"),
+    rendererArtifactOutDir: path.join(ROOT, "dist-renderer-artifact"),
+    artifactOutDir: path.join(ROOT, "dist-server-artifact", `${osDirName}-${arch}`),
+    version: rootPkg.version,
+    platform,
+    arch,
+  });
+} else if (serverBuildMode === SERVER_BUILD_RUNTIME_ONLY) {
+  console.log("[build-server] runtime-only mode: raw server tree kept; signed seed packaging skipped");
+}
 
 console.log("[build-server] Done!");
