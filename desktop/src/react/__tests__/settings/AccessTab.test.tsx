@@ -512,12 +512,15 @@ describe('AccessTab', () => {
 
     expect(await screen.findByText('settings.access.remoteConnection')).toBeInTheDocument();
     expect(screen.getByText('LAN Studio')).toBeInTheDocument();
-    expect(screen.getByText('settings.access.remoteCompatibilityStatus')).toBeInTheDocument();
-    expect(screen.getByText('settings.access.remoteCompatibilityProblem')).toBeInTheDocument();
+    expect(screen.getByText('settings.access.remoteCoreConnection')).toBeInTheDocument();
+    expect(screen.getAllByText('settings.access.remoteNotAssessed').length).toBeGreaterThan(0);
+    expect(screen.getByText('settings.access.remoteServerUpdate')).toBeInTheDocument();
+    expect(screen.getByText('settings.access.remoteFeatureSupport')).toBeInTheDocument();
     expect(screen.getByText('settings.access.remoteReason.missing_core_capability')).toBeInTheDocument();
     expect(screen.getByText('settings.access.remoteWarning.missing_optional_capability')).toBeInTheDocument();
-    expect(await screen.findByText('settings.access.remoteServerVersion')).toBeInTheDocument();
+    expect(await screen.findByText('settings.access.remoteConnectedRuntime')).toBeInTheDocument();
     expect(screen.getByText('0.348.11')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'settings.access.remoteCheckAgain' })).toBeEnabled();
     expect(screen.getByText('settings.access.remoteConnectionKindRemote')).toBeInTheDocument();
     expect(screen.getByText('settings.access.remoteTrustState')).toBeInTheDocument();
     expect(screen.getByText('settings.access.remoteTrustLan')).toBeInTheDocument();
