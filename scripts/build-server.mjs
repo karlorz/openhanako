@@ -46,6 +46,7 @@
  *     node_modules/           ← 仅 external deps（~50 packages）
  */
 import fs from "fs";
+import { execSync } from "child_process";
 import path from "path";
 import { fileURLToPath } from "url";
 import {
