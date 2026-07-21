@@ -6,14 +6,15 @@
 schemaVersion: 1
 baseline:
   recordedAt: "2026-07-21"
-  forkHead: "38df9c7c48ad0336a40f212aa30b08e99a92c393"
-  packageVersion: "0.407.15"
-  mainTip: "8a3cbbfc8f2d8ce1aa527c674d5e7018c7d55de5"
-  mainPackageTip: "0.415.15"
+  # Post attended prerelease-channel rebase onto train-13 (package 0.412.7).
+  # forkHead refreshed at doc update time; re-run conflict-plan for live count.
+  packageVersion: "0.412.7"
   latestStableTag: "v0.407.15"
-  lastSyncedTag: "v0.407.15"
+  lastSyncedTag: "train-13"
+  lastSyncedChannel: prerelease
   stableSyncAvailable: false
-  plannedConflictCount: 16
+  preRebaseBackup: "backup/dev-before-prerelease-train-13-20260721"
+  preRebaseHead: "611fd08db8852d0c069d2e6eb295ae400f441c09"
 
 # Decisions for planned conflict paths (and paired lockfile).
 # decision: adopt-now | wait-stable | preserve-fork
