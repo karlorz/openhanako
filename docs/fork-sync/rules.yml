@@ -6,6 +6,22 @@ releaseTarget:
   stableOnlyDefault: true
   prereleaseFlag: --include-prerelease
   syncLog: FORK_SYNC.md
+  # Optional attended prerelease production channel (not the default).
+  # Targets: GitHub Releases with isPrerelease=true (non-draft) when `gh` works.
+  # Never upstream/main HEAD. Dashboard pick-from-main is unchanged.
+  prereleaseSync:
+    enabled: true
+    defaultChannel: false
+    acceptFlag: --i-accept-prerelease-sync
+    confirmEnv: CONFIRM
+    confirmEnvAlt: SYNC_UPSTREAM_CONFIRM_TAG
+    requireAcceptFlag: true
+    requireConfirmExactTag: true
+    allowMainHead: false
+    githubPrereleaseReleasesOnly: true
+    # After success: lastSynced + package follow the prerelease tag (fork tags still -karlorz.N).
+    recordLastSyncedAsTargetTag: true
+    alignPackageToTargetVersion: true
 
 dashboard:
   prNumber: 1
