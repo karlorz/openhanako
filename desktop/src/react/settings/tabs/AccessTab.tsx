@@ -16,7 +16,7 @@ import {
   writePersistedServerConnectionState,
 } from '../../services/server-connection';
 import { clearRemoteConnectionRecoveryState, remoteRecoveryCodesForConnection } from '../../services/remote-connection-recovery';
-import { Toggle } from '../widgets/Toggle';
+import { Toggle } from '@/ui';
 import { SettingsSection } from '../components/SettingsSection';
 import { SettingsRow } from '../components/SettingsRow';
 import { KeyInput } from '../widgets/KeyInput';
