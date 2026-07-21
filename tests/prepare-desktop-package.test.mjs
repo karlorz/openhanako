@@ -14,11 +14,9 @@ describe("local desktop raw runtime preparation", () => {
       signAndSmoke,
     });
 
-    expect(result).toEqual({ skipped: false, outDir: "/tmp/hana-package-test/dist-server/mac-arm64" });
-    expect(signAndSmoke).toHaveBeenCalledWith(
-      path.join("/tmp/hana-package-test", "dist-server", "mac-arm64"),
-      { env },
-    );
+    const expectedOutDir = path.join("/tmp/hana-package-test", "dist-server", "mac-arm64");
+    expect(result).toEqual({ skipped: false, outDir: expectedOutDir });
+    expect(signAndSmoke).toHaveBeenCalledWith(expectedOutDir, { env });
   });
 
   it.each([
