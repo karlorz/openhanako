@@ -199,3 +199,4 @@ After the 2026-06-16 maintenance cycle, the compact config now treats fork-sync 
 - Local macOS: installed published `HanaAgent-0.412.7-macOS-arm64-legacy-raw.dmg`; codesign valid; build-info releaseTag matches.
 - sg01: `install-server upgrade --version v0.412.7-karlorz.1 --channel prerelease` → ok, current `...-linux-arm64`, service active/enabled.
 - CI: Build workflow success after dual-profile workflow/fix-modules restore; release job published assets.
+- Follow-up on `dev` (`9eb42275`, 2026-07-22): restored SettingsPage / settings-content-root / remote-assessment hydrate on SettingsContent; rewired platform-qualified seed discovery + dual-profile Windows install surface; re-added per-platform `verify-seed-kit` steps before `electron-builder`; repinned CLI closure / persistence inventory / schema fingerprint. Package remains **`0.412.7`**.
