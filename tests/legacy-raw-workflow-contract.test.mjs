@@ -21,7 +21,7 @@ function job(source, name) {
   const start = source.indexOf(`  ${name}:`);
   if (start < 0) return "";
   const tail = source.slice(start + 1);
-  const nextJob = tail.match(/\n  \S[^\n]*:/);
+  const nextJob = tail.match(/\n {2}\S[^\n]*:/);
   const end = nextJob?.index == null ? source.length : start + 1 + nextJob.index;
   return source.slice(start, end);
 }
