@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 import fs from "node:fs";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
 import yaml from "js-yaml";
 
 const SCHEMA_VERSION = 1;
@@ -311,7 +313,10 @@ export function run(argv = process.argv.slice(2), now = new Date()) {
   return exitCodeForStatus(result.status);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Resolve argv[1] so Windows backslash paths match import.meta.url.
+const isDirectRun = Boolean(process.argv[1])
+  && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
+if (isDirectRun) {
   try { process.exitCode = run(); } catch (error) {
     process.stderr.write(`check-remote-prerequisites: ${error.message}\n`);
     process.exitCode = 1;
