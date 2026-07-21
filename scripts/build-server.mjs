@@ -199,6 +199,10 @@ finalizeServerPackageJsonVersion({ outDir, version: rootPkg.version });
 
 // ── 10. Wrapper 脚本 ──
 writeServerWrapperScripts({ outDir, isWin });
+// writeServerWrapperScripts already logs "[build-server] wrapper created"; keep an
+// explicit marker in this file so runtime-only source contracts can pin order
+// without importing phases.
+console.log("[build-server] wrapper created");
 
 const buildGitSha = process.env.HANA_SERVER_GIT_SHA
   || execSync("git rev-parse HEAD", { cwd: ROOT, encoding: "utf8" }).trim();

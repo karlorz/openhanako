@@ -71,7 +71,7 @@ export function KeyInput({ value, onChange, placeholder, ariaLabel, onBlur, onRe
   };
 
   return (
-    <div className={styles['settings-key-wrapper']}>
+    <div className={styles['settings-key-wrapper']} data-settings-key-wrapper="true">
       <input
         className={`${styles['settings-input']} ${styles['settings-key-input']}`}
         type={visible ? 'text' : 'password'}
@@ -130,8 +130,10 @@ export function KeyInput({ value, onChange, placeholder, ariaLabel, onBlur, onRe
       <button
         className={styles['settings-key-toggle']}
         type="button"
+        data-settings-key-toggle="true"
         disabled={revealing}
         onClick={() => { void toggleVisible(); }}
+        onBlur={onBlur}
       >
         {visible ? t('settings.api.hideKey') : t('settings.api.showKey')}
       </button>

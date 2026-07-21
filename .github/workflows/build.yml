@@ -315,6 +315,17 @@ jobs:
         shell: pwsh
         run: node scripts/build-windows-sandbox-helper.mjs ${{ matrix.arch }}
 
+      # 装箱前 fail-closed 复核：electron-builder 是直调（不经过 package.json
+      # 的 pack/dist/dist:win/dist:linux 脚本链），scripts/verify-seed-kit.mjs
+      # 挂在那条脚本链里、这里不会自动生效，必须单独接线，否则一份陈旧/串
+      # 平台的 seed 四件套能被原样装进安装包（见脚本文件头列举的三类事故）。
+      # platform/arch 显式传参，不用脚本默认的 process.platform/process.arch——
+      # macOS 矩阵的 x64 job 仍跑在 arm64 宿主机上（cross-arch 打包），默认参数
+      # 会算错要校验的 dist-server-artifact/{os}-{arch}/ 目录。
+      - name: Verify seed kit (macOS)
+        if: runner.os == 'macOS'
+        run: node scripts/verify-seed-kit.mjs darwin ${{ matrix.arch }}
+
       # macOS 打包（签名 + 公证）
       # keychain 与 identity 已由 "Build server bundle" 之前的两个步骤就位
       # 签名步骤已前移；旧 "Pre-sign server binaries" 步骤已删除。artifact 归档启用后，
@@ -354,6 +365,10 @@ jobs:
           fi
           codesign --verify --deep --strict --verbose=2 "$APP_PATH"
 
+      - name: Verify seed kit (Windows)
+        if: runner.os == 'Windows'
+        run: node scripts/verify-seed-kit.mjs win32 ${{ matrix.arch }}
+
       # Windows 打包
       # --publish never：和 mac 同理，由 release job 单点上传。
       - name: Build Windows installer
@@ -365,6 +380,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+
+      - name: Verify seed kit (Linux)
+        if: runner.os == 'Linux'
+        run: node scripts/verify-seed-kit.mjs linux ${{ matrix.arch }}
 
       # Linux Preview 打包
       # AppImage 给下载即用体验，deb 给 Ubuntu/Debian 系安装。
