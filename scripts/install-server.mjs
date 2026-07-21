@@ -5,8 +5,14 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import remoteServerAssessmentModule from "../shared/remote-server-assessment.cjs";
+import remoteServerReleaseCatalogModule from "../shared/remote-server-release-catalog.cjs";
+import remoteServerReleaseLoaderModule from "../shared/remote-server-release-loader.cjs";
 
 const __filename = fileURLToPath(import.meta.url);
+const { assessRemoteServer } = remoteServerAssessmentModule;
+const { normalizeServerPlatformArch } = remoteServerReleaseCatalogModule;
+const { createRemoteServerReleaseLoader } = remoteServerReleaseLoaderModule;
 
 const LATEST_FULL_STATE_BACKUP_ALIAS = "latest-full-state";
 const FULL_STATE_RESTORE_CLASS = "full-state-before-operational-reinit";
@@ -404,6 +410,234 @@ export function buildStatusPlan({ hostProfile = "default", paths = {} } = {}) {
     ],
   };
 }
+
+const INSTALLED_RELEASE_DIRECTORY_RE = /^(v(\d+)\.(\d+)\.(\d+)-karlorz\.(\d+))-linux-(arm64|x64)$/;
+
+export function parseInstalledReleaseDirectory(value) {
+  if (typeof value !== "string") return null;
+  const match = INSTALLED_RELEASE_DIRECTORY_RE.exec(path.posix.basename(value));
+  if (!match) return null;
+  return {
+    tag: match[1],
+    runtimeVersion: `${match[2]}.${match[3]}.${match[4]}`,
+    platform: "linux",
+    arch: match[6],
+  };
+}
+
+function readEmbeddedServerBuildInfo(fsImpl, releasePath) {
+  if (!releasePath) return null;
+  try {
+    const value = JSON.parse(fsImpl.readFileSync(path.join(releasePath, "server-build-info.json"), "utf8"));
+    if (!value || typeof value !== "object") return null;
+    const runtimeVersion = typeof value.runtimeVersion === "string" ? value.runtimeVersion : null;
+    const releaseTag = typeof value.releaseTag === "string" ? value.releaseTag : null;
+    if (!runtimeVersion && !releaseTag) return null;
+    return {
+      runtimeVersion,
+      releaseTag,
+      gitSha: typeof value.gitSha === "string" ? value.gitSha : null,
+      sourceRepository: typeof value.sourceRepository === "string" ? value.sourceRepository : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function readServiceStatus(run, serviceName) {
+  const read = async (args) => {
+    try {
+      const result = await run("systemctl", args);
+      return result?.status === 0 && typeof result.stdout === "string"
+        ? result.stdout.trim() || null
+        : null;
+    } catch {
+      return null;
+    }
+  };
+  const [active, enabled, mainPid] = await Promise.all([
+    read(["is-active", serviceName]),
+    read(["is-enabled", serviceName]),
+    read(["show", serviceName, "--property", "MainPID", "--value"]),
+  ]);
+  return { active, enabled, mainPid };
+}
+
+export async function inspectServerStatus({
+  hostProfile = "default",
+  paths = {},
+  fsImpl = fs,
+  run = runCommand,
+  loadRelease = null,
+  checkUpdates = false,
+  platform = process.platform,
+  arch = process.arch,
+  now = () => new Date(),
+} = {}) {
+  const resolvedPaths = { ...DEFAULT_PATHS, ...paths };
+  const plan = buildStatusPlan({ hostProfile, paths: resolvedPaths });
+  const observedAt = now().toISOString();
+  const servicePromise = readServiceStatus(run, resolvedPaths.serviceName);
+  let installState = "unknown";
+  let target = null;
+  let realPath = null;
+  try {
+    const stat = fsImpl.lstatSync(resolvedPaths.currentLink);
+    if (stat?.isSymbolicLink?.()) {
+      target = fsImpl.readlinkSync(resolvedPaths.currentLink);
+      try {
+        realPath = fsImpl.realpathSync(resolvedPaths.currentLink);
+        installState = "installed";
+      } catch (error) {
+        installState = error?.code === "ENOENT" ? "broken-link" : "unknown";
+      }
+    } else {
+      try {
+        realPath = fsImpl.realpathSync(resolvedPaths.currentLink);
+        installState = realPath ? "installed" : "unknown";
+      } catch {
+        installState = "unknown";
+      }
+    }
+  } catch (error) {
+    installState = error?.code === "ENOENT" ? "absent" : "unknown";
+  }
+
+  const symlinkRelease = parseInstalledReleaseDirectory(realPath || target);
+  const embeddedBuild = readEmbeddedServerBuildInfo(fsImpl, realPath);
+  const evidenceMismatch = Boolean(
+    symlinkRelease
+    && embeddedBuild?.releaseTag
+    && embeddedBuild.releaseTag !== symlinkRelease.tag,
+  );
+  const hostFacts = normalizeServerPlatformArch(platform, arch);
+  const hostPlatform = hostFacts?.platform ?? null;
+  const hostArch = hostFacts?.arch ?? null;
+  const hostEvidenceMismatch = Boolean(
+    symlinkRelease
+    && typeof platform === "string"
+    && typeof arch === "string"
+    && (!hostFacts || symlinkRelease.platform !== hostPlatform || symlinkRelease.arch !== hostArch),
+  );
+  let installedRelease;
+  if (symlinkRelease) {
+    installedRelease = { ...symlinkRelease, evidenceSource: "current-symlink" };
+  } else if (embeddedBuild) {
+    installedRelease = {
+      tag: embeddedBuild.releaseTag,
+      runtimeVersion: embeddedBuild.runtimeVersion,
+      platform: hostPlatform,
+      arch: hostArch,
+      evidenceSource: "embedded-build-info",
+    };
+  } else {
+    installedRelease = { tag: null, runtimeVersion: null, platform: null, arch: null, evidenceSource: "none" };
+  }
+
+  const releaseCheck = checkUpdates && typeof loadRelease === "function"
+    ? await loadRelease()
+    : null;
+  const assessment = assessRemoteServer({
+    connectionId: "installer:local-host",
+    assessedAt: observedAt,
+    evidenceSource: "installer",
+    server: {
+      runtimeBuild: {
+        schemaVersion: 1,
+        runtimeVersion: embeddedBuild?.runtimeVersion || installedRelease.runtimeVersion || undefined,
+        releaseTag: evidenceMismatch ? undefined : embeddedBuild?.releaseTag || installedRelease.tag,
+        gitSha: embeddedBuild?.gitSha || null,
+        sourceRepository: embeddedBuild?.sourceRepository || null,
+      },
+      runtimeFacts: {
+        platform: hostPlatform,
+        arch: hostArch,
+      },
+    },
+    releaseCheck,
+  });
+  if (evidenceMismatch) {
+    assessment.freshness.status = "unknown";
+    assessment.freshness.installedReleaseTag = null;
+    assessment.freshness.exactReleaseMatch = false;
+    assessment.freshness.reasonCodes = [...new Set([
+      ...assessment.freshness.reasonCodes,
+      "installed_release_evidence_mismatch",
+    ])];
+    assessment.deployability = {
+      ...assessment.deployability,
+      status: "unknown",
+      targetTag: null,
+      assetName: null,
+      checksumName: null,
+      reasonCodes: [...new Set([
+        ...assessment.deployability.reasonCodes,
+        "installed_release_evidence_mismatch",
+      ])],
+    };
+  }
+  if (hostEvidenceMismatch) {
+    assessment.deployability = {
+      ...assessment.deployability,
+      status: "unknown",
+      targetTag: null,
+      assetName: null,
+      checksumName: null,
+      reasonCodes: [...new Set([
+        ...assessment.deployability.reasonCodes,
+        "installed_release_host_mismatch",
+      ])],
+    };
+  }
+  assessment.reasonCodes = [...new Set([
+    ...assessment.reasonCodes,
+    ...assessment.freshness.reasonCodes,
+    ...assessment.deployability.reasonCodes,
+  ])];
+  const recommendedDryRunCommand = assessment.deployability.status === "eligible"
+    && releaseCheck?.release?.tag
+    && typeof releaseCheck.release.prerelease === "boolean"
+    ? `install-server upgrade --version ${releaseCheck.release.tag} --channel ${releaseCheck.release.prerelease ? "prerelease" : "stable"} --dry-run`
+    : null;
+
+  return {
+    kind: "install-server-status-report",
+    schemaVersion: 1,
+    plan,
+    observedAt,
+    installState,
+    currentLink: {
+      path: resolvedPaths.currentLink,
+      target,
+      realPath,
+    },
+    installedRelease,
+    service: await servicePromise,
+    assessment,
+    recommendedDryRunCommand,
+  };
+}
+
+export async function runStatus(argv = [], dependencies = {}) {
+  const allowed = new Set(["--check-updates", "--json"]);
+  for (const arg of argv) {
+    if (!allowed.has(arg)) fail(`Unknown status argument: ${arg}`);
+  }
+  const checkUpdates = argv.includes("--check-updates");
+  const loadRelease = dependencies.loadRelease
+    || (checkUpdates ? createRemoteServerReleaseLoader() : null);
+  return inspectServerStatus({
+    ...dependencies,
+    checkUpdates,
+    loadRelease,
+  });
+}
+
+/**
+ * Read-only compatibility report for the next-stable installer migration gate.
+ * Characterizes the fork's current activation model; does not adopt artifact-core
+ * production packaging or change activation behavior.
+ */
 
 export function resolveHanaDataRoot({
   env = process.env,
@@ -2355,6 +2589,9 @@ function parseArgs(argv) {
       case "--reset-pairing":
         options.resetPairing = true;
         break;
+      case "--check-updates":
+        options.checkUpdates = true;
+        break;
       case "--execute":
         options.dryRun = false;
         break;
@@ -2441,8 +2678,14 @@ function main(argv = process.argv.slice(2)) {
     return;
   }
   if (options.command === "status") {
-    console.log(JSON.stringify(buildStatusPlan(), null, 2));
-    return;
+    return runStatus(process.argv.slice(3), {
+      checkUpdates: Boolean(options.checkUpdates),
+    }).then((result) => {
+      console.log(JSON.stringify(result, null, 2));
+    }).catch((error) => {
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exitCode = 1;
+    });
   }
   if (options.command === "reinit-data") {
     if (options.listBackups) {

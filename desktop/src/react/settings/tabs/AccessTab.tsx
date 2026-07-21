@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import type { RemoteServerAssessment } from '../../../../../shared/remote-server-assessment';
 import { hanaFetch, hanaUrl } from '../api';
 import { t } from '../helpers';
 import { useSettingsStore } from '../store';
@@ -98,6 +99,7 @@ export function AccessTab() {
   const activeConnection = useSettingsStore(s => s.activeServerConnection);
   const serverConnections = useSettingsStore(s => s.serverConnections);
   const remoteConnectionRecovery = useSettingsStore(s => s.remoteConnectionRecovery);
+  const remoteServerAssessment = useSettingsStore(s => s.remoteServerAssessment);
   const snapshotAccess = useSettingsStore(s => s.settingsSnapshot.data?.access as AccessSummary | null | undefined);
   const localConnection = serverConnections[LOCAL_CONNECTION_ID] ?? null;
   const effectiveConnection = activeConnection ?? localConnection;
@@ -121,6 +123,7 @@ export function AccessTab() {
   const [accountDraft, setAccountDraft] = useState({ username: '', displayName: '' });
   const [passwordDraft, setPasswordDraft] = useState('');
   const [remoteIdentity, setRemoteIdentity] = useState<RemoteServerIdentity | null>(null);
+  const [desktopVersion, setDesktopVersion] = useState<string | null>(null);
 
   useEffect(() => {
     if (!snapshotAccess) return;
@@ -187,6 +190,18 @@ export function AccessTab() {
     setRemoteServerKey(effectiveConnection.token || '');
   }, [effectiveConnection?.baseUrl, effectiveConnection?.connectionId, effectiveConnection?.token, isLocalOwner]);
 
+  useEffect(() => {
+    let cancelled = false;
+    window.hana?.getBuildInfo?.()
+      .then((info) => {
+        if (!cancelled) setDesktopVersion(info?.appVersion || null);
+      })
+      .catch(() => {
+        if (!cancelled) setDesktopVersion(null);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
   const mobileUrl = useMemo(() => {
     if (!summary) return '';
     if (mode !== 'lan') return '';
@@ -227,6 +242,31 @@ export function AccessTab() {
     await navigator.clipboard?.writeText(value);
     showToast(t('settings.access.copied'), 'success');
   }, [showToast]);
+
+  const checkRemoteAssessmentAgain = useCallback(async () => {
+    await useSettingsStore.getState().refreshRemoteServerAssessment({ force: true });
+  }, []);
+
+  const copyRemoteAssessmentDiagnostic = useCallback(async () => {
+    const assessment = useSettingsStore.getState().remoteServerAssessment;
+    if (!assessment) return;
+    const diagnostic = {
+      schemaVersion: 1,
+      connectionId: assessment.connectionId,
+      core: assessment.core,
+      transport: assessment.transport,
+      build: assessment.build,
+      freshness: assessment.freshness,
+      deployability: assessment.deployability,
+      features: assessment.features,
+    };
+    await navigator.clipboard?.writeText(JSON.stringify(diagnostic, null, 2));
+    showToast(t('settings.access.remoteDiagnosticCopied'), 'success');
+  }, [showToast]);
+
+  const copyRemoteServerStatusCommand = useCallback(async () => {
+    await copyText('install-server status --check-updates --json');
+  }, [copyText]);
 
   const saveNetworkSettings = useCallback(async (nextMode: AccessMode, nextPort: string) => {
     const listenPort = Number(nextPort);
@@ -442,7 +482,15 @@ export function AccessTab() {
     const connectionLabel = effectiveConnection?.label || t('settings.access.remoteConnectionUnknown');
     const connectionUrl = effectiveConnection?.baseUrl || '';
     const remoteUnknown = t('settings.access.remoteConnectionUnknown');
-    const remoteVersion = remoteValue(remoteIdentity?.version, effectiveConnection?.serverVersion, remoteUnknown);
+    const assessment = remoteServerAssessment?.connectionId === effectiveConnection?.connectionId
+      ? remoteServerAssessment
+      : null;
+    const remoteVersion = remoteValue(
+      assessment?.build.runtimeVersion,
+      remoteIdentity?.version,
+      effectiveConnection?.serverVersion,
+      remoteUnknown,
+    );
     const remoteConnectionKind = remoteConnectionKindLabel(remoteIdentity?.connectionKind || effectiveConnection?.kind, remoteUnknown);
     const remoteTrustState = remoteTrustStateLabel(remoteIdentity?.trustState || effectiveConnection?.trustState, remoteUnknown);
     const remoteAuthState = remoteAuthStateLabel(remoteIdentity?.authState || effectiveConnection?.authState, remoteUnknown);
@@ -454,11 +502,6 @@ export function AccessTab() {
       remoteConnectionRecovery,
       effectiveConnection?.connectionId,
     );
-    const compatibilityStatus = recoveryReasonCodes.length > 0
-      ? t('settings.access.remoteCompatibilityProblem')
-      : recoveryWarningCodes.length > 0
-        ? t('settings.access.remoteCompatibilityWarning')
-        : t('settings.access.remoteCompatibilityReady');
     return (
       <div className={`${styles['settings-tab-content']} ${styles.active}`} data-tab="access">
         <SettingsSection
@@ -480,8 +523,50 @@ export function AccessTab() {
                 <strong>{connectionUrl || t('settings.access.remoteConnectionUnknown')}</strong>
               </div>
               <div className={styles['access-status-item']}>
-                <span>{t('settings.access.remoteServerVersion')}</span>
+                <span>{t('settings.access.remoteCoreConnection')}</span>
+                <strong data-assessment-status={assessmentSeverity(assessment, 'core')}>{remoteCoreStatus(assessment)}</strong>
+              </div>
+              <div className={styles['access-status-item']}>
+                <span>{t('settings.access.remoteTransport')}</span>
+                <strong data-assessment-status={assessmentSeverity(assessment, 'transport')}>{remoteTransportStatus(assessment)}</strong>
+              </div>
+              <div className={styles['access-status-item']}>
+                <span>{t('settings.access.remoteServerUpdate')}</span>
+                <strong data-assessment-status={assessmentSeverity(assessment, 'freshness')}>{remoteFreshnessStatus(assessment)}</strong>
+              </div>
+              <div className={styles['access-status-item']}>
+                <span>{t('settings.access.remoteFeatureSupport')}</span>
+                <strong data-assessment-status={assessmentSeverity(assessment, 'features')}>{remoteFeatureStatus(assessment)}</strong>
+              </div>
+              <div className={styles['access-status-item']}>
+                <span>{t('settings.access.remoteConnectedRuntime')}</span>
                 <strong>{remoteVersion}</strong>
+              </div>
+              <div className={styles['access-status-item']}>
+                <span>{t('settings.access.remoteInstalledRelease')}</span>
+                <strong>{assessment?.build.releaseTag || t('settings.access.remoteReleaseIdentityUnverified')}</strong>
+              </div>
+              {assessment?.freshness.status === 'update-recommended' && (
+                <div className={styles['access-status-item']}>
+                  <span>{t('settings.access.remoteRecommendedRelease')}</span>
+                  <strong data-server-update-target="true">{assessment.freshness.recommendedReleaseTag || remoteUnknown}</strong>
+                </div>
+              )}
+              <div className={styles['access-status-item']}>
+                <span>{t('settings.access.remoteDesktopVersion')}</span>
+                <strong>{desktopVersion || remoteUnknown}</strong>
+              </div>
+              <div className={styles['access-status-item']}>
+                <span>{t('settings.access.remoteProtocolContracts')}</span>
+                <strong>{remoteContractStatus(assessment)}</strong>
+              </div>
+              <div className={styles['access-status-item']}>
+                <span>{t('settings.access.remoteHostCompatibility')}</span>
+                <strong data-assessment-status={assessmentSeverity(assessment, 'deployability')}>{remoteHostStatus(assessment)}</strong>
+              </div>
+              <div className={styles['access-status-item']}>
+                <span>{t('settings.access.remoteLastChecked')}</span>
+                <strong>{remoteLastChecked(assessment)}</strong>
               </div>
               <div className={styles['access-status-item']}>
                 <span>{t('settings.access.remoteTrustState')}</span>
@@ -507,10 +592,6 @@ export function AccessTab() {
                 <span>{t('settings.access.remoteRuntime')}</span>
                 <strong>{remoteRuntime}</strong>
               </div>
-              <div className={styles['access-status-item']}>
-                <span>{t('settings.access.remoteCompatibilityStatus')}</span>
-                <strong>{compatibilityStatus}</strong>
-              </div>
             </div>
             {(recoveryReasonCodes.length > 0 || recoveryWarningCodes.length > 0) && (
               <div className={styles['access-status-grid']}>
@@ -528,6 +609,17 @@ export function AccessTab() {
                 ))}
               </div>
             )}
+            <div className={styles['access-assessment-actions']}>
+              <button className={styles['settings-btn-primary']} type="button" onClick={() => { void checkRemoteAssessmentAgain(); }}>
+                {t('settings.access.remoteCheckAgain')}
+              </button>
+              <button className={styles['settings-btn-secondary']} type="button" onClick={() => { void copyRemoteAssessmentDiagnostic(); }} disabled={!assessment}>
+                {t('settings.access.remoteCopyDiagnostic')}
+              </button>
+              <button className={styles['settings-btn-secondary']} type="button" onClick={() => { void copyRemoteServerStatusCommand(); }}>
+                {t('settings.access.remoteCopyStatusCommand')}
+              </button>
+            </div>
             <SettingsSection.Note>{t('settings.access.remoteLocalOnlyNote')}</SettingsSection.Note>
           </div>
         </SettingsSection>
@@ -1012,4 +1104,97 @@ function remoteRuntimeLabel(boundary: RemoteServerIdentity['executionBoundary'] 
   if (!kind) return fallback;
   if (kind === 'local_process') return t('settings.access.remoteRuntimeServerProcess');
   return t('settings.access.remoteRuntimeServer');
+}
+
+function remoteCoreStatus(assessment: RemoteServerAssessment | null): string {
+  switch (assessment?.core.status) {
+    case 'ready': return t('settings.access.remoteCoreReady');
+    case 'degraded': return t('settings.access.remoteCoreDegraded');
+    case 'blocked': return t('settings.access.remoteCoreBlocked');
+    default: return t('settings.access.remoteNotAssessed');
+  }
+}
+
+function remoteTransportStatus(assessment: RemoteServerAssessment | null): string {
+  switch (assessment?.transport.status) {
+    case 'ticket-ready': return t('settings.access.remoteTransportTicket');
+    case 'legacy-query-token': return t('settings.access.remoteTransportLegacy');
+    case 'unknown': return t('settings.access.remoteUnknown');
+    default: return t('settings.access.remoteNotAssessed');
+  }
+}
+
+function remoteFreshnessStatus(assessment: RemoteServerAssessment | null): string {
+  switch (assessment?.freshness.status) {
+    case 'current': return t('settings.access.remoteCurrent');
+    case 'update-recommended': return t('settings.access.remoteUpdateRecommended');
+    case 'ahead-or-custom': return t('settings.access.remoteAheadOrCustom');
+    default: return t('settings.access.remoteFreshnessUnknown');
+  }
+}
+
+function remoteFeatureStatus(assessment: RemoteServerAssessment | null): string {
+  switch (assessment?.features.summary) {
+    case 'full': return t('settings.access.remoteFeaturesFull');
+    case 'limited': return t('settings.access.remoteFeaturesLimited');
+    case 'legacy': return t('settings.access.remoteFeaturesLegacy');
+    default: return t('settings.access.remoteNotAssessed');
+  }
+}
+
+function remoteHostStatus(assessment: RemoteServerAssessment | null): string {
+  switch (assessment?.deployability.status) {
+    case 'eligible': return t('settings.access.remoteHostEligible');
+    case 'release-only': return t('settings.access.remoteHostCheckOnServer');
+    case 'unavailable': return t('settings.access.remoteHostUnavailable');
+    case 'unknown': return t('settings.access.remoteHostUnknown');
+    default: return t('settings.access.remoteNotAssessed');
+  }
+}
+
+function remoteContractStatus(assessment: RemoteServerAssessment | null): string {
+  if (!assessment) return t('settings.access.remoteNotAssessed');
+  const declarations: string[] = [];
+  if (assessment.transport.reportedTicketContractVersion !== null) {
+    declarations.push(`websocket.ticket@${assessment.transport.reportedTicketContractVersion}`);
+  }
+  for (const feature of assessment.features.items) {
+    if (feature.reportedVersion !== null) declarations.push(`${feature.contract}@${feature.reportedVersion}`);
+  }
+  return declarations.length > 0 ? declarations.join(', ') : t('settings.access.remoteContractsLegacy');
+}
+
+function remoteLastChecked(assessment: RemoteServerAssessment | null): string {
+  if (!assessment) return t('settings.access.remoteNotAssessed');
+  if (assessment.freshness.stale) return t('settings.access.remoteCheckStale');
+  if (assessment.freshness.source === 'cached') return t('settings.access.remoteCheckCached');
+  if (assessment.freshness.source === 'online') return t('settings.access.remoteCheckOnline');
+  return t('settings.access.remoteCheckUnavailable');
+}
+
+function assessmentSeverity(
+  assessment: RemoteServerAssessment | null,
+  category: 'core' | 'transport' | 'freshness' | 'features' | 'deployability',
+): 'good' | 'attention' | 'blocked' | 'unknown' {
+  if (!assessment) return 'unknown';
+  if (category === 'core') {
+    if (assessment.core.status === 'ready') return 'good';
+    if (assessment.core.status === 'blocked') return 'blocked';
+    return assessment.core.status === 'degraded' ? 'attention' : 'unknown';
+  }
+  if (category === 'transport') {
+    if (assessment.transport.status === 'ticket-ready') return 'good';
+    return assessment.transport.status === 'legacy-query-token' ? 'attention' : 'unknown';
+  }
+  if (category === 'freshness') {
+    if (assessment.freshness.status === 'current') return 'good';
+    return assessment.freshness.status === 'update-recommended' ? 'attention' : 'unknown';
+  }
+  if (category === 'features') {
+    if (assessment.features.summary === 'full') return 'good';
+    return assessment.features.summary === 'limited' || assessment.features.summary === 'legacy' ? 'attention' : 'unknown';
+  }
+  if (assessment.deployability.status === 'eligible') return 'good';
+  if (assessment.deployability.status === 'unavailable') return 'blocked';
+  return assessment.deployability.status === 'release-only' ? 'attention' : 'unknown';
 }
