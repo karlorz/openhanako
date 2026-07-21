@@ -294,7 +294,7 @@ export class HanaEngine {
    *   root. Absent/empty means an open composition: the media runtime
    *   constructs with zero built-in adapters, never an implicit import.
    */
-  constructor({ hanakoHome, productDir, agentId, appVersion, runtimeBuild = null, featureContracts = null, runtimeFacts = null }) {
+  constructor({ hanakoHome, productDir, agentId, appVersion, runtimeBuild = null, featureContracts = null, runtimeFacts = null, builtinMediaAdapters = undefined }) {
     this.hanakoHome = hanakoHome;
     this.productDir = productDir;
     this.appVersion = appVersion || "0.0.0";
