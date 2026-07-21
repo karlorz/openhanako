@@ -166,7 +166,13 @@ describe("hana desktop smoke helper", () => {
     const report = { ok: true, functional: { status: "pass", verification: { baseUrl: "https://secret.test", hasToken: true, identity: { runtimeBuild: { sourceRepository: "https://secret.test/repo" }, capabilities: ["chat", "Bearer real-secret"] }, diagnostic: "Authorization: Bearer real-secret" } }, environment: { assessment: { freshness: { status: "current" }, opaque: "credential=real-secret", unlabelled: "apiToken=real-secret" } }, reset: { userDataDir: "/Users/me/Library/Application Support/Hanako", wsUrl: "ws://secret.test" } };
     const envelope = writeRedactedAssessmentEvidence(output, report, { now: () => new Date("2026-07-18T12:00:00.000Z") });
     expect(envelope).toMatchObject({ schemaVersion: 1, generatedAt: "2026-07-18T12:00:00.000Z", expiresAt: "2026-07-18T12:30:00.000Z", source: "hana-desktop-smoke-helper" });
-    expect(fs.statSync(output).mode & 0o777).toBe(0o600);
+    // POSIX: writer requests 0600. Windows ACLs do not map to Unix modes, so
+    // only assert the restrictive mask where the platform honors it.
+    if (process.platform !== "win32") {
+      expect(fs.statSync(output).mode & 0o777).toBe(0o600);
+    } else {
+      expect(fs.existsSync(output)).toBe(true);
+    }
     const raw = fs.readFileSync(output, "utf8");
     expect(raw).not.toMatch(/https?:|ws:|token|credential|authorization|cookie|headers|cdp|user-data|localStorage|bearer|real-secret/i);
     expect(JSON.parse(raw)).toEqual(expect.objectContaining({ functional: expect.any(Object), environment: expect.any(Object), prerequisites: expect.any(Object) }));
