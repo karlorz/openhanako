@@ -1,28 +1,68 @@
 {
   "schemaVersion": 1,
-  "tag": "v0.412.7-karlorz.1",
+  "tag": "v0.412.7-karlorz.2",
   "version": "0.412.7",
-  "previousTag": "v0.407.15-karlorz.7",
-  "generatedAt": "2026-07-21T04:32:05.236Z",
+  "previousTag": "v0.412.7-karlorz.1",
+  "generatedAt": "2026-07-22T04:08:39.298Z",
   "noUserFacingChanges": false,
   "summary": {
-    "zh": "本叉预发布：完成 train-13 预发布通道同步后（包版本 0.412.7）。本版重点修启动与升级体验：自动更新进度条会连续走完服务端与渲染层两段下载；修复误把会话事件 ID 当成 Codex 模型写进列表的问题；迁移失败或输入不完整时不再整链卡死，并保留待重试的原始数据；损坏的早期元数据也不会再拦启动。媒体生成运行时并入核心，旧 image-gen 插件会话的展示方式有变化。",
-    "en": "Fork prerelease after attended train-13 prerelease-channel sync (package 0.412.7). This release hardens startup and upgrades: the update progress bar now runs continuously across both server and renderer downloads; session event IDs are no longer mistaken for Codex model IDs in the catalog; failed or incomplete migrations no longer halt the whole chain, and source bytes are preserved for retry; corrupt early-epoch metadata no longer blocks launch. Media generation runtime moves into core, with a display change for sessions that used the retired image-gen plugin."
+    "zh": "本叉预发布补丁（包版本仍为 0.412.7）：在 karlorz.1 之后纳入远程服务器状态评估面恢复、install-server 激活探测与状态依赖、会话前台收敛、启动鉴权按 HTTP 状态分类，以及 dual-profile CI/legacy-raw 构建修复。",
+    "en": "Fork prerelease patch (package still 0.412.7): after karlorz.1, restores remote server assessment surfaces, install-server activation probes and status deps, session foreground convergence, startup auth classification by HTTP status, and dual-profile CI / legacy-raw build fixes."
   },
   "counts": {
     "feature": 1,
-    "fix": 5,
+    "fix": 6,
     "improvement": 1,
     "migration": 0
   },
   "source": {
     "owner": "karlorz",
     "repo": "openhanako",
-    "commitRange": "v0.407.15-karlorz.7..HEAD",
-    "releaseUrl": "https://github.com/karlorz/openhanako/releases/tag/v0.412.7-karlorz.1",
+    "commitRange": "v0.412.7-karlorz.1..HEAD",
+    "releaseUrl": "https://github.com/karlorz/openhanako/releases/tag/v0.412.7-karlorz.2",
     "releaseNotes": ""
   },
   "items": [
+    {
+      "id": "fork-4127-karlorz-2-remote-and-ci",
+      "kind": "fix",
+      "importance": "high",
+      "title": {
+        "zh": "远程评估、安装器探测与 CI dual-profile 补丁",
+        "en": "Remote assessment, installer probes, and CI dual-profile patch"
+      },
+      "summary": {
+        "zh": "恢复 train-13 后丢失的远程服务器更新评估 UI 与 install-server 状态/激活探测；会话前台收敛与启动鉴权分类；修复 legacy-raw 发布路径与 Windows/路径可移植断言。",
+        "en": "Restores remote server update assessment UI and install-server status/activation probes lost after train-13; session foreground convergence and startup auth classification; fixes legacy-raw publish path and Windows/portable path assertions."
+      },
+      "details": [
+        {
+          "zh": "AccessTab 与 install-server --check-updates 状态面恢复。",
+          "en": "AccessTab and install-server --check-updates status surfaces restored."
+        },
+        {
+          "zh": "Build 工作流 dual-profile / legacy-raw 合同与 settings 契约修复。",
+          "en": "Build workflow dual-profile / legacy-raw contracts and settings CI debt fixed."
+        }
+      ],
+      "sources": [
+        {
+          "type": "commit",
+          "ref": "affed3d5",
+          "title": "fix(remote): restore server update assessment surfaces after train-13"
+        },
+        {
+          "type": "commit",
+          "ref": "f5df6b3e",
+          "title": "fix(install-server): restore activation probe helpers after status port"
+        },
+        {
+          "type": "commit",
+          "ref": "9eb42275",
+          "title": "fix(ci): restore settings contracts and packaging dual-profile CI debt"
+        }
+      ]
+    },
     {
       "id": "fork-train-13-channel-sync",
       "kind": "feature",
