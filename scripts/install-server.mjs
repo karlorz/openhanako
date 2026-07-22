@@ -2656,7 +2656,7 @@ Usage:
     pin an exact release tag and execute a fresh host install
   node scripts/install-server.mjs install --metadata <release.json> --platform linux --arch arm64 [--dry-run|--execute]
     use explicit local metadata instead of GitHub for fresh host install
-  node scripts/install-server.mjs status
+  node scripts/install-server.mjs status [--check-updates] [--json]
   node scripts/install-server.mjs backup --output <path> [--data-root <path>]
   node scripts/install-server.mjs reinit-data [--dry-run] [--reset-pairing] [--data-root <path>] [--plan-dir <path>]
   node scripts/install-server.mjs reinit-data --list-backups [--data-root <path>] [--backup-dir <path>]
@@ -2664,6 +2664,7 @@ Usage:
   node scripts/install-server.mjs reinit-data --restore <backup-path|latest-full-state> [--data-root <path>]
 
 Notes:
+  status always prints JSON; --json is accepted for CLI compatibility with docs and helpers.
   upgrade resolves latest stable by default; prereleases require --channel prerelease.
   upgrade --execute is host-mutating (stops service, swaps /opt/hanaagent/current); --dry-run is safe.
   reinit-data preserves provider/model and LAN device bootstrap by default; --reset-pairing requests a fully fresh root.
@@ -2726,6 +2727,11 @@ function parseArgs(argv) {
         break;
       case "--check-updates":
         options.checkUpdates = true;
+        break;
+      case "--json":
+        // Status (and most install-server subcommands) already emit JSON.
+        // Accept --json so documented `status --check-updates --json` does not fail.
+        options.json = true;
         break;
       case "--execute":
         options.dryRun = false;
