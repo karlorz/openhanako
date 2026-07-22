@@ -1890,6 +1890,33 @@ describe("install-server runInstall (command resolution)", () => {
   });
 });
 
+
+describe("install-server status CLI args", () => {
+  it("accepts documented --check-updates and --json on the status command", async () => {
+    const { spawnSync } = await import("node:child_process");
+    const help = spawnSync(process.execPath, [INSTALL_SERVER_SOURCE, "--help"], {
+      encoding: "utf8",
+    });
+    expect(help.status).toBe(0);
+    expect(help.stdout).toMatch(/status \[--check-updates\] \[--json\]/);
+
+    // --json must not be rejected by parseArgs (status always emits JSON).
+    const withJson = spawnSync(
+      process.execPath,
+      [INSTALL_SERVER_SOURCE, "status", "--json"],
+      { encoding: "utf8", timeout: 15000 },
+    );
+    const combined = `${withJson.stderr}${withJson.stdout}`;
+    expect(combined).not.toMatch(/Unknown argument: --json/);
+
+    const bad = spawnSync(process.execPath, [INSTALL_SERVER_SOURCE, "status", "--not-a-real-flag"], {
+      encoding: "utf8",
+    });
+    expect(bad.status).not.toBe(0);
+    expect(`${bad.stderr}${bad.stdout}`).toMatch(/Unknown argument: --not-a-real-flag/);
+  });
+});
+
 describe("install-server bootstrap script", () => {
   it("installs the durable install-server shim without requiring sudo as root", () => {
     const source = fs.readFileSync(path.join(process.cwd(), "scripts/install-server-bootstrap.sh"), "utf8");
