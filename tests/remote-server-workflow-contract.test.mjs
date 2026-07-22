@@ -1,14 +1,15 @@
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
+import YAML from "yaml";
 
 describe("remote server workflow contract", () => {
-  it("keeps refresh attended and generic prep integration honest", () => {
-    const config = fs.readFileSync(".claude/dev-loop.config.md", "utf8");
-    expect(config).toContain("generic_dev_loop_hook_available: false");
-    expect(config).toContain("plugin_follow_up_required_for_automatic_prep: true");
-    expect(config).toContain("mode: attended-read-only");
-    expect(config).toContain("evidence_ttl_seconds: 1800");
-    expect(config).toContain("check-remote-prerequisites.mjs");
+  it("keeps remote assessment policy in schema-valid notes", () => {
+    const source = fs.readFileSync(".claude/dev-loop.config.md", "utf8");
+    const config = YAML.parse(source.match(/```yaml\n([\s\S]*?)\n```/)?.[1] ?? "");
+    expect(config.notes.remote_assessment_policy).toBe(
+      "Attended read-only evidence lives at .claude/remote-assessment/latest.json (30-minute TTL); use the smoke helper and offline check-remote-prerequisites.mjs flow documented in CONTEXT.md.",
+    );
+    expect(config).not.toHaveProperty("remote_assessment");
   });
 
   it("documents the no-network checker boundary and installed-cache prohibition", () => {
