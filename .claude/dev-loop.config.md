@@ -248,8 +248,8 @@ notes:
   permanent_dashboard_pr: "https://github.com/karlorz/openhanako/pull/1"
   permanent_dashboard_pr_policy: "Draft forever: never merge, auto-merge, or close as a completed merge vehicle. Use it only to review dev against mirrored upstream main."
   dashboard_refresh_policy: "Use `node scripts/sync-upstream.mjs --conflict-plan`; it may mirror origin/main from upstream/main but must never merge, rebase, reset, stage, or write dev."
-  tag_namespace_rule: "Plain v{version} tags belong to upstream sync targets; fork release tags use the -karlorz.N suffix. Latest verified fork tag: v0.412.7-karlorz.2."
-  current_prerelease_sync: "2026-07-23: dev rebased onto train-beta-15 / v0.416.43 at a02622da; package/lock/digests align to 0.416.43. Local signed desktop verified; sg01 remains unchanged on v0.412.7-karlorz.2 and reports environment attention."
+  tag_namespace_rule: "Plain v{version} tags belong to upstream sync targets; fork release tags use the -karlorz.N suffix. Latest verified fork tag: v0.416.43-karlorz.1."
+  current_prerelease_sync: "2026-07-23: dev rebased onto train-beta-15 / v0.416.43 at a02622da, then published v0.416.43-karlorz.1 from b385e5fb. Package/lock/digests align to 0.416.43; exact legacy-raw macOS arm64 release installed and sg01 upgraded via tagged install-server; helper and manual image/preview/chat-switch smoke passed."
   fork_sync_post_rebase_gate: "Run `node scripts/sync-upstream.mjs --post-rebase`; Tier 3A local desktop install/version verification must pass before Tier 3B sg01 live smoke. A smoke run against a stale /Applications/HanaAgent.app is invalid."
   remote_server_url: http://100.125.173.118:14500
   sg01_service: hanaagent
@@ -260,6 +260,9 @@ notes:
   sg01_replay_patch_release_target: "2026-06-30 patch target: v0.346.18-karlorz.5 includes marker-only image replay, ToolGroup file-detail link context, and code-review hardening follow-ups; deploy with install-server upgrade --channel prerelease."
   sg01_model_removal_patch_release_target: "2026-07-01 patch target: v0.346.18-karlorz.6 includes provider model-removal persistence for slash-bearing local provider models; deploy with install-server upgrade --channel prerelease."
   sg01_stable_sync_release_target: "2026-07-02 stable target: v0.349.5-karlorz.1 includes upstream v0.349.5 plus replay, ToolGroup link-context, provider model-removal, LAN auth, scoped CSP, and remote resource-preview fork behavior; deploy with install-server upgrade --version v0.349.5-karlorz.1 --channel prerelease after release asset checks and host dry-run."
+  latest_fork_release: "v0.416.43-karlorz.1 at b385e5fb56bdfcbc45871becfd7d732ac17086d6; GitHub prerelease profile legacy-raw; release assets, exact desktop install, sg01 deployment, and manual preview/chat-switch smoke verified 2026-07-23."
+  next_stable_sync_observed: "Final local-only conflict plan after the prerelease closeout observed upstream stable v0.416.44 available with stableActivationAllowed: true; do not start that stable rebase inside the v0.416.43-karlorz.1 release closeout."
+  atomgit_mirror_note: "No mirror workflow run exists for v0.416.43-karlorz.1 because release-created-by-github-actions[bot] events are excluded by .github/workflows/mirror-release-to-atomgit.yml; legacy-raw intentionally excludes AtomGit mirror/train assets."
   sg01_mobile_pwa_diagnosis: "Raw mobile.auth.* text was deployment drift from the old v0.323 server bundle. After upgrading to v0.346.18-karlorz.1, the live MobileApp chunk preloads the auth locale before login and zh.json returns translated mobile.auth labels."
   gh_default_repo_hint: "Run `gh repo set-default karlorz/openhanako` if gh resolves to upstream."
 ```
