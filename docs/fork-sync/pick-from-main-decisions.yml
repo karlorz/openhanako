@@ -5,16 +5,16 @@
 
 schemaVersion: 1
 baseline:
-  recordedAt: "2026-07-21"
-  # Post attended prerelease-channel rebase onto train-13 (package 0.412.7).
+  recordedAt: "2026-07-23"
+  # Post attended prerelease-channel rebase onto train-beta-15 (package 0.416.43).
   # forkHead refreshed at doc update time; re-run conflict-plan for live count.
-  packageVersion: "0.412.7"
+  packageVersion: "0.416.43"
   latestStableTag: "v0.407.15"
-  lastSyncedTag: "train-13"
+  lastSyncedTag: "train-beta-15"
   lastSyncedChannel: prerelease
   stableSyncAvailable: false
-  preRebaseBackup: "backup/dev-before-prerelease-train-13-20260721"
-  preRebaseHead: "611fd08db8852d0c069d2e6eb295ae400f441c09"
+  preRebaseBackup: "backup/dev-before-prerelease-v0.416.43-20260723"
+  preRebaseHead: "61b3c8549d3e9332852eaa77e5ab01a0346b3d3c"
 
 # Decisions for planned conflict paths (and paired lockfile).
 # decision: adopt-now | wait-stable | preserve-fork
@@ -58,7 +58,7 @@ paths:
   - path: package.json
     plannerStrategy: defer-to-stable-production-sync
     decision: wait-stable
-    reason: Live package 0.412.7 after train-13 channel sync; do not dashboard pre-bump toward main tip 0.415.15
+    reason: Live package 0.416.43 after train-beta-15 channel sync; do not dashboard pre-bump toward an unreleased main tip
   - path: package-lock.json
     plannerStrategy: defer-to-stable-production-sync
     decision: wait-stable
@@ -66,11 +66,11 @@ paths:
   - path: release-digest.v1.json
     plannerStrategy: take-main
     decision: wait-stable
-    reason: Prerelease digest for v0.415.15 — policy forbids early copy into dev
+    reason: Keep the attended train-beta-15 digest aligned to v0.416.43; do not copy a later unreleased main digest into dev
   - path: release-digest.v2.json
     plannerStrategy: take-main
     decision: wait-stable
-    reason: Same prerelease digest family
+    reason: Same prerelease digest family; keep v2 aligned with v0.416.43
   - path: scripts/build-server.mjs
     plannerStrategy: preserve-both
     decision: preserve-fork

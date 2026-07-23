@@ -7,6 +7,7 @@ import {
   changedDivergingFiles,
   forkOnlyFilePatterns,
   ISSUE_COMMANDS,
+  lastSyncedTagFromText,
   loadMigrationContracts,
   loadRules,
   minimatch,
@@ -53,6 +54,15 @@ describe("sync-upstream rule engine", () => {
 
     expect(selectLatestReleaseTag(releases, { includePrerelease: true })).toBe("v0.325.0-beta.1");
     expect(releaseChannelLabel(true)).toBe("stable + prerelease");
+  });
+
+  it("reads multi-segment train tags from the latest sync-log row", () => {
+    const syncLog = [
+      "| 2026-07-21 | `train-13` | historical |",
+      "| 2026-07-23 | `train-beta-15` / `v0.416.43` | current |",
+    ].join("\n");
+
+    expect(lastSyncedTagFromText(syncLog)).toBe("train-beta-15");
   });
 
   it("reports only upstream changes that intersect configured diverging files", () => {
