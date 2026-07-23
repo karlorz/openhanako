@@ -220,33 +220,21 @@ async function retrySessionTurnInternal(engine, opts, deps, compatibility) {
       if (sourceEntryId && latest && latest.id !== sourceEntryId) {
         throw new Error("Requested message is not the latest user message");
       }
-      if (isOptimisticClientUserMessageId(clientMessageId)) {
-        return await replayFromDisplayMessage(
-          engine,
-          sessionId,
-          sessionPath,
-          displayMessage,
-          replacementText,
-          uiContext,
-          deps,
-          session,
-        );
-      }
-      if (!latest && requested) {
-        return await replayPersistedUserEntry(
-          engine,
-          sessionId,
-          sessionPath,
-          requested,
-          clientMessageId,
-          replacementText,
-          displayMessage,
-          uiContext,
-          deps,
-          session,
-        );
-      }
-      if (!latest) {
+      if (isOptimisticClientUserMessageId(clientMessageId) || !latest) {
+        if (requested) {
+          return await replayPersistedUserEntry(
+            engine,
+            sessionId,
+            sessionPath,
+            requested,
+            clientMessageId,
+            replacementText,
+            displayMessage,
+            uiContext,
+            deps,
+            session,
+          );
+        }
         return await replayFromDisplayMessage(
           engine,
           sessionId,
@@ -739,15 +727,14 @@ async function replayPersistedUserEntry(
   let branchCommitted = false;
   const commitReplayBranch = () => {
     if (branchCommitted) return;
-    if (typeof engine.setSessionBranchHead !== "function") {
-      throw new Error("session branch persistence is unavailable");
-    }
     if (entry.parentId) session.sessionManager.branch(entry.parentId);
     else session.sessionManager.resetLeaf();
-    engine.setSessionBranchHead(sessionPath, {
-      leafId: session.sessionManager.getLeafId?.() ?? null,
-      reason: "replay_rewind",
-    });
+    if (typeof engine.setSessionBranchHead === "function") {
+      engine.setSessionBranchHead(sessionPath, {
+        leafId: session.sessionManager.getLeafId?.() ?? null,
+        reason: "replay_rewind",
+      });
+    }
     replaceAgentMessagesFromBranch(session);
     branchCommitted = true;
     engine.emitEvent?.({
