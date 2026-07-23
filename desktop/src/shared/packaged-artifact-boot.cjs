@@ -100,6 +100,7 @@ function planPackagedArtifactBootFromResources({
   resourcesPath,
   buildInfo,
   rendererRoot,
+  platformArch,
   appVersion = null,
   resolveLayout = resolvePackagedLayout,
 } = {}) {
@@ -108,6 +109,7 @@ function planPackagedArtifactBootFromResources({
     resourcesPath,
     buildInfo,
     rendererRoot,
+    platformArch,
   });
   return planPackagedArtifactBoot({ layout, buildInfo, appVersion });
 }

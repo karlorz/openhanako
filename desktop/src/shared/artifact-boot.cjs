@@ -59,12 +59,7 @@ const pointerChannels = require("../../../shared/artifact-core/pointer-channels.
 
 const { SEED_CHANNEL, rendererPointerChannel } = pointerChannels;
 /**
- * Per-platform seed manifest file name — same `seed-train-${platformArch}.json`
- * convention as scripts/build-server-artifact.mjs's seedManifestFileName
- * (duplicated here, not imported: that file is an ESM build-time script,
- * this one ships inside the bundled CJS desktop app; same reasoning as the
- * pre-existing SEED_MANIFEST_NAME constant this replaces). `platformArch`
- * is always `${process.platform}-${process.arch}` at boot time.
+ * Per-platform seed manifest file name shared by packaged layout validation.
  * @param {string} platformArch
  * @returns {string}
  */

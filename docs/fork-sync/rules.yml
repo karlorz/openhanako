@@ -308,6 +308,18 @@ conflictRules:
         and explicit assessment output.
       plannedAction: Keep image/attachment live smoke as a separate attended UI gate after automated identity, WebSocket,
         release, and contract checks pass.
+    desktop/src/shared/release-runtime-policy.cjs:
+      class: desktop_packaging
+      risk: high
+      strategy: preserve-both
+      resolution: Preserve signed-versus-legacy-raw layout selection and require the exact platform-qualified seed manifest and signature for signed packages.
+      plannedAction: Resolve `seed/seed-train-{platform}-{arch}.json` plus its `.sig`; never fall back to an unqualified `seed-train.json` or accept a wrong-platform manifest.
+    desktop/src/shared/packaged-artifact-boot.cjs:
+      class: desktop_packaging
+      risk: high
+      strategy: preserve-both
+      resolution: Keep packaged boot planning separate from Electron process orchestration and pass the runtime platform architecture through layout resolution.
+      plannedAction: Preserve deterministic platform-qualified seed selection and legacy-raw behavior together with the standalone Windows packaging sequence.
     desktop/src/react/services/remote-server-assessment-coordinator.ts:
       class: remote_server_assessment
       risk: high
