@@ -3,14 +3,14 @@
   "entries": [
     {
       "schemaVersion": 1,
-      "tag": "v0.416.26",
+      "tag": "v0.416.26-karlorz.1",
       "version": "0.416.26",
-      "previousTag": "v0.416.12",
-      "generatedAt": "2026-07-22T09:50:27.000Z",
+      "previousTag": "v0.412.7-karlorz.2",
+      "generatedAt": "2026-07-23T01:28:31.045Z",
       "noUserFacingChanges": false,
       "summary": {
-        "zh": "修复 Windows 受限命令因 PowerShell 初始化缺陷而卡死的问题，并加强真实 Windows 发布校验，避免安装包发布后才发现命令执行不可用。",
-        "en": "Fix restricted Windows commands hanging during PowerShell initialization and strengthen real Windows release verification, preventing unusable command execution from reaching published installers."
+        "zh": "本叉预发布在完成 train-beta-14 同步后升级到 0.416.26：修复 Windows 受限命令因 PowerShell 初始化缺陷而卡死的问题，并加强真实 Windows 发布校验，避免安装包发布后才发现命令执行不可用。",
+        "en": "Fork prerelease after the attended train-beta-14 sync, now on 0.416.26: fixes restricted Windows commands hanging during PowerShell initialization and strengthens real Windows release verification, preventing unusable command execution from reaching published installers."
       },
       "counts": {
         "feature": 0,
@@ -19,10 +19,10 @@
         "migration": 0
       },
       "source": {
-        "owner": "liliMozi",
+        "owner": "karlorz",
         "repo": "openhanako",
-        "commitRange": "v0.416.12..v0.416.26",
-        "releaseUrl": "https://github.com/liliMozi/openhanako/releases/tag/v0.416.26",
+        "commitRange": "v0.412.7-karlorz.2..HEAD",
+        "releaseUrl": "https://github.com/karlorz/openhanako/releases/tag/v0.416.26-karlorz.1",
         "releaseNotes": ""
       },
       "items": [

@@ -1,13 +1,13 @@
-# Pick-from-main decisions (2026-07-21)
+# Pick-from-main decisions (2026-07-23)
 
 > **Machine-readable source of truth:** `docs/fork-sync/pick-from-main-decisions.yml`
 > (loaded by `scripts/sync-upstream.mjs`). Keep this human table aligned when editing.
 
-Baseline (updated 2026-07-21 after attended prerelease channel): `dev` rebased onto
-upstream GitHub prerelease **`train-13`**, package **`0.412.7`**. Latest stable
-upstream remains `v0.407.15`. Dashboard pick-from-main still forbids cosmetic
+Baseline (updated 2026-07-23 after attended prerelease channel): `dev` rebased onto
+upstream GitHub prerelease **`train-beta-14`**, package **`0.416.26`**. Latest stable
+upstream remains `v0.416.12`. Dashboard pick-from-main still forbids cosmetic
 force-adopt; residual PR #1 conflicts are expected under permanent-fork dual-profile.
-Pre-rebase backup: `backup/dev-before-prerelease-train-13-20260721` @ `611fd08d`.
+Pre-rebase backup: `backup/dev-before-prerelease-train-beta-14-20260723` @ `5cd6bd15`.
 
 ## Objective honesty
 
@@ -30,9 +30,9 @@ Pre-rebase backup: `backup/dev-before-prerelease-train-13-20260721` @ `611fd08d`
 | `core/session-turn-actions.ts` | take-main | **wait-stable** | Trial adopt from main failed: imports missing `session-operation-lock.ts` and other main-only modules — requires full train package, not single-file pick |
 | `desktop/main.cjs` | human-review | **preserve-fork** | Probe + dual-profile boot orchestration; already isolated helpers |
 | `desktop/src/shared/launch-integrity.cjs` | take-main | **wait-stable** | Main is seed-only; fork retains legacy-raw install surface validation |
-| `package.json` | defer-to-stable-production-sync | **wait-stable** | Live package **`0.412.7`** after attended `train-13` channel sync; dashboard must not pre-bump toward main tip `0.415.15` for cosmetics — further package identity only via attended sync/release |
+| `package.json` | defer-to-stable-production-sync | **wait-stable** | Live package **`0.416.26`** after attended `train-beta-14` channel sync; further package identity changes require an attended sync/release |
 | `package-lock.json` | (paired with package) | **wait-stable** | Same as package.json |
-| `release-digest.v1.json` | take-main | **wait-stable** | Prerelease digest for `v0.415.15` — policy forbids early copy into dev |
+| `release-digest.v1.json` | take-main | **wait-stable** | Confirmed upstream digest for `v0.416.26` is retained; dashboard must not replace it with another mirror digest |
 | `release-digest.v2.json` | take-main | **wait-stable** | Same prerelease digest family |
 | `scripts/build-server.mjs` | preserve-both | **preserve-fork** | Compatibility-manifest / build-info packaging |
 | `scripts/fix-modules.cjs` | take-main | **wait-stable** | Fork carries explicit legacy-raw validation path required by dual-profile |

@@ -1,6 +1,6 @@
 # OpenHanako Dev-Loop Setup Notes
 
-Generated during the 2026-06-15 remote attachment preview fix closeout. Last revised during the 2026-07-21 attended prerelease-channel sync onto `train-13`.
+Generated during the 2026-06-15 remote attachment preview fix closeout. Last revised during the 2026-07-23 attended prerelease-channel sync onto `train-beta-14`.
 
 ## Discovery
 
@@ -8,15 +8,15 @@ Generated during the 2026-06-15 remote attachment preview fix closeout. Last rev
 - Upstream: `liliMozi/openhanako`
 - Current branch: `dev`
 - GitHub CLI default repo: `karlorz/openhanako`
-- App version: **`0.412.7`** after the attended optional prerelease-channel rebase onto upstream GitHub prerelease tag **`train-13`** (double consent). Prior stable base was `v0.407.15`; latest published fork release tag remains historical `v0.407.15-karlorz.7` until a new `-karlorz.N` is cut from this base.
+- App version: **`0.416.26`** after the attended optional prerelease-channel rebase onto upstream GitHub prerelease tag **`train-beta-14`** (double consent). Prior stable upstream is `v0.416.12`; the latest published fork release remains historical `v0.412.7-karlorz.2` until a new `-karlorz.N` is cut from this base.
 - SkillWiki vault: resolved by `skillwiki path`; project wiki path `projects/openhanako`
 - SkillWiki doctor: 32 pass, 6 info, 0 warn, 0 errors
 - Dev-loop dependency probe: usable; required dependencies present
 - Missing optional dependency: `claude-mem` only
 - Existing CI: `.github/workflows/ci.yml`, targets `main` and `dev`
 - Release workflow: `.github/workflows/build.yml`, tag-triggered `v*`
-- Latest fork release tag (published): `v0.407.15-karlorz.7` on the prior stable package line; current `dev` package is **`0.412.7`** after `train-13` (LAN auth, scoped CSP, remote resource preview, dual-profile packaging, pick-from-main reclaim guards retained).
-- Sync status (2026-07-21 post `train-13`): **lastSynced = `train-13`** (prerelease channel). Latest **stable** upstream remains `v0.407.15` (no newer non-prerelease). `--include-prerelease --check` is **up to date** on `train-13` (no longer a review-only ceiling waiting to sync). Bare `--check` still uses the stable channel by default and may report relative to `v0.407.15`. Further prerelease mutates still need `--i-accept-prerelease-sync` + `CONFIRM=<tag>`. Backup: `backup/dev-before-prerelease-train-13-20260721` @ `611fd08d`. PR #1 stays permanent draft never-merge. Tier 3A/3B still manual before deploy/tag.
+- Latest fork release tag (published): `v0.412.7-karlorz.2`; current `dev` package is **`0.416.26`** after `train-beta-14` (LAN auth, scoped CSP, remote resource preview, dual-profile packaging, pick-from-main reclaim guards retained).
+- Sync status (2026-07-23 post `train-beta-14`): **lastSynced = `train-beta-14`** (prerelease channel). Latest **stable** upstream is `v0.416.12`. Further prerelease mutates still need `--i-accept-prerelease-sync` + `CONFIRM=<tag>`. Backup: `backup/dev-before-prerelease-train-beta-14-20260723` @ `5cd6bd15`. PR #1 stays permanent draft never-merge. Tier 3A/3B remain manual before deploy/tag.
 - Upstream sync workflow: `node scripts/sync-upstream.mjs --check` checks stable upstream releases by default; prerelease candidate review uses `--include-prerelease --check`; prerelease **mutate** requires double consent (see `FORK_SYNC.md` optional prerelease channel)
 - Fork sync rules: `docs/fork-sync/rules.yml` is the machine-readable policy used by `scripts/sync-upstream.mjs`.
 - Post-rebase fork sync verification: `node scripts/sync-upstream.mjs --post-rebase` prints Tier 3A local desktop install/version verification before Tier 3B sg01 live smoke. The installed `/Applications/HanaAgent.app` bundle metadata, `build-info.json`, and Settings → About must match `package.json` before the live smoke counts.

@@ -68,7 +68,7 @@ dashboard want fewer PR #1 conflicts.
 | Review only | `node scripts/sync-upstream.mjs --include-prerelease --check` lists the latest eligible prerelease; **no** accept flag and **no** tag confirmation required. |
 | Eligible targets | GitHub Releases with `isPrerelease=true` and not draft (via `gh release list` when available). **Not** `upstream/main` HEAD. |
 | Mutate `dev` | Requires **double consent**: `--include-prerelease` **and** `--i-accept-prerelease-sync` **and** `CONFIRM=<exact-resolved-tag>` (or `SYNC_UPSTREAM_CONFIRM_TAG=<tag>`). Bare `--include-prerelease` without accept/confirm **refuses** and does not rebase. |
-| Example | `CONFIRM=train-13 node scripts/sync-upstream.mjs --include-prerelease --i-accept-prerelease-sync` (only after `--check` showed that exact tag). |
+| Example | `CONFIRM=train-beta-14 node scripts/sync-upstream.mjs --include-prerelease --i-accept-prerelease-sync` (only after `--check` showed that exact tag). |
 | After success | Record the prerelease tag as last synced; align package version to that release. Fork publish tags still use `vX.Y.Z-karlorz.N`. |
 | Dashboard | Pick-from-main / PR #1 stay unchanged: no force-adopt for cosmetics. Prerelease content lands only via this attended rebase. |
 | Feature freeze | Orthogonal. Prerelease channel does not redefine remote-feature freeze; freeze/unfreeze is a separate product decision keyed off stable policy when stated. |
@@ -301,8 +301,8 @@ Machine-readable source: `docs/fork-sync/pick-from-main-decisions.yml` (loaded b
 
 **Enforced:** force-adopt of `wait-stable` / `preserve-fork` paths from mirrored
 main is forbidden for dashboard cosmetics (`assertNoForceAdoptFromMain`).
-**Adopt-now set is empty** while stable remains `v0.407.15` and main tip is
-unreleased `0.415.15` train content.
+**Adopt-now set is empty** while stable remains `v0.416.12` and main tip is
+unreleased train content.
 
 **Reclaim guards** (`checkForkReclaimGuards`): prevent duplicate re-application
 of already-landed fork fixes — ticket-primary WS, isolated `connect-probe`,
@@ -342,28 +342,30 @@ Machine-readable dispositions: `docs/fork-sync/migration-contracts.yml`
 (`implementationStatus` fields for websocket-ticket-auth, connection-csp-bootstrap,
 remote-resource-ownership).
 
-## Next stable pre-sync outlook (2026-07-21 post train-13 prerelease channel)
+## Current prerelease sync state (2026-07-23 post train-beta-14)
 
 Attended **optional prerelease-channel** mutate completed: `dev` rebased onto
-upstream GitHub prerelease tag **`train-13`** with double consent
-(`--include-prerelease --i-accept-prerelease-sync` + `CONFIRM=train-13`).
-Package metadata now follows the train tip (`0.412.7`). Stable default channel
+upstream GitHub prerelease tag **`train-beta-14`** with double consent
+(`--include-prerelease --i-accept-prerelease-sync` + `CONFIRM=train-beta-14`).
+Package metadata now follows the train tip (`0.416.26`). Stable default channel
 is unchanged: bare `--check` still reports the latest **non-prerelease** release
-(`v0.407.15`) separately from last-synced when the log records a train tag.
+(`v0.416.12`) separately from last-synced when the log records a train tag.
 
 | Signal | Observed value |
 |--------|----------------|
 | Working branch / HEAD | `dev` (post-rebase; see sync log) |
-| Package / lockfile version | `0.412.7` (aligned with train-13 tip metadata) |
-| Latest stable upstream | `v0.407.15` |
-| Last synced tag (sync log) | `train-13` (prerelease channel) |
-| Prior stable last-synced | `v0.407.15` |
-| Stable production sync available | **no** newer non-prerelease than `v0.407.15` |
-| Prerelease channel | **used** for `train-13` (not review-only anymore for this base) |
+| Package / lockfile version | `0.416.26` (aligned with train-beta-14 tip metadata) |
+| Latest stable upstream | `v0.416.12` |
+| Last synced tag (sync log) | `train-beta-14` (prerelease channel) |
+| Prior stable last-synced | `v0.416.12` |
+| Stable production sync available | **no** newer non-prerelease than `v0.416.12` |
+| Prerelease channel | **used** for `train-beta-14` (not review-only anymore for this base) |
 | Main tip (mirror) | may still lead train; not a production target without a tag/release |
 | PR #1 | OPEN, draft, never-merge dashboard; still CONFLICTING by design |
-| Backup | `backup/dev-before-prerelease-train-13-20260721` @ `611fd08d` |
+| Backup | `backup/dev-before-prerelease-train-beta-14-20260723` @ `5cd6bd15` |
 | Upstream issue search | #1749 OPEN, #1811 CLOSED; tracker remains status/search/draft only |
+| Tier 3A local desktop | `/Applications/HanaAgent.app` `0.416.26`, strict codesign passed, `legacy-raw`, updates disabled |
+| Tier 3B sg01 helper | Identity HTTP 200, WebSocket, and environment passed; runtime remains `v0.412.7-karlorz.2` |
 
 Planned conflict paths from `--conflict-plan --json --local-only`:
 
@@ -487,6 +489,8 @@ permanent draft dashboard and is never a merge vehicle.
 - sg01 live validation created a temp remote provider/model with a slash-bearing id, deleted it through the encoded provider model DELETE route, confirmed it stayed absent, and cleaned up the temp provider. Memory pressure during the attended hotfix was traced to stale tmpfs `/tmp/openhanako-*` and `/tmp/hanaagent-*` staging directories; future host-side hotfix builds should stage under `/opt/hanaagent/build`.
 
 ## Sync log
+
+| 2026-07-23 | `train-beta-14` (`v0.416.26`) | 215-commit replay onto upstream commit `849d2a5bf9651525196723a4acc6e8cc928b861a`; conflicts in replay identity validation, release digests, dual-profile workflow/package scripts, generated build inventories, and linked-home startup test. | Exact-tag double consent accepted. Backup `backup/dev-before-prerelease-train-beta-14-20260723` preserves pre-rebase `5cd6bd153c516564fc7803c7dac8373b81e6c6e7`; kept current session identity guard, fork standalone Windows/release-profile CI, `v0.416.26` upstream digests, current generated inventories, and post-migration prefs high-water test. Rebasing completed at `c5e047ff2fa92cf525ac24228a0d72f2939ca186`. | `--post-rebase` Tier 0/1/2 passed; `tests/sync-upstream.test.mjs` 27/27; LAN/remote attachment/auth suite 272/272; `npm run typecheck`; `git diff --check`; local-only conflict plan passed. Tier 3A installed and strict-codesign verified `/Applications/HanaAgent.app` at `0.416.26`, using the documented `legacy-raw` local profile; installed build-info matches `c5e047ff`, `sourceRepo: karlorz/openhanako`, and updates disabled. | Tier 3B helper passed identity HTTP 200, WebSocket, and environment checks against sg01; sg01 remains on immutable `v0.412.7-karlorz.2` and was not upgraded. In the installed `0.416.26` app, `Kong.png` uploaded and sent in an active LAN chat, transcript thumbnail persisted, Conversation Files row persisted after switch/return, and the media preview rendered. The model response returned `LLM returned invalid JSON (status=200)` in the test environment, with no observed CSP refusal or WebSocket disconnect. | PR #1 remains permanent draft. Package and lockfile are `0.416.26`; no push, fork tag/release, or sg01 deployment was authorized; fork release tags remain `vX.Y.Z-karlorz.N`. |
 
 | Date | Upstream tag | Conflicts | Resolution | Tests | Live smoke | Notes |
 |------|--------------|-----------|------------|-------|------------|-------|

@@ -18,7 +18,7 @@ This is a permanent personal fork unless upstream accepts equivalent fixes. See 
 
 Use release-tag syncs from upstream, not continuous upstream `main` tracking. Preserve local fixes by behavior and tests, not by blindly preferring either side during conflicts.
 
-Current state (2026-07-22): fork prerelease **`v0.412.7-karlorz.2`** published from `dev` (package **`0.412.7`**, train-13 channel base). Local macOS `/Applications/HanaAgent.app` installed from published arm64 legacy-raw DMG; sg01 upgraded via install-server to `v0.412.7-karlorz.2-linux-arm64` (service active). Desktop smoke helper: identity 200 + WS open, environment freshness `current`/`exactReleaseMatch`. Follow-up on `dev`: `install-server status --json` accepted (hotfixed host CLI). See `FORK_SYNC.md` sync log. PR #1 remains permanent draft never-merge.
+Current state (2026-07-23): `dev` has accepted upstream prerelease **`train-beta-14`** / package **`0.416.26`** at rebased head `c5e047ff`; the recoverable pre-rebase ref is `backup/dev-before-prerelease-train-beta-14-20260723` at `5cd6bd15`. Tier 3A local install/codesign and the manual upload/send/switch/return/thumbnail/Conversation Files preview smoke passed in the installed `0.416.26` app. Tier 3B identity/WebSocket/environment smoke passed against sg01, which remains on the immutable `v0.412.7-karlorz.2` runtime and was not upgraded. See `FORK_SYNC.md` sync log. PR #1 remains permanent draft never-merge.
 
 ## Core Terms
 
