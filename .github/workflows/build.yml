@@ -416,7 +416,7 @@ jobs:
       # seed-train.json(.sig) living next to the server box is NOT uploaded here — the
       # release job's train manifest is generated later by scripts/publish-train.mjs, not
       # copied from any one platform's local seed.
-      - name: Upload signed build artifacts
+      - name: Upload artifacts
         if: env.HANA_RELEASE_PROFILE == 'signed'
         uses: actions/upload-artifact@v4
         with:

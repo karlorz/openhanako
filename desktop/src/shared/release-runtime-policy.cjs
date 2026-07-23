@@ -7,6 +7,7 @@ const {
   SIGNED_PROFILE,
 } = require("../../../shared/release-profile.cjs");
 const { normalizeBuildInfo } = require("./build-info.cjs");
+const { seedPaths } = require("./artifact-boot.cjs");
 
 const RAW_SERVER_REQUIRED_FILES = [
   "bootstrap.js",
@@ -102,6 +103,7 @@ function resolvePackagedLayout({
   resourcesPath,
   buildInfo,
   rendererRoot,
+  platformArch = `${process.platform}-${process.arch}`,
   fsImpl = fs,
 } = {}) {
   if (!appIsPackaged) return { mode: "dev" };
@@ -153,12 +155,22 @@ function resolvePackagedLayout({
         + "Expected signed seed resources or an explicitly marked legacy-raw package.",
     );
   }
-  for (const relativePath of ["seed-train.json", "seed-train.json.sig"]) {
-    if (!fileExists(fsImpl, path.join(seedRoot, relativePath))) {
-      throw new Error(`Signed packaged layout is missing seed/${relativePath}`);
-    }
+  const { manifestPath, sigPath: signaturePath } = seedPaths(resourcesPath, platformArch);
+  const manifestName = path.basename(manifestPath);
+  if (!fileExists(fsImpl, manifestPath)) {
+    throw new Error(`Signed packaged layout is missing seed/${manifestName}`);
   }
-  return { mode: SIGNED_PROFILE, seedRoot, buildInfo: metadata };
+  if (!fileExists(fsImpl, signaturePath)) {
+    throw new Error(`Signed packaged layout is missing seed/${manifestName}.sig`);
+  }
+  return {
+    mode: SIGNED_PROFILE,
+    seedRoot,
+    platformArch,
+    seedManifestPath: manifestPath,
+    seedSignaturePath: signaturePath,
+    buildInfo: metadata,
+  };
 }
 
 function artifactUpdateAvailability(buildInfo) {
