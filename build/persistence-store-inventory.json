@@ -2939,6 +2939,33 @@
       "ordinal": 0
     },
     {
+      "sourceFile": "core/desktop-session-submit.ts",
+      "kind": "copy-file",
+      "excerpt": "fs.copyFileSync(sourcePath, destPath, fs.constants.COPYFILE_EXCL)",
+      "reason": "Stages payload bytes or updates SessionFile sidecars under the managed cache.",
+      "storeId": "session-files",
+      "exemptionId": null,
+      "ordinal": 0
+    },
+    {
+      "sourceFile": "core/desktop-session-submit.ts",
+      "kind": "copy-file",
+      "excerpt": "fs.cpSync(sourcePath, destPath, { recursive: true, force: false, errorOnExist: true })",
+      "reason": "Stages payload bytes or updates SessionFile sidecars under the managed cache.",
+      "storeId": "session-files",
+      "exemptionId": null,
+      "ordinal": 0
+    },
+    {
+      "sourceFile": "core/desktop-session-submit.ts",
+      "kind": "mkdir",
+      "excerpt": "fs.mkdirSync(cacheDir, { recursive: true })",
+      "reason": "Stages payload bytes or updates SessionFile sidecars under the managed cache.",
+      "storeId": "session-files",
+      "exemptionId": null,
+      "ordinal": 0
+    },
+    {
       "sourceFile": "core/device-registry.ts",
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(path.dirname(filePath), { recursive: true })",

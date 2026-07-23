@@ -746,15 +746,14 @@ async function replayPersistedUserEntry(
   let branchCommitted = false;
   const commitReplayBranch = () => {
     if (branchCommitted) return;
-    if (typeof engine.setSessionBranchHead !== "function") {
-      throw new Error("session branch persistence is unavailable");
-    }
     if (entry.parentId) session.sessionManager.branch(entry.parentId);
     else session.sessionManager.resetLeaf();
-    engine.setSessionBranchHead(sessionPath, {
-      leafId: session.sessionManager.getLeafId?.() ?? null,
-      reason: "replay_rewind",
-    });
+    if (typeof engine.setSessionBranchHead === "function") {
+      engine.setSessionBranchHead(sessionPath, {
+        leafId: session.sessionManager.getLeafId?.() ?? null,
+        reason: "replay_rewind",
+      });
+    }
     replaceAgentMessagesFromBranch(session);
     branchCommitted = true;
     engine.emitEvent?.({
