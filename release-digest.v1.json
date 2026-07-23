@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "tag": "v0.416.26-karlorz.1",
+  "tag": "v0.416.26-karlorz.2",
   "version": "0.416.26",
   "previousTag": "v0.412.7-karlorz.2",
-  "generatedAt": "2026-07-23T01:28:31.045Z",
+  "generatedAt": "2026-07-23T02:00:42.000Z",
   "noUserFacingChanges": false,
   "summary": {
     "zh": "本叉预发布在完成 train-beta-14 同步后升级到 0.416.26：修复 Windows 受限命令因 PowerShell 初始化缺陷而卡死的问题，并加强真实 Windows 发布校验，避免安装包发布后才发现命令执行不可用。",
@@ -19,7 +19,7 @@
     "owner": "karlorz",
     "repo": "openhanako",
     "commitRange": "v0.412.7-karlorz.2..HEAD",
-    "releaseUrl": "https://github.com/karlorz/openhanako/releases/tag/v0.416.26-karlorz.1",
+    "releaseUrl": "https://github.com/karlorz/openhanako/releases/tag/v0.416.26-karlorz.2",
     "releaseNotes": ""
   },
   "items": [
