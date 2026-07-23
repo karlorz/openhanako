@@ -187,7 +187,7 @@ describe("build.yml: Windows standalone server stays outside the seed/OTA bounda
     expect(uploadArtifactText).not.toContain("dist-standalone/HanaCore-*-Windows-x64.manifest.json.sig");
 
     const releaseSteps = doc.jobs.release?.steps ?? [];
-    const releaseUpload = releaseSteps.find((step) => step.name === "Upload release assets");
+    const releaseUpload = releaseSteps.find((step) => step.name === "Upload signed artifacts");
     const releaseGate = releaseSteps.find((step) => step.name === "Verify release assets");
     expect(stepRun(releaseUpload ?? {})).toContain("dist-standalone/HanaCore-*-Windows-x64.tar.gz");
     expect(stepRun(releaseUpload ?? {})).toContain("dist-standalone/HanaCore-*-Windows-x64.manifest.json");

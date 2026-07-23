@@ -32,8 +32,8 @@ function makeRawLayout(resourcesPath) {
 }
 
 function makeSignedLayout(resourcesPath) {
-  writeFile(resourcesPath, "seed/seed-train.json", "{}");
-  writeFile(resourcesPath, "seed/seed-train.json.sig", "signature");
+  writeFile(resourcesPath, "seed/seed-train-darwin-arm64.json", "{}");
+  writeFile(resourcesPath, "seed/seed-train-darwin-arm64.json.sig", "signature");
 }
 
 afterEach(() => {
@@ -93,6 +93,7 @@ describe("planPackagedArtifactBoot (real helper)", () => {
       resourcesPath,
       buildInfo: { releaseProfile: "signed" },
       rendererRoot: path.join(resourcesPath, "app", "desktop", "dist-renderer"),
+      platformArch: "darwin-arm64",
       resolveLayout: resolvePackagedLayout,
     });
     expect(plan.kind).toBe("signed");

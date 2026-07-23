@@ -31,8 +31,8 @@ function makeRawLayout(resourcesPath) {
 }
 
 function makeSignedLayout(resourcesPath) {
-  writeFile(resourcesPath, "seed/seed-train.json", "{}");
-  writeFile(resourcesPath, "seed/seed-train.json.sig", "signature");
+  writeFile(resourcesPath, "seed/seed-train-darwin-arm64.json", "{}");
+  writeFile(resourcesPath, "seed/seed-train-darwin-arm64.json.sig", "signature");
 }
 
 afterEach(() => {
@@ -59,6 +59,7 @@ describe("release runtime policy", () => {
       resourcesPath,
       buildInfo: { releaseProfile: "signed" },
       rendererRoot: path.join(resourcesPath, "app", "desktop", "dist-renderer"),
+      platformArch: "darwin-arm64",
     })).toMatchObject({ mode: "signed" });
 
     makeRawLayout(resourcesPath);
@@ -118,6 +119,27 @@ describe("release runtime policy", () => {
       buildInfo: { releaseProfile: "legacy-raw" },
       rendererRoot: path.join(resourcesPath, "app", "desktop", "dist-renderer"),
     })).toThrow(/bundle\/index\.js/i);
+  });
+
+  it("requires the running platform's qualified seed manifest and signature", () => {
+    const { resolvePackagedLayout } = require(policyPath);
+    const resourcesPath = makeResources();
+    makeSignedLayout(resourcesPath);
+
+    expect(() => resolvePackagedLayout({
+      appIsPackaged: true,
+      resourcesPath,
+      buildInfo: { releaseProfile: "signed" },
+      platformArch: "win32-x64",
+    })).toThrow(/seed-train-win32-x64\.json/i);
+
+    fs.rmSync(path.join(resourcesPath, "seed", "seed-train-darwin-arm64.json.sig"));
+    expect(() => resolvePackagedLayout({
+      appIsPackaged: true,
+      resourcesPath,
+      buildInfo: { releaseProfile: "signed" },
+      platformArch: "darwin-arm64",
+    })).toThrow(/seed-train-darwin-arm64\.json\.sig/i);
   });
 
   it("rejects a raw layout whose ordinary Node server cannot read its renderer tree", () => {

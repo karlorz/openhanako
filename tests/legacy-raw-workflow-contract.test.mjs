@@ -142,7 +142,7 @@ describe("legacy-raw release workflow contract", () => {
     const signingSetup = section(workflow, "Setup macOS signing keychain");
     const macBuild = section(workflow, "Build macOS (DMG + ZIP)");
     const verification = section(workflow, "Verify macOS app bundle signatures");
-    const signedUpload = section(workflow, "Upload signed build artifacts");
+    const signedUpload = section(workflow, "Upload artifacts");
     const rawUpload = section(workflow, "Upload legacy raw build artifacts");
 
     expect(signingSetup).toContain(
@@ -157,7 +157,7 @@ describe("legacy-raw release workflow contract", () => {
     expect(workflow.indexOf("Verify macOS app bundle signatures")).toBeGreaterThan(
       workflow.indexOf("Build macOS (DMG + ZIP)"),
     );
-    for (const uploadHeading of ["Upload signed build artifacts", "Upload legacy raw build artifacts"]) {
+    for (const uploadHeading of ["Upload artifacts", "Upload legacy raw build artifacts"]) {
       expect(workflow.indexOf("Verify macOS app bundle signatures")).toBeLessThan(
         workflow.indexOf(uploadHeading),
       );

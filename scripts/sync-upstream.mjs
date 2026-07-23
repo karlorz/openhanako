@@ -902,17 +902,20 @@ function latestUpstreamTag(rules, includePrerelease) {
   return latestUpstreamTagFromGh(rules, includePrerelease) || latestUpstreamTagFromGit(rules, includePrerelease);
 }
 
-function lastSyncedTag(rules) {
-  const syncLogPath = path.join(ROOT, rules.releaseTarget.syncLog);
-  const rows = fs
-    .readFileSync(syncLogPath, "utf8")
+export function lastSyncedTagFromText(syncLogText) {
+  const rows = syncLogText
     .split("\n")
     .filter((line) => /^\| [0-9]{4}-[0-9]{2}-[0-9]{2} /.test(line));
   // Prefer the last row's first tag token: stable `vX.Y.Z`, prerelease `vX.Y.Z-…`,
-  // or GitHub prerelease train tags (`train-N`) from the optional prerelease channel.
-  const tagPattern = /\b(v[0-9]+(?:\.[0-9]+)+(?:[-.][A-Za-z0-9]+)*|train-[0-9]+)\b/;
+  // or GitHub prerelease train tags (`train-N`, `train-beta-N`) from the optional channel.
+  const tagPattern = /\b(v[0-9]+(?:\.[0-9]+)+(?:[-.][A-Za-z0-9]+)*|train(?:-[A-Za-z0-9]+)+)\b/;
   const tags = rows.map((row) => row.match(tagPattern)?.[1]).filter(Boolean);
   return tags.at(-1) ?? "";
+}
+
+function lastSyncedTag(rules) {
+  const syncLogPath = path.join(ROOT, rules.releaseTarget.syncLog);
+  return lastSyncedTagFromText(fs.readFileSync(syncLogPath, "utf8"));
 }
 
 function filesChangedByUpstreamSinceForkPoint(rules) {
