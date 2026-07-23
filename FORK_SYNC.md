@@ -68,7 +68,7 @@ dashboard want fewer PR #1 conflicts.
 | Review only | `node scripts/sync-upstream.mjs --include-prerelease --check` lists the latest eligible prerelease; **no** accept flag and **no** tag confirmation required. |
 | Eligible targets | GitHub Releases with `isPrerelease=true` and not draft (via `gh release list` when available). **Not** `upstream/main` HEAD. |
 | Mutate `dev` | Requires **double consent**: `--include-prerelease` **and** `--i-accept-prerelease-sync` **and** `CONFIRM=<exact-resolved-tag>` (or `SYNC_UPSTREAM_CONFIRM_TAG=<tag>`). Bare `--include-prerelease` without accept/confirm **refuses** and does not rebase. |
-| Example | `CONFIRM=train-13 node scripts/sync-upstream.mjs --include-prerelease --i-accept-prerelease-sync` (only after `--check` showed that exact tag). |
+| Example | `CONFIRM=train-beta-15 node scripts/sync-upstream.mjs --include-prerelease --i-accept-prerelease-sync` (only after `--check` showed that exact tag). |
 | After success | Record the prerelease tag as last synced; align package version to that release. Fork publish tags still use `vX.Y.Z-karlorz.N`. |
 | Dashboard | Pick-from-main / PR #1 stay unchanged: no force-adopt for cosmetics. Prerelease content lands only via this attended rebase. |
 | Feature freeze | Orthogonal. Prerelease channel does not redefine remote-feature freeze; freeze/unfreeze is a separate product decision keyed off stable policy when stated. |
@@ -342,27 +342,38 @@ Machine-readable dispositions: `docs/fork-sync/migration-contracts.yml`
 (`implementationStatus` fields for websocket-ticket-auth, connection-csp-bootstrap,
 remote-resource-ownership).
 
-## Next stable pre-sync outlook (2026-07-21 post train-13 prerelease channel)
+## Attended prerelease sync closeout (2026-07-23, `train-beta-15` / `v0.416.43`)
 
-Attended **optional prerelease-channel** mutate completed: `dev` rebased onto
-upstream GitHub prerelease tag **`train-13`** with double consent
-(`--include-prerelease --i-accept-prerelease-sync` + `CONFIRM=train-13`).
-Package metadata now follows the train tip (`0.412.7`). Stable default channel
+- The attended prerelease target resolved to GitHub prerelease **`train-beta-15`**, paired with release **`v0.416.43`**, both at upstream SHA `a02622da02cd2edc8397066c6cb6bc256f306b97`. The `dev` rebase replayed 216 fork commits. Backup ref `backup/dev-before-prerelease-v0.416.43-20260723` points to `61b3c8549d3e9332852eaa77e5ab01a0346b3d3c`.
+- The obsolete `chore(release): prepare v0.416.26-karlorz.1` and `docs(release): close out v0.416.26-karlorz.2` commits were dropped. The CI profile-scoping fix was preserved and replayed as `3420026aefab1db7a45b95d0abb8747804b9758d`.
+- Package metadata, `package-lock.json`, `release-digest.v1.json`, and `release-digest.v2.json` are aligned to `0.416.43` / `v0.416.43`. No fork-scoped tag or GitHub release was published.
+- Packaging review restored the standalone Windows sequence (`build:server`, `verify:seed-kit`, `pack:server:standalone`, `verify:standalone:server`, then `electron-builder`) and kept CI contract tests compatible with the current profile-aware upload labels. The signed runtime resolver now requires the exact platform-qualified `seed/seed-train-{platform}-{arch}.json` and matching `.sig`; wrong-platform and missing-signature cases are covered.
+- Tier 0 passed with all 79 fork-only patterns present. Tier 1 focused upstream/session/permission and packaging/release suites passed (8 files, 112 tests); the helper/runtime-policy/packaged-boot rerun passed 3 files, 50 tests. Tier 2 passed main/preload builds, connect/probe checks, and scoped remote CSP checks. `npm run typecheck` passed.
+- Tier 3A rebuilt and installed `/Applications/HanaAgent.app` as local signed `0.416.43` using temporary Ed25519 validation material that was deleted afterward. Strict deep codesign passed. Bundle metadata reports channel `local`, updates disabled, source repo `karlorz/openhanako`, release profile `signed`, signature kind `adhoc`, and the expected `3420026a...` git SHA. Installed seed resources are platform-qualified for `darwin-arm64`.
+- Tier 3B helper verification against `http://100.125.173.118:14500` returned identity HTTP 200 and an open WebSocket with `connectionKind: lan`; the independent environment assessment is `attention` because sg01 still reports server `0.412.7`, release `v0.412.7-karlorz.2`. Manual CDP smoke recovered the remote connection, uploaded `yuan-hanako-emblem.png`, sent it, and confirmed the file remained Available in Conversation Files with an enabled Preview action. Switching chats and returning preserved the existing persisted image attachment thumbnail and Conversation Files preview. The newly captioned smoke message was observed optimistically but was not claimed as persisted after reload.
+- sg01 was not deployed or modified. PR #1 remains the permanent draft dashboard and was not merged, auto-merged, closed, or used as a release vehicle. No unexpected rebase/conflict state remains.
+
+## Next stable pre-sync outlook (2026-07-23 post `train-beta-15` prerelease channel)
+
+Attended **optional prerelease-channel** mutates completed: `dev` rebased onto
+upstream GitHub prerelease tag **`train-beta-15`** with double consent
+(`--include-prerelease --i-accept-prerelease-sync` + `CONFIRM=train-beta-15`).
+Package metadata now follows the train tip (`0.416.43`). Stable default channel
 is unchanged: bare `--check` still reports the latest **non-prerelease** release
 (`v0.407.15`) separately from last-synced when the log records a train tag.
 
 | Signal | Observed value |
 |--------|----------------|
 | Working branch / HEAD | `dev` (post-rebase; see sync log) |
-| Package / lockfile version | `0.412.7` (aligned with train-13 tip metadata) |
+| Package / lockfile version | `0.416.43` (aligned with train-beta-15 tip metadata) |
 | Latest stable upstream | `v0.407.15` |
-| Last synced tag (sync log) | `train-13` (prerelease channel) |
+| Last synced tag (sync log) | `train-beta-15` (prerelease channel) |
 | Prior stable last-synced | `v0.407.15` |
 | Stable production sync available | **no** newer non-prerelease than `v0.407.15` |
-| Prerelease channel | **used** for `train-13` (not review-only anymore for this base) |
+| Prerelease channel | **used** for `train-beta-15` (not review-only anymore for this base) |
 | Main tip (mirror) | may still lead train; not a production target without a tag/release |
 | PR #1 | OPEN, draft, never-merge dashboard; still CONFLICTING by design |
-| Backup | `backup/dev-before-prerelease-train-13-20260721` @ `611fd08d` |
+| Backup | `backup/dev-before-prerelease-v0.416.43-20260723` @ `61b3c854` |
 | Upstream issue search | #1749 OPEN, #1811 CLOSED; tracker remains status/search/draft only |
 
 Planned conflict paths from `--conflict-plan --json --local-only`:
@@ -386,9 +397,9 @@ Planned conflict paths from `--conflict-plan --json --local-only`:
 | `server/index.ts` | preserve-both | high |
 | `tests/build-server-artifact.test.ts` | take-main | low |
 
-Historical dashboard note (pre-mutate): main tip advanced toward `0.415.x` while
-stable stayed `v0.407.15`. That review-only ceiling is **superseded** for `dev`
-by the attended `train-13` rebase below.
+Historical dashboard note (pre-mutate): main tip advanced beyond the prior train
+while stable stayed `v0.407.15`. That review-only ceiling is **superseded** for
+`dev` by the attended `train-beta-15` rebase above.
 
 Default channel remains stable-only. Further prerelease mutates still require
 double consent. Wait for a non-prerelease GitHub release newer than `v0.407.15`
@@ -504,3 +515,4 @@ permanent draft dashboard and is never a merge vehicle.
 | 2026-07-21 | `train-13` | 218-commit rebase onto GitHub prerelease train tip; early conflicts on `package.json` (preserve verify:seed-kit + write-local-build-info), `core/engine.ts`/`server/index.ts` (feature contracts + media adapters), LAN/CSP/preview/packaging batches; some historical fork commits skipped as empty/redundant. | Double-consent mutate (`--include-prerelease --i-accept-prerelease-sync` + `CONFIRM=train-13`). Prefer ownership-aware HEAD for resource-url; restore InputArea/CSP/MainContent.drag test suites after heuristic conflict damage. Package aligned to train tip `0.412.7`. | `node scripts/sync-upstream.mjs --post-rebase` Tier 0/1/2 green after test restores; `tests/sync-upstream.test.mjs` + typecheck + diff-check. | Tier 3A/3B **not** run in this session (manual). No host deploy/tag/fork release. | Backup `backup/dev-before-prerelease-train-13-20260721` @ `611fd08d`. PR #1 untouched as permanent draft. Stable channel default unchanged; lastSynced records `train-13`. |
 | 2026-07-21 | `v0.412.7-karlorz.1` | Fork prerelease publish from train-13 base; restored dual-profile legacy-raw CI path. | Tag `v0.412.7-karlorz.1` on package `0.412.7`; Build run success; 20 legacy-raw assets. | Pre-tag vitest/typecheck/digest validate green; CI Build success after dual-profile restore. | Local macOS installed from published arm64 DMG; codesign valid; build-info releaseTag `v0.412.7-karlorz.1`. sg01 `install-server upgrade --version v0.412.7-karlorz.1 --channel prerelease` ok/not rolled back; current `...-linux-arm64`; service active/enabled. | PR #1 remains permanent draft. |
 | 2026-07-22 | `v0.412.7-karlorz.2` | Post-`.1` remote assessment, install-server probes, session/auth, dual-profile CI, digest align; first tag push failed digest validation (stale `.1` tag in digests). | Aligned digests + retag; Build run `29890312115` success; 20 legacy-raw assets; package remains `0.412.7`. | typecheck + install/sync focused vitest green; digest validators for `.2`. UAT found `status --json` rejected by parseArgs — fixed on `dev` (`a6349bd7`) and host CLI re-bootstrapped. | Local arm64 DMG install + strict codesign; build-info `releaseTag`/`gitSha` match `.2`/`c7120c11`. sg01 bootstrap CLI + upgrade `ok: true`/`rolledBack: false` to `.2-linux-arm64`; service active/enabled; mobile/locales 200; smoke helper functional+environment pass, freshness current exact match. | PR #1 remains permanent draft never-merge. Server runtime stays on immutable tag `.2`; CLI-only hotfixes may track `dev` commits. |
+| 2026-07-23 | `train-beta-15` / `v0.416.43` | Upstream prerelease rebase replayed 216 fork commits; obsolete `v0.416.26` preparation/closeout commits dropped; packaging/profile-aware CI and platform-qualified seed runtime contract required review. | Rebased `dev` onto upstream `a02622da02cd2edc8397066c6cb6bc256f306b97`; preserved CI profile-scoping fix as `3420026a`; restored standalone Windows packaging sequence; resolver now selects `seed-train-{platform}-{arch}.json` plus `.sig`; package/lock/digest v1/v2 aligned to `0.416.43` / `v0.416.43`. | Tier 0/1/2 passed via `node scripts/sync-upstream.mjs --post-rebase`; focused reruns passed 8 files/112 tests and helper/runtime-policy/packaged-boot 3 files/50 tests; `npm run typecheck`, sync vitest, conflict-plan local-only, and `git diff --check` passed. | Tier 3A local signed `0.416.43` install and strict codesign passed. Tier 3B helper returned identity 200 + WS open (`lan`); CDP smoke uploaded/sent an image, preserved an existing chat thumbnail and Conversation Files preview after switch/return, and kept the new uploaded file Available with Preview. New captioned message persistence was not claimed after reload; sg01 remains on `v0.412.7-karlorz.2` and was not deployed. | Backup `backup/dev-before-prerelease-v0.416.43-20260723` @ `61b3c8549d3e9332852eaa77e5ab01a0346b3d3c`. No fork tag/release. PR #1 remains permanent draft never-merge. |
