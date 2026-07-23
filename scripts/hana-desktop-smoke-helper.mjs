@@ -18,7 +18,6 @@ const DEFAULT_APP_PATH = "/Applications/HanaAgent.app";
 const DEFAULT_PORT = 14592;
 const DEFAULT_URL = "http://100.125.173.118:14500";
 const DEFAULT_USER_DATA_DIR = path.join(os.homedir(), "Library", "Application Support", "Hanako");
-const RELOAD_SETTLE_MS = 800;
 const VERIFY_RETRY_DELAY_MS = 500;
 const DEFAULT_ASSESSMENT_OUT = path.join(".claude", "remote-assessment", "latest.json");
 const CONTRACT_REQUIREMENT_RE = /^([a-z][a-z0-9]*(?:\.[a-z][a-z0-9]*)*)@([1-9]\d*)$/;
@@ -968,7 +967,11 @@ export async function waitForRendererConnectionVerification(options, {
   const deadline = Date.now() + timeoutMs;
   let lastVerification = null;
   do {
-    lastVerification = await verify(options);
+    try {
+      lastVerification = await verify(options);
+    } catch (err) {
+      lastVerification = { ok: false, error: err?.message || String(err) };
+    }
     if (connectionVerificationPassed(lastVerification)) return lastVerification;
     const remainingMs = deadline - Date.now();
     if (remainingMs <= 0) break;
@@ -999,7 +1002,7 @@ export async function main(argv = process.argv.slice(2)) {
     : Promise.resolve(null);
   const result = await resetRendererStorage(options);
   const verification = options.verify
-    ? await delay(RELOAD_SETTLE_MS).then(() => waitForRendererConnectionVerification(options))
+    ? await waitForRendererConnectionVerification(options)
     : null;
   const releaseCheck = await releaseCheckPromise;
   const report = buildSmokeReport({ verification, releaseCheck, reset: result, requirements: options.contractRequirements });

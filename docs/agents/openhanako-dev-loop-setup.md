@@ -1,6 +1,6 @@
 # OpenHanako Dev-Loop Setup Notes
 
-Generated during the 2026-06-15 remote attachment preview fix closeout. Last revised during the 2026-07-21 attended prerelease-channel sync onto `train-13`.
+Generated during the 2026-06-15 remote attachment preview fix closeout. Last revised during the 2026-07-23 attended prerelease-channel sync onto `train-beta-15` / `v0.416.43`.
 
 ## Discovery
 
@@ -8,15 +8,15 @@ Generated during the 2026-06-15 remote attachment preview fix closeout. Last rev
 - Upstream: `liliMozi/openhanako`
 - Current branch: `dev`
 - GitHub CLI default repo: `karlorz/openhanako`
-- App version: **`0.412.7`** after the attended optional prerelease-channel rebase onto upstream GitHub prerelease tag **`train-13`** (double consent). Prior stable base was `v0.407.15`; latest published fork release tag remains historical `v0.407.15-karlorz.7` until a new `-karlorz.N` is cut from this base.
+- App version: **`0.416.43`** after the attended optional prerelease-channel rebase onto upstream GitHub prerelease tag **`train-beta-15`**, paired with `v0.416.43` (double consent). Upstream SHA: `a02622da02cd2edc8397066c6cb6bc256f306b97`. Prior fork backup: `backup/dev-before-prerelease-v0.416.43-20260723` @ `61b3c8549d3e9332852eaa77e5ab01a0346b3d3c`. No new fork tag or release was published.
 - SkillWiki vault: resolved by `skillwiki path`; project wiki path `projects/openhanako`
 - SkillWiki doctor: 32 pass, 6 info, 0 warn, 0 errors
 - Dev-loop dependency probe: usable; required dependencies present
 - Missing optional dependency: `claude-mem` only
 - Existing CI: `.github/workflows/ci.yml`, targets `main` and `dev`
 - Release workflow: `.github/workflows/build.yml`, tag-triggered `v*`
-- Latest fork release tag (published): `v0.407.15-karlorz.7` on the prior stable package line; current `dev` package is **`0.412.7`** after `train-13` (LAN auth, scoped CSP, remote resource preview, dual-profile packaging, pick-from-main reclaim guards retained).
-- Sync status (2026-07-21 post `train-13`): **lastSynced = `train-13`** (prerelease channel). Latest **stable** upstream remains `v0.407.15` (no newer non-prerelease). `--include-prerelease --check` is **up to date** on `train-13` (no longer a review-only ceiling waiting to sync). Bare `--check` still uses the stable channel by default and may report relative to `v0.407.15`. Further prerelease mutates still need `--i-accept-prerelease-sync` + `CONFIRM=<tag>`. Backup: `backup/dev-before-prerelease-train-13-20260721` @ `611fd08d`. PR #1 stays permanent draft never-merge. Tier 3A/3B still manual before deploy/tag.
+- Latest fork release tag (published): `v0.412.7-karlorz.2` on the prior package line; current `dev` package is **`0.416.43`** after `train-beta-15` (LAN auth, scoped CSP, remote resource preview, dual-profile packaging, and platform-qualified seed runtime retained).
+- Sync status (2026-07-23 post `train-beta-15`): **lastSynced = `train-beta-15`** (prerelease channel). Upstream target SHA is `a02622da...`; package, lockfile, and release digests align to `0.416.43` / `v0.416.43`. Further prerelease mutates still need `--i-accept-prerelease-sync` + `CONFIRM=<tag>`. PR #1 stays permanent draft never-merge. Tier 3A/3B are complete for this cycle; sg01 deployment remains explicitly unattended/not authorized.
 - Upstream sync workflow: `node scripts/sync-upstream.mjs --check` checks stable upstream releases by default; prerelease candidate review uses `--include-prerelease --check`; prerelease **mutate** requires double consent (see `FORK_SYNC.md` optional prerelease channel)
 - Fork sync rules: `docs/fork-sync/rules.yml` is the machine-readable policy used by `scripts/sync-upstream.mjs`.
 - Post-rebase fork sync verification: `node scripts/sync-upstream.mjs --post-rebase` prints Tier 3A local desktop install/version verification before Tier 3B sg01 live smoke. The installed `/Applications/HanaAgent.app` bundle metadata, `build-info.json`, and Settings → About must match `package.json` before the live smoke counts.
@@ -116,7 +116,7 @@ Ran a manual core `/dev-loop` cycle audit on 2026-06-15 after the remote preview
 - Doctor caveat: `skillwiki doctor` reports `32 pass`, `1 warn`, `0 errors`, but exits non-zero with the warning. Treat the JSON summary as authoritative for blocking decisions, not the exit code alone.
 - GitHub CLI caveat: plain `gh repo view` initially resolved to upstream `liliMozi/openhanako`. Ran `gh repo set-default karlorz/openhanako`; future CI/PR checks should still prefer explicit `--repo karlorz/openhanako` when scripted.
 - CI health: the `dev` branch trigger remains valid; release workflow run `29695065868` for tag `v0.407.15-karlorz.7` completed successfully and published the 20-asset legacy-raw prerelease surface (historical closeout on the prior stable line).
-- Upstream release check: the 2026-07-18 stable sync rebased local `dev` onto upstream `v0.407.15`. On 2026-07-21 an attended **optional prerelease-channel** mutate rebased `dev` onto GitHub prerelease **`train-13`** (package **`0.412.7`**, lastSynced `train-13`). Stable detector still reports latest non-prerelease `v0.407.15` (no newer stable). PR #1 stays open draft never-merge. Default channel remains stable-only; further prerelease mutates need double consent.
+- Upstream release check: the 2026-07-18 stable sync rebased local `dev` onto upstream `v0.407.15`; the historical 2026-07-21 prerelease sync used `train-13`. The current attended prerelease sync (2026-07-23) rebased `dev` onto GitHub prerelease **`train-beta-15`** / paired **`v0.416.43`** (package **`0.416.43`**, lastSynced `train-beta-15`). PR #1 stays open draft never-merge. Default channel remains stable-only; further prerelease mutates need double consent.
 - Codex cache caveat: dev-loop's cached skill copy references `skills/dev-loop/scripts/preflight-inventory.js`, but the Codex plugin package currently stores that helper at plugin root `scripts/preflight-inventory.js`. Use the plugin-root script as the fallback until the packaging layout is repaired upstream.
 
 ## Claude Review Follow-Up
@@ -200,3 +200,10 @@ After the 2026-06-16 maintenance cycle, the compact config now treats fork-sync 
 - sg01: `install-server upgrade --version v0.412.7-karlorz.1 --channel prerelease` → ok, current `...-linux-arm64`, service active/enabled.
 - CI: Build workflow success after dual-profile workflow/fix-modules restore; release job published assets.
 - Follow-up on `dev` (`9eb42275`, 2026-07-22): restored SettingsPage / settings-content-root / remote-assessment hydrate on SettingsContent; rewired platform-qualified seed discovery + dual-profile Windows install surface; re-added per-platform `verify-seed-kit` steps before `electron-builder`; repinned CLI closure / persistence inventory / schema fingerprint. Package remains **`0.412.7`**.
+
+## Attended prerelease sync closeout - 2026-07-23 (`train-beta-15` / `v0.416.43`)
+
+- `dev` rebased onto upstream SHA `a02622da02cd2edc8397066c6cb6bc256f306b97`, replaying 216 fork commits. Obsolete `v0.416.26` preparation and closeout commits were dropped; the CI profile-scoping fix was preserved as `3420026a`.
+- Package/lock/digest metadata align to `0.416.43` / `v0.416.43`. The Windows standalone sequence and profile-aware CI upload contracts were restored. Signed boot now resolves the exact `seed-train-darwin-arm64.json` (or matching runtime platform) and `.sig`; wrong-platform and missing-signature tests pass.
+- Tier 0-2 passed. Tier 3A installed strict-codesigned local `0.416.43` with local updates disabled and platform-qualified seed files. Tier 3B helper returned identity 200 and WS open; environment was `attention` because sg01 remains on server `0.412.7` / `v0.412.7-karlorz.2`.
+- Manual CDP smoke confirmed remote recovery, image upload/send, an Available Conversation Files row with enabled Preview, and preservation of the existing attachment thumbnail plus Conversation Files preview after switching chats and returning. The newly captioned smoke message was not counted as persisted after reload. No sg01 deployment, fork tag, or GitHub release occurred. Backup: `backup/dev-before-prerelease-v0.416.43-20260723` @ `61b3c854`.

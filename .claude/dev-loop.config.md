@@ -249,6 +249,7 @@ notes:
   permanent_dashboard_pr_policy: "Draft forever: never merge, auto-merge, or close as a completed merge vehicle. Use it only to review dev against mirrored upstream main."
   dashboard_refresh_policy: "Use `node scripts/sync-upstream.mjs --conflict-plan`; it may mirror origin/main from upstream/main but must never merge, rebase, reset, stage, or write dev."
   tag_namespace_rule: "Plain v{version} tags belong to upstream sync targets; fork release tags use the -karlorz.N suffix. Latest verified fork tag: v0.412.7-karlorz.2."
+  current_prerelease_sync: "2026-07-23: dev rebased onto train-beta-15 / v0.416.43 at a02622da; package/lock/digests align to 0.416.43. Local signed desktop verified; sg01 remains unchanged on v0.412.7-karlorz.2 and reports environment attention."
   fork_sync_post_rebase_gate: "Run `node scripts/sync-upstream.mjs --post-rebase`; Tier 3A local desktop install/version verification must pass before Tier 3B sg01 live smoke. A smoke run against a stale /Applications/HanaAgent.app is invalid."
   remote_server_url: http://100.125.173.118:14500
   sg01_service: hanaagent
