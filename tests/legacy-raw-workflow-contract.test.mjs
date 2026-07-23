@@ -206,5 +206,20 @@ describe("legacy-raw release workflow contract", () => {
     expect(verification).toContain("release-digest.v1.json");
     expect(workflow).toContain("Validate committed release digest");
     expect(workflow).toContain("gh release upload \"${{ github.ref_name }}\" release-digest.v1.json");
+
+    const signedOnlyChecks = [
+      "macOS-arm64.dmg",
+      "macOS-x64.dmg",
+      "Windows-x64.exe",
+      "server darwin-arm64 hot-update archive",
+      "renderer hot-update archive",
+      "Windows x64 standalone server archive",
+    ];
+    const signedBranch = verification.indexOf("if [ \"$HANA_RELEASE_PROFILE\" = \"signed\" ]");
+    expect(signedBranch).toBeGreaterThanOrEqual(0);
+    const preProfileChecks = verification.slice(0, signedBranch);
+    for (const check of signedOnlyChecks) {
+      expect(preProfileChecks).not.toContain(check);
+    }
   });
 });
