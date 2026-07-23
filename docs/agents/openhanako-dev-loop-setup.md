@@ -1,6 +1,6 @@
 # OpenHanako Dev-Loop Setup Notes
 
-Generated during the 2026-06-15 remote attachment preview fix closeout. Last revised during the 2026-07-23 attended prerelease-channel sync onto `train-beta-15` / `v0.416.43`.
+Generated during the 2026-06-15 remote attachment preview fix closeout. Last revised during the 2026-07-23 attended `v0.416.43-karlorz.1` fork release and dual deployment.
 
 ## Discovery
 
@@ -8,15 +8,15 @@ Generated during the 2026-06-15 remote attachment preview fix closeout. Last rev
 - Upstream: `liliMozi/openhanako`
 - Current branch: `dev`
 - GitHub CLI default repo: `karlorz/openhanako`
-- App version: **`0.416.43`** after the attended optional prerelease-channel rebase onto upstream GitHub prerelease tag **`train-beta-15`**, paired with `v0.416.43` (double consent). Upstream SHA: `a02622da02cd2edc8397066c6cb6bc256f306b97`. Prior fork backup: `backup/dev-before-prerelease-v0.416.43-20260723` @ `61b3c8549d3e9332852eaa77e5ab01a0346b3d3c`. No new fork tag or release was published.
+- App version: **`0.416.43`** after the attended optional prerelease-channel rebase onto upstream GitHub prerelease tag **`train-beta-15`**, paired with `v0.416.43` (double consent). Upstream SHA: `a02622da02cd2edc8397066c6cb6bc256f306b97`. The immutable fork release `v0.416.43-karlorz.1` now publishes from fork SHA `b385e5fb56bdfcbc45871becfd7d732ac17086d6`.
 - SkillWiki vault: resolved by `skillwiki path`; project wiki path `projects/openhanako`
 - SkillWiki doctor: 32 pass, 6 info, 0 warn, 0 errors
 - Dev-loop dependency probe: usable; required dependencies present
 - Missing optional dependency: `claude-mem` only
 - Existing CI: `.github/workflows/ci.yml`, targets `main` and `dev`
 - Release workflow: `.github/workflows/build.yml`, tag-triggered `v*`
-- Latest fork release tag (published): `v0.412.7-karlorz.2` on the prior package line; current `dev` package is **`0.416.43`** after `train-beta-15` (LAN auth, scoped CSP, remote resource preview, dual-profile packaging, and platform-qualified seed runtime retained).
-- Sync status (2026-07-23 post `train-beta-15`): **lastSynced = `train-beta-15`** (prerelease channel). Upstream target SHA is `a02622da...`; package, lockfile, and release digests align to `0.416.43` / `v0.416.43`. Further prerelease mutates still need `--i-accept-prerelease-sync` + `CONFIRM=<tag>`. PR #1 stays permanent draft never-merge. Tier 3A/3B are complete for this cycle; sg01 deployment remains explicitly unattended/not authorized.
+- Latest fork release tag (published): **`v0.416.43-karlorz.1`** (`legacy-raw`, prerelease) at `b385e5fb56bdfcbc45871becfd7d732ac17086d6`; current `dev` package is **`0.416.43`** after `train-beta-15` (LAN auth, scoped CSP, remote resource preview, dual-profile packaging, and platform-qualified seed runtime retained).
+- Sync/release status (2026-07-23): **lastSynced = `train-beta-15`** (prerelease channel), and the fork release/tag, exact macOS install, sg01 upgrade, automated helper, and manual image/preview/chat-switch smoke are complete. PR #1 stays permanent draft never-merge. The release-created-by-bot event has no AtomGit mirror run by workflow policy; `legacy-raw` intentionally excludes mirror/train assets.
 - Upstream sync workflow: `node scripts/sync-upstream.mjs --check` checks stable upstream releases by default; prerelease candidate review uses `--include-prerelease --check`; prerelease **mutate** requires double consent (see `FORK_SYNC.md` optional prerelease channel)
 - Fork sync rules: `docs/fork-sync/rules.yml` is the machine-readable policy used by `scripts/sync-upstream.mjs`.
 - Post-rebase fork sync verification: `node scripts/sync-upstream.mjs --post-rebase` prints Tier 3A local desktop install/version verification before Tier 3B sg01 live smoke. The installed `/Applications/HanaAgent.app` bundle metadata, `build-info.json`, and Settings → About must match `package.json` before the live smoke counts.
@@ -207,3 +207,10 @@ After the 2026-06-16 maintenance cycle, the compact config now treats fork-sync 
 - Package/lock/digest metadata align to `0.416.43` / `v0.416.43`. The Windows standalone sequence and profile-aware CI upload contracts were restored. Signed boot now resolves the exact `seed-train-darwin-arm64.json` (or matching runtime platform) and `.sig`; wrong-platform and missing-signature tests pass.
 - Tier 0-2 passed. Tier 3A installed strict-codesigned local `0.416.43` with local updates disabled and platform-qualified seed files. Tier 3B helper returned identity 200 and WS open; environment was `attention` because sg01 remains on server `0.412.7` / `v0.412.7-karlorz.2`.
 - Manual CDP smoke confirmed remote recovery, image upload/send, an Available Conversation Files row with enabled Preview, and preservation of the existing attachment thumbnail plus Conversation Files preview after switching chats and returning. The newly captioned smoke message was not counted as persisted after reload. No sg01 deployment, fork tag, or GitHub release occurred. Backup: `backup/dev-before-prerelease-v0.416.43-20260723` @ `61b3c854`.
+
+## Fork release + dual deploy closeout - 2026-07-23 (`v0.416.43-karlorz.1`)
+
+- `dev` and `origin/dev` are at `b385e5fb56bdfcbc45871becfd7d732ac17086d6`; the immutable fork prerelease tag and GitHub release are `v0.416.43-karlorz.1` with `legacy-raw` assets. Push CI, dashboard PR CI, and Build run `29999546058` passed.
+- The published arm64 DMG is installed at `/Applications/HanaAgent.app`; bundle versions are `0.416.43`, strict deep codesign passed, and build metadata matches the release tag/SHA and `karlorz/openhanako`.
+- sg01 was upgraded with the tagged `scripts/install-server.mjs` using a prerelease dry-run followed by disk-backed execute. Current release, active/enabled service, listener, mobile/static locale assets, exact release match, and freshness are all verified.
+- Automated LAN helper and manual Computer Use smoke passed identity/WebSocket, image upload/send, transcript thumbnail, Conversation Files, nonblank preview rendering, chat switch, return, and restored preview checks. The installed desktop app is intentionally left available for the user.
