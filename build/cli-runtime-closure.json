@@ -8992,6 +8992,11 @@
         },
         {
           "root": "server-bootstrap",
+          "from": "core/desktop-session-submit.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
           "from": "lib/sandbox/read-office-media.ts",
           "kind": "import-statement"
         },
@@ -9011,7 +9016,7 @@
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by lib/session-files/browser-screenshot-file.ts (import-statement); core/migrations.ts (import-statement); lib/session-files/bridge-inbound-files.ts (import-statement); +4 more importer(s)."
+      "reason": "Reached via esbuild source module graph, imported by lib/session-files/browser-screenshot-file.ts (import-statement); core/migrations.ts (import-statement); lib/session-files/bridge-inbound-files.ts (import-statement); +5 more importer(s)."
     },
     {
       "path": "lib/session-files/session-file-response.ts",
@@ -51872,39 +51877,6 @@
     },
     {
       "path": "node_modules/@fast-csv/parse/package.json",
-      "inputType": "nft-runtime-trace",
-      "provenance": [
-        {
-          "root": "nft-server-bundle",
-          "kind": "nft-trace"
-        }
-      ],
-      "reason": "nft-runtime-trace via nft-server-bundle (see roots[] for the full explanation)"
-    },
-    {
-      "path": "node_modules/@firecrawl/anydoc-<platform>/package.json",
-      "inputType": "nft-runtime-trace",
-      "provenance": [
-        {
-          "root": "nft-server-bundle",
-          "kind": "nft-trace"
-        }
-      ],
-      "reason": "nft-runtime-trace via nft-server-bundle (see roots[] for the full explanation)"
-    },
-    {
-      "path": "node_modules/@firecrawl/anydoc/index.js",
-      "inputType": "nft-runtime-trace",
-      "provenance": [
-        {
-          "root": "nft-server-bundle",
-          "kind": "nft-trace"
-        }
-      ],
-      "reason": "nft-runtime-trace via nft-server-bundle (see roots[] for the full explanation)"
-    },
-    {
-      "path": "node_modules/@firecrawl/anydoc/package.json",
       "inputType": "nft-runtime-trace",
       "provenance": [
         {
@@ -112215,6 +112187,98 @@
       "reason": "Reached via esbuild source module graph, imported by core/preferences-manager.ts (import-statement); server/routes/preferences.ts (import-statement); server/routes/settings-snapshot.ts (import-statement)."
     },
     {
+      "path": "shared/remote-feature-contracts.cjs",
+      "inputType": "source-graph",
+      "provenance": [
+        {
+          "root": "server-bootstrap",
+          "from": "shared/remote-feature-contracts.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
+          "from": "shared/remote-server-release-catalog.cjs",
+          "kind": "require-call"
+        }
+      ],
+      "reason": "Reached via esbuild source module graph, imported by shared/remote-feature-contracts.ts (import-statement); shared/remote-server-release-catalog.cjs (require-call)."
+    },
+    {
+      "path": "shared/remote-feature-contracts.json",
+      "inputType": "source-graph",
+      "provenance": [
+        {
+          "root": "server-bootstrap",
+          "from": "shared/remote-feature-contracts.cjs",
+          "kind": "require-call"
+        }
+      ],
+      "reason": "Reached via esbuild source module graph, imported by shared/remote-feature-contracts.cjs (require-call)."
+    },
+    {
+      "path": "shared/remote-feature-contracts.ts",
+      "inputType": "source-graph",
+      "provenance": [
+        {
+          "root": "server-bootstrap",
+          "from": "core/server-runtime-context.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
+          "from": "server/index.ts",
+          "kind": "import-statement"
+        }
+      ],
+      "reason": "Reached via esbuild source module graph, imported by core/server-runtime-context.ts (import-statement); server/index.ts (import-statement)."
+    },
+    {
+      "path": "shared/remote-server-policy.json",
+      "inputType": "source-graph",
+      "provenance": [
+        {
+          "root": "server-bootstrap",
+          "from": "shared/remote-server-release-catalog.cjs",
+          "kind": "require-call"
+        }
+      ],
+      "reason": "Reached via esbuild source module graph, imported by shared/remote-server-release-catalog.cjs (require-call)."
+    },
+    {
+      "path": "shared/remote-server-release-catalog.cjs",
+      "inputType": "source-graph",
+      "provenance": [
+        {
+          "root": "server-bootstrap",
+          "from": "shared/server-build-info.cjs",
+          "kind": "require-call"
+        },
+        {
+          "root": "server-bootstrap",
+          "from": "shared/remote-server-release-catalog.ts",
+          "kind": "import-statement"
+        }
+      ],
+      "reason": "Reached via esbuild source module graph, imported by shared/server-build-info.cjs (require-call); shared/remote-server-release-catalog.ts (import-statement)."
+    },
+    {
+      "path": "shared/remote-server-release-catalog.ts",
+      "inputType": "source-graph",
+      "provenance": [
+        {
+          "root": "server-bootstrap",
+          "from": "core/server-runtime-context.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
+          "from": "server/index.ts",
+          "kind": "import-statement"
+        }
+      ],
+      "reason": "Reached via esbuild source module graph, imported by core/server-runtime-context.ts (import-statement); server/index.ts (import-statement)."
+    },
+    {
       "path": "shared/runtime-api-key-ref.ts",
       "inputType": "source-graph",
       "provenance": [
@@ -112667,6 +112731,35 @@
       "reason": "Reached via esbuild source module graph, imported by shared/migrate-config-scope.ts (import-statement); core/migrate-providers.ts (import-statement); core/provider-media-config.ts (import-statement); +12 more importer(s)."
     },
     {
+      "path": "shared/server-build-info.cjs",
+      "inputType": "source-graph",
+      "provenance": [
+        {
+          "root": "server-bootstrap",
+          "from": "shared/server-build-info.ts",
+          "kind": "import-statement"
+        }
+      ],
+      "reason": "Reached via esbuild source module graph, imported by shared/server-build-info.ts (import-statement)."
+    },
+    {
+      "path": "shared/server-build-info.ts",
+      "inputType": "source-graph",
+      "provenance": [
+        {
+          "root": "server-bootstrap",
+          "from": "core/server-runtime-context.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
+          "from": "server/index.ts",
+          "kind": "import-statement"
+        }
+      ],
+      "reason": "Reached via esbuild source module graph, imported by core/server-runtime-context.ts (import-statement); server/index.ts (import-statement)."
+    },
+    {
       "path": "shared/server-info-probe.cjs",
       "inputType": "source-graph",
       "provenance": [
@@ -113035,11 +113128,11 @@
     }
   ],
   "stats": {
-    "totalFiles": 9651,
+    "totalFiles": 9656,
     "byInputType": {
-      "source-graph": 670,
+      "source-graph": 678,
       "runtime-asset": 11,
-      "nft-runtime-trace": 8970
+      "nft-runtime-trace": 8967
     }
   }
 }
