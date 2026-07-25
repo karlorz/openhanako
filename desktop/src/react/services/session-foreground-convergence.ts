@@ -11,7 +11,11 @@
 
 export interface SessionForegroundConvergenceOptions {
   /** Refresh session list projections (Desktop loadSessions / Mobile loadMobileSessions). */
-  refreshSessions: () => Promise<unknown> | unknown;
+  /**
+   * Return false to stop the run before reconcile (for example when an auth
+   * validity gate moved the renderer out of its authenticated shell).
+   */
+  refreshSessions: () => Promise<boolean | void> | boolean | void;
   /**
    * After the list is fresh, reconcile the open session by revision.
    * Defaults to a no-op when omitted (tests may inject).
@@ -45,7 +49,8 @@ export function bindSessionForegroundConvergence(
     inFlight = true;
     lastStartedAt = startedAt;
     Promise.resolve(options.refreshSessions())
-      .then(() => {
+      .then((shouldContinue) => {
+        if (shouldContinue === false) return undefined;
         if (!reconcile) return undefined;
         return reconcile(reason);
       })
