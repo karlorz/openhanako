@@ -3527,6 +3527,7 @@
     "auth": {
       "scopeError": "当前登录缺少工作台权限，请重新输入访问密钥。",
       "loginFailed": "登录失败",
+      "sessionEnded": "你的会话已结束，请重新登录。",
       "title": "手机访问 Hana",
       "deviceHelp": "输入桌面端为这台设备生成的访问密钥。登录后会改用 HttpOnly 会话 cookie。",
       "passwordHelp": "使用桌面端设置的本地账号登录。局域网明文 HTTP 会被服务器拒绝，请使用本机、HTTPS 或可信 Tunnel。",
