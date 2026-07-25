@@ -627,7 +627,7 @@
     ],
     "version": 2
   },
-  "payloadFingerprint": "sha256:a4fc5762d633d60b729f68268650a9b73e52d275279e650bf5c9897a991c69f2",
+  "payloadFingerprint": "sha256:28b772490200d9928804eb924e473457686fa1d5640e977f8f0219a8d16049ac",
   "registry": [
     {
       "affectedByEpochMigration": true,
@@ -2878,8 +2878,8 @@
   ],
   "review": {
     "classification": "compatible",
-    "compatibilityReason": "Added a non-caching PowerShell-flavor detector and its explanatory comments above the existing runtime-cache helpers in lib/sandbox/win32-runtime-cache.ts; this shifts scanned excerpt line numbers only, no store schema, site kind, or protocol module changed.",
-    "payloadFingerprint": "sha256:a4fc5762d633d60b729f68268650a9b73e52d275279e650bf5c9897a991c69f2"
+    "compatibilityReason": "Stable v0.416.44 rebase receipt alignment: preserves the fork's existing session-files staging write sites and source-hash updates while incorporating upstream PowerShell detector line-number drift; no persistent store schema, site kind, protocol module, or DATA_EPOCH changed.",
+    "payloadFingerprint": "sha256:28b772490200d9928804eb924e473457686fa1d5640e977f8f0219a8d16049ac"
   },
   "schemas": [
     {
@@ -3062,7 +3062,7 @@
       "contract": "desktop window bounds, release announcement bookmark, and update cache version marker readers",
       "kind": "directory-contract",
       "module": "desktop/main.cjs",
-      "sourceHash": "sha256:47db6c8bd28025698cf46167d51e9a4cec7fdd0d6a4ff65c4fe6375b7022d71a",
+      "sourceHash": "sha256:d88a6473103fb974fc29829f516eabcfb0c7342157c455d3f5adf84874525d4c",
       "storeId": "desktop-window-version-state"
     },
     {
@@ -3097,7 +3097,7 @@
       "contract": "sessionless upload naming and age-based cleanup protocol",
       "kind": "directory-contract",
       "module": "server/routes/upload.ts",
-      "sourceHash": "sha256:2cb5e59a987329cd05f390e64d6a25ce6c7b07b7832ec5d0716245420287f96b",
+      "sourceHash": "sha256:6f4e3fa9c36085c4f261cf164dbc8ea1c228c23640af0e15215d486cc497082d",
       "storeId": "legacy-upload-cache"
     },
     {
@@ -3208,7 +3208,7 @@
       "contract": "server-info writer and desktop bootstrap reader",
       "kind": "runtime-contract",
       "module": "server/index.ts",
-      "sourceHash": "sha256:cadb33786f3ebfe9d053111f5210d60c325ce8138febf0e545965be626696835",
+      "sourceHash": "sha256:38fef78a0180e355df1601b58e1dd127ea30811eb3e635317616e84eaa3da0f8",
       "storeId": "server-runtime-info"
     },
     {
@@ -3230,7 +3230,7 @@
         {
           "contract": "core/session-coordinator.ts Hana metadata extensions",
           "module": "core/session-coordinator.ts",
-          "sourceHash": "sha256:883df4949941950c6d5be628a9bb47129a8ee67c61530facca153091f768bff2"
+          "sourceHash": "sha256:1919710ff1de40159a00390a71a24e3e7fadf1ee6309007b59364329a98622e7"
         },
         {
           "contract": "core/session-jsonl-file.ts repair contract",
@@ -3803,6 +3803,30 @@
     },
     {
       "exemptionId": null,
+      "kind": "mkdir",
+      "line": 675,
+      "reason": "Stages payload bytes or updates SessionFile sidecars under the managed cache.",
+      "sourceFile": "core/desktop-session-submit.ts",
+      "storeId": "session-files"
+    },
+    {
+      "exemptionId": null,
+      "kind": "copy-file",
+      "line": 678,
+      "reason": "Stages payload bytes or updates SessionFile sidecars under the managed cache.",
+      "sourceFile": "core/desktop-session-submit.ts",
+      "storeId": "session-files"
+    },
+    {
+      "exemptionId": null,
+      "kind": "copy-file",
+      "line": 680,
+      "reason": "Stages payload bytes or updates SessionFile sidecars under the managed cache.",
+      "sourceFile": "core/desktop-session-submit.ts",
+      "storeId": "session-files"
+    },
+    {
+      "exemptionId": null,
       "kind": "atomic-write",
       "line": 30,
       "reason": "Writes one member of the device-access registry set.",
@@ -3852,7 +3876,7 @@
     {
       "exemptionId": null,
       "kind": "mkdir",
-      "line": 315,
+      "line": 321,
       "reason": "Creates the channel root.",
       "sourceFile": "core/engine.ts",
       "storeId": "channels"
@@ -3860,7 +3884,7 @@
     {
       "exemptionId": null,
       "kind": "persistent-store-constructor",
-      "line": 361,
+      "line": 367,
       "reason": "Constructs the preferences owner.",
       "sourceFile": "core/engine.ts",
       "storeId": "user-preferences"
@@ -3868,7 +3892,7 @@
     {
       "exemptionId": null,
       "kind": "persistent-store-constructor",
-      "line": 362,
+      "line": 368,
       "reason": "Constructs draft/project stores.",
       "sourceFile": "core/engine.ts",
       "storeId": "session-drafts-and-projects"
@@ -3876,7 +3900,7 @@
     {
       "exemptionId": null,
       "kind": "persistent-store-constructor",
-      "line": 380,
+      "line": 386,
       "reason": "Constructs draft/project stores.",
       "sourceFile": "core/engine.ts",
       "storeId": "session-drafts-and-projects"
@@ -3884,7 +3908,7 @@
     {
       "exemptionId": null,
       "kind": "persistent-store-constructor",
-      "line": 613,
+      "line": 619,
       "reason": "Constructs the plugin task registry.",
       "sourceFile": "core/engine.ts",
       "storeId": "plugin-task-registry"
@@ -3892,7 +3916,7 @@
     {
       "exemptionId": null,
       "kind": "persistent-store-constructor",
-      "line": 1236,
+      "line": 1242,
       "reason": "Constructs the manifest store during engine construction.",
       "sourceFile": "core/engine.ts",
       "storeId": "session-manifest-sqlite"
@@ -3900,7 +3924,7 @@
     {
       "exemptionId": null,
       "kind": "persistent-store-constructor",
-      "line": 1257,
+      "line": 1263,
       "reason": "Constructs the manifest store during engine construction.",
       "sourceFile": "core/engine.ts",
       "storeId": "session-manifest-sqlite"
@@ -3908,7 +3932,7 @@
     {
       "exemptionId": null,
       "kind": "mkdir",
-      "line": 2173,
+      "line": 2182,
       "reason": "Creates the user skill root.",
       "sourceFile": "core/engine.ts",
       "storeId": "skill-state"
@@ -3916,7 +3940,7 @@
     {
       "exemptionId": null,
       "kind": "remove-path",
-      "line": 2355,
+      "line": 2364,
       "reason": "Deletes an expired legacy ephemeral session JSONL locator.",
       "sourceFile": "core/engine.ts",
       "storeId": "session-jsonl"
@@ -3924,7 +3948,7 @@
     {
       "exemptionId": null,
       "kind": "mkdir",
-      "line": 2409,
+      "line": 2418,
       "reason": "Creates the plugin development source root.",
       "sourceFile": "core/engine.ts",
       "storeId": "plugin-development-state"
@@ -4180,7 +4204,7 @@
     {
       "exemptionId": null,
       "kind": "mkdir",
-      "line": 307,
+      "line": 309,
       "reason": "Owns provider catalog, authentication, model compatibility, or local provider plugin state.",
       "sourceFile": "core/local-provider-plugin-store.ts",
       "storeId": "provider-state"
@@ -4188,7 +4212,7 @@
     {
       "exemptionId": null,
       "kind": "atomic-write",
-      "line": 308,
+      "line": 310,
       "reason": "Owns provider catalog, authentication, model compatibility, or local provider plugin state.",
       "sourceFile": "core/local-provider-plugin-store.ts",
       "storeId": "provider-state"
@@ -4196,7 +4220,7 @@
     {
       "exemptionId": null,
       "kind": "atomic-write",
-      "line": 314,
+      "line": 316,
       "reason": "Owns provider catalog, authentication, model compatibility, or local provider plugin state.",
       "sourceFile": "core/local-provider-plugin-store.ts",
       "storeId": "provider-state"
@@ -4204,7 +4228,7 @@
     {
       "exemptionId": null,
       "kind": "remove-path",
-      "line": 323,
+      "line": 325,
       "reason": "Owns provider catalog, authentication, model compatibility, or local provider plugin state.",
       "sourceFile": "core/local-provider-plugin-store.ts",
       "storeId": "provider-state"
@@ -4212,7 +4236,7 @@
     {
       "exemptionId": null,
       "kind": "remove-path",
-      "line": 326,
+      "line": 328,
       "reason": "Owns provider catalog, authentication, model compatibility, or local provider plugin state.",
       "sourceFile": "core/local-provider-plugin-store.ts",
       "storeId": "provider-state"
@@ -5444,7 +5468,7 @@
     {
       "exemptionId": null,
       "kind": "write-file",
-      "line": 6556,
+      "line": 6565,
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
       "sourceFile": "core/session-coordinator.ts",
       "storeId": "session-jsonl"
@@ -5452,7 +5476,7 @@
     {
       "exemptionId": null,
       "kind": "write-file",
-      "line": 6664,
+      "line": 6673,
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
       "sourceFile": "core/session-coordinator.ts",
       "storeId": "session-jsonl"
@@ -5460,14 +5484,6 @@
     {
       "exemptionId": null,
       "kind": "write-file",
-      "line": 6996,
-      "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
-      "sourceFile": "core/session-coordinator.ts",
-      "storeId": "session-jsonl"
-    },
-    {
-      "exemptionId": null,
-      "kind": "remove-path",
       "line": 7005,
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
       "sourceFile": "core/session-coordinator.ts",
@@ -5475,24 +5491,8 @@
     },
     {
       "exemptionId": null,
-      "kind": "write-file",
-      "line": 7027,
-      "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
-      "sourceFile": "core/session-coordinator.ts",
-      "storeId": "session-jsonl"
-    },
-    {
-      "exemptionId": null,
-      "kind": "mkdir",
-      "line": 7037,
-      "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
-      "sourceFile": "core/session-coordinator.ts",
-      "storeId": "session-jsonl"
-    },
-    {
-      "exemptionId": null,
-      "kind": "rename",
-      "line": 7085,
+      "kind": "remove-path",
+      "line": 7014,
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
       "sourceFile": "core/session-coordinator.ts",
       "storeId": "session-jsonl"
@@ -5500,7 +5500,7 @@
     {
       "exemptionId": null,
       "kind": "write-file",
-      "line": 7112,
+      "line": 7036,
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
       "sourceFile": "core/session-coordinator.ts",
       "storeId": "session-jsonl"
@@ -5508,7 +5508,15 @@
     {
       "exemptionId": null,
       "kind": "mkdir",
-      "line": 7184,
+      "line": 7046,
+      "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
+      "sourceFile": "core/session-coordinator.ts",
+      "storeId": "session-jsonl"
+    },
+    {
+      "exemptionId": null,
+      "kind": "rename",
+      "line": 7111,
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
       "sourceFile": "core/session-coordinator.ts",
       "storeId": "session-jsonl"
@@ -5516,7 +5524,7 @@
     {
       "exemptionId": null,
       "kind": "write-file",
-      "line": 7185,
+      "line": 7140,
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
       "sourceFile": "core/session-coordinator.ts",
       "storeId": "session-jsonl"
@@ -5524,7 +5532,23 @@
     {
       "exemptionId": null,
       "kind": "mkdir",
-      "line": 7360,
+      "line": 7214,
+      "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
+      "sourceFile": "core/session-coordinator.ts",
+      "storeId": "session-jsonl"
+    },
+    {
+      "exemptionId": null,
+      "kind": "write-file",
+      "line": 7215,
+      "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
+      "sourceFile": "core/session-coordinator.ts",
+      "storeId": "session-jsonl"
+    },
+    {
+      "exemptionId": null,
+      "kind": "mkdir",
+      "line": 7390,
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
       "sourceFile": "core/session-coordinator.ts",
       "storeId": "session-jsonl"
@@ -5532,7 +5556,7 @@
     {
       "exemptionId": null,
       "kind": "rename",
-      "line": 7361,
+      "line": 7391,
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
       "sourceFile": "core/session-coordinator.ts",
       "storeId": "session-jsonl"
@@ -5540,7 +5564,7 @@
     {
       "exemptionId": null,
       "kind": "rename",
-      "line": 7377,
+      "line": 7407,
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
       "sourceFile": "core/session-coordinator.ts",
       "storeId": "session-jsonl"
@@ -5548,7 +5572,7 @@
     {
       "exemptionId": null,
       "kind": "remove-path",
-      "line": 7469,
+      "line": 7499,
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
       "sourceFile": "core/session-coordinator.ts",
       "storeId": "session-jsonl"
@@ -5556,7 +5580,7 @@
     {
       "exemptionId": null,
       "kind": "remove-path",
-      "line": 7480,
+      "line": 7510,
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
       "sourceFile": "core/session-coordinator.ts",
       "storeId": "session-jsonl"
@@ -5564,7 +5588,7 @@
     {
       "exemptionId": null,
       "kind": "mkdir",
-      "line": 7485,
+      "line": 7515,
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
       "sourceFile": "core/session-coordinator.ts",
       "storeId": "session-jsonl"
@@ -5828,14 +5852,6 @@
     {
       "exemptionId": null,
       "kind": "mkdir",
-      "line": 182,
-      "reason": "Appends desktop auto-update diagnostics.",
-      "sourceFile": "desktop/auto-updater.cjs",
-      "storeId": "runtime-diagnostics"
-    },
-    {
-      "exemptionId": null,
-      "kind": "append-file",
       "line": 183,
       "reason": "Appends desktop auto-update diagnostics.",
       "sourceFile": "desktop/auto-updater.cjs",
@@ -5843,8 +5859,16 @@
     },
     {
       "exemptionId": null,
+      "kind": "append-file",
+      "line": 184,
+      "reason": "Appends desktop auto-update diagnostics.",
+      "sourceFile": "desktop/auto-updater.cjs",
+      "storeId": "runtime-diagnostics"
+    },
+    {
+      "exemptionId": null,
       "kind": "mkdir",
-      "line": 411,
+      "line": 432,
       "reason": "Migrates or writes the current desktop update-cache version marker.",
       "sourceFile": "desktop/auto-updater.cjs",
       "storeId": "desktop-window-version-state"
@@ -5852,7 +5876,7 @@
     {
       "exemptionId": null,
       "kind": "rename",
-      "line": 412,
+      "line": 433,
       "reason": "Migrates or writes the current desktop update-cache version marker.",
       "sourceFile": "desktop/auto-updater.cjs",
       "storeId": "desktop-window-version-state"
@@ -5860,7 +5884,7 @@
     {
       "exemptionId": "desktop-legacy-update-path-cleanup",
       "kind": "remove-path",
-      "line": 414,
+      "line": 435,
       "reason": "Deletes the exact legacy last-update-version source and its now-empty legacy directory outside the active HANA_HOME.",
       "sourceFile": "desktop/auto-updater.cjs",
       "storeId": null
@@ -5868,7 +5892,7 @@
     {
       "exemptionId": "desktop-legacy-update-path-cleanup",
       "kind": "remove-path",
-      "line": 417,
+      "line": 438,
       "reason": "Deletes the exact legacy last-update-version source and its now-empty legacy directory outside the active HANA_HOME.",
       "sourceFile": "desktop/auto-updater.cjs",
       "storeId": null
@@ -5876,7 +5900,7 @@
     {
       "exemptionId": null,
       "kind": "mkdir",
-      "line": 440,
+      "line": 461,
       "reason": "Migrates or writes the current desktop update-cache version marker.",
       "sourceFile": "desktop/auto-updater.cjs",
       "storeId": "desktop-window-version-state"
@@ -5884,7 +5908,7 @@
     {
       "exemptionId": null,
       "kind": "write-file",
-      "line": 441,
+      "line": 462,
       "reason": "Migrates or writes the current desktop update-cache version marker.",
       "sourceFile": "desktop/auto-updater.cjs",
       "storeId": "desktop-window-version-state"
@@ -5892,7 +5916,7 @@
     {
       "exemptionId": "desktop-electron-update-cache",
       "kind": "remove-path",
-      "line": 456,
+      "line": 477,
       "reason": "Deletes Electron updater's regenerable pending cache under app.getPath(userData), not Hana application state.",
       "sourceFile": "desktop/auto-updater.cjs",
       "storeId": null
@@ -5940,7 +5964,7 @@
     {
       "exemptionId": null,
       "kind": "remove-path",
-      "line": 1222,
+      "line": 1263,
       "reason": "Deletes stale desktop server discovery state before or after a server lifecycle.",
       "sourceFile": "desktop/main.cjs",
       "storeId": "server-runtime-info"
@@ -5948,7 +5972,7 @@
     {
       "exemptionId": null,
       "kind": "remove-path",
-      "line": 1226,
+      "line": 1267,
       "reason": "Deletes stale desktop server discovery state before or after a server lifecycle.",
       "sourceFile": "desktop/main.cjs",
       "storeId": "server-runtime-info"
@@ -5956,7 +5980,7 @@
     {
       "exemptionId": null,
       "kind": "remove-path",
-      "line": 1741,
+      "line": 1823,
       "reason": "Deletes stale desktop server discovery state before or after a server lifecycle.",
       "sourceFile": "desktop/main.cjs",
       "storeId": "server-runtime-info"
@@ -5964,7 +5988,7 @@
     {
       "exemptionId": null,
       "kind": "mkdir",
-      "line": 2233,
+      "line": 2314,
       "reason": "Writes desktop crash or browser-command diagnostics.",
       "sourceFile": "desktop/main.cjs",
       "storeId": "desktop-diagnostics"
@@ -5972,7 +5996,7 @@
     {
       "exemptionId": null,
       "kind": "write-file",
-      "line": 2234,
+      "line": 2315,
       "reason": "Writes desktop crash or browser-command diagnostics.",
       "sourceFile": "desktop/main.cjs",
       "storeId": "desktop-diagnostics"
@@ -5980,7 +6004,7 @@
     {
       "exemptionId": null,
       "kind": "mkdir",
-      "line": 2295,
+      "line": 2376,
       "reason": "Writes desktop window bounds or the release-announcement version bookmark.",
       "sourceFile": "desktop/main.cjs",
       "storeId": "desktop-window-version-state"
@@ -5988,7 +6012,7 @@
     {
       "exemptionId": null,
       "kind": "write-file",
-      "line": 2296,
+      "line": 2377,
       "reason": "Writes desktop window bounds or the release-announcement version bookmark.",
       "sourceFile": "desktop/main.cjs",
       "storeId": "desktop-window-version-state"
@@ -5996,7 +6020,7 @@
     {
       "exemptionId": null,
       "kind": "write-file",
-      "line": 2364,
+      "line": 2445,
       "reason": "Writes desktop window bounds or the release-announcement version bookmark.",
       "sourceFile": "desktop/main.cjs",
       "storeId": "desktop-window-version-state"
@@ -6004,7 +6028,7 @@
     {
       "exemptionId": null,
       "kind": "mkdir",
-      "line": 2463,
+      "line": 2544,
       "reason": "Writes desktop window bounds or the release-announcement version bookmark.",
       "sourceFile": "desktop/main.cjs",
       "storeId": "desktop-window-version-state"
@@ -6012,7 +6036,7 @@
     {
       "exemptionId": null,
       "kind": "write-file",
-      "line": 2464,
+      "line": 2545,
       "reason": "Writes desktop window bounds or the release-announcement version bookmark.",
       "sourceFile": "desktop/main.cjs",
       "storeId": "desktop-window-version-state"
@@ -6020,7 +6044,7 @@
     {
       "exemptionId": null,
       "kind": "append-file",
-      "line": 4217,
+      "line": 4297,
       "reason": "Writes desktop crash or browser-command diagnostics.",
       "sourceFile": "desktop/main.cjs",
       "storeId": "desktop-diagnostics"
@@ -6028,7 +6052,7 @@
     {
       "exemptionId": "desktop-screenshot-html-temp",
       "kind": "write-file",
-      "line": 4784,
+      "line": 4864,
       "reason": "Writes and removes one request-scoped screenshot HTML file under the operating-system temporary directory.",
       "sourceFile": "desktop/main.cjs",
       "storeId": null
@@ -6036,7 +6060,7 @@
     {
       "exemptionId": "desktop-screenshot-html-temp",
       "kind": "remove-path",
-      "line": 4838,
+      "line": 4918,
       "reason": "Writes and removes one request-scoped screenshot HTML file under the operating-system temporary directory.",
       "sourceFile": "desktop/main.cjs",
       "storeId": null
@@ -6044,7 +6068,7 @@
     {
       "exemptionId": "desktop-skill-preview-temp",
       "kind": "mkdir",
-      "line": 5403,
+      "line": 5513,
       "reason": "Creates a request-scoped skill preview directory under Electron's operating-system temp path.",
       "sourceFile": "desktop/main.cjs",
       "storeId": null
@@ -6052,7 +6076,7 @@
     {
       "exemptionId": "desktop-caller-selected-output",
       "kind": "write-file",
-      "line": 5549,
+      "line": 5659,
       "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
       "sourceFile": "desktop/main.cjs",
       "storeId": null
@@ -6060,7 +6084,7 @@
     {
       "exemptionId": "desktop-caller-selected-output",
       "kind": "mkdir",
-      "line": 5571,
+      "line": 5681,
       "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
       "sourceFile": "desktop/main.cjs",
       "storeId": null
@@ -6068,7 +6092,7 @@
     {
       "exemptionId": "desktop-caller-selected-output",
       "kind": "write-file",
-      "line": 5572,
+      "line": 5682,
       "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
       "sourceFile": "desktop/main.cjs",
       "storeId": null
@@ -6076,7 +6100,7 @@
     {
       "exemptionId": "desktop-caller-selected-output",
       "kind": "mkdir",
-      "line": 5583,
+      "line": 5693,
       "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
       "sourceFile": "desktop/main.cjs",
       "storeId": null
@@ -6084,7 +6108,7 @@
     {
       "exemptionId": "desktop-caller-selected-output",
       "kind": "copy-file",
-      "line": 5584,
+      "line": 5694,
       "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
       "sourceFile": "desktop/main.cjs",
       "storeId": null
@@ -6092,7 +6116,7 @@
     {
       "exemptionId": "desktop-caller-selected-output",
       "kind": "mkdir",
-      "line": 5617,
+      "line": 5727,
       "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
       "sourceFile": "desktop/main.cjs",
       "storeId": null
@@ -6100,7 +6124,7 @@
     {
       "exemptionId": "desktop-caller-selected-output",
       "kind": "write-file",
-      "line": 5618,
+      "line": 5728,
       "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
       "sourceFile": "desktop/main.cjs",
       "storeId": null
@@ -6108,7 +6132,7 @@
     {
       "exemptionId": null,
       "kind": "remove-path",
-      "line": 6142,
+      "line": 6266,
       "reason": "Deletes stale desktop server discovery state before or after a server lifecycle.",
       "sourceFile": "desktop/main.cjs",
       "storeId": "server-runtime-info"
@@ -6212,7 +6236,7 @@
     {
       "exemptionId": null,
       "kind": "mkdir",
-      "line": 276,
+      "line": 399,
       "reason": "Writes epoch-independent desktop launch diagnostics.",
       "sourceFile": "desktop/src/shared/launch-integrity.cjs",
       "storeId": "desktop-diagnostics"
@@ -6220,7 +6244,7 @@
     {
       "exemptionId": null,
       "kind": "write-file",
-      "line": 278,
+      "line": 401,
       "reason": "Writes epoch-independent desktop launch diagnostics.",
       "sourceFile": "desktop/src/shared/launch-integrity.cjs",
       "storeId": "desktop-diagnostics"
@@ -6228,7 +6252,7 @@
     {
       "exemptionId": null,
       "kind": "mkdir",
-      "line": 288,
+      "line": 411,
       "reason": "Writes epoch-independent desktop launch diagnostics.",
       "sourceFile": "desktop/src/shared/launch-integrity.cjs",
       "storeId": "desktop-diagnostics"
@@ -6236,7 +6260,7 @@
     {
       "exemptionId": null,
       "kind": "append-file",
-      "line": 290,
+      "line": 413,
       "reason": "Writes epoch-independent desktop launch diagnostics.",
       "sourceFile": "desktop/src/shared/launch-integrity.cjs",
       "storeId": "desktop-diagnostics"
@@ -8420,7 +8444,7 @@
     {
       "exemptionId": null,
       "kind": "remove-path",
-      "line": 273,
+      "line": 276,
       "reason": "Writes or deletes live server discovery state.",
       "sourceFile": "server/index.ts",
       "storeId": "server-runtime-info"
@@ -8428,7 +8452,7 @@
     {
       "exemptionId": null,
       "kind": "persistent-store-constructor",
-      "line": 464,
+      "line": 481,
       "reason": "Constructs the deferred result store.",
       "sourceFile": "server/index.ts",
       "storeId": "deferred-result-state"
@@ -8436,7 +8460,7 @@
     {
       "exemptionId": "in-memory-confirm-registry",
       "kind": "persistent-store-constructor",
-      "line": 667,
+      "line": 685,
       "reason": "ConfirmStore is deliberately process-memory-only: pending approvals time out or abort with their session and have no restart replay contract.",
       "sourceFile": "server/index.ts",
       "storeId": null
@@ -8444,7 +8468,7 @@
     {
       "exemptionId": null,
       "kind": "persistent-store-constructor",
-      "line": 672,
+      "line": 690,
       "reason": "Constructs subagent stores.",
       "sourceFile": "server/index.ts",
       "storeId": "subagent-state"
@@ -8452,7 +8476,7 @@
     {
       "exemptionId": null,
       "kind": "persistent-store-constructor",
-      "line": 678,
+      "line": 696,
       "reason": "Constructs subagent stores.",
       "sourceFile": "server/index.ts",
       "storeId": "subagent-state"
@@ -8460,7 +8484,7 @@
     {
       "exemptionId": null,
       "kind": "persistent-store-constructor",
-      "line": 689,
+      "line": 707,
       "reason": "Constructs the workflow activity store.",
       "sourceFile": "server/index.ts",
       "storeId": "workflow-state"
@@ -8468,7 +8492,7 @@
     {
       "exemptionId": null,
       "kind": "append-file",
-      "line": 1106,
+      "line": 1124,
       "reason": "Appends the browser worker log.",
       "sourceFile": "server/index.ts",
       "storeId": "runtime-diagnostics"
@@ -8476,7 +8500,7 @@
     {
       "exemptionId": null,
       "kind": "write-file",
-      "line": 1165,
+      "line": 1183,
       "reason": "Writes or deletes live server discovery state.",
       "sourceFile": "server/index.ts",
       "storeId": "server-runtime-info"
@@ -8484,7 +8508,7 @@
     {
       "exemptionId": null,
       "kind": "remove-path",
-      "line": 1266,
+      "line": 1284,
       "reason": "Writes or deletes live server discovery state.",
       "sourceFile": "server/index.ts",
       "storeId": "server-runtime-info"
@@ -8876,7 +8900,7 @@
     {
       "exemptionId": null,
       "kind": "remove-path",
-      "line": 41,
+      "line": 53,
       "reason": "Removes an installed user skill through the skill owner route.",
       "sourceFile": "server/routes/skills.ts",
       "storeId": "skill-state"
@@ -8884,7 +8908,7 @@
     {
       "exemptionId": null,
       "kind": "remove-path",
-      "line": 216,
+      "line": 247,
       "reason": "Expires a sessionless legacy upload cache entry.",
       "sourceFile": "server/routes/upload.ts",
       "storeId": "legacy-upload-cache"
@@ -8892,7 +8916,7 @@
     {
       "exemptionId": "conditional-upload-target",
       "kind": "mkdir",
-      "line": 309,
+      "line": 340,
       "reason": "resolveUploadTarget sends the same syntactic write sites to registered session-files storage when sessionPath is present or to the registered legacy uploads cache otherwise; flow-sensitive site attribution is required to distinguish them.",
       "sourceFile": "server/routes/upload.ts",
       "storeId": null
@@ -8900,7 +8924,7 @@
     {
       "exemptionId": "conditional-upload-target",
       "kind": "copy-file",
-      "line": 390,
+      "line": 421,
       "reason": "resolveUploadTarget sends the same syntactic write sites to registered session-files storage when sessionPath is present or to the registered legacy uploads cache otherwise; flow-sensitive site attribution is required to distinguish them.",
       "sourceFile": "server/routes/upload.ts",
       "storeId": null
@@ -8908,7 +8932,7 @@
     {
       "exemptionId": "conditional-upload-target",
       "kind": "copy-file",
-      "line": 392,
+      "line": 423,
       "reason": "resolveUploadTarget sends the same syntactic write sites to registered session-files storage when sessionPath is present or to the registered legacy uploads cache otherwise; flow-sensitive site attribution is required to distinguish them.",
       "sourceFile": "server/routes/upload.ts",
       "storeId": null
@@ -8916,7 +8940,7 @@
     {
       "exemptionId": "conditional-upload-target",
       "kind": "mkdir",
-      "line": 450,
+      "line": 481,
       "reason": "resolveUploadTarget sends the same syntactic write sites to registered session-files storage when sessionPath is present or to the registered legacy uploads cache otherwise; flow-sensitive site attribution is required to distinguish them.",
       "sourceFile": "server/routes/upload.ts",
       "storeId": null
@@ -8924,7 +8948,7 @@
     {
       "exemptionId": "conditional-upload-target",
       "kind": "write-file",
-      "line": 509,
+      "line": 544,
       "reason": "resolveUploadTarget sends the same syntactic write sites to registered session-files storage when sessionPath is present or to the registered legacy uploads cache otherwise; flow-sensitive site attribution is required to distinguish them.",
       "sourceFile": "server/routes/upload.ts",
       "storeId": null
