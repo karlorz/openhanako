@@ -7,6 +7,7 @@ import {
   changedDivergingFiles,
   forkOnlyFilePatterns,
   ISSUE_COMMANDS,
+  isSyncTargetAlreadyPresent,
   lastSyncedTagFromText,
   loadMigrationContracts,
   loadRules,
@@ -63,6 +64,36 @@ describe("sync-upstream rule engine", () => {
     ].join("\n");
 
     expect(lastSyncedTagFromText(syncLog)).toBe("train-beta-15");
+  });
+
+  it("treats an exact latest sync-log tag as already synchronized", () => {
+    expect(
+      isSyncTargetAlreadyPresent({
+        latestTag: "v0.416.44",
+        lastSyncedTag: "v0.416.44",
+        targetIsAncestor: false,
+      }),
+    ).toBe(true);
+  });
+
+  it("does not offer an ancestral stable tag after a later prerelease sync", () => {
+    expect(
+      isSyncTargetAlreadyPresent({
+        latestTag: "v0.416.44",
+        lastSyncedTag: "train-beta-17",
+        targetIsAncestor: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("still reports a genuinely absent target as available", () => {
+    expect(
+      isSyncTargetAlreadyPresent({
+        latestTag: "v0.416.52",
+        lastSyncedTag: "train-beta-17",
+        targetIsAncestor: false,
+      }),
+    ).toBe(false);
   });
 
   it("reports only upstream changes that intersect configured diverging files", () => {
