@@ -342,6 +342,16 @@ Machine-readable dispositions: `docs/fork-sync/migration-contracts.yml`
 (`implementationStatus` fields for websocket-ticket-auth, connection-csp-bootstrap,
 remote-resource-ownership).
 
+## Attended stable sync closeout (2026-07-25, `v0.416.44`)
+
+- The stable-default helper resolved upstream release `v0.416.44` at `387704506dbdc86cac8a82d217d3385177791015` (also tagged `train-beta-16`). The one-commit upstream delta adds Windows PowerShell flavor guidance and refreshes package, persistence-inventory, and release-digest metadata.
+- Backup ref `backup/dev-before-stable-v0.416.44-20260725` preserves the exact pre-rebase fork head `4b38590aeb6c5e76803120e8b8edd9f1a495bf24`. The attended rebase replayed the fork onto `v0.416.44` and completed at `7a4a37788d2f43a9ebc80332b707156f2cae837c`.
+- Conflict resolution accepted upstream `release-digest.v1.json`, `release-digest.v2.json`, and `build/persistence-schema-fingerprint.json` while replaying the prior fork release/receipt commits. Package and lockfile versions are aligned to `0.416.44`; no fork tag or GitHub release was published.
+- Tier 0/1/2 passed through `node scripts/sync-upstream.mjs --post-rebase`. The sync-helper suite passed 28 tests; `npm run typecheck`, `git diff --check`, and the local-only conflict plan passed. The required simplification review found no justified fork-side rewrite in the 13-file upstream-owned delta.
+- Tier 3A rebuilt and installed `/Applications/HanaAgent.app` as local signed `0.416.44` using temporary Ed25519 validation material removed immediately afterward. Strict deep codesign passed; both bundle versions are `0.416.44`; build metadata reports the exact rebase SHA, `channel: local`, `sourceRepo: karlorz/openhanako`, signed profile, ad-hoc app signature, and both updater channels disabled.
+- Tier 3B helper verification against `http://100.125.173.118:14500` passed identity HTTP 200, WebSocket open, LAN feature contracts, and remote assessment. The first UI attempt used a misbehaving Haiku provider and returned invalid JSON before persisting the turn; the clean retry used the configured `Grok 4.3 Fast` model. It uploaded and sent `Hanako.jpg`, switched to another chat, returned, restored the 1024×1024 transcript thumbnail, restored Conversation Files with `Files: 1`, and opened the complete 1024×1024 preview from the remote resource URL.
+- sg01 remained on the previously released `v0.416.43-karlorz.1` runtime and was not deployed or modified. PR #1 remained the permanent open draft dashboard and was not merged, auto-merged, closed, or used as a release vehicle.
+
 ## Attended prerelease sync closeout (2026-07-23, `train-beta-15` / `v0.416.43`)
 
 - The attended prerelease target resolved to GitHub prerelease **`train-beta-15`**, paired with release **`v0.416.43`**, both at upstream SHA `a02622da02cd2edc8397066c6cb6bc256f306b97`. The `dev` rebase replayed 216 fork commits. Backup ref `backup/dev-before-prerelease-v0.416.43-20260723` points to `61b3c8549d3e9332852eaa77e5ab01a0346b3d3c`.
@@ -363,27 +373,27 @@ remote-resource-ownership).
 - No AtomGit mirror run exists for this release: the release was published by `github-actions[bot]`, while `.github/workflows/mirror-release-to-atomgit.yml` excludes that sender. This is expected, and the `legacy-raw` profile intentionally publishes no AtomGit mirror/train assets. PR #1 remains open, draft, unmerged, and without auto-merge.
 - The final local-only conflict-plan gate observed upstream stable `v0.416.44` as available after this prerelease publication (`stableActivationAllowed: true`); no stable rebase or production sync was started in this closeout.
 
-## Next stable pre-sync outlook (2026-07-23 post `train-beta-15` prerelease channel)
+## Next prerelease pre-sync outlook (2026-07-25 post `v0.416.44` stable channel)
 
-Attended **optional prerelease-channel** mutates completed: `dev` rebased onto
-upstream GitHub prerelease tag **`train-beta-15`** with double consent
-(`--include-prerelease --i-accept-prerelease-sync` + `CONFIRM=train-beta-15`).
-Package metadata now follows the train tip (`0.416.43`). Stable default channel
-is unchanged: bare `--check` still reports the latest **non-prerelease** release
-(`v0.407.15`) separately from last-synced when the log records a train tag.
+The attended stable-default sync completed first: `dev` is rebased onto upstream
+GitHub stable tag **`v0.416.44`** and package metadata follows `0.416.44`. The
+user-requested second stage is a separate optional prerelease cycle for
+`v0.416.51`. The helper currently resolves the paired, later-published alias
+`train-beta-17`; both tags point at the same upstream commit, and the mutation
+still requires exact double consent.
 
 | Signal | Observed value |
 |--------|----------------|
 | Working branch / HEAD | `dev` (post-rebase; see sync log) |
-| Package / lockfile version | `0.416.43` (aligned with train-beta-15 tip metadata) |
-| Latest stable upstream | `v0.407.15` |
-| Last synced tag (sync log) | `train-beta-15` (prerelease channel) |
+| Package / lockfile version | `0.416.44` (aligned with stable metadata) |
+| Latest stable upstream | `v0.416.44` |
+| Last synced tag (sync log) | `v0.416.44` (stable channel) |
 | Prior stable last-synced | `v0.407.15` |
-| Stable production sync available | **no** newer non-prerelease than `v0.407.15` |
-| Prerelease channel | **used** for `train-beta-15` (not review-only anymore for this base) |
+| Stable production sync available | **no** newer non-prerelease than `v0.416.44` |
+| Prerelease channel | `train-beta-17` / `v0.416.51` requested as the separate next stage |
 | Main tip (mirror) | may still lead train; not a production target without a tag/release |
-| PR #1 | OPEN, draft, never-merge dashboard; still CONFLICTING by design |
-| Backup | `backup/dev-before-prerelease-v0.416.43-20260723` @ `61b3c854` |
+| PR #1 | OPEN, draft, never-merge dashboard |
+| Backup | `backup/dev-before-stable-v0.416.44-20260725` @ `4b38590a` |
 | Upstream issue search | #1749 OPEN, #1811 CLOSED; tracker remains status/search/draft only |
 
 Planned conflict paths from `--conflict-plan --json --local-only`:
@@ -407,13 +417,9 @@ Planned conflict paths from `--conflict-plan --json --local-only`:
 | `server/index.ts` | preserve-both | high |
 | `tests/build-server-artifact.test.ts` | take-main | low |
 
-Historical dashboard note (pre-mutate): main tip advanced beyond the prior train
-while stable stayed `v0.407.15`. That review-only ceiling is **superseded** for
-`dev` by the attended `train-beta-15` rebase above.
-
-Default channel remains stable-only. Further prerelease mutates still require
-double consent. Wait for a non-prerelease GitHub release newer than `v0.407.15`
-before claiming a **stable** production sync.
+Default channel remains stable-only. The requested `v0.416.51` content is not
+part of the stable closeout and must be recorded as a prerelease-channel sync
+using `CONFIRM=train-beta-17`. Do not claim it as a stable production release.
 
 ## Stable sync activation and closeout boundary
 
@@ -527,3 +533,4 @@ permanent draft dashboard and is never a merge vehicle.
 | 2026-07-22 | `v0.412.7-karlorz.2` | Post-`.1` remote assessment, install-server probes, session/auth, dual-profile CI, digest align; first tag push failed digest validation (stale `.1` tag in digests). | Aligned digests + retag; Build run `29890312115` success; 20 legacy-raw assets; package remains `0.412.7`. | typecheck + install/sync focused vitest green; digest validators for `.2`. UAT found `status --json` rejected by parseArgs — fixed on `dev` (`a6349bd7`) and host CLI re-bootstrapped. | Local arm64 DMG install + strict codesign; build-info `releaseTag`/`gitSha` match `.2`/`c7120c11`. sg01 bootstrap CLI + upgrade `ok: true`/`rolledBack: false` to `.2-linux-arm64`; service active/enabled; mobile/locales 200; smoke helper functional+environment pass, freshness current exact match. | PR #1 remains permanent draft never-merge. Server runtime stays on immutable tag `.2`; CLI-only hotfixes may track `dev` commits. |
 | 2026-07-23 | `train-beta-15` / `v0.416.43` | Upstream prerelease rebase replayed 216 fork commits; obsolete `v0.416.26` preparation/closeout commits dropped; packaging/profile-aware CI and platform-qualified seed runtime contract required review. | Rebased `dev` onto upstream `a02622da02cd2edc8397066c6cb6bc256f306b97`; preserved CI profile-scoping fix as `3420026a`; restored standalone Windows packaging sequence; resolver now selects `seed-train-{platform}-{arch}.json` plus `.sig`; package/lock/digest v1/v2 aligned to `0.416.43` / `v0.416.43`. | Tier 0/1/2 passed via `node scripts/sync-upstream.mjs --post-rebase`; focused reruns passed 8 files/112 tests and helper/runtime-policy/packaged-boot 3 files/50 tests; `npm run typecheck`, sync vitest, conflict-plan local-only, and `git diff --check` passed. | Tier 3A local signed `0.416.43` install and strict codesign passed. Tier 3B helper returned identity 200 + WS open (`lan`); CDP smoke uploaded/sent an image, preserved an existing chat thumbnail and Conversation Files preview after switch/return, and kept the new uploaded file Available with Preview. New captioned message persistence was not claimed after reload; sg01 remains on `v0.412.7-karlorz.2` and was not deployed. | Backup `backup/dev-before-prerelease-v0.416.43-20260723` @ `61b3c8549d3e9332852eaa77e5ab01a0346b3d3c`. No fork tag/release. PR #1 remains permanent draft never-merge. |
 | 2026-07-23 | `v0.416.43-karlorz.1` | Attended fork publication and dual deployment from the verified `train-beta-15` base; preserve immutable tag, permanent PR #1 policy, exact artifact identity, and legacy-raw exclusions. | Pushed `dev` and immutable tag at `b385e5fb56bdfcbc45871becfd7d732ac17086d6`; Build run `29999546058` published the verified legacy-raw prerelease assets and digest. | Push CI `29996156803`, dashboard PR CI `29996159001`, Build `29999546058`, digest validators, asset hashes/sizes, typecheck, focused sync suite, local-only conflict plan, and diff checks passed. | Installed exact published arm64 DMG with strict deep codesign. Tagged installer upgraded sg01 to `.1-linux-arm64`; active/enabled/listening, exact/current identity and assets verified. Automated helper passed identity + WS; manual Computer Use upload/send/preview/switch/return confirmed persisted transcript thumbnail, Conversation Files row, and nonblank preview. | No AtomGit run: bot-created release events are excluded and legacy-raw publishes no mirror/train assets. PR #1 remains open draft with no auto-merge. |
+| 2026-07-25 | `v0.416.44` | Stable rebase accepted upstream digest v1/v2 and persistence fingerprint while replaying prior fork release/receipt commits; the behavioral delta itself was one upstream PowerShell-guidance commit. | Rebased `dev` onto upstream `387704506dbdc86cac8a82d217d3385177791015`; accepted upstream `0.416.44` package/lock/digest metadata and fingerprint while preserving the fork replay above it. | Tier 0/1/2 passed; sync helper 28 tests, typecheck, diff-check, and local-only conflict plan passed; simplify review had no high-confidence findings. | Tier 3A local signed `0.416.44` install and strict codesign passed. Tier 3B helper passed identity + WS; healthy-model retry uploaded/sent `Hanako.jpg`, switched away/back, restored the 1024×1024 transcript thumbnail and `Files: 1`, and opened the 1024×1024 Conversation Files preview. | Backup `backup/dev-before-stable-v0.416.44-20260725` @ `4b38590aeb6c5e76803120e8b8edd9f1a495bf24`. sg01 remained on `v0.416.43-karlorz.1`; no deploy/tag/release. PR #1 remains permanent draft never-merge. |
