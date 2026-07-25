@@ -51,6 +51,7 @@ describe("upstream issue tracker", () => {
     expect(status).toContain("[#1749](https://github.com/liliMozi/openhanako/issues/1749)");
     expect(status).toContain("[#1811](https://github.com/liliMozi/openhanako/issues/1811)");
     expect(status).toContain("[#1811](https://github.com/liliMozi/openhanako/issues/1811) CLOSED");
+    expect(status).toContain("[#2188](https://github.com/liliMozi/openhanako/issues/2188) OPEN");
     expect(status).toContain("desktop-temp-upload-session-cache-materialization");
     expect(status).toContain("provider-model-removal-persistence");
     expect(status).toContain("office-workflow-example-plugin");
@@ -85,6 +86,22 @@ describe("upstream issue tracker", () => {
 
     expect(draft).toContain("[REDACTED:device-credential]");
     expect(draft).not.toMatch(/token=[A-Za-z0-9_-]{12,}/);
+  });
+
+  it("documents upstream #2188 as related but not equivalent to remote attachment persistence", () => {
+    const fix = TRACKED_FIXES.find((item) => item.id === "remote-attachment-preview-persistence");
+
+    expect(fix.relatedIssues).toEqual([
+      expect.objectContaining({
+        number: 2188,
+        state: "OPEN",
+      }),
+    ]);
+
+    const draft = renderDraftIssue(fix);
+    expect(draft).toContain("#2188");
+    expect(draft).toContain("related but not equivalent");
+    expect(draft).toContain("scoped resource URL synthesis");
   });
 
   it("filters unrelated fuzzy GitHub search matches", () => {

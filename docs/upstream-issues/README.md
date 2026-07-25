@@ -6,7 +6,7 @@ This file tracks local fork fixes against upstream GitHub issues. The source of 
 |---|---|---|---|---|
 | lan-csp-ws-auth | upstream | existing/open | [#1749](https://github.com/liliMozi/openhanako/issues/1749) OPEN, [#1811](https://github.com/liliMozi/openhanako/issues/1811) CLOSED | LAN query-token/auth bug fix |
 | lan-query-token-network-hardening | upstream | draft/pending-approval | [#1749](https://github.com/liliMozi/openhanako/issues/1749) OPEN, [#1811](https://github.com/liliMozi/openhanako/issues/1811) CLOSED | fold into LAN query-token/auth bug fix unless reviewed separately |
-| remote-attachment-preview-persistence | upstream | draft/pending-approval | none | fix: preserve remote session attachment previews |
+| remote-attachment-preview-persistence | upstream | draft/pending-approval | [#2188](https://github.com/liliMozi/openhanako/issues/2188) OPEN | fix: preserve remote session attachment previews |
 | desktop-temp-upload-session-cache-materialization | upstream | draft/pending-approval | none | fix: materialize temp uploads to session cache before send |
 | session-replay-marker-only-image-regenerate | upstream | draft/pending-approval | none | fix: replay persisted marker-only image turns without provider image_url rejection |
 | toolgroup-file-detail-link-context | upstream | draft/pending-approval | none | fix: preserve session link context for tool file-detail links |
