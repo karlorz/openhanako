@@ -913,9 +913,35 @@ export function lastSyncedTagFromText(syncLogText) {
   return tags.at(-1) ?? "";
 }
 
+/**
+ * A target is already synchronized when either the latest sync-log token
+ * matches it or its tag commit is already an ancestor of the fork head.
+ *
+ * The ancestry branch matters after an attended stable-then-prerelease
+ * sequence: the newest log row is the prerelease tag, but the stable tag is
+ * still present in history and must not be offered as a backward rebase.
+ */
+export function isSyncTargetAlreadyPresent(options = {}) {
+  const latestTag = String(options.latestTag || "").trim();
+  const lastSyncedTag = String(options.lastSyncedTag || "").trim();
+  if (!latestTag) {
+    return false;
+  }
+  return latestTag === lastSyncedTag || Boolean(options.targetIsAncestor);
+}
+
 function lastSyncedTag(rules) {
   const syncLogPath = path.join(ROOT, rules.releaseTarget.syncLog);
   return lastSyncedTagFromText(fs.readFileSync(syncLogPath, "utf8"));
+}
+
+function gitRefIsAncestor(ancestorRef, descendantRef = "HEAD") {
+  if (!ancestorRef || !descendantRef) {
+    return false;
+  }
+  return run("git", ["merge-base", "--is-ancestor", ancestorRef, descendantRef], {
+    capture: true,
+  }).status === 0;
 }
 
 function filesChangedByUpstreamSinceForkPoint(rules) {
@@ -948,6 +974,7 @@ function doCheck(rules, includePrerelease) {
     die("no upstream tags found");
   }
   const taggedLast = lastSyncedTag(rules);
+  const targetIsAncestor = gitRefIsAncestor(latest, "HEAD");
 
   print();
   print(bold("Upstream sync status"));
@@ -956,8 +983,20 @@ function doCheck(rules, includePrerelease) {
   print(`  Last synced tag:       ${taggedLast || "<none - baseline>"}`);
   print();
 
-  if (latest === taggedLast) {
+  if (
+    isSyncTargetAlreadyPresent({
+      latestTag: latest,
+      lastSyncedTag: taggedLast,
+      targetIsAncestor,
+    })
+  ) {
     ok("Already up to date - no new release to sync.");
+    if (latest !== taggedLast && targetIsAncestor) {
+      print(
+        `  ${latest} is already an ancestor of HEAD; the newer sync-log row ` +
+          `${taggedLast || "<none>"} remains authoritative.`,
+      );
+    }
     return 0;
   }
 
@@ -1099,10 +1138,18 @@ function buildConflictReport(rules, options = {}) {
   const conflictPlan = buildConflictPlan(conflicts, rules, { generatedAt: options.generatedAt });
   const latestStableTag = latestUpstreamTag(rules, false);
   const syncedTag = lastSyncedTag(rules);
+  const latestStableAlreadyInForkHistory = gitRefIsAncestor(latestStableTag, originDevRef);
   const productionSync = {
     latestStableTag,
     lastSyncedTag: syncedTag,
-    stableSyncAvailable: Boolean(latestStableTag && latestStableTag !== syncedTag),
+    stableSyncAvailable: Boolean(
+      latestStableTag &&
+      !isSyncTargetAlreadyPresent({
+        latestTag: latestStableTag,
+        lastSyncedTag: syncedTag,
+        targetIsAncestor: latestStableAlreadyInForkHistory,
+      })
+    ),
   };
   const migrationContracts = loadMigrationContracts(resolveMigrationContractsPath(rules)).migrationContracts ?? [];
   const pr = readPr(rules, prNumber);
@@ -1240,6 +1287,20 @@ function doSync(rules, includePrerelease, options = {}) {
       die(gate.reason);
     }
     ok(`prerelease mutate consent accepted for tag ${latest}`);
+  }
+
+  const syncedTag = lastSyncedTag(rules);
+  if (
+    isSyncTargetAlreadyPresent({
+      latestTag: latest,
+      lastSyncedTag: syncedTag,
+      targetIsAncestor: gitRefIsAncestor(latest, "HEAD"),
+    })
+  ) {
+    ok(
+      `Already up to date - ${latest} is recorded or already present in ${rules.releaseTarget.forkBranch} history.`,
+    );
+    return 0;
   }
 
   printConflictPolicy(rules);
