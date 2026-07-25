@@ -8,6 +8,10 @@ Current status: `draft/pending-approval`
 Suggested grouping: `fix: preserve remote session attachment previews`
 Commits: `434c3e30`
 
+Related upstream issues:
+
+- #2188: https://github.com/liliMozi/openhanako/issues/2188
+
 ## Summary
 
 When the macOS desktop app is connected to a remote Hana server, pasted or uploaded local files can be persisted in a form that the remote Linux server cannot later resolve. The current chat can show transient inline bytes, but after switching chats and returning, chat thumbnails and Conversation Files previews can disappear.
@@ -24,6 +28,11 @@ When the macOS desktop app is connected to a remote Hana server, pasted or uploa
 - The remote server can receive local macOS paths it cannot import.
 - Previews may rely on transient inline bytes that disappear after the active chat changes.
 - Older session attachments may no longer render in Conversation Files.
+
+## Related upstream issue
+
+- #2188 fixes a WebUI session-load race that can discard the SessionFile registry and leave the Conversation Files panel empty.
+- It is related but not equivalent: it does not cover uploading client-owned desktop bytes to a remote server, scoped resource URL synthesis, or runtime remote-origin CSP.
 
 ## Local fork fix
 

@@ -114,6 +114,14 @@ export const TRACKED_FIXES = [
     status: "draft/pending-approval",
     commits: ["434c3e30"],
     grouping: "fix: preserve remote session attachment previews",
+    relatedIssues: [
+      {
+        number: 2188,
+        url: "https://github.com/liliMozi/openhanako/issues/2188",
+        state: "OPEN",
+        relation: "WebUI session-load race can discard the SessionFile registry",
+      },
+    ],
     searches: [
       "remote attachment preview upload Conversation Files",
       "session files preview remote desktop upload blob",
@@ -121,7 +129,8 @@ export const TRACKED_FIXES = [
     ],
     resultMustInclude: /remote|attachment|preview|Conversation Files|session files|resource|upload/i,
     notes: [
-      "No exact upstream issue found in the 2026-06-16 search.",
+      "No exact upstream issue covers the fork's remote client-path upload, scoped resource URL, and CSP behavior.",
+      "#2188 is related because it fixes a WebUI session-load race that can discard the SessionFile registry; it does not cover the fork-specific remote transport and preview ownership boundary.",
       "Draft only; do not submit until the fork owner approves the exact upstream wording.",
     ],
     draft: {
@@ -144,6 +153,11 @@ export const TRACKED_FIXES = [
         "- The remote server can receive local macOS paths it cannot import.",
         "- Previews may rely on transient inline bytes that disappear after the active chat changes.",
         "- Older session attachments may no longer render in Conversation Files.",
+        "",
+        "## Related upstream issue",
+        "",
+        "- #2188 fixes a WebUI session-load race that can discard the SessionFile registry and leave the Conversation Files panel empty.",
+        "- It is related but not equivalent: it does not cover uploading client-owned desktop bytes to a remote server, scoped resource URL synthesis, or runtime remote-origin CSP.",
         "",
         "## Local fork fix",
         "",
