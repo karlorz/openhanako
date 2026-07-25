@@ -668,7 +668,7 @@
     ],
     "version": 3
   },
-  "payloadFingerprint": "sha256:37140c2d4d6f6d2f032ffee0f9e032211ca9c81f2f785ab0a355246d8d338a89",
+  "payloadFingerprint": "sha256:93e54e3450adcb0389cf6d1455b4fa4ae6f7f935b63378fe363dfc2847123d54",
   "registry": [
     {
       "affectedByEpochMigration": true,
@@ -3121,8 +3121,8 @@
   ],
   "review": {
     "classification": "compatible",
-    "compatibilityReason": "Adds optional, lazy per-Agent Dream state and revision files under the registered memory store. Existing Agents and readers remain valid because an absent Dream directory is the default-off state, and existing memory file formats are unchanged.",
-    "payloadFingerprint": "sha256:37140c2d4d6f6d2f032ffee0f9e032211ca9c81f2f785ab0a355246d8d338a89"
+    "compatibilityReason": "Stable rebase receipt alignment: preserves the fork’s registered session-file staging write sites while incorporating upstream additive migration, explicit-agent identity, session-compaction, workspace, and persistence source/line/hash changes; no persistent store schema, file layout, site kind, protocol module, or DATA_EPOCH changed.",
+    "payloadFingerprint": "sha256:93e54e3450adcb0389cf6d1455b4fa4ae6f7f935b63378fe363dfc2847123d54"
   },
   "schemas": [
     {
@@ -3305,7 +3305,7 @@
       "contract": "update channel record version, device identifier, activation flag, update feed address, activation time, and held invite codes",
       "kind": "runtime-contract",
       "module": "desktop/auto-updater.cjs",
-      "sourceHash": "sha256:739190e68c9f0a66775c72424e335f3182abec97c91dc932179be8aabf46a591",
+      "sourceHash": "sha256:76a9c7b76bb599e933890137bc421008885abf3ec0dbd05b5cbe4c1c3c91d320",
       "storeId": "desktop-update-channel"
     },
     {
@@ -3319,7 +3319,7 @@
       "contract": "desktop window bounds, release announcement bookmark, and update cache version marker readers",
       "kind": "directory-contract",
       "module": "desktop/main.cjs",
-      "sourceHash": "sha256:03b3ae01457b17c263ef26b82bca6aa620dc8928eb60ffc171f5f4f489c632fa",
+      "sourceHash": "sha256:6ef19859a066329e9b33933b50a35411d41960737671c1725e1845d72529c4af",
       "storeId": "desktop-window-version-state"
     },
     {
@@ -3396,7 +3396,7 @@
       "contract": "sessionless upload naming and age-based cleanup protocol",
       "kind": "directory-contract",
       "module": "server/routes/upload.ts",
-      "sourceHash": "sha256:8c07b613a588bdc0ab2c2410ee1c0298188e3142ae188d52ee9880fbe947381c",
+      "sourceHash": "sha256:3fbb08c6a80df114e11d16f5557e5e62ae80f61c56e55e759cca441ec467b18f",
       "storeId": "legacy-upload-cache"
     },
     {
@@ -3521,7 +3521,7 @@
       "contract": "server-info writer and desktop bootstrap reader",
       "kind": "runtime-contract",
       "module": "server/index.ts",
-      "sourceHash": "sha256:a63a67ce8d4f09cb70a3aaab7728146cae2dab7c32a6efa4e24bdf7efe7e36db",
+      "sourceHash": "sha256:9155d00339a7490e879a2ef337d3ecd46351abd06dbe799cdd233b3450cad38b",
       "storeId": "server-runtime-info"
     },
     {
@@ -3543,7 +3543,7 @@
         {
           "contract": "core/session-coordinator.ts Hana metadata extensions",
           "module": "core/session-coordinator.ts",
-          "sourceHash": "sha256:9291ba90a08340f0b4071d0935e4d4abf55103bf9257296f7acedd32ae14b83e"
+          "sourceHash": "sha256:befa6ed5ba569b898bb16394be922eba2a5e511bc0407fb73f4265fb0ef99c0f"
         },
         {
           "contract": "core/session-jsonl-file.ts repair contract",
@@ -4105,6 +4105,30 @@
       "reason": "Quarantines pre-restore bytes, copies back checkpointed bytes, and records the restore audit trail.",
       "sourceFile": "core/data-epoch-restore.ts",
       "storeId": "data-epoch-restore-quarantine"
+    },
+    {
+      "exemptionId": null,
+      "kind": "copy-file",
+      "ordinal": 0,
+      "reason": "Stages payload bytes or updates SessionFile sidecars under the managed cache.",
+      "sourceFile": "core/desktop-session-submit.ts",
+      "storeId": "session-files"
+    },
+    {
+      "exemptionId": null,
+      "kind": "copy-file",
+      "ordinal": 0,
+      "reason": "Stages payload bytes or updates SessionFile sidecars under the managed cache.",
+      "sourceFile": "core/desktop-session-submit.ts",
+      "storeId": "session-files"
+    },
+    {
+      "exemptionId": null,
+      "kind": "mkdir",
+      "ordinal": 0,
+      "reason": "Stages payload bytes or updates SessionFile sidecars under the managed cache.",
+      "sourceFile": "core/desktop-session-submit.ts",
+      "storeId": "session-files"
     },
     {
       "exemptionId": null,
