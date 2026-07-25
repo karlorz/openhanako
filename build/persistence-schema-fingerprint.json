@@ -668,7 +668,7 @@
     ],
     "version": 3
   },
-  "payloadFingerprint": "sha256:1729dd12d237b06b3e11fe680d59ec326c52fdcfc019ad77bfe406e3b4bdc657",
+  "payloadFingerprint": "sha256:93e54e3450adcb0389cf6d1455b4fa4ae6f7f935b63378fe363dfc2847123d54",
   "registry": [
     {
       "affectedByEpochMigration": true,
@@ -855,8 +855,7 @@
       "id": "agent-profile",
       "identityContract": "agentId owns the profile; each filename has a fixed semantic role.",
       "migrationEntry": [
-        "lib/compat/checks/config-yaml.ts",
-        "core/agents-md-migration.ts"
+        "lib/compat/checks/config-yaml.ts"
       ],
       "openEntry": [
         "AgentManager.loadAgents",
@@ -869,8 +868,8 @@
       "pathPatterns": [
         "agents/{agentId}/config.yaml",
         "agents/{agentId}/identity.md",
-        "agents/{agentId}/AGENTS.md",
-        "agents/{agentId}/AGENTS.public.md",
+        "agents/{agentId}/ishiki.md",
+        "agents/{agentId}/public-ishiki.md",
         "agents/{agentId}/appearance-summary.json",
         "agents/{agentId}/avatars/{fileName}",
         "agents/{agentId}/pinned.md",
@@ -3122,8 +3121,8 @@
   ],
   "review": {
     "classification": "compatible",
-    "compatibilityReason": "Executable-source drift only: desktop/auto-updater.cjs now kicks an immediate update check when the invite channel is activated, and shared/artifact-core/ota-core.cjs resolves an apply that races an already-caught-up machine as a graceful already-current outcome instead of an error. Neither change alters any persisted record shape: update-channel.json keeps its exact fields, and ota-state.json continues to use its existing lastError/available fields (only the writing semantics on one code path changed). No store, path ownership, or exemption changed.",
-    "payloadFingerprint": "sha256:1729dd12d237b06b3e11fe680d59ec326c52fdcfc019ad77bfe406e3b4bdc657"
+    "compatibilityReason": "Stable rebase receipt alignment: preserves the fork’s registered session-file staging write sites while incorporating upstream additive migration, explicit-agent identity, session-compaction, workspace, and persistence source/line/hash changes; no persistent store schema, file layout, site kind, protocol module, or DATA_EPOCH changed.",
+    "payloadFingerprint": "sha256:93e54e3450adcb0389cf6d1455b4fa4ae6f7f935b63378fe363dfc2847123d54"
   },
   "schemas": [
     {
@@ -3205,7 +3204,7 @@
       "contract": "agent config and authored Markdown/image profile protocol",
       "kind": "directory-contract",
       "module": "core/agent-manager.ts",
-      "sourceHash": "sha256:077173fbec071cc4b86099c186392bb1e85340d689f4d75702130687473f737d",
+      "sourceHash": "sha256:a1f883d4596d7fd7abb1ceab44c099deb152351421511933436b765441a4dff2",
       "storeId": "agent-profile"
     },
     {
@@ -3219,14 +3218,14 @@
       "contract": "token-scoped import plan/package and export package protocol",
       "kind": "directory-contract",
       "module": "lib/character-cards/service.ts",
-      "sourceHash": "sha256:407c0265bf71fb054c6e4df2bd10320114e24b03e9a1b7e6e837db70165e66c6",
+      "sourceHash": "sha256:04d85be0fcff0b7a8d6187e648ced184d79ee1cfbbddba91fec4b40886a26dd0",
       "storeId": "character-card-staging"
     },
     {
       "contract": "CronStore job registry and run receipt protocol",
       "kind": "directory-contract",
       "module": "lib/desk/cron-store.ts",
-      "sourceHash": "sha256:bb1664a1ce588406d4fafebd71b5726938ff4a8a619b380c0936ceadb217f37c",
+      "sourceHash": "sha256:cf6c580927341b5004cbbf00d809b5be4fe549e0949c03c7f15f103c4708e219",
       "storeId": "cron-automation"
     },
     {
@@ -3285,7 +3284,7 @@
       "contract": "bounded base64 cover upload temporary-directory lifecycle",
       "kind": "directory-contract",
       "module": "server/routes/desk.ts",
-      "sourceHash": "sha256:7d2cf25f7dbcdf256dc4188fb0256ddf413fa726fbf1ea934abb8e9514a45fc6",
+      "sourceHash": "sha256:dea9b2e28eaf8310c7edab9f8ad5cf477c04ad89b92d592adbd9af873a7a217b",
       "storeId": "desk-cover-upload-staging"
     },
     {
@@ -3306,7 +3305,7 @@
       "contract": "update channel record version, device identifier, activation flag, update feed address, activation time, and held invite codes",
       "kind": "runtime-contract",
       "module": "desktop/auto-updater.cjs",
-      "sourceHash": "sha256:c55d64f0b00c7ea454b2f7adaba35633703702b3625985f3994fd8501271151f",
+      "sourceHash": "sha256:76a9c7b76bb599e933890137bc421008885abf3ec0dbd05b5cbe4c1c3c91d320",
       "storeId": "desktop-update-channel"
     },
     {
@@ -3320,7 +3319,7 @@
       "contract": "desktop window bounds, release announcement bookmark, and update cache version marker readers",
       "kind": "directory-contract",
       "module": "desktop/main.cjs",
-      "sourceHash": "sha256:01d8babd69c27000a9b45b9b97d00e9b70cde6c87367b24a062fec154ab02d1b",
+      "sourceHash": "sha256:6ef19859a066329e9b33933b50a35411d41960737671c1725e1845d72529c4af",
       "storeId": "desktop-window-version-state"
     },
     {
@@ -3397,7 +3396,7 @@
       "contract": "sessionless upload naming and age-based cleanup protocol",
       "kind": "directory-contract",
       "module": "server/routes/upload.ts",
-      "sourceHash": "sha256:8c07b613a588bdc0ab2c2410ee1c0298188e3142ae188d52ee9880fbe947381c",
+      "sourceHash": "sha256:3fbb08c6a80df114e11d16f5557e5e62ae80f61c56e55e759cca441ec467b18f",
       "storeId": "legacy-upload-cache"
     },
     {
@@ -3522,7 +3521,7 @@
       "contract": "server-info writer and desktop bootstrap reader",
       "kind": "runtime-contract",
       "module": "server/index.ts",
-      "sourceHash": "sha256:a63a67ce8d4f09cb70a3aaab7728146cae2dab7c32a6efa4e24bdf7efe7e36db",
+      "sourceHash": "sha256:9155d00339a7490e879a2ef337d3ecd46351abd06dbe799cdd233b3450cad38b",
       "storeId": "server-runtime-info"
     },
     {
@@ -3544,7 +3543,7 @@
         {
           "contract": "core/session-coordinator.ts Hana metadata extensions",
           "module": "core/session-coordinator.ts",
-          "sourceHash": "sha256:9bd93a7f479b160a2a4133f29769531e23037442d6adada445c43bedd2017922"
+          "sourceHash": "sha256:befa6ed5ba569b898bb16394be922eba2a5e511bc0407fb73f4265fb0ef99c0f"
         },
         {
           "contract": "core/session-jsonl-file.ts repair contract",
@@ -3642,7 +3641,7 @@
       "contract": "bridge index, legacy session metadata, title, and vision sidecar readers",
       "kind": "runtime-contract",
       "module": "core/bridge-session-manager.ts",
-      "sourceHash": "sha256:7ed05febd0506adb3cdc38c86a652f1c47a4e1a499f9308a7e940faaae1297ef",
+      "sourceHash": "sha256:c50224c29af58ed7d9753f549c7c2a483844388b0982487365f33ce4b4be06c0",
       "storeId": "session-sidecars"
     },
     {
@@ -3885,22 +3884,6 @@
     },
     {
       "exemptionId": null,
-      "kind": "rename",
-      "ordinal": 0,
-      "reason": "Renames agent persona files onto their current names.",
-      "sourceFile": "core/agents-md-migration.ts",
-      "storeId": "agent-profile"
-    },
-    {
-      "exemptionId": null,
-      "kind": "rename",
-      "ordinal": 0,
-      "reason": "Renames agent persona files onto their current names.",
-      "sourceFile": "core/agents-md-migration.ts",
-      "storeId": "agent-profile"
-    },
-    {
-      "exemptionId": null,
       "kind": "atomic-write",
       "ordinal": 0,
       "reason": "Writes a session-owned sidecar or bridge index.",
@@ -4122,6 +4105,30 @@
       "reason": "Quarantines pre-restore bytes, copies back checkpointed bytes, and records the restore audit trail.",
       "sourceFile": "core/data-epoch-restore.ts",
       "storeId": "data-epoch-restore-quarantine"
+    },
+    {
+      "exemptionId": null,
+      "kind": "copy-file",
+      "ordinal": 0,
+      "reason": "Stages payload bytes or updates SessionFile sidecars under the managed cache.",
+      "sourceFile": "core/desktop-session-submit.ts",
+      "storeId": "session-files"
+    },
+    {
+      "exemptionId": null,
+      "kind": "copy-file",
+      "ordinal": 0,
+      "reason": "Stages payload bytes or updates SessionFile sidecars under the managed cache.",
+      "sourceFile": "core/desktop-session-submit.ts",
+      "storeId": "session-files"
+    },
+    {
+      "exemptionId": null,
+      "kind": "mkdir",
+      "ordinal": 0,
+      "reason": "Stages payload bytes or updates SessionFile sidecars under the managed cache.",
+      "sourceFile": "core/desktop-session-submit.ts",
+      "storeId": "session-files"
     },
     {
       "exemptionId": null,
@@ -7093,14 +7100,6 @@
     },
     {
       "exemptionId": null,
-      "kind": "copy-file",
-      "ordinal": 0,
-      "reason": "Writes cron jobs or execution receipts.",
-      "sourceFile": "lib/desk/cron-store.ts",
-      "storeId": "cron-automation"
-    },
-    {
-      "exemptionId": null,
       "kind": "mkdir",
       "ordinal": 0,
       "reason": "Writes cron jobs or execution receipts.",
@@ -7110,22 +7109,6 @@
     {
       "exemptionId": null,
       "kind": "mkdir",
-      "ordinal": 0,
-      "reason": "Writes cron jobs or execution receipts.",
-      "sourceFile": "lib/desk/cron-store.ts",
-      "storeId": "cron-automation"
-    },
-    {
-      "exemptionId": null,
-      "kind": "rename",
-      "ordinal": 0,
-      "reason": "Writes cron jobs or execution receipts.",
-      "sourceFile": "lib/desk/cron-store.ts",
-      "storeId": "cron-automation"
-    },
-    {
-      "exemptionId": null,
-      "kind": "write-file",
       "ordinal": 0,
       "reason": "Writes cron jobs or execution receipts.",
       "sourceFile": "lib/desk/cron-store.ts",
