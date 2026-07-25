@@ -301,8 +301,9 @@ Machine-readable source: `docs/fork-sync/pick-from-main-decisions.yml` (loaded b
 
 **Enforced:** force-adopt of `wait-stable` / `preserve-fork` paths from mirrored
 main is forbidden for dashboard cosmetics (`assertNoForceAdoptFromMain`).
-**Adopt-now set is empty** while stable remains `v0.407.15` and main tip is
-unreleased `0.415.15` train content.
+**Adopt-now set is empty** after the attended `v0.416.44` stable sync and
+`train-beta-17` / `v0.416.51` prerelease sync. A later main tip remains
+ineligible for cosmetic force-adoption.
 
 **Reclaim guards** (`checkForkReclaimGuards`): prevent duplicate re-application
 of already-landed fork fixes — ticket-primary WS, isolated `connect-probe`,
@@ -352,6 +353,16 @@ remote-resource-ownership).
 - Tier 3B helper verification against `http://100.125.173.118:14500` passed identity HTTP 200, WebSocket open, LAN feature contracts, and remote assessment. The first UI attempt used a misbehaving Haiku provider and returned invalid JSON before persisting the turn; the clean retry used the configured `Grok 4.3 Fast` model. It uploaded and sent `Hanako.jpg`, switched to another chat, returned, restored the 1024×1024 transcript thumbnail, restored Conversation Files with `Files: 1`, and opened the complete 1024×1024 preview from the remote resource URL.
 - sg01 remained on the previously released `v0.416.43-karlorz.1` runtime and was not deployed or modified. PR #1 remained the permanent open draft dashboard and was not merged, auto-merged, closed, or used as a release vehicle.
 
+## Attended prerelease sync closeout (2026-07-25, `train-beta-17` / `v0.416.51`)
+
+- After the stable-first `v0.416.44` stage, the explicit prerelease helper resolved `train-beta-17` and paired release `v0.416.51` to upstream SHA `ef8a6f700191c2486effd3761a4bd2b7f3ad774c`. The double-consent mutation used `CONFIRM=train-beta-17`, `--include-prerelease`, and `--i-accept-prerelease-sync`. Backup ref `backup/dev-before-prerelease-v0.416.51-20260725` preserves the exact pre-rebase head `ea8f8f7dbb6ec1e99b121e6a084024bc3c1bc5f6`; all 220 fork commits replayed one-for-one, producing pre-closeout head `f50130d3aef6630af170250c66a747f9ac15ae3c`.
+- The eight-commit upstream delta spans 47 files and includes the SessionFile upload race work tracked by upstream issue #2188, canonical slash-command sends, Workbench snapshots, session metadata recovery/migration, and memory retry behavior. The local issue tracker records #2188 as related to—but not equivalent to—the fork's remote attachment persistence contract because it does not cover remote-client byte upload, scoped resource URLs, or CSP ownership.
+- Rebase conflict resolution regenerated `build/persistence-store-inventory.json` from the effective tree (56 stores / 763 sites). For `build/persistence-schema-fingerprint.json`, the upstream-stage file was used only as a parser seed and the receipt was regenerated from the effective fork source as `sha256:001c85547df6f290bd49e5db56ace2e9e37ad488ee83d0cea9e5a6f380b42823`, preserving the fork's three session-file staging write sites while incorporating upstream session-metadata recovery, migration-ledger, health-field, source-hash, and line-drift changes. Package, lockfile, and release digests v1/v2 align to `0.416.51` / `v0.416.51`; no fork tag or release was created.
+- Tier 0/1/2 passed through the post-rebase helper. The focused upstream/fork set passed 22 files / 516 tests; the complete suite passed 1,038 files / 10,338 tests with six expected manual skips; the sync helper passed 28 tests; issue tracking passed seven tests; and typecheck, diff-check, local-only conflict planning, release-receipt validation, and simplification review passed.
+- Tier 3A rebuilt and installed `/Applications/HanaAgent.app` as local signed `0.416.51`. The first signing-keyset attempt failed safely before replacing the app because the validation input was an object instead of the required array; the corrected array-shaped keyset installed successfully. Strict deep codesign and both bundle-version checks passed. Build metadata reports git SHA `f50130d3aef6630af170250c66a747f9ac15ae3c`, base tag `v0.416.51`, `channel: local`, `sourceRepo: karlorz/openhanako`, signed profile, ad-hoc app signature, clean source, and both update channels disabled. Temporary validation material was removed and verified absent.
+- Tier 3B helper verification against `http://100.125.173.118:14500` passed identity HTTP 200, WebSocket open, LAN feature contracts, and remote assessment. The installed-app CDP smoke used the configured `Grok 4.3 Fast` model, uploaded and sent `Hanako.jpg`, received the expected reply, switched to another chat and returned, restored the message and complete 1024×1024 transcript thumbnail, rehydrated Conversation Files, and opened a nonblank 1024×1024 remote-resource preview at approximately 887×887 rendered pixels. No renderer warning, CSP refusal, WebSocket failure, or page error was observed.
+- sg01 remains on immutable fork release `v0.416.43-karlorz.1` and was not deployed or modified. No fork tag or GitHub release was created. PR #1 remains the permanent open draft dashboard and must not be merged, auto-merged, or closed.
+
 ## Attended prerelease sync closeout (2026-07-23, `train-beta-15` / `v0.416.43`)
 
 - The attended prerelease target resolved to GitHub prerelease **`train-beta-15`**, paired with release **`v0.416.43`**, both at upstream SHA `a02622da02cd2edc8397066c6cb6bc256f306b97`. The `dev` rebase replayed 216 fork commits. Backup ref `backup/dev-before-prerelease-v0.416.43-20260723` points to `61b3c8549d3e9332852eaa77e5ab01a0346b3d3c`.
@@ -373,28 +384,26 @@ remote-resource-ownership).
 - No AtomGit mirror run exists for this release: the release was published by `github-actions[bot]`, while `.github/workflows/mirror-release-to-atomgit.yml` excludes that sender. This is expected, and the `legacy-raw` profile intentionally publishes no AtomGit mirror/train assets. PR #1 remains open, draft, unmerged, and without auto-merge.
 - The final local-only conflict-plan gate observed upstream stable `v0.416.44` as available after this prerelease publication (`stableActivationAllowed: true`); no stable rebase or production sync was started in this closeout.
 
-## Next prerelease pre-sync outlook (2026-07-25 post `v0.416.44` stable channel)
+## Current upstream channel state (2026-07-25 post `train-beta-17`)
 
-The attended stable-default sync completed first: `dev` is rebased onto upstream
-GitHub stable tag **`v0.416.44`** and package metadata follows `0.416.44`. The
-user-requested second stage is a separate optional prerelease cycle for
-`v0.416.51`. The helper currently resolves the paired, later-published alias
-`train-beta-17`; both tags point at the same upstream commit, and the mutation
-still requires exact double consent.
+The requested two-stage sequence is complete locally: stable-default
+**`v0.416.44`** was synchronized first, followed by the separately consented
+prerelease **`train-beta-17`** / **`v0.416.51`**. Stable-only detection remains
+the default for future runs.
 
 | Signal | Observed value |
 |--------|----------------|
-| Working branch / HEAD | `dev` (post-rebase; see sync log) |
-| Package / lockfile version | `0.416.44` (aligned with stable metadata) |
+| Working branch / HEAD | `dev` (post-prerelease rebase; see sync log) |
+| Package / lockfile version | `0.416.51` (aligned with prerelease metadata) |
 | Latest stable upstream | `v0.416.44` |
-| Last synced tag (sync log) | `v0.416.44` (stable channel) |
-| Prior stable last-synced | `v0.407.15` |
+| Last synced tag (sync log) | `train-beta-17` / `v0.416.51` (prerelease channel) |
+| Stable baseline synced first | `v0.416.44` |
 | Stable production sync available | **no** newer non-prerelease than `v0.416.44` |
-| Prerelease channel | `train-beta-17` / `v0.416.51` requested as the separate next stage |
+| Prerelease channel | `train-beta-17` / `v0.416.51` synchronized with double consent |
 | Main tip (mirror) | may still lead train; not a production target without a tag/release |
 | PR #1 | OPEN, draft, never-merge dashboard |
-| Backup | `backup/dev-before-stable-v0.416.44-20260725` @ `4b38590a` |
-| Upstream issue search | #1749 OPEN, #1811 CLOSED; tracker remains status/search/draft only |
+| Backups | stable `backup/dev-before-stable-v0.416.44-20260725` @ `4b38590a`; prerelease `backup/dev-before-prerelease-v0.416.51-20260725` @ `ea8f8f7d` |
+| Upstream issue search | #1749 OPEN, #1811 CLOSED, #2188 OPEN and related to attachment persistence; tracker remains status/search/draft only |
 
 Planned conflict paths from `--conflict-plan --json --local-only`:
 
@@ -417,9 +426,9 @@ Planned conflict paths from `--conflict-plan --json --local-only`:
 | `server/index.ts` | preserve-both | high |
 | `tests/build-server-artifact.test.ts` | take-main | low |
 
-Default channel remains stable-only. The requested `v0.416.51` content is not
-part of the stable closeout and must be recorded as a prerelease-channel sync
-using `CONFIRM=train-beta-17`. Do not claim it as a stable production release.
+Default channel remains stable-only. `v0.416.51` is recorded only as the
+separate prerelease-channel sync performed with `CONFIRM=train-beta-17`; it is
+not a stable production release.
 
 ## Stable sync activation and closeout boundary
 
@@ -534,3 +543,4 @@ permanent draft dashboard and is never a merge vehicle.
 | 2026-07-23 | `train-beta-15` / `v0.416.43` | Upstream prerelease rebase replayed 216 fork commits; obsolete `v0.416.26` preparation/closeout commits dropped; packaging/profile-aware CI and platform-qualified seed runtime contract required review. | Rebased `dev` onto upstream `a02622da02cd2edc8397066c6cb6bc256f306b97`; preserved CI profile-scoping fix as `3420026a`; restored standalone Windows packaging sequence; resolver now selects `seed-train-{platform}-{arch}.json` plus `.sig`; package/lock/digest v1/v2 aligned to `0.416.43` / `v0.416.43`. | Tier 0/1/2 passed via `node scripts/sync-upstream.mjs --post-rebase`; focused reruns passed 8 files/112 tests and helper/runtime-policy/packaged-boot 3 files/50 tests; `npm run typecheck`, sync vitest, conflict-plan local-only, and `git diff --check` passed. | Tier 3A local signed `0.416.43` install and strict codesign passed. Tier 3B helper returned identity 200 + WS open (`lan`); CDP smoke uploaded/sent an image, preserved an existing chat thumbnail and Conversation Files preview after switch/return, and kept the new uploaded file Available with Preview. New captioned message persistence was not claimed after reload; sg01 remains on `v0.412.7-karlorz.2` and was not deployed. | Backup `backup/dev-before-prerelease-v0.416.43-20260723` @ `61b3c8549d3e9332852eaa77e5ab01a0346b3d3c`. No fork tag/release. PR #1 remains permanent draft never-merge. |
 | 2026-07-23 | `v0.416.43-karlorz.1` | Attended fork publication and dual deployment from the verified `train-beta-15` base; preserve immutable tag, permanent PR #1 policy, exact artifact identity, and legacy-raw exclusions. | Pushed `dev` and immutable tag at `b385e5fb56bdfcbc45871becfd7d732ac17086d6`; Build run `29999546058` published the verified legacy-raw prerelease assets and digest. | Push CI `29996156803`, dashboard PR CI `29996159001`, Build `29999546058`, digest validators, asset hashes/sizes, typecheck, focused sync suite, local-only conflict plan, and diff checks passed. | Installed exact published arm64 DMG with strict deep codesign. Tagged installer upgraded sg01 to `.1-linux-arm64`; active/enabled/listening, exact/current identity and assets verified. Automated helper passed identity + WS; manual Computer Use upload/send/preview/switch/return confirmed persisted transcript thumbnail, Conversation Files row, and nonblank preview. | No AtomGit run: bot-created release events are excluded and legacy-raw publishes no mirror/train assets. PR #1 remains open draft with no auto-merge. |
 | 2026-07-25 | `v0.416.44` | Stable rebase accepted upstream digest v1/v2; initial upstream persistence-receipt acceptance failed the fork schema tripwire because three fork session-file staging sites remain. The behavioral delta itself was one upstream PowerShell-guidance commit. | Rebased `dev` onto upstream `387704506dbdc86cac8a82d217d3385177791015`; accepted upstream `0.416.44` package/lock/digest metadata, then regenerated the fork receipt as `sha256:28b772490200d9928804eb924e473457686fa1d5640e977f8f0219a8d16049ac` with the fork write sites plus upstream detector drift. | Tier 0/1/2 passed; full local suite 1,033 files / 10,282 tests plus six expected manual skips; persistence tripwire 7 tests; sync helper 28 tests; typecheck, diff-check, and local-only conflict plan passed; simplify review had no high-confidence findings. | Tier 3A local signed `0.416.44` install and strict codesign passed. Tier 3B helper passed identity + WS; healthy-model retry uploaded/sent `Hanako.jpg`, switched away/back, restored the 1024×1024 transcript thumbnail and `Files: 1`, and opened the 1024×1024 Conversation Files preview. | Backup `backup/dev-before-stable-v0.416.44-20260725` @ `4b38590aeb6c5e76803120e8b8edd9f1a495bf24`. sg01 remained on `v0.416.43-karlorz.1`; no deploy/tag/release. PR #1 remains permanent draft never-merge. |
+| 2026-07-25 | `train-beta-17` / `v0.416.51` | Eight upstream commits across 47 files added SessionFile race handling (#2188), canonical slash sends, Workbench snapshots, session metadata recovery/migration, and memory retry. Rebase conflicted in generated persistence inventory/fingerprint receipts. | Replayed all 220 fork commits onto upstream `ef8a6f700191c2486effd3761a4bd2b7f3ad774c`; regenerated inventory as 56 stores / 763 sites and fingerprint as `sha256:001c85547df6f290bd49e5db56ace2e9e37ad488ee83d0cea9e5a6f380b42823`; aligned package/lock/digest v1/v2 to `0.416.51` / `v0.416.51`; tracked #2188 as related but not equivalent to the fork remote-upload/CSP contract. | Tier 0/1/2 passed; focused set 22 files / 516 tests; full suite 1,038 files / 10,338 tests plus six expected manual skips; sync helper 28 tests; tracker 7 tests; typecheck, diff-check, local-only conflict plan, and simplify review passed. | Tier 3A local signed `0.416.51` install and strict codesign passed after correcting a safely rejected keyset shape. Tier 3B helper passed identity + WS; Grok 4.3 Fast upload/send/switch/return restored the message and 1024×1024 thumbnail, rehydrated Conversation Files, and rendered a nonblank 1024×1024 preview without observed CSP/WS/page errors. | Backup `backup/dev-before-prerelease-v0.416.51-20260725` @ `ea8f8f7dbb6ec1e99b121e6a084024bc3c1bc5f6`. sg01 remained on `v0.416.43-karlorz.1`; no deploy/tag/release. PR #1 remains permanent draft never-merge. |
