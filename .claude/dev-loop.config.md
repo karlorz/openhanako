@@ -11,6 +11,11 @@ release_branch: dev
 
 # Dev-loop works directly from `dev`. PR #1 remains permanent review
 # infrastructure and is never an auto-merge vehicle.
+# Explicit direct-write flag: with merge_policy.strategy: repo-policy, the
+# commit preflight only allows release-branch writes when this is true.
+branch_policy:
+  direct_push_to_release_branch: true
+
 merge_policy:
   strategy: repo-policy
   auto_merge: false

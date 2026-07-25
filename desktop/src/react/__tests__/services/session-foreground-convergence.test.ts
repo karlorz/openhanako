@@ -82,4 +82,35 @@ describe('bindSessionForegroundConvergence', () => {
     await Promise.resolve();
     expect(reconcile).toHaveBeenCalledTimes(1);
   });
+
+  it('stops before reconcile when the refresh gate returns false', async () => {
+    const listeners = new Map<string, () => void>();
+    const windowObj = {
+      addEventListener: vi.fn((type: string, listener: () => void) => listeners.set(`window:${type}`, listener)),
+      removeEventListener: vi.fn(),
+    };
+    const documentObj = {
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      visibilityState: 'visible' as Document['visibilityState'],
+    };
+    const refreshSessions = vi.fn(async () => false);
+    const reconcile = vi.fn(async () => undefined);
+
+    bindSessionForegroundConvergence({
+      refreshSessions,
+      reconcile,
+      windowObj: windowObj as never,
+      documentObj: documentObj as never,
+      minIntervalMs: 0,
+      now: () => 75,
+    });
+
+    listeners.get('window:focus')?.();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(refreshSessions).toHaveBeenCalledTimes(1);
+    expect(reconcile).not.toHaveBeenCalled();
+  });
 });
