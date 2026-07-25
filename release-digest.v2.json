@@ -3,9 +3,9 @@
   "entries": [
     {
       "schemaVersion": 1,
-      "tag": "v0.416.51",
+      "tag": "v0.416.51-karlorz.1",
       "version": "0.416.51",
-      "previousTag": "v0.416.44",
+      "previousTag": "v0.416.44-karlorz.1",
       "generatedAt": "2026-07-24T08:39:00.000Z",
       "noUserFacingChanges": false,
       "summary": {
@@ -19,10 +19,10 @@
         "migration": 0
       },
       "source": {
-        "owner": "liliMozi",
+        "owner": "karlorz",
         "repo": "openhanako",
-        "commitRange": "v0.416.44..v0.416.51",
-        "releaseUrl": "https://github.com/liliMozi/openhanako/releases/tag/v0.416.51",
+        "commitRange": "v0.416.44-karlorz.1..HEAD",
+        "releaseUrl": "https://github.com/karlorz/openhanako/releases/tag/v0.416.51-karlorz.1",
         "releaseNotes": ""
       },
       "items": [
