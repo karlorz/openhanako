@@ -1,8 +1,87 @@
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { appendDigestFileToHistoryFile, collectDigestSource, generateDigestWithOpenAI, parseArgs, resolveDigestConfig } from "../scripts/generate-release-digest.mjs";
+
+const describeEnvrc = process.platform === "win32" ? describe.skip : describe;
+
+function runEnvrcContract({
+  configureSecret = false,
+  configuredPath,
+  secretExists = false,
+  secretMode = "600",
+  malformed = false,
+}: {
+  configureSecret?: boolean;
+  configuredPath?: string;
+  secretExists?: boolean;
+  secretMode?: string;
+  malformed?: boolean;
+} = {}) {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "release-digest-envrc-"));
+  const binDir = path.join(tmpDir, "bin");
+  const secretPath = path.join(tmpDir, "release-digest-secret");
+  fs.mkdirSync(binDir);
+  if (secretExists) {
+    fs.writeFileSync(secretPath, "api_key=synthetic-test-key\n", { mode: 0o600 });
+  }
+
+  fs.writeFileSync(path.join(binDir, "uname"), "#!/bin/sh\nprintf '%s\\n' Linux\n", { mode: 0o755 });
+  fs.writeFileSync(
+    path.join(binDir, "stat"),
+    "#!/bin/sh\nprintf '%s\\n' \"${TEST_SECRET_MODE:-600}\"\n",
+    { mode: 0o755 },
+  );
+  fs.writeFileSync(
+    path.join(binDir, "direnv"),
+    [
+      "#!/bin/sh",
+      "if [ \"${TEST_DIRENV_MALFORMED:-false}\" = true ]; then",
+      "  printf '%s\\n' 'invalid line: api_key=synthetic-test-key' >&2",
+      "  exit 1",
+      "fi",
+      "printf '%s\\n' \"export api_key=synthetic-test-key\"",
+      "",
+    ].join("\n"),
+    { mode: 0o755 },
+  );
+
+  const script = [
+    "dotenv_if_exists() {",
+    "  if [ \"${TEST_CONFIGURE_SECRET:-false}\" = true ]; then",
+    "    export OPENHANAKO_RELEASE_DIGEST_SECRET_FILE=\"$TEST_CONFIGURED_SECRET_PATH\"",
+    "  fi",
+    "}",
+    "dotenv() { printf 'dotenv-loaded:%s\\n' \"$1\"; }",
+    "source \"$TEST_ENVRC_PATH\"",
+  ].join("\n");
+
+  try {
+    const result = spawnSync("bash", ["-c", script], {
+      encoding: "utf-8",
+      env: {
+        ...process.env,
+        HOME: tmpDir,
+        PATH: `${binDir}:${process.env.PATH || ""}`,
+        TEST_CONFIGURE_SECRET: configureSecret ? "true" : "false",
+        TEST_CONFIGURED_SECRET_PATH: configuredPath ?? secretPath,
+        TEST_DIRENV_MALFORMED: malformed ? "true" : "false",
+        TEST_ENVRC_PATH: path.resolve(".envrc"),
+        TEST_SECRET_MODE: secretMode,
+      },
+    });
+    return {
+      status: result.status,
+      stderr: result.stderr,
+      stdout: result.stdout,
+      secretPath,
+    };
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+}
 
 describe("generate-release-digest", () => {
   it("maps a fork release tag to the installed product version", async () => {
@@ -252,6 +331,64 @@ describe("generate-release-digest", () => {
       fetchImpl: vi.fn().mockResolvedValue({ ok: true, json: vi.fn().mockResolvedValue({ choices: [] }) }),
     })).rejects.toThrow(/Chat Completions/);
     expect(failingFetch.mock.calls[0][1].headers.Authorization).toBe(`Bearer ${key}`);
+  });
+});
+
+describeEnvrc("release-digest .envrc execution contract", () => {
+  it("keeps the default secret optional for normal development", () => {
+    const result = runEnvrcContract();
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toContain("optional for normal development");
+  });
+
+  it("fails when the configured secret path is empty or missing", () => {
+    const empty = runEnvrcContract({ configureSecret: true, configuredPath: "" });
+    const missing = runEnvrcContract({
+      configureSecret: true,
+      configuredPath: "/synthetic/missing/release-digest-secret",
+    });
+
+    expect(empty.status).toBe(1);
+    expect(empty.stderr).toContain("OPENHANAKO_RELEASE_DIGEST_SECRET_FILE must not be empty");
+    expect(missing.status).toBe(1);
+    expect(missing.stderr).toContain("Configured release-digest secret file not found");
+  });
+
+  it("rejects group/world permissions before parsing the secret", () => {
+    const result = runEnvrcContract({
+      configureSecret: true,
+      secretExists: true,
+      secretMode: "640",
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("must not be group/world accessible");
+    expect(result.stdout).not.toContain("dotenv-loaded");
+  });
+
+  it("rejects malformed dotenv data without echoing parser output", () => {
+    const result = runEnvrcContract({
+      configureSecret: true,
+      secretExists: true,
+      malformed: true,
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("is not valid dotenv data");
+    expect(`${result.stdout}${result.stderr}`).not.toContain("synthetic-test-key");
+    expect(`${result.stdout}${result.stderr}`).not.toContain("api_key=");
+  });
+
+  it("loads a valid mode-0600 configured secret through dotenv", () => {
+    const result = runEnvrcContract({
+      configureSecret: true,
+      secretExists: true,
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain(`dotenv-loaded:${result.secretPath}`);
+    expect(`${result.stdout}${result.stderr}`).not.toContain("synthetic-test-key");
   });
 });
 
