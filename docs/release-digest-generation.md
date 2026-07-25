@@ -33,9 +33,12 @@ direnv allow
 
 `.envrc` parses both files as dotenv data when the secret file exists. It does
 not shell-source them, scan the secrets directory, print the key, or change
-file permissions. The secret file is optional for normal development and is
-required only when the generator makes a provider request; without it, the
-generator fails closed with an `API_KEY` error.
+file permissions. If `OPENHANAKO_RELEASE_DIGEST_SECRET_FILE` is explicitly set,
+the path must be non-empty, exist, use mode `0600`, and contain valid dotenv
+data; `.envrc` fails closed without echoing malformed content. If the variable
+is omitted, the default `~/.secrets/openhanako-release-digest` path remains
+optional for normal development. A provider request still requires a loaded
+key and otherwise fails closed with an `API_KEY` error.
 
 Fork release tags use the form `vX.Y.Z-karlorz.N`. The digest keeps that full
 value in `tag` for release identity, but stores the installed product version
