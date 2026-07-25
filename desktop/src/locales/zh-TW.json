@@ -3367,6 +3367,7 @@
     "auth": {
       "scopeError": "目前登入權限已過期，請用帳號密碼重新登入。",
       "loginFailed": "登入失敗",
+      "sessionEnded": "你的工作階段已結束，請重新登入。",
       "title": "手機訪問 Hana",
       "deviceHelp": "舊版存取金鑰登入，僅用於相容舊資料。",
       "passwordHelp": "使用桌面端設定裡的本機帳號與密碼登入。",

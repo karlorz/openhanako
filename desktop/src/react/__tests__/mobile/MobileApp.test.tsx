@@ -5,6 +5,7 @@ import React from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useStore } from '../../stores';
+import { hanaFetch } from '../../hooks/use-hana-fetch';
 import { MobileApp } from '../../mobile/MobileApp';
 import { installMobilePlatform } from '../../mobile/mobile-platform';
 import registry from '../../../shared/theme-registry';
@@ -86,6 +87,7 @@ describe('MobileApp', () => {
     'mobile.auth.plaintextWarning': '远程明文链路不接收账号密码。',
     'mobile.auth.submit': '登录',
     'mobile.auth.scopeError': '当前登录缺少工作台权限，请重新输入访问密钥。',
+    'mobile.auth.sessionEnded': '你的会话已结束，请重新登录。',
   };
 
   beforeEach(() => {
@@ -460,6 +462,240 @@ describe('MobileApp', () => {
 
     fireEvent(window, new Event('focus'));
     await waitFor(() => expect(countSessionListCalls()).toBeGreaterThan(before));
+  });
+
+  it('leaves the authenticated shell once when concurrent foreground checks find no session', async () => {
+    let sessionCalls = 0;
+    fetchMock.mockImplementation((input: RequestInfo | URL, options?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('/api/web-auth/session')) {
+        sessionCalls += 1;
+        return Promise.resolve(jsonResponse(sessionCalls === 1
+          ? { authenticated: true, principal: principal(['chat', 'resources.read', 'files.read', 'files.write']) }
+          : { authenticated: false, principal: null }));
+      }
+      return Promise.resolve(jsonResponse(jsonResponseForMobile(url, options)));
+    });
+
+    render(<MobileApp />);
+    await waitForMobileChatReady();
+    const socket = MockWebSocket.instances[0];
+
+    fireEvent(window, new Event('focus'));
+    fireEvent(window, new Event('online'));
+
+    expect(await screen.findByText('你的会话已结束，请重新登录。')).toBeInTheDocument();
+    expect(sessionCalls).toBe(2);
+    expect(socket?.onclose).toBeNull();
+    expect(useStore.getState()).toMatchObject({
+      activeServerConnectionId: null,
+      activeServerConnection: null,
+      wsState: 'disconnected',
+      sessions: [],
+      currentSessionPath: null,
+      chatSessions: {},
+      agents: [],
+      models: [],
+      deskFiles: [],
+    });
+  });
+
+  it('does not leave the authenticated shell for a structured non-auth 403', async () => {
+    fetchMock.mockImplementation((input: RequestInfo | URL, options?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('/api/web-auth/session')) {
+        return Promise.resolve(jsonResponse({ authenticated: true, principal: principal(['chat', 'resources.read', 'files.read', 'files.write']) }));
+      }
+      if (url.includes('/api/test-scope-denied')) {
+        return Promise.resolve(jsonErrorResponse(403, {
+          error: 'insufficient_scope',
+          reason: 'scope_mismatch',
+        }));
+      }
+      return Promise.resolve(jsonResponse(jsonResponseForMobile(url, options)));
+    });
+
+    render(<MobileApp />);
+    await waitForMobileChatReady();
+
+    await expect(hanaFetch('/api/test-scope-denied')).rejects.toMatchObject({
+      status: 403,
+      reason: 'scope_mismatch',
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(screen.getByLabelText('titlebar.currentChatTitle')).toBeInTheDocument();
+    expect(screen.queryByText('你的会话已结束，请重新登录。')).not.toBeInTheDocument();
+  });
+
+  it('ends the session for a structured auth failure without replaying the request after re-login', async () => {
+    let sessionCalls = 0;
+    let sendCalls = 0;
+    fetchMock.mockImplementation((input: RequestInfo | URL, options?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('/api/web-auth/session')) {
+        sessionCalls += 1;
+        return Promise.resolve(jsonResponse({
+          authenticated: true,
+          principal: principal(['chat', 'resources.read', 'files.read', 'files.write']),
+        }));
+      }
+      if (url.includes('/api/test-send')) {
+        sendCalls += 1;
+        return Promise.resolve(jsonErrorResponse(403, {
+          error: 'missing credential',
+          reason: 'missing_credential',
+        }));
+      }
+      if (url.includes('/api/web-auth/login')) return Promise.resolve(jsonResponse({ ok: true }));
+      return Promise.resolve(jsonResponse(jsonResponseForMobile(url, options)));
+    });
+
+    render(<MobileApp />);
+    await waitForMobileChatReady();
+
+    await expect(hanaFetch('/api/test-send', { method: 'POST' })).rejects.toMatchObject({
+      status: 403,
+      reason: 'missing_credential',
+    });
+    expect(await screen.findByText('你的会话已结束，请重新登录。')).toBeInTheDocument();
+    expect(sessionCalls).toBe(1);
+
+    loginWithDeviceSecret('hana_dev_relogin');
+    await waitForMobileChatReady();
+
+    expect(sendCalls).toBe(1);
+  });
+
+  it('confirms an unstructured 403 against the public session before ending the session', async () => {
+    let sessionCalls = 0;
+    fetchMock.mockImplementation((input: RequestInfo | URL, options?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('/api/web-auth/session')) {
+        sessionCalls += 1;
+        return Promise.resolve(jsonResponse(sessionCalls === 1
+          ? {
+              authenticated: true,
+              principal: principal(['chat', 'resources.read', 'files.read', 'files.write']),
+            }
+          : { authenticated: false, principal: null }));
+      }
+      if (url.includes('/api/test-auth-unknown')) {
+        return Promise.resolve(jsonErrorResponse(403, { error: 'forbidden' }));
+      }
+      return Promise.resolve(jsonResponse(jsonResponseForMobile(url, options)));
+    });
+
+    render(<MobileApp />);
+    await waitForMobileChatReady();
+
+    await expect(hanaFetch('/api/test-auth-unknown')).rejects.toMatchObject({
+      status: 403,
+      reason: null,
+    });
+
+    expect(await screen.findByText('你的会话已结束，请重新登录。')).toBeInTheDocument();
+    expect(sessionCalls).toBe(2);
+  });
+
+  it('restores selected chat and safe unsent input after same-authority re-login', async () => {
+    let sessionCalls = 0;
+    fetchMock.mockImplementation((input: RequestInfo | URL, options?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('/api/web-auth/session')) {
+        sessionCalls += 1;
+        return Promise.resolve(jsonResponse(sessionCalls === 2
+          ? { authenticated: false, principal: null }
+          : { authenticated: true, principal: principal(['chat', 'resources.read', 'files.read', 'files.write']) }));
+      }
+      if (url.includes('/api/web-auth/login')) return Promise.resolve(jsonResponse({ ok: true }));
+      return Promise.resolve(jsonResponse(jsonResponseForMobile(url, options)));
+    });
+
+    render(<MobileApp />);
+    await waitForMobileChatReady();
+    await openMobileSession('日常记录');
+    await waitFor(() => expect(useStore.getState().currentSessionPath).toBe('/hana/sessions/one.jsonl'));
+    act(() => {
+      useStore.getState().setDraft('/hana/sessions/one.jsonl', 'recover this draft');
+      useStore.getState().setAttachedFiles([
+        {
+          path: 'pasted-image.png',
+          name: 'pasted-image.png',
+          mimeType: 'image/png',
+          base64Data: 'data:image/png;base64,c2FmZQ==',
+        },
+        {
+          fileId: 'sf_already_server_owned',
+          path: '/server/already-owned.png',
+          name: 'already-owned.png',
+        },
+      ]);
+    });
+
+    fireEvent(window, new Event('focus'));
+    expect(await screen.findByText('你的会话已结束，请重新登录。')).toBeInTheDocument();
+
+    loginWithDeviceSecret('hana_dev_relogin');
+    await waitForMobileChatReady();
+
+    await waitFor(() => expect(useStore.getState().currentSessionPath).toBe('/hana/sessions/one.jsonl'));
+    expect(useStore.getState().drafts.sess_mobile_one).toBe('recover this draft');
+    expect(useStore.getState().attachedFiles).toEqual([
+      expect.objectContaining({
+        name: 'pasted-image.png',
+        base64Data: 'data:image/png;base64,c2FmZQ==',
+      }),
+    ]);
+  });
+
+  it('uses a clean bootstrap after changed-authority re-login', async () => {
+    let sessionCalls = 0;
+    fetchMock.mockImplementation((input: RequestInfo | URL, options?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('/api/web-auth/session')) {
+        sessionCalls += 1;
+        if (sessionCalls === 2) {
+          return Promise.resolve(jsonResponse({ authenticated: false, principal: null }));
+        }
+        const currentPrincipal = principal(['chat', 'resources.read', 'files.read', 'files.write']);
+        return Promise.resolve(jsonResponse({
+          authenticated: true,
+          principal: sessionCalls >= 3
+            ? { ...currentPrincipal, userId: 'user_2' }
+            : currentPrincipal,
+        }));
+      }
+      if (url.includes('/api/web-auth/login')) return Promise.resolve(jsonResponse({ ok: true }));
+      return Promise.resolve(jsonResponse(jsonResponseForMobile(url, options)));
+    });
+
+    render(<MobileApp />);
+    await waitForMobileChatReady();
+    await openMobileSession('日常记录');
+    act(() => {
+      useStore.getState().setDraft('/hana/sessions/one.jsonl', 'must not cross users');
+      useStore.getState().setAttachedFiles([{
+        path: 'private.png',
+        name: 'private.png',
+        base64Data: 'data:image/png;base64,cHJpdmF0ZQ==',
+      }]);
+    });
+
+    fireEvent(window, new Event('focus'));
+    expect(await screen.findByText('你的会话已结束，请重新登录。')).toBeInTheDocument();
+    loginWithDeviceSecret('hana_dev_other_user');
+    await waitForMobileChatReady();
+
+    expect(useStore.getState()).toMatchObject({
+      currentSessionPath: null,
+      drafts: {},
+      draftDocs: {},
+      attachedFiles: [],
+      attachedFilesBySession: {},
+    });
   });
 
   it('re-pulls the open session on foreground when its revision drifted while backgrounded (#1610)', async () => {
@@ -908,6 +1144,20 @@ function jsonResponse(data: unknown): Response {
   } as Response;
 }
 
+function jsonErrorResponse(status: number, data: unknown): Response {
+  return {
+    ok: false,
+    status,
+    statusText: status === 403 ? 'Forbidden' : 'Unauthorized',
+    clone() {
+      return this;
+    },
+    json: async () => data,
+    text: async () => JSON.stringify(data),
+    headers: new Headers({ 'Content-Type': 'application/json' }),
+  } as Response;
+}
+
 function stubNarrowViewport(matches: boolean): void {
   vi.stubGlobal('matchMedia', vi.fn((query: string) => ({
     matches,
@@ -976,6 +1226,11 @@ async function waitForMobileChatReady(): Promise<HTMLElement> {
   return await screen.findByLabelText('titlebar.currentChatTitle');
 }
 
+function loginWithDeviceSecret(secret: string): void {
+  fireEvent.change(screen.getByLabelText('访问密钥'), { target: { value: secret } });
+  fireEvent.click(screen.getByRole('button', { name: '登录' }));
+}
+
 function resetStoreForMobileTest(): void {
   useStore.setState({
     serverPort: null,
@@ -990,10 +1245,16 @@ function resetStoreForMobileTest(): void {
     pendingSessionSwitchPath: null,
     pendingNewSession: false,
     chatSessions: {},
+    sessionLocatorsById: {},
     sessionRegistryFilesByPath: {},
     sessionModelsByPath: {},
     _loadMessagesVersion: {},
     streamingSessions: [],
+    drafts: {},
+    draftDocs: {},
+    draftsHydratedAt: 0,
+    attachedFiles: [],
+    attachedFilesBySession: {},
     previewItems: [],
     openTabs: [],
     activeTabId: null,

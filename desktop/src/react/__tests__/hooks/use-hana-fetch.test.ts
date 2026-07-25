@@ -23,7 +23,15 @@ vi.mock('../../stores', () => ({
   },
 }));
 
-import { hanaUrl, hanaFetch } from '../../hooks/use-hana-fetch';
+import {
+  abortPendingHanaFetches,
+  hanaUrl,
+  hanaFetch,
+} from '../../hooks/use-hana-fetch';
+import {
+  HanaHttpError,
+  subscribeHanaHttpErrors,
+} from '../../services/hana-http-error';
 
 describe('hanaUrl', () => {
   it('构建带 token 的 URL', () => {
@@ -63,6 +71,22 @@ describe('hanaFetch', () => {
     expect(opts.headers.Authorization).toBe('Bearer test-token-123');
   });
 
+  it('can abort all pending authenticated requests at an auth-lifecycle boundary', async () => {
+    mockFetch.mockImplementationOnce((_url: string, options: RequestInit) => (
+      new Promise((_resolve, reject) => {
+        options.signal?.addEventListener('abort', () => {
+          reject(new DOMException('aborted', 'AbortError'));
+        }, { once: true });
+      })
+    ));
+
+    const request = hanaFetch('/api/sessions');
+    abortPendingHanaFetches();
+
+    await expect(request).rejects.toMatchObject({ name: 'AbortError' });
+    expect(mockFetch.mock.calls[0]?.[1].signal.aborted).toBe(true);
+  });
+
   it('非 2xx 状态码抛出错误', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: false,
@@ -83,6 +107,66 @@ describe('hanaFetch', () => {
 
     await expect(hanaFetch('/api/sessions/latest-user-message/replay'))
       .rejects.toThrow('provider rejected image_url');
+  });
+
+  it('保留 JSON reason 并向监听器发布同一个结构化错误', async () => {
+    mockFetch.mockResolvedValueOnce(new Response(JSON.stringify({
+      error: 'credential is no longer valid',
+      reason: 'invalid_credential',
+    }), {
+      status: 403,
+      statusText: 'Forbidden',
+      headers: { 'Content-Type': 'application/json' },
+    }));
+    const observed: HanaHttpError[] = [];
+    const unsubscribe = subscribeHanaHttpErrors(error => observed.push(error));
+
+    let thrown: unknown;
+    try {
+      await hanaFetch('/api/sessions');
+    } catch (error) {
+      thrown = error;
+    } finally {
+      unsubscribe();
+    }
+
+    expect(thrown).toBeInstanceOf(HanaHttpError);
+    expect(thrown).toMatchObject({
+      status: 403,
+      reason: 'invalid_credential',
+      detail: 'credential is no longer valid',
+    });
+    expect(observed).toEqual([thrown]);
+  });
+
+  it('preserves unrelated structured reasons for callers without treating them as display text', async () => {
+    mockFetch.mockResolvedValueOnce(new Response(JSON.stringify({
+      message: 'You do not have this scope',
+      reason: 'insufficient_scope',
+    }), {
+      status: 403,
+      statusText: 'Forbidden',
+    }));
+
+    await expect(hanaFetch('/api/admin'))
+      .rejects.toMatchObject({
+        reason: 'insufficient_scope',
+        detail: 'You do not have this scope',
+      });
+  });
+
+  it('keeps the prior raw JSON display detail when a body has reason but no error/message', async () => {
+    const body = JSON.stringify({ reason: 'missing_credential' });
+    mockFetch.mockResolvedValueOnce(new Response(body, {
+      status: 403,
+      statusText: 'Forbidden',
+    }));
+
+    await expect(hanaFetch('/api/sessions'))
+      .rejects.toMatchObject({
+        reason: 'missing_credential',
+        detail: body,
+      });
   });
 
   it('非 2xx 状态码错误包含纯文本响应体', async () => {
