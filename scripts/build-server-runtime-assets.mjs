@@ -28,6 +28,24 @@ export const SERVER_RUNTIME_RENDERER_DIRS = [
 ];
 
 /**
+ * Packaged `bundle/cli.js` keeps createRequire() loads of artifact-core as
+ * relative runtime requires (`../shared/artifact-core/*.cjs`). Those files are
+ * not emitted by Vite or plugin-host dependency copies and must be staged
+ * explicitly next to the packaged CLI entry.
+ */
+export const PACKAGED_CLI_ARTIFACT_CORE_FILES = Object.freeze([
+  "shared/artifact-core/index.cjs",
+  "shared/artifact-core/activation.cjs",
+  "shared/artifact-core/manifest.cjs",
+  "shared/artifact-core/pointer-store.cjs",
+  "shared/artifact-core/pointer-channels.cjs",
+  "shared/artifact-core/ustar.cjs",
+  "shared/artifact-core/ota-core.cjs",
+  "shared/artifact-core/keyset.cjs",
+  "shared/artifact-core/pinned-keyset.json",
+]);
+
+/**
  * Read-only packaging compatibility surface for the installer migration gate.
  * Reports upstream artifact-core source presence while confirming that the fork
  * installer retains its current-symlink production activation model.
@@ -36,14 +54,15 @@ export function buildServerRuntimePackagingCompatibilityReport({
   rootDir = process.cwd(),
   fsImpl = fs,
 } = {}) {
-  const artifactCorePaths = [
+  // Historical installer probe set (kept stable for characterization tests).
+  const legacyProbePaths = [
     "shared/artifact-core/index.cjs",
     "shared/artifact-core/activation.cjs",
     "shared/artifact-core/manifest.cjs",
     "shared/artifact-core/pointer-store.cjs",
     "shared/artifact-core/ustar.cjs",
   ];
-  const present = artifactCorePaths.filter((relative) => (
+  const present = legacyProbePaths.filter((relative) => (
     fsImpl.existsSync(path.join(rootDir, relative))
   ));
   return {
@@ -53,6 +72,26 @@ export function buildServerRuntimePackagingCompatibilityReport({
     productionBehaviorChanged: false,
     activationModel: "current-symlink",
   };
+}
+
+/**
+ * Copy the artifact-core modules the packaged CLI resolves at runtime.
+ * Merges into an existing `outDir/shared/` tree (plugin host copies may already
+ * have placed a few shared/*.ts files there).
+ *
+ * @returns {string[]} relative paths copied
+ */
+export function copyPackagedCliArtifactCore({ rootDir, outDir, fsImpl = fs }) {
+  const copied = [];
+  for (const relative of PACKAGED_CLI_ARTIFACT_CORE_FILES) {
+    const sourcePath = path.join(rootDir, relative);
+    assertRequiredAssetExists(fsImpl, sourcePath, relative);
+    const targetPath = path.join(outDir, relative);
+    fsImpl.mkdirSync(path.dirname(targetPath), { recursive: true });
+    fsImpl.copyFileSync(sourcePath, targetPath);
+    copied.push(relative);
+  }
+  return copied;
 }
 
 function assertRequiredAssetExists(fsImpl, sourcePath, label) {
