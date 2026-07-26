@@ -1867,7 +1867,7 @@
       "visionModel": "Vision auxiliary model",
       "visionAuxiliaryToggle": "Auxiliary vision",
       "visionModelHint": "Used only when the current chat model cannot accept images",
-      "visionModelMissingHint": "Can't find your model? Enable its vision capability in the Providers page.",
+      "visionModelMissingHint": "Can't find your model? In Providers, edit the model, turn Vision on, and Save. Catalog hints may be outdated; your saved setting is what counts.",
       "searchProvider": "Search Service",
       "searchProviderField": "Search engine",
       "searchApiKey": "Search API Key",

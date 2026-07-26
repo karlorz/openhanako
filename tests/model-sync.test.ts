@@ -744,6 +744,34 @@ describe("syncModels", () => {
     expect(model.reasoning).toBe(true);
   });
 
+  it("projects custom-provider vision from user catalog fields without requiring dictionary hits", async () => {
+    const syncModels = await loadSync();
+
+    const providers = {
+      "custom-provider": {
+        base_url: "https://custom-provider.example.test/v1",
+        api: "openai-completions",
+        api_key: "sk-test",
+        models: [
+          { id: "grok-4.3", name: "Grok 4.3", image: true, reasoning: true },
+          "unknown-vl-model",
+        ],
+      },
+    };
+
+    syncModels(providers, { modelsJsonPath });
+
+    const result = JSON.parse(fs.readFileSync(modelsJsonPath, "utf-8"));
+    const models = result.providers["custom-provider"].models;
+    expect(models.find((m) => m.id === "grok-4.3")).toMatchObject({
+      id: "grok-4.3",
+      input: ["text", "image"],
+      reasoning: true,
+    });
+    // Bare unknown ids stay text-only until Settings stamps image:true into the catalog.
+    expect(models.find((m) => m.id === "unknown-vl-model").input).toEqual(["text"]);
+  });
+
   it("normalizes legacy Kimi Coding Plan transport without rewriting the configured model id", async () => {
     const syncModels = await loadSync();
 
