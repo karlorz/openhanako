@@ -26,7 +26,8 @@ const editorState = vi.hoisted(() => ({
 const mocks = vi.hoisted(() => ({
   setContent: vi.fn(),
   clearContent: vi.fn(),
-  ensureSession: vi.fn(),
+  ensureSessionWithOutcome: vi.fn(),
+  recoverPendingSessionDraftIdentity: vi.fn(),
   hanaFetch: vi.fn(),
   wsSend: vi.fn(),
 }));
@@ -108,8 +109,9 @@ vi.mock('../../hooks/use-hana-fetch', () => ({
 }));
 
 vi.mock('../../stores/session-actions', () => ({
-  ensureSession: mocks.ensureSession,
+  ensureSessionWithOutcome: mocks.ensureSessionWithOutcome,
   loadSessions: vi.fn(),
+  recoverPendingSessionDraftIdentity: mocks.recoverPendingSessionDraftIdentity,
   upsertOptimisticSessionFirstMessage: vi.fn(),
 }));
 
@@ -198,6 +200,48 @@ function setContentCallsWithText(text: string) {
   });
 }
 
+function seedPendingInputState({
+  pendingDraftId,
+  text,
+  attachedFiles = [],
+}: {
+  pendingDraftId: string | null;
+  text: string;
+  attachedFiles?: Array<{ path: string; name: string; isDirectory: boolean }>;
+}) {
+  useStore.setState({
+    currentSessionPath: null,
+    currentSessionId: null,
+    currentAgentId: 'hana',
+    pendingNewSession: true,
+    pendingDraftId,
+    connected: true,
+    welcomeVisible: true,
+    streamingSessions: [],
+    inlineErrors: {},
+    attachedFiles,
+    attachedFilesBySession: {},
+    docContextAttached: false,
+    quoteCandidate: null,
+    quotedSelections: [],
+    quotedSelection: null,
+    models: [{ id: 'deepseek-chat', provider: 'deepseek', name: 'DeepSeek Chat', input: ['text'], isCurrent: true }],
+    sessionModelsByPath: {},
+    previewItems: [],
+    previewOpen: false,
+    chatSessions: {},
+    serverPort: 3210,
+    serverToken: null,
+    modelSwitching: false,
+    sessions: [],
+    sessionLocatorsById: {},
+    drafts: { __home__: text },
+    draftDocs: { __home__: paragraphDoc(text) },
+    draftsHydratedAt: Date.now(),
+    toasts: [],
+  } as never);
+}
+
 describe('InputArea pending identity & sendable predicate (#2101)', () => {
   afterEach(() => {
     cleanup();
@@ -209,52 +253,27 @@ describe('InputArea pending identity & sendable predicate (#2101)', () => {
     editorState.doc = paragraphDoc('');
     window.platform = {} as typeof window.platform;
     delete (window as unknown as { hana?: unknown }).hana;
-    mocks.ensureSession.mockResolvedValue(null);
+    mocks.ensureSessionWithOutcome.mockResolvedValue({
+      status: 'identity',
+      reason: 'missing session identity',
+    });
     mocks.hanaFetch.mockResolvedValue(new Response(JSON.stringify({ models: {} }), { status: 200 }));
   });
 
   describe('R1: welcome 态 pendingDraftId 缺失时发送', () => {
-    it('shows an explicit error toast instead of a silent no-op', async () => {
+    it('routes the incomplete pending identity through ensureSession and sends with the healed ref', async () => {
       // 真实冷启动态：pendingNewSession true 但 pendingDraftId 是残缺的 null
       // （历史上 app-init.ts / desk-actions.ts / mobile-init.ts 都曾经这样裸设）。
       // 注意：不手工补种 pendingDraftId —— 补种会掩盖这里要暴露的真实故障。
-      useStore.setState({
-        currentSessionPath: null,
-        currentSessionId: null,
-        currentAgentId: 'hana',
-        pendingNewSession: true,
-        pendingDraftId: null,
-        connected: true,
-        welcomeVisible: true,
-        streamingSessions: [],
-        inlineErrors: {},
-        attachedFiles: [],
-        attachedFilesBySession: {},
-        docContextAttached: false,
-        quoteCandidate: null,
-        quotedSelections: [],
-        quotedSelection: null,
-        models: [{
-          id: 'deepseek-chat',
-          provider: 'deepseek',
-          name: 'DeepSeek Chat',
-          input: ['text'],
-          isCurrent: true,
-        }],
-        sessionModelsByPath: {},
-        previewItems: [],
-        previewOpen: false,
-        chatSessions: {},
-        serverPort: 3210,
-        serverToken: null,
-        modelSwitching: false,
-        sessions: [],
-        sessionLocatorsById: {},
-        drafts: { __home__: '晚上好啊' },
-        draftDocs: { __home__: paragraphDoc('晚上好啊') },
-        draftsHydratedAt: Date.now(),
-        toasts: [],
-      } as never);
+      seedPendingInputState({ pendingDraftId: null, text: '晚上好啊' });
+      mocks.ensureSessionWithOutcome.mockResolvedValueOnce({
+        status: 'ok',
+        ref: {
+          sessionId: 'sess_healed',
+          sessionPath: '/session/healed.jsonl',
+          agentId: 'hana',
+        },
+      });
 
       render(React.createElement(InputArea));
 
@@ -264,11 +283,49 @@ describe('InputArea pending identity & sendable predicate (#2101)', () => {
 
       fireEvent.click(screen.getByTestId('send'));
 
-      await waitFor(() => {
-        const toasts = useStore.getState().toasts;
-        expect(toasts.some((toast) => toast.type === 'error')).toBe(true);
+      await waitFor(() => expect(mocks.wsSend).toHaveBeenCalledTimes(1));
+      expect(mocks.ensureSessionWithOutcome).toHaveBeenCalledWith(null);
+    });
+
+    it('shows an actionable recovery toast for an unrecoverable identity failure', async () => {
+      seedPendingInputState({
+        pendingDraftId: 'draft-identity-fails',
+        text: 'keep me',
+        attachedFiles: [{ path: '/tmp/kept.png', name: 'kept.png', isDirectory: false }],
       });
-      expect(mocks.wsSend).not.toHaveBeenCalled();
+      mocks.ensureSessionWithOutcome.mockResolvedValueOnce({
+        status: 'identity',
+        reason: 'missing session identity',
+      });
+
+      render(React.createElement(InputArea));
+      await waitFor(() => expect(setContentCallsWithText('keep me')).toBe(true));
+      fireEvent.click(screen.getByTestId('send'));
+
+      await waitFor(() => expect(useStore.getState().toasts).toHaveLength(1));
+      const toast = useStore.getState().toasts[0];
+      expect(toast).toMatchObject({ type: 'error', dedupeKey: 'send-missing-session' });
+      expect(toast.action?.label).toBe('sidebar.newChat');
+      toast.action?.onClick();
+      expect(mocks.recoverPendingSessionDraftIdentity).toHaveBeenCalledTimes(1);
+      expect(useStore.getState().attachedFiles).toHaveLength(1);
+    });
+
+    it('does not add a generic missing-session toast after createFailed', async () => {
+      seedPendingInputState({ pendingDraftId: 'draft-create-fails', text: 'try me' });
+      mocks.ensureSessionWithOutcome.mockImplementationOnce(async () => {
+        useStore.getState().addToast('session.createFailed: boom', 'error', 6000, {
+          dedupeKey: 'send-create-failed',
+        });
+        return { status: 'create', reason: 'boom' };
+      });
+
+      render(React.createElement(InputArea));
+      await waitFor(() => expect(setContentCallsWithText('try me')).toBe(true));
+      fireEvent.click(screen.getByTestId('send'));
+
+      await waitFor(() => expect(useStore.getState().toasts).toHaveLength(1));
+      expect(useStore.getState().toasts[0]).toMatchObject({ dedupeKey: 'send-create-failed' });
     });
   });
 

@@ -74,6 +74,10 @@ vi.mock('../../hooks/use-hana-fetch', () => ({
 
 vi.mock('../../stores/session-actions', () => ({
   ensureSession: mocks.ensureSession,
+  ensureSessionWithOutcome: async (...args: unknown[]) => {
+    const ref = await mocks.ensureSession(...args);
+    return ref ? { status: 'ok', ref } : { status: 'identity', reason: 'missing session identity' };
+  },
   loadSessions: vi.fn(),
   upsertOptimisticSessionFirstMessage: mocks.upsertOptimisticSessionFirstMessage,
 }));
