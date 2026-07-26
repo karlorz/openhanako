@@ -1,67 +1,46 @@
 {
   "schemaVersion": 1,
-  "tag": "v0.416.51-karlorz.4",
+  "tag": "v0.416.51-karlorz.5",
   "version": "0.416.51",
-  "previousTag": "v0.416.51-karlorz.3",
-  "generatedAt": "2026-07-27T08:10:00.000Z",
+  "previousTag": "v0.416.51-karlorz.4",
+  "generatedAt": "2026-07-27T08:37:00.000Z",
   "noUserFacingChanges": false,
   "summary": {
-    "zh": "修复独立服务器安装包中 hana CLI 无法启动的问题，并让工作台视觉能力以供应商目录为准。",
-    "en": "Fixes the packaged server hana CLI failing to start, and treats the provider catalog as the source of truth for vision capability in Settings."
+    "zh": "补齐独立服务器 hana CLI 所需的 contract-versions 模块，修复安装包内命令仍无法启动的问题。",
+    "en": "Ships the contract-versions module required by the packaged hana CLI so the install-server command can start."
   },
   "counts": {
     "feature": 0,
-    "fix": 2,
+    "fix": 1,
     "improvement": 0,
     "migration": 0
   },
   "source": {
     "owner": "karlorz",
     "repo": "openhanako",
-    "commitRange": "v0.416.51-karlorz.3..HEAD",
-    "releaseUrl": "https://github.com/karlorz/openhanako/releases/tag/v0.416.51-karlorz.4",
+    "commitRange": "v0.416.51-karlorz.4..HEAD",
+    "releaseUrl": "https://github.com/karlorz/openhanako/releases/tag/v0.416.51-karlorz.5",
     "releaseNotes": ""
   },
   "items": [
     {
-      "id": "packaged-hana-cli-artifact-core",
+      "id": "packaged-hana-cli-contract-versions",
       "kind": "fix",
       "importance": "high",
       "title": {
-        "zh": "独立服务器 hana CLI 可正常启动",
-        "en": "Packaged server hana CLI starts correctly"
+        "zh": "hana CLI 补齐 contract-versions",
+        "en": "hana CLI includes contract-versions"
       },
       "summary": {
-        "zh": "install-server 布局下的 hana 命令会随安装包带上 shared/artifact-core 模块，不再因找不到 activation 而退出。",
-        "en": "The install-server hana command ships shared/artifact-core modules with the package and no longer exits missing activation."
+        "zh": "artifact-core 的 ota-core 会加载 shared/contract-versions.cjs；该文件现已打进安装包。",
+        "en": "artifact-core ota-core loads shared/contract-versions.cjs; that file is now included in the package."
       },
       "details": [],
       "sources": [
         {
           "type": "commit",
-          "ref": "eed8ffc461ef",
-          "title": "fix(server): ship artifact-core modules for packaged hana CLI"
-        }
-      ]
-    },
-    {
-      "id": "provider-catalog-vision-capability-sot",
-      "kind": "fix",
-      "importance": "medium",
-      "title": {
-        "zh": "视觉能力以供应商目录为准",
-        "en": "Vision capability follows the provider catalog"
-      },
-      "summary": {
-        "zh": "设置里的视觉能力判断改以供应商目录为唯一来源，避免本地缓存与目录不一致。",
-        "en": "Settings vision capability now uses the provider catalog as the single source of truth, avoiding stale local cache mismatches."
-      },
-      "details": [],
-      "sources": [
-        {
-          "type": "commit",
-          "ref": "a98f86a9788f",
-          "title": "fix(settings): treat provider catalog as vision capability SoT"
+          "ref": "4d67c5bd",
+          "title": "fix(server): ship contract-versions with packaged CLI artifact-core"
         }
       ]
     }
