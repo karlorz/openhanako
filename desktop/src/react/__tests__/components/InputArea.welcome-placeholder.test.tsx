@@ -63,6 +63,10 @@ vi.mock('../../hooks/use-hana-fetch', () => ({
 
 vi.mock('../../stores/session-actions', () => ({
   ensureSession: vi.fn(async () => true),
+  ensureSessionWithOutcome: vi.fn(async () => ({
+    status: 'ok',
+    ref: { sessionId: 'sess_welcome', sessionPath: '/session/welcome.jsonl', agentId: 'hana' },
+  })),
   loadSessions: vi.fn(),
 }));
 
