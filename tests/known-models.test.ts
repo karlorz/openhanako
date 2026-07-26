@@ -316,6 +316,17 @@ describe("known-models dictionary", () => {
     });
   });
 
+  it("does not borrow another provider partition for custom providers (Settings catalog is SoT)", () => {
+    // grok-4.3 lives under the xai partition; arbitrary custom providers must not inherit it.
+    // Unknown custom models rely on user-edited catalog fields (or optional generic fallbacks).
+    expect(lookupKnown("xai", "grok-4.3")).toMatchObject({
+      name: "Grok 4.3",
+      image: true,
+      reasoning: true,
+    });
+    expect(lookupKnown("custom-provider", "grok-4.3")).toBeNull();
+  });
+
   it("declares the latest Doubao Seed 2.0 Lite visual metadata for Volcengine providers", () => {
     const expected = {
       name: "Doubao Seed 2.0 Lite (Full-Modal)",
