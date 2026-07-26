@@ -1,6 +1,6 @@
 # OpenHanako Dev-Loop Setup Notes
 
-Generated during the 2026-06-15 remote attachment preview fix closeout. Last revised during the 2026-07-25 attended stable-then-prerelease sync and fork publication.
+Generated during the 2026-06-15 remote attachment preview fix closeout. Last revised 2026-07-27 after Mobile session-loss UAT PASS and follow-up queue.
 
 ## Discovery
 
@@ -8,15 +8,13 @@ Generated during the 2026-06-15 remote attachment preview fix closeout. Last rev
 - Upstream: `liliMozi/openhanako`
 - Current branch: `dev`
 - GitHub CLI default repo: `karlorz/openhanako`
-- App version: **`0.416.51`** after the attended stable-first sync to `v0.416.44` and separately consented prerelease rebase onto **`train-beta-17`**, paired with `v0.416.51`. Upstream SHA: `ef8a6f700191c2486effd3761a4bd2b7f3ad774c`. The current immutable fork release `v0.416.51-karlorz.1` publishes from fork SHA `ac3c2e7924fb4daa8d6b2fc086fb619022e4779a`.
+- App version: **`0.416.51`** (train-beta-17 / upstream `ef8a6f70…` line)
 - SkillWiki vault: resolved by `skillwiki path`; project wiki path `projects/openhanako`
-- SkillWiki doctor: 32 pass, 6 info, 0 warn, 0 errors
-- Dev-loop dependency probe: usable; required dependencies present
-- Missing optional dependency: `claude-mem` only
 - Existing CI: `.github/workflows/ci.yml`, targets `main` and `dev`
 - Release workflow: `.github/workflows/build.yml`, tag-triggered `v*`
-- Latest fork release tag (published): **`v0.416.51-karlorz.1`** (`legacy-raw`, prerelease) at `ac3c2e7924fb4daa8d6b2fc086fb619022e4779a`. The stable-base snapshot is also published as **`v0.416.44-karlorz.1`** at `271d2d6a045c7239381cbfd5c88da9cfc437b0aa`; both releases contain the expected 20 assets.
-- Sync/release status (2026-07-25): **lastSynced = `train-beta-17`** (prerelease channel). Stable-first and prerelease syncs, fork-qualified digest alignment, both tag-triggered Build workflows, independent tag/digest/profile/compatibility checks, automated helper, and manual image/preview/chat-switch smoke are complete. PR #1 stays permanent draft never-merge. sg01 intentionally remains on `v0.416.43-karlorz.1`; the 2026-07-25 publication did not deploy a host. The bot-created `legacy-raw` releases intentionally exclude mirror/train assets.
+- Latest **host** release: **`v0.416.51-karlorz.3`** on sg01 (Mobile session-loss UAT-01…09 PASS). Published prereleases also include `v0.416.51-karlorz.1` / `.2` and stable-base `v0.416.44-karlorz.1`.
+- **Pending (SkillWiki):** HTTPS/WSS installed-PWA coverage; next prerelease to ship packaged `hana` CLI `shared/artifact-core` fix (`eed8ffc4` on `dev`); PR #1 stays permanent draft never-merge.
+- Sync/release status: lastSynced = `train-beta-17` (prerelease channel).
 - Upstream sync workflow: `node scripts/sync-upstream.mjs --check` checks stable upstream releases by default; prerelease candidate review uses `--include-prerelease --check`; prerelease **mutate** requires double consent (see `FORK_SYNC.md` optional prerelease channel)
 - Fork sync rules: `docs/fork-sync/rules.yml` is the machine-readable policy used by `scripts/sync-upstream.mjs`.
 - Post-rebase fork sync verification: `node scripts/sync-upstream.mjs --post-rebase` prints Tier 3A local desktop install/version verification before Tier 3B sg01 live smoke. The installed `/Applications/HanaAgent.app` bundle metadata, `build-info.json`, and Settings → About must match `package.json` before the live smoke counts.
