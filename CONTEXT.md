@@ -34,6 +34,14 @@ Current state (2026-07-25): the attended two-stage upstream sync and fork public
 - **Optimistic attachment**: transient UI attachment before server echo; may carry inline base64 bytes for immediate preview.
 - **Display message attachment**: persisted message payload; should not store base64 payloads.
 
+## Model capability SoT (Vision auxiliary)
+
+Provider catalog model object fields (Settings → Providers → edit model) are the durable authority for `image` / vision, `video`, `audio`, and `reasoning` after the user saves. Runtime `model-sync` projects those fields into `models.json` `input`; the Vision auxiliary picker only lists models whose projected `input` includes `"image"`.
+
+- Dictionary sources (`known-models.json` partitions, `known-model-fallbacks.json`) are optional best-effort fill when catalog fields are **absent**. They must not silently steal another provider's partition for a custom hub, and they are not day-to-day maintenance for unknown model ids.
+- Model edit Save materializes `true` capabilities shown from dictionary defaults without a re-toggle; it materializes `false` only when the catalog already had that field or the user toggled it (preserves Ollama name-inference).
+- Fork fix tracked as `vision-capability-settings-sot` (commit `a98f86a9`, UAT-passed 2026-07-26). Upstream relatives: #1904, #538, #594. Draft: `docs/upstream-issues/drafts/vision-capability-settings-sot.md`.
+
 ## Critical Paths
 
 - LAN connect/auth:
