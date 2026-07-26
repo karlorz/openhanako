@@ -153,6 +153,16 @@ describe("artifact activation compatibility", () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
+  it("stages shared/data-epoch.cjs and shared/server-info-probe.cjs so the externalized CLI bundle can load them at runtime", () => {
+    // data-epoch.cjs ESM-imported by cli/data.ts + core/data-epoch-*.ts has bare
+    // require("crypto"/"fs"/"path") that cannot run inside esbuild's ESM shim,
+    // so buildCliBundle externalizes it and it must be staged to shared/.
+    // server-info-probe.cjs is externalized for the same reason. See
+    // buildCliBundle in scripts/build-server-phases.mjs.
+    expect(PACKAGED_CLI_ARTIFACT_CORE_FILES).toContain("shared/data-epoch.cjs");
+    expect(PACKAGED_CLI_ARTIFACT_CORE_FILES).toContain("shared/server-info-probe.cjs");
+  });
+
   it("retains previous release path in upgrade plans for rollback", () => {
     const plan = buildUpgradePlan({
       metadata,
