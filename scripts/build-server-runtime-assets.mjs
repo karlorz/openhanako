@@ -43,6 +43,8 @@ export const PACKAGED_CLI_ARTIFACT_CORE_FILES = Object.freeze([
   "shared/artifact-core/ota-core.cjs",
   "shared/artifact-core/keyset.cjs",
   "shared/artifact-core/pinned-keyset.json",
+  // Transitive runtime require from ota-core.cjs (../contract-versions.cjs).
+  "shared/contract-versions.cjs",
 ]);
 
 /**
