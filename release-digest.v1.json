@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "tag": "v0.416.51-karlorz.5",
+  "tag": "v0.416.51-karlorz.6",
   "version": "0.416.51",
-  "previousTag": "v0.416.51-karlorz.4",
-  "generatedAt": "2026-07-27T08:37:00.000Z",
+  "previousTag": "v0.416.51-karlorz.5",
+  "generatedAt": "2026-07-27T09:15:00.000Z",
   "noUserFacingChanges": false,
   "summary": {
-    "zh": "补齐独立服务器 hana CLI 所需的 contract-versions 模块，修复安装包内命令仍无法启动的问题。",
-    "en": "Ships the contract-versions module required by the packaged hana CLI so the install-server command can start."
+    "zh": "\u8865\u9f50 hana CLI \u7684 contract-versions.json\uff0c\u4fee\u590d\u5b89\u88c5\u5305\u547d\u4ee4\u4ecd\u65e0\u6cd5\u542f\u52a8\u7684\u95ee\u9898\u3002",
+    "en": "Ships contract-versions.json so the packaged hana CLI can finish loading."
   },
   "counts": {
     "feature": 0,
@@ -18,29 +18,29 @@
   "source": {
     "owner": "karlorz",
     "repo": "openhanako",
-    "commitRange": "v0.416.51-karlorz.4..HEAD",
-    "releaseUrl": "https://github.com/karlorz/openhanako/releases/tag/v0.416.51-karlorz.5",
+    "commitRange": "v0.416.51-karlorz.5..HEAD",
+    "releaseUrl": "https://github.com/karlorz/openhanako/releases/tag/v0.416.51-karlorz.6",
     "releaseNotes": ""
   },
   "items": [
     {
-      "id": "packaged-hana-cli-contract-versions",
+      "id": "packaged-hana-cli-contract-versions-json",
       "kind": "fix",
       "importance": "high",
       "title": {
-        "zh": "hana CLI 补齐 contract-versions",
-        "en": "hana CLI includes contract-versions"
+        "zh": "hana CLI \u8865\u9f50 contract-versions.json",
+        "en": "hana CLI includes contract-versions.json"
       },
       "summary": {
-        "zh": "artifact-core 的 ota-core 会加载 shared/contract-versions.cjs；该文件现已打进安装包。",
-        "en": "artifact-core ota-core loads shared/contract-versions.cjs; that file is now included in the package."
+        "zh": "contract-versions.cjs \u4f9d\u8d56\u540c\u76ee\u5f55 JSON \u771f\u76f8\u6e90\uff1b\u8be5\u6587\u4ef6\u73b0\u5df2\u6253\u8fdb\u5b89\u88c5\u5305\u3002",
+        "en": "contract-versions.cjs depends on the sibling JSON source of truth; that file is now packaged."
       },
       "details": [],
       "sources": [
         {
           "type": "commit",
-          "ref": "4d67c5bd",
-          "title": "fix(server): ship contract-versions with packaged CLI artifact-core"
+          "ref": "55c867b6",
+          "title": "fix(server): ship contract-versions.json for packaged hana CLI"
         }
       ]
     }
