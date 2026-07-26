@@ -37,6 +37,15 @@ export interface SessionRef {
   agentId: string;
 }
 
+export interface SessionEnsureFailure {
+  status: 'create' | 'identity' | 'draft-mismatch';
+  reason: string;
+}
+
+export type SessionEnsureResult =
+  | { status: 'ok'; ref: Readonly<SessionRef> }
+  | SessionEnsureFailure;
+
 function nextPendingDraftId(): string {
   _pendingDraftSequence += 1;
   return `pending-${Date.now().toString(36)}-${_pendingDraftSequence.toString(36)}`;
@@ -50,6 +59,73 @@ function nextPendingDraftId(): string {
  */
 export function pendingNewSessionIdentityPatch(): { pendingNewSession: true; pendingDraftId: string } {
   return { pendingNewSession: true, pendingDraftId: nextPendingDraftId() };
+}
+
+function preservePendingComposerDraft(state: Record<string, any>): void {
+  const sessionPath = typeof state.currentSessionPath === 'string' && state.currentSessionPath.trim()
+    ? state.currentSessionPath
+    : null;
+  if (!sessionPath) return;
+  const draft = sessionScopedValue(state, state.drafts || {}, sessionPath);
+  if (draft === undefined) return;
+  const draftDoc = sessionScopedValue(state, state.draftDocs || {}, sessionPath);
+  state.setDraft?.(HOME_DRAFT_KEY, draft, draftDoc ?? null);
+}
+
+function applyPendingSessionIdentity(
+  state: Record<string, any>,
+  identityPatch: { pendingNewSession: true; pendingDraftId: string },
+): void {
+  preservePendingComposerDraft(state);
+  useStore.setState({
+    welcomeVisible: true,
+    currentSessionPath: null,
+    currentSessionId: null,
+    ...identityPatch,
+  });
+}
+
+function warnSessionEnsure(outcome: string, state: Record<string, any>, detail?: string): void {
+  console.warn('[session] ensure session identity', {
+    pendingNewSession: state.pendingNewSession === true,
+    pendingDraftId: normalizeSessionId(state.pendingDraftId),
+    currentSessionPath: typeof state.currentSessionPath === 'string' ? state.currentSessionPath : null,
+    currentSessionId: normalizeSessionId(state.currentSessionId),
+    ensureOutcome: outcome,
+    ...(detail ? { detail } : {}),
+  });
+}
+
+/**
+ * Repair welcome/dead-shell identity without clearing the composer. This is the send-time
+ * counterpart to pendingNewSessionIdentityPatch(): it deliberately preserves drafts and
+ * attachments, unlike createNewSession(), which is a user navigation action.
+ */
+function healPendingSessionDraftIdentity(): void {
+  const state = useStore.getState() as Record<string, any>;
+  if (frozenSessionRefFromState(state) || state.pendingSessionSwitchPath) return;
+  const pendingDraftId = normalizeSessionId(state.pendingDraftId);
+  if (state.currentSessionPath && state.pendingNewSession !== true) return;
+  const identityPatch = pendingDraftId
+    ? { pendingNewSession: true as const, pendingDraftId }
+    : pendingNewSessionIdentityPatch();
+  applyPendingSessionIdentity(state, identityPatch);
+  warnSessionEnsure(
+    pendingDraftId ? 'normalized-pending-shell' : (state.pendingNewSession ? 'healed-pending-draft' : 'healed-dead-shell'),
+    useStore.getState() as Record<string, any>,
+  );
+}
+
+/** Actionable recovery used by toast CTAs. Always re-seeds a fresh draft identity and focuses. */
+export function recoverPendingSessionDraftIdentity(): string {
+  const state = useStore.getState() as Record<string, any>;
+  invalidateSessionSwitches();
+  const identityPatch = pendingNewSessionIdentityPatch();
+  applyPendingSessionIdentity(state, identityPatch);
+  const recovered = useStore.getState() as Record<string, any>;
+  warnSessionEnsure('reseeded-by-recovery-action', recovered);
+  requestChatInputFocus(null);
+  return identityPatch.pendingDraftId;
 }
 
 function invalidateSessionSwitches(): void {
@@ -1203,15 +1279,38 @@ export async function createNewSession(options: CreateNewSessionOptions = {}): P
 // 确保 Session 存在（首次发消息时调用）
 // ══════════════════════════════════════════════════════
 
-export async function ensureSession(expectedPendingDraftId?: string | null): Promise<Readonly<SessionRef> | null> {
-  try {
-    const initialState = useStore.getState() as Record<string, any>;
-    if (initialState.pendingNewSession !== true) return frozenSessionRefFromState(initialState);
-    const draft = currentPendingSessionDraft();
-    if (!draft) throw new Error('pending session draft identity is missing');
-    const draftId = normalizeSessionId(initialState.pendingDraftId);
-    if (expectedPendingDraftId && draftId !== expectedPendingDraftId) return null;
+export async function ensureSessionWithOutcome(
+  expectedPendingDraftId?: string | null,
+): Promise<SessionEnsureResult> {
+  let initialState = useStore.getState() as Record<string, any>;
+  const activeRef = frozenSessionRefFromState(initialState);
+  if (activeRef && initialState.pendingNewSession !== true) return { status: 'ok', ref: activeRef };
+  const expectedDraftId = normalizeSessionId(expectedPendingDraftId);
+  const initialDraftId = normalizeSessionId(initialState.pendingDraftId);
+  if (expectedDraftId && initialDraftId !== expectedDraftId) {
+    const failure = { status: 'draft-mismatch', reason: 'pending draft changed before session creation' } satisfies SessionEnsureFailure;
+    warnSessionEnsure('draft-mismatch-before-create', initialState, failure.reason);
+    return failure;
+  }
+  let draft = currentPendingSessionDraft();
+  if (!draft) {
+    healPendingSessionDraftIdentity();
+    initialState = useStore.getState() as Record<string, any>;
+    draft = currentPendingSessionDraft();
+  }
+  const draftId = normalizeSessionId(initialState.pendingDraftId);
+  if (!draft || !draftId) {
+    const failure = { status: 'identity', reason: 'no usable session identity after recovery' } satisfies SessionEnsureFailure;
+    warnSessionEnsure('identity-unrecoverable', initialState, failure.reason);
+    return failure;
+  }
+  if (expectedDraftId && draftId !== expectedDraftId) {
+    const failure = { status: 'draft-mismatch', reason: 'pending draft changed during identity recovery' } satisfies SessionEnsureFailure;
+    warnSessionEnsure('draft-mismatch-after-heal', initialState, failure.reason);
+    return failure;
+  }
 
+  try {
     const data = await postPendingSessionCreate(draft.body);
     if (data?.error) throw new Error(data.error);
     const ref = frozenSessionRefFromCreateResponse(data);
@@ -1221,7 +1320,7 @@ export async function ensureSession(expectedPendingDraftId?: string | null): Pro
     const latestState = useStore.getState() as Record<string, any>;
     const stillOwnsPendingView = latestDraft?.key === draft.key
       && normalizeSessionId(latestState.pendingDraftId) === draftId;
-    if (!stillOwnsPendingView) return ref;
+    if (!stillOwnsPendingView) return { status: 'ok', ref };
 
     stageDetachedSessionForActivation(data, ref, latestState);
     await switchSession(ref.sessionPath);
@@ -1232,12 +1331,19 @@ export async function ensureSession(expectedPendingDraftId?: string | null): Pro
       activated.clearDraft?.(ref.sessionPath);
       useStore.setState({ pendingDraftId: null });
     }
-    return ref;
+    return { status: 'ok', ref };
   } catch (err) {
+    const reason = errorMessage(err);
     console.error('[session] create failed:', err);
-    showSessionCreationError(errorMessage(err));
-    return null;
+    warnSessionEnsure('create-failed', useStore.getState() as Record<string, any>, reason);
+    showSessionCreationError(reason);
+    return { status: 'create', reason };
   }
+}
+
+export async function ensureSession(expectedPendingDraftId?: string | null): Promise<Readonly<SessionRef> | null> {
+  const outcome = await ensureSessionWithOutcome(expectedPendingDraftId);
+  return outcome.status === 'ok' ? outcome.ref : null;
 }
 
 export async function continueDeletedAgentSession(path: string): Promise<boolean> {
@@ -1571,7 +1677,16 @@ function showSessionCreationError(detail: unknown): void {
   const message = `${label}: ${errorMessage(detail)}`;
   const state = useStore.getState();
   state.setInlineError?.(state.currentSessionPath || '', message, 6000);
-  state.addToast(message, 'error', 6000);
+  state.addToast(message, 'error', 6000, {
+    dedupeKey: 'send-create-failed',
+    action: {
+      label: tr('action.retry'),
+      onClick: () => {
+        const draftId = recoverPendingSessionDraftIdentity();
+        void ensureSession(draftId);
+      },
+    },
+  });
 }
 
 function showSessionSwitchError(targetPath: string, detail: unknown): void {

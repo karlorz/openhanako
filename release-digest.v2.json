@@ -3,47 +3,68 @@
   "entries": [
     {
       "schemaVersion": 1,
-      "tag": "v0.416.51-karlorz.2",
+      "tag": "v0.416.51-karlorz.3",
       "version": "0.416.51",
-      "previousTag": "v0.416.51-karlorz.1",
-      "generatedAt": "2026-07-26T08:06:34.069Z",
+      "previousTag": "v0.416.51-karlorz.2",
+      "generatedAt": "2026-07-26T15:19:16.000Z",
       "noUserFacingChanges": false,
       "summary": {
-        "zh": "手机网页端在浏览器会话失效时会明确提示重新登录，并在同一账号下安全恢复未发送草稿与本地附件；失效后的请求不会被自动重放。",
-        "en": "On Mobile web, an expired browser session now shows an explicit sign-in prompt and, for the same account, safely restores unsent drafts and local-only attachments. Failed requests are never auto-replayed after re-login."
+        "zh": "手机网页端现在会立即清除一次性登录凭据，并在登录后恢复失败时彻底撤销半初始化状态；桌面端也能从缺失的会话身份中恢复，而不再静默拒绝发送。",
+        "en": "Mobile web now clears one-shot sign-in credentials immediately and fully rolls back failed post-login recovery. Desktop also recovers from missing chat identity instead of silently refusing sends."
       },
       "counts": {
         "feature": 0,
-        "fix": 1,
+        "fix": 2,
         "improvement": 0,
         "migration": 0
       },
       "source": {
         "owner": "karlorz",
         "repo": "openhanako",
-        "commitRange": "v0.416.51-karlorz.1..HEAD",
-        "releaseUrl": "https://github.com/karlorz/openhanako/releases/tag/v0.416.51-karlorz.2",
+        "commitRange": "v0.416.51-karlorz.2..HEAD",
+        "releaseUrl": "https://github.com/karlorz/openhanako/releases/tag/v0.416.51-karlorz.3",
         "releaseNotes": ""
       },
       "items": [
         {
-          "id": "mobile-pwa-session-loss-recovery",
+          "id": "mobile-login-secret-and-runtime-cleanup",
           "kind": "fix",
           "importance": "high",
           "title": {
-            "zh": "手机网页会话失效后可安全恢复",
-            "en": "Safe Mobile web recovery after session loss"
+            "zh": "登录失败后不再保留凭据或半初始化状态",
+            "en": "Failed Mobile sign-in no longer retains credentials or partial runtime state"
           },
           "summary": {
-            "zh": "前台检测或接口返回认证失效时，手机端会收起已登录界面并提示「会话已结束，请重新登录」。同一服务器/用户/工作台再次登录后，可恢复当前会话选择、未发送草稿，以及仍仅保存在本地的附件；换账号则干净启动。中断的发送不会在登录后自动重试。",
-            "en": "When a foreground check or API reports authentication loss, Mobile leaves the authenticated shell and asks you to sign in again. Logging back in as the same server/user/studio restores the selected chat, unsent draft, and local-only attachments; a different account starts clean. Interrupted sends are not replayed after login."
+            "zh": "手机网页提交访问密钥或密码后会立即清空对应输入；用户名仍保留以便重试。若登录成功但会话恢复失败，应用会中止待处理请求、断开 WebSocket、清空已认证运行时，并撤销刚创建的网页会话后返回登录页。",
+            "en": "Mobile clears an access key or password immediately after submission while retaining the username for retry. If sign-in succeeds but session recovery fails, it aborts pending requests, disconnects the WebSocket, clears authenticated runtime state, revokes the newly created web session, and returns to sign-in."
           },
           "details": [],
           "sources": [
             {
               "type": "commit",
-              "ref": "165068711797",
-              "title": "fix(mobile): recover PWA session loss with same-authority restore"
+              "ref": "3ac27d80356b",
+              "title": "fix(mobile): clear rejected credentials and failed runtime"
+            }
+          ]
+        },
+        {
+          "id": "desktop-missing-session-identity-recovery",
+          "kind": "fix",
+          "importance": "high",
+          "title": {
+            "zh": "桌面端可恢复缺失的会话身份",
+            "en": "Desktop recovers missing session identity"
+          },
+          "summary": {
+            "zh": "当新会话草稿或现有会话缺少可发送所需的身份信息时，桌面端会修复可恢复状态、保留编辑内容与附件，并在无法自动修复时显示可操作的错误提示。文本、语音和附件发送共用同一套恢复路径。",
+            "en": "When a new draft or existing chat lacks the identity required to send, Desktop repairs recoverable state while preserving composer content and attachments, and shows an actionable error when automatic repair is impossible. Text, voice, and attachment sends share the same recovery path."
+          },
+          "details": [],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "72c9e64f9e93",
+              "title": "fix(desktop): recover missing session identity (Approach B) (#3)"
             }
           ]
         }

@@ -74,6 +74,10 @@ vi.mock('../../hooks/use-config', () => ({
 
 vi.mock('../../stores/session-actions', () => ({
   ensureSession: vi.fn(async () => true),
+  ensureSessionWithOutcome: vi.fn(async () => ({
+    status: 'ok',
+    ref: { sessionId: 'sess_computer', sessionPath: '/session/computer.jsonl', agentId: 'hana' },
+  })),
   loadSessions: vi.fn(),
 }));
 
