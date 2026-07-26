@@ -1678,7 +1678,7 @@
       "visionModel": "보조 시각 모델",
       "visionAuxiliaryToggle": "보조 시각",
       "visionModelHint": "현재 채팅 모델이 이미지를 받을 수 없을 때만 먼저 이미지를 읽고 간단한 설명을 전달해요",
-      "visionModelMissingHint": "모델을 찾을 수 없다면 제공자 페이지에서 비전 기능을 설정하세요.",
+      "visionModelMissingHint": "모델을 찾을 수 없다면 제공자 페이지에서 모델을 편집하고 비전을 켠 뒤 저장하세요. 사전 데이터는 오래될 수 있으며, 저장한 설정이 기준입니다.",
       "searchProvider": "검색 서비스",
       "searchProviderField": "검색 엔진",
       "searchApiKey": "검색 API Key",

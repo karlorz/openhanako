@@ -1744,7 +1744,7 @@
       "visionModel": "视觉辅助模型",
       "visionAuxiliaryToggle": "辅助视觉开关",
       "visionModelHint": "仅在当前聊天模型不能接收图片时，用来先看图并递交简洁说明",
-      "visionModelMissingHint": "如果找不到你的模型，请在供应商页面配置视觉能力。",
+      "visionModelMissingHint": "如果找不到你的模型：在供应商页编辑该模型，打开「视觉」并保存。词典可能过时，以你保存的设置为准。",
       "searchProvider": "搜索服务",
       "searchProviderField": "搜索引擎",
       "searchApiKey": "搜索 API Key",

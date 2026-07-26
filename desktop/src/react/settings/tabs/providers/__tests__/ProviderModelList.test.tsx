@@ -28,7 +28,11 @@ vi.mock('../../../helpers', () => ({
   OUTPUT_PRESETS: [],
 }));
 
-import { ProviderModelList } from '../ProviderModelList';
+import {
+  ProviderModelList,
+  catalogCapabilityFlags,
+  stampCatalogEntryFromReference,
+} from '../ProviderModelList';
 
 function jsonResponse(body: unknown): Response {
   return { json: async () => body } as Response;
@@ -47,6 +51,29 @@ function rect(init: Partial<DOMRect>): DOMRect {
     toJSON: () => ({}),
   } as DOMRect;
 }
+
+describe('catalogCapabilityFlags / stampCatalogEntryFromReference', () => {
+  it('reads capability icons only from catalog-saved fields', () => {
+    expect(catalogCapabilityFlags({})).toEqual({
+      image: false,
+      video: false,
+      audio: false,
+      reasoning: false,
+    });
+    expect(catalogCapabilityFlags({ image: true, reasoning: true })).toEqual({
+      image: true,
+      video: false,
+      audio: false,
+      reasoning: true,
+    });
+  });
+
+  it('leaves unknown custom model ids bare (no personal provider names; Settings edit stamps later)', () => {
+    // Neutral custom provider fixture only — never real hostnames/keys.
+    expect(stampCatalogEntryFromReference('unknown-vl-model-xyz', 'custom-provider'))
+      .toBe('unknown-vl-model-xyz');
+  });
+});
 
 describe('ProviderModelList', () => {
   beforeEach(() => {
@@ -113,22 +140,17 @@ describe('ProviderModelList', () => {
     });
   });
 
-  it('shows image, video, audio and reasoning capability icons after the added model id', () => {
-    mocks.lookupModelMeta.mockImplementation((id: unknown, provider: unknown) => {
-      if (id === 'doubao-seed-2-0-lite-260428' && provider === 'volcengine') {
-        return {
-          name: 'Doubao Seed 2.0 Lite',
-          image: true,
-          video: true,
-          audio: true,
-          reasoning: true,
-          context: 256000,
-        };
+  it('shows capability icons only from catalog-saved fields (Settings SoT, not dictionary-only)', () => {
+    // Dictionary may claim vision, but bare string catalog entries must not show icons.
+    // Pure unit test: hanaFetch is mocked — no real provider network call or API key is used.
+    mocks.lookupModelMeta.mockImplementation((id: unknown) => {
+      if (id === 'dictionary-only-vl') {
+        return { name: 'Dictionary Only VL', image: true, video: true, audio: true, reasoning: true };
       }
       return null;
     });
 
-    render(
+    const { rerender } = render(
       <ProviderModelList
         providerId="volcengine"
         summary={{
@@ -138,7 +160,38 @@ describe('ProviderModelList', () => {
           base_url: 'https://ark.cn-beijing.volces.com/api/v3',
           api: 'openai-completions',
           api_key: 'sk-test',
-          models: ['doubao-seed-2-0-lite-260428'],
+          models: ['dictionary-only-vl'],
+          custom_models: [],
+          has_credentials: true,
+          supports_oauth: false,
+          is_coding_plan: false,
+          can_delete: true,
+        }}
+        onRefresh={vi.fn(async () => {})}
+      />,
+    );
+
+    expect(screen.queryByTitle('settings.api.capability.image')).toBeNull();
+
+    rerender(
+      <ProviderModelList
+        providerId="volcengine"
+        summary={{
+          type: 'api-key',
+          auth_type: 'api-key',
+          display_name: 'Volcengine',
+          base_url: 'https://ark.cn-beijing.volces.com/api/v3',
+          api: 'openai-completions',
+          api_key: 'sk-test',
+          models: [{
+            id: 'doubao-seed-2-0-lite-260428',
+            name: 'Doubao Seed 2.0 Lite',
+            image: true,
+            video: true,
+            audio: true,
+            reasoning: true,
+            context: 256000,
+          }],
           custom_models: [],
           has_credentials: true,
           supports_oauth: false,
@@ -237,6 +290,49 @@ describe('ProviderModelList', () => {
       }),
     })));
     expect(mocks.hanaFetch.mock.calls.some(([url]) => String(url).includes('/auth/oauth/'))).toBe(false);
+    expect(onRefresh).toHaveBeenCalled();
+  });
+
+  it('adds unknown custom model ids as bare catalog entries (user Vision edit is SoT)', async () => {
+    const onRefresh = vi.fn(async () => {});
+    mocks.hanaFetch
+      .mockResolvedValueOnce(jsonResponse({ models: [] }))
+      .mockResolvedValueOnce(jsonResponse({ ok: true }));
+
+    render(
+      <ProviderModelList
+        providerId="custom-provider"
+        summary={{
+          type: 'api-key',
+          auth_type: 'api-key',
+          display_name: 'Custom Provider',
+          base_url: 'https://custom-provider.example.test/v1',
+          api: 'openai-completions',
+          api_key: 'sk-test',
+          models: [],
+          custom_models: [],
+          has_credentials: true,
+          supports_oauth: false,
+          is_coding_plan: false,
+          can_delete: true,
+        }}
+        onRefresh={onRefresh}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'settings.api.addModel' }));
+    const input = await screen.findByPlaceholderText('settings.oauth.customModelPlaceholder');
+    fireEvent.change(input, { target: { value: 'unknown-vl-model-xyz' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() => expect(mocks.hanaFetch).toHaveBeenCalledWith('/api/config', expect.objectContaining({
+      method: 'PUT',
+      body: JSON.stringify({
+        providers: {
+          'custom-provider': { models: ['unknown-vl-model-xyz'] },
+        },
+      }),
+    })));
     expect(onRefresh).toHaveBeenCalled();
   });
 
@@ -386,7 +482,7 @@ describe('ProviderModelList', () => {
     expect(onRefresh).toHaveBeenCalled();
   });
 
-  it('does not serialize untouched capability defaults as explicit false overrides', async () => {
+  it('materializes dictionary true capabilities into the catalog on Save (Settings SoT)', async () => {
     const onRefresh = vi.fn(async () => {});
     mocks.hanaFetch.mockResolvedValue(jsonResponse({ models: [] }));
     mocks.lookupModelMeta.mockImplementation((id: unknown, provider: unknown) => {
@@ -433,13 +529,15 @@ describe('ProviderModelList', () => {
         && options?.method === 'PUT'
       ));
       expect(updateCall).toBeTruthy();
+      // true capabilities materialize; false defaults are not stamped (keeps Ollama inference free).
       expect(JSON.parse(String(updateCall?.[1]?.body))).toEqual({
         name: 'MiMo V2.5 Pro',
+        reasoning: true,
       });
     });
   });
 
-  it('serializes audio only after the user changes the audio capability toggle', async () => {
+  it('materializes dirty audio true without stamping other false defaults', async () => {
     const onRefresh = vi.fn(async () => {});
     mocks.hanaFetch.mockResolvedValue(jsonResponse({ models: [] }));
     mocks.lookupModelMeta.mockImplementation((id: unknown, provider: unknown) => {
@@ -490,6 +588,7 @@ describe('ProviderModelList', () => {
       expect(JSON.parse(String(updateCall?.[1]?.body))).toEqual({
         name: 'MiMo V2.5 Pro',
         audio: true,
+        reasoning: true,
       });
     });
   });
@@ -548,10 +647,13 @@ describe('ProviderModelList', () => {
         String(url).includes('/api/providers/openai/models/gpt-5.6-sol')
         && options?.method === 'PUT'
       ));
+      // Catalog already had image/reasoning false — re-save keeps those explicit SoT fields.
       expect(JSON.parse(String(updateCall?.[1]?.body))).toEqual({
         name: 'My Sol Override',
         context: 777000,
         maxOutput: 64000,
+        image: false,
+        reasoning: false,
       });
     });
     },

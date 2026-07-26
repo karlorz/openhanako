@@ -1678,7 +1678,7 @@
       "visionModel": "補助ビジョンモデル",
       "visionAuxiliaryToggle": "補助ビジョン",
       "visionModelHint": "現在のチャットモデルが画像を受け取れない場合だけ、先に画像を読み取って簡潔な説明を渡します",
-      "visionModelMissingHint": "モデルが見つからない場合は、プロバイダーページで視覚機能を有効にしてください。",
+      "visionModelMissingHint": "モデルが見つからない場合は、プロバイダーページでモデルを編集し、視覚をオンにして保存してください。辞書は古くても構いません。保存した設定が優先されます。",
       "searchProvider": "検索サービス",
       "searchProviderField": "検索エンジン",
       "searchApiKey": "検索 API Key",
