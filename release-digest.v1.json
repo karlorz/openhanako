@@ -1,145 +1,46 @@
 {
   "schemaVersion": 1,
-  "tag": "v0.416.51-karlorz.1",
+  "tag": "v0.416.51-karlorz.2",
   "version": "0.416.51",
-  "previousTag": "v0.416.44-karlorz.1",
-  "generatedAt": "2026-07-24T08:39:00.000Z",
+  "previousTag": "v0.416.51-karlorz.1",
+  "generatedAt": "2026-07-26T08:06:34.069Z",
   "noUserFacingChanges": false,
   "summary": {
-    "zh": "修复会话列表、附件、斜杠命令和工作台设置里几处会误导或丢状态的问题；会话元数据异常时会明确提示待恢复，而不再看起来像「没有会话」。",
-    "en": "Fixes several misleading or state-losing issues in the session list, attachments, slash commands, and workbench settings. When session metadata is unhealthy, the app now shows a recovery notice instead of an empty session list."
+    "zh": "手机网页端在浏览器会话失效时会明确提示重新登录，并在同一账号下安全恢复未发送草稿与本地附件；失效后的请求不会被自动重放。",
+    "en": "On Mobile web, an expired browser session now shows an explicit sign-in prompt and, for the same account, safely restores unsent drafts and local-only attachments. Failed requests are never auto-replayed after re-login."
   },
   "counts": {
     "feature": 0,
-    "fix": 5,
+    "fix": 1,
     "improvement": 0,
     "migration": 0
   },
   "source": {
     "owner": "karlorz",
     "repo": "openhanako",
-    "commitRange": "v0.416.44-karlorz.1..HEAD",
-    "releaseUrl": "https://github.com/karlorz/openhanako/releases/tag/v0.416.51-karlorz.1",
+    "commitRange": "v0.416.51-karlorz.1..HEAD",
+    "releaseUrl": "https://github.com/karlorz/openhanako/releases/tag/v0.416.51-karlorz.2",
     "releaseNotes": ""
   },
   "items": [
     {
-      "id": "session-meta-recovery-notice",
+      "id": "mobile-pwa-session-loss-recovery",
       "kind": "fix",
       "importance": "high",
       "title": {
-        "zh": "会话元数据异常时显示恢复提示",
-        "en": "Recovery notice when session metadata is unhealthy"
+        "zh": "手机网页会话失效后可安全恢复",
+        "en": "Safe Mobile web recovery after session loss"
       },
       "summary": {
-        "zh": "会话元数据损坏或被隔离时，侧边栏会提示「部分会话待恢复」，并继续显示仍可用的会话，而不再误显示成空列表。",
-        "en": "When session metadata is corrupted or quarantined, the sidebar shows that some sessions need recovery and keeps healthy sessions visible, instead of looking empty."
+        "zh": "前台检测或接口返回认证失效时，手机端会收起已登录界面并提示「会话已结束，请重新登录」。同一服务器/用户/工作台再次登录后，可恢复当前会话选择、未发送草稿，以及仍仅保存在本地的附件；换账号则干净启动。中断的发送不会在登录后自动重试。",
+        "en": "When a foreground check or API reports authentication loss, Mobile leaves the authenticated shell and asks you to sign in again. Logging back in as the same server/user/studio restores the selected chat, unsent draft, and local-only attachments; a different account starts clean. Interrupted sends are not replayed after login."
       },
       "details": [],
       "sources": [
         {
           "type": "commit",
-          "ref": "b449c8d6e",
-          "title": "fix(session): surface metadata recovery state instead of a misleading empty session list"
-        }
-      ]
-    },
-    {
-      "id": "session-file-registry-race",
-      "kind": "fix",
-      "importance": "high",
-      "title": {
-        "zh": "会话加载竞态不再丢掉附件",
-        "en": "Session load races no longer drop attachments"
-      },
-      "summary": {
-        "zh": "快速切换或加载会话时，附件与 SessionFile 登记不再因竞态被清掉。",
-        "en": "Attachments and SessionFile registry entries no longer disappear due to a race while loading or switching sessions."
-      },
-      "details": [],
-      "sources": [
-        {
-          "type": "commit",
-          "ref": "443f8eea7",
-          "title": "fix(session): 会话加载竞态不再丢弃 SessionFile registry (#2188)"
-        },
-        {
-          "type": "issue",
-          "ref": "2188",
-          "title": "SessionFile registry dropped during session load race"
-        }
-      ]
-    },
-    {
-      "id": "slash-canonical-send",
-      "kind": "fix",
-      "importance": "medium",
-      "title": {
-        "zh": "斜杠补全发送规范命令文本",
-        "en": "Slash completion sends canonical command text"
-      },
-      "summary": {
-        "zh": "从补全菜单选中斜杠命令后，发送的是规范命令文本，而不是编辑器里未整理的裸文本。",
-        "en": "Choosing a slash command from the completion menu now sends the canonical command text instead of the raw editor text."
-      },
-      "details": [],
-      "sources": [
-        {
-          "type": "commit",
-          "ref": "863c73932",
-          "title": "fix(slash): 补全菜单选择后发送 canonical 命令而非编辑器裸文本 (#2209)"
-        },
-        {
-          "type": "issue",
-          "ref": "2209",
-          "title": "Slash completion sent raw editor text"
-        }
-      ]
-    },
-    {
-      "id": "workbench-agent-config-refresh",
-      "kind": "fix",
-      "importance": "medium",
-      "title": {
-        "zh": "工作台按 Agent 保存后立即刷新",
-        "en": "Workbench per-agent saves refresh immediately"
-      },
-      "summary": {
-        "zh": "工作台里按 Agent 保存配置后会立刻刷新快照，切回该 Agent 不再看到旧值。",
-        "en": "Workbench per-agent saves now refresh the config snapshot immediately, so switching back no longer shows stale values."
-      },
-      "details": [],
-      "sources": [
-        {
-          "type": "commit",
-          "ref": "545a1ffe9",
-          "title": "fix(settings): 工作台 per-agent 保存后同步刷新配置快照，切回不再显示旧值 (#2192)"
-        },
-        {
-          "type": "issue",
-          "ref": "2192",
-          "title": "Workbench per-agent config showed stale values after save"
-        }
-      ]
-    },
-    {
-      "id": "memory-retry-not-blocked",
-      "kind": "fix",
-      "importance": "medium",
-      "title": {
-        "zh": "记忆后台任务不再挡住会话重试",
-        "en": "Background memory jobs no longer block session retry"
-      },
-      "summary": {
-        "zh": "后台正在做记忆摘要或编译时，会话重试不再被误报为忙碌而失败。",
-        "en": "Session retry no longer fails as busy while background memory summary or compile jobs are running."
-      },
-      "details": [],
-      "sources": [
-        {
-          "type": "commit",
-          "ref": "988ff05ee",
-          "title": "fix(memory): stop blocking session retry while background memory jobs run"
+          "ref": "165068711797",
+          "title": "fix(mobile): recover PWA session loss with same-authority restore"
         }
       ]
     }
