@@ -13,6 +13,8 @@ import {
 } from "../scripts/install-server.mjs";
 import {
   buildServerRuntimePackagingCompatibilityReport,
+  copyPackagedCliArtifactCore,
+  PACKAGED_CLI_ARTIFACT_CORE_FILES,
 } from "../scripts/build-server-runtime-assets.mjs";
 
 const ARM64_SHA256 = "a".repeat(64);
@@ -132,6 +134,23 @@ describe("artifact activation compatibility", () => {
       productionBehaviorChanged: false,
       activationModel: "current-symlink",
     });
+  });
+
+  it("stages packaged CLI artifact-core modules under shared/ for createRequire loads", () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-cli-artifact-core-"));
+    const outDir = path.join(tmpDir, "dist-server");
+    // Simulate plugin-host partial shared/ tree already present.
+    fs.mkdirSync(path.join(outDir, "shared"), { recursive: true });
+    fs.writeFileSync(path.join(outDir, "shared", "errors.ts"), "export {}\n");
+
+    const copied = copyPackagedCliArtifactCore({ rootDir: process.cwd(), outDir });
+    expect(copied).toEqual([...PACKAGED_CLI_ARTIFACT_CORE_FILES]);
+    for (const relative of PACKAGED_CLI_ARTIFACT_CORE_FILES) {
+      expect(fs.existsSync(path.join(outDir, relative))).toBe(true);
+    }
+    // Must merge without wiping existing shared host copies.
+    expect(fs.readFileSync(path.join(outDir, "shared", "errors.ts"), "utf8")).toContain("export");
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
   it("retains previous release path in upgrade plans for rollback", () => {
