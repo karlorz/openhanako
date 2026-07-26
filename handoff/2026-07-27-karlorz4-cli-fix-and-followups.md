@@ -1,58 +1,79 @@
-# Handoff — OpenHanako CLI packaging + follow-ups (2026-07-27)
+# Handoff — OpenHanako CLI packaging + follow-ups
 
-**Repo:** `karlorz/openhanako` · branch `dev`  
-**Vault:** `projects/openhanako/`  
-**This file:** `handoff/2026-07-27-karlorz4-cli-fix-and-followups.md` (also on `dev`)
+**Saved for new session · 2026-07-27**  
+**Repo:** `karlorz/openhanako` · branch `dev` (in sync with `origin/dev` at last save)  
+**Vault:** `skillwiki path` → `projects/openhanako/`  
+**This file:** `handoff/2026-07-27-karlorz4-cli-fix-and-followups.md`
+
+---
+
+## Session stop line
+
+CI for **`v0.416.51-karlorz.6`** was still **in progress** when this session stopped.  
+**Do not assume the release is published.** Finish CI → upgrade sg01 → prove CLI in the **new session**.
+
+| Check | Last known state |
+|---|---|
+| Build `.6` | run **`30216319230`** — was `in_progress` (URL below) |
+| sg01 installed | **`v0.416.51-karlorz.5`** · service **active** · Mobile OK |
+| `hana --help` on host | **fails** (exit 1) until `.6` lands with `contract-versions.json` |
+| Working tree | clean except untracked `scripts/hana-session-identity-repro.mjs` (leave alone) |
+
+Build URL: https://github.com/karlorz/openhanako/actions/runs/30216319230  
+Release (when ready): https://github.com/karlorz/openhanako/releases/tag/v0.416.51-karlorz.6
+
+---
 
 ## Saved items 1–3
 
 | # | Item | Work item | Status |
 |---|---|---|---|
-| **1** | Treat Mobile UAT closed | `work/2026-07-27-mobile-session-loss-uat-closeout` | **completed** |
-| **2** | HTTPS/WSS installed-PWA | `work/2026-07-27-mobile-https-wss-pwa-coverage` | **planned** — next product work after CLI green |
-| **3** | Packaged `hana` CLI | `work/2026-07-27-packaged-hana-cli-artifact-core` | **close after `.6` host verify** |
+| **1** | Mobile UAT closed | `work/2026-07-27-mobile-session-loss-uat-closeout` | **completed** (UAT-01…09 PASS on `.3`) |
+| **2** | HTTPS/WSS installed-PWA | `work/2026-07-27-mobile-https-wss-pwa-coverage` | **planned** — start after item 3 green |
+| **3** | Packaged `hana` CLI | `work/2026-07-27-packaged-hana-cli-artifact-core` | **open until `.6` host verify** |
 
-Vault hygiene (item 4 earlier) is **done**.
+Related UAT evidence: `work/2026-07-26-mobile-pwa-session-loss-recovery/uat-sg01.md` (`status: passed`).
 
-## Reality on host (important)
+---
 
-| Tag | Deployed? | `hana --help` |
-|---|---|---|
-| `.3` | previous | missing `artifact-core` |
-| **`.4`** | yes (then superseded) | missing `contract-versions.cjs` |
-| **`.5`** | **current until `.6`** | missing `contract-versions.json` |
-| **`.6`** | Build **`30216319230`** → then upgrade | expected **PASS** |
+## What already shipped (code + tags)
 
-sg01 was left on **`v0.416.51-karlorz.5`** with Mobile healthy (`/mobile/` 200). CLI still broken until `.6`.
-
-### Why the thrash
-
-Packaged `bundle/cli.js` uses `createRequire` for:
-
-```text
-../shared/artifact-core/{activation,pointer-*,ota-core,keyset,...}.cjs
-ota-core → ../contract-versions.cjs → ./contract-versions.json
-```
-
-Fix commits on `dev`:
-
-| SHA | What |
+| SHA | Note |
 |---|---|
-| `eed8ffc4` | ship artifact-core dir |
-| `4d67c5bd` | ship contract-versions.cjs |
-| `55c867b6` | ship contract-versions.json |
-| `fff2de62` | release prep **`.6`** |
+| `eed8ffc4` | Stage `shared/artifact-core/*` into server packs |
+| `4d67c5bd` | Stage `shared/contract-versions.cjs` |
+| `55c867b6` | Stage `shared/contract-versions.json` ← needed for `.6` |
+| `fff2de62` | `chore(release): prepare v0.416.51-karlorz.6` |
+| `87bdac19` | Prior handoff pointing at `.6` |
 
-Files list: `PACKAGED_CLI_ARTIFACT_CORE_FILES` in `scripts/build-server-runtime-assets.mjs`.
+Host thrash (for context only):
 
-## New session — first commands
+| Tag | Result |
+|---|---|
+| `.4` | Deployed; still missing `contract-versions.cjs` |
+| `.5` | **Currently on sg01**; still missing `contract-versions.json` |
+| `.6` | Tag pushed; **CI was not finished** in this session |
+
+List of staged files: `PACKAGED_CLI_ARTIFACT_CORE_FILES` in  
+`scripts/build-server-runtime-assets.mjs` (wired from `build-server.mjs` + `build-server-open.mjs`).
+
+---
+
+## New session — do this first
+
+### A. CI + publish
 
 ```bash
-# 1) Finish release if needed
+cd /Users/karlchow/Desktop/code/openhanako
 gh run watch 30216319230 --repo karlorz/openhanako --exit-status
-gh release view v0.416.51-karlorz.6 --repo karlorz/openhanako --json assets --jq '[.assets[].name]|map(select(test("linux-arm64")))'
+# if failed: gh run view 30216319230 --log-failed
+gh release view v0.416.51-karlorz.6 --repo karlorz/openhanako \
+  --json assets --jq '[.assets[].name] | map(select(test("linux-arm64")))'
+```
 
-# 2) Upgrade sg01 .5 → .6
+### B. Upgrade sg01 `.5` → `.6` and prove CLI
+
+```bash
 ssh sg01 '
   set -euo pipefail
   TS=$(date -u +%Y-%m-%dT%H-%M-%S)
@@ -70,45 +91,40 @@ ssh sg01 '
   echo HELP_EXIT:$?
   install-server status --json | python3 -c "import sys,json;d=json.load(sys.stdin);print(d[\"installedRelease\"]);print(d[\"service\"])"
 '
-
-# 3) If HELP_EXIT=0: mark vault work item completed + append log
-# 4) If still failing: dump missing module path, walk require graph again
-#    (prefer recursive pack helper over more one-off files)
 ```
 
-### Closeout for item 3
+### C. Close item 3 in vault if `HELP_EXIT=0`
 
-- [ ] Build 30216319230 green  
-- [ ] Host `v0.416.51-karlorz.6`  
-- [ ] `hana --help` exit 0  
-- [ ] activation + contract-versions.{cjs,json} present  
-- [ ] Mobile 200  
-- [ ] Vault work item → `completed`  
+- Mark `work/2026-07-27-packaged-hana-cli-artifact-core` → `status: completed` + log entry  
+- Optional: append root vault `log.md` one-liner  
 
-Optional hardening (not blocking close if help works): unit/integration test that runs packaged `hana --help` from a minimal staged tree (or post-pack smoke in CI).
+If still failing: capture missing module path; prefer a **recursive require-graph pack helper** over another one-off file + `.7` tag.
 
-## Then start item 2
+### D. Then item 2
 
 ```text
 Office-hours / prep:
   projects/openhanako/work/2026-07-27-mobile-https-wss-pwa-coverage/spec.md
+Questions: cert source, :443 vs reverse proxy, secure cookies / WSS.
 ```
 
-Mobile UAT already PASS on `.3` HTTP:  
-`work/2026-07-26-mobile-pwa-session-loss-recovery/uat-sg01.md`
+---
 
 ## Do not
 
-- Merge PR #1  
-- Full UAT re-run unless HTTPS changes auth  
-- Touch `scripts/hana-session-identity-repro.mjs`  
-- Local-build deploy; use install-server + tag only  
+- Merge permanent draft PR #1  
+- Full Mobile UAT re-run unless HTTPS changes auth  
+- Touch untracked `scripts/hana-session-identity-repro.mjs`  
+- Deploy from local checkout; use `install-server` + published tag only  
+
+---
 
 ## Paste into new session
 
 ```text
 Read handoff/2026-07-27-karlorz4-cli-fix-and-followups.md.
-Finish v0.416.51-karlorz.6 Build 30216319230, upgrade sg01 from .5→.6,
-prove hana --help exits 0, close work/2026-07-27-packaged-hana-cli-artifact-core,
-then office-hours on work/2026-07-27-mobile-https-wss-pwa-coverage.
+CI for v0.416.51-karlorz.6 (run 30216319230) may still need finish; then upgrade
+sg01 .5→.6, prove hana --help exits 0, close work item
+packaged-hana-cli-artifact-core, then start office-hours on
+mobile-https-wss-pwa-coverage.
 ```
