@@ -183,12 +183,28 @@ export function buildViteServerBundle({ rootDir, viteBundleDir, bundleOutDir, en
  * esbuild-bundles the (fully open, shared by every composition) CLI entry
  * into `bundleOutDir/cli.js`.
  *
+ * The shared/*.cjs modules the CLI ESM-imports (data-epoch, contract-versions,
+ * server-info-probe) are marked --external so esbuild leaves the import
+ * statement for Node's runtime resolver instead of inlining the CJS source.
+ * Inlining is unsafe here: the CLI bundle is ESM (--format=esm), and esbuild's
+ * CJS->ESM interop shim turns a bare `require("crypto")` inside data-epoch.cjs
+ * into a `__require("crypto")` call that throws at runtime ("Dynamic require of
+ * crypto is not supported") because ESM has no ambient require. Kept external,
+ * each .cjs loads through Node's native CommonJS loader, where bare builtin
+ * requires work normally. The staged files come from
+ * PACKAGED_CLI_ARTIFACT_CORE_FILES in scripts/build-server-runtime-assets.mjs.
+ *
  * @param {{ rootDir: string, bundleOutDir: string, log?: (msg: string) => void }} params
  */
 export function buildCliBundle({ rootDir, bundleOutDir, log = (msg) => console.log(msg) }) {
   log("[build-server] running CLI bundle...");
+  const externalizedSharedCjs = [
+    "../shared/data-epoch.cjs",
+    "../shared/contract-versions.cjs",
+    "../shared/server-info-probe.cjs",
+  ].map((rel) => `--external:${rel}`).join(" ");
   execSync(
-    `npx esbuild "${path.join(rootDir, "cli", "entry.ts")}" --bundle --platform=node --format=esm --target=node24 --external:ws --outfile="${path.join(bundleOutDir, "cli.js")}"`,
+    `npx esbuild "${path.join(rootDir, "cli", "entry.ts")}" --bundle --platform=node --format=esm --target=node24 --external:ws ${externalizedSharedCjs} --outfile="${path.join(bundleOutDir, "cli.js")}"`,
     { cwd: rootDir, stdio: "inherit" },
   );
   log("[build-server] CLI bundle copied to bundle/cli.js");
