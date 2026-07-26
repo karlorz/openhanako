@@ -109,3 +109,4 @@ reviews/
 
 # Codex environments
 .codex/
+.worktrees/
