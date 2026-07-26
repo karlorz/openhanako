@@ -61,18 +61,28 @@ export function pendingNewSessionIdentityPatch(): { pendingNewSession: true; pen
   return { pendingNewSession: true, pendingDraftId: nextPendingDraftId() };
 }
 
-function pendingComposerDraftPreservationPatch(state: Record<string, any>): Record<string, any> {
+function preservePendingComposerDraft(state: Record<string, any>): void {
   const sessionPath = typeof state.currentSessionPath === 'string' && state.currentSessionPath.trim()
     ? state.currentSessionPath
     : null;
-  if (!sessionPath) return {};
-  const sourceKey = sessionScopedKey(state, sessionPath) || sessionPath;
-  const draft = state.drafts?.[sourceKey] ?? state.drafts?.[sessionPath];
-  const draftDoc = state.draftDocs?.[sourceKey] ?? state.draftDocs?.[sessionPath];
-  return {
-    ...(draft !== undefined ? { drafts: { ...(state.drafts || {}), [HOME_DRAFT_KEY]: draft } } : {}),
-    ...(draftDoc !== undefined ? { draftDocs: { ...(state.draftDocs || {}), [HOME_DRAFT_KEY]: draftDoc } } : {}),
-  };
+  if (!sessionPath) return;
+  const draft = sessionScopedValue(state, state.drafts || {}, sessionPath);
+  if (draft === undefined) return;
+  const draftDoc = sessionScopedValue(state, state.draftDocs || {}, sessionPath);
+  state.setDraft?.(HOME_DRAFT_KEY, draft, draftDoc ?? null);
+}
+
+function applyPendingSessionIdentity(
+  state: Record<string, any>,
+  identityPatch: { pendingNewSession: true; pendingDraftId: string },
+): void {
+  preservePendingComposerDraft(state);
+  useStore.setState({
+    welcomeVisible: true,
+    currentSessionPath: null,
+    currentSessionId: null,
+    ...identityPatch,
+  });
 }
 
 function warnSessionEnsure(outcome: string, state: Record<string, any>, detail?: string): void {
@@ -91,26 +101,19 @@ function warnSessionEnsure(outcome: string, state: Record<string, any>, detail?:
  * counterpart to pendingNewSessionIdentityPatch(): it deliberately preserves drafts and
  * attachments, unlike createNewSession(), which is a user navigation action.
  */
-export function healPendingSessionDraftIdentity(): string | null {
+function healPendingSessionDraftIdentity(): void {
   const state = useStore.getState() as Record<string, any>;
-  if (frozenSessionRefFromState(state) || state.pendingSessionSwitchPath) return null;
+  if (frozenSessionRefFromState(state) || state.pendingSessionSwitchPath) return;
   const pendingDraftId = normalizeSessionId(state.pendingDraftId);
-  if (state.currentSessionPath && state.pendingNewSession !== true) return null;
+  if (state.currentSessionPath && state.pendingNewSession !== true) return;
   const identityPatch = pendingDraftId
     ? { pendingNewSession: true as const, pendingDraftId }
     : pendingNewSessionIdentityPatch();
-  useStore.setState({
-    ...pendingComposerDraftPreservationPatch(state),
-    welcomeVisible: true,
-    currentSessionPath: null,
-    currentSessionId: null,
-    ...identityPatch,
-  });
+  applyPendingSessionIdentity(state, identityPatch);
   warnSessionEnsure(
     pendingDraftId ? 'normalized-pending-shell' : (state.pendingNewSession ? 'healed-pending-draft' : 'healed-dead-shell'),
     useStore.getState() as Record<string, any>,
   );
-  return identityPatch.pendingDraftId;
 }
 
 /** Actionable recovery used by toast CTAs. Always re-seeds a fresh draft identity and focuses. */
@@ -118,13 +121,7 @@ export function recoverPendingSessionDraftIdentity(): string {
   const state = useStore.getState() as Record<string, any>;
   invalidateSessionSwitches();
   const identityPatch = pendingNewSessionIdentityPatch();
-  useStore.setState({
-    ...pendingComposerDraftPreservationPatch(state),
-    welcomeVisible: true,
-    currentSessionPath: null,
-    currentSessionId: null,
-    ...identityPatch,
-  });
+  applyPendingSessionIdentity(state, identityPatch);
   const recovered = useStore.getState() as Record<string, any>;
   warnSessionEnsure('reseeded-by-recovery-action', recovered);
   requestChatInputFocus(null);

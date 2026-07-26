@@ -257,6 +257,12 @@ function installStoreMethods() {
   s.clearQuotedSelection = vi.fn();
   s.setActivePanel = vi.fn((v: unknown) => { mockState.activePanel = v; });
   s.requestInputFocus = vi.fn();
+  s.setDraft = vi.fn((key: string, text: string, doc?: unknown | null) => {
+    (mockState.drafts as Record<string, string>)[key] = text;
+    const draftDocs = mockState.draftDocs as Record<string, unknown>;
+    if (doc) draftDocs[key] = doc;
+    else delete draftDocs[key];
+  });
   s.setThinkingLevel = vi.fn((level: string) => { mockState.thinkingLevel = level; });
   s.setPendingNewSessionThinkingLevel = vi.fn((level: string | null) => { mockState.pendingNewSessionThinkingLevel = level; });
   s.setSessionPermissionMode = vi.fn((mode: string) => {
@@ -286,6 +292,7 @@ function installStoreMethods() {
 }
 
 import { hanaFetch } from '../../hooks/use-hana-fetch';
+import { HOME_DRAFT_KEY } from '../../../../../shared/input-drafts';
 import { clearChat } from '../../stores/agent-actions';
 import { loadDeskFiles } from '../../stores/desk-actions';
 import { bumpMessageLiveVersion, clearMessageLiveVersion } from '../../stores/message-live-version';
@@ -705,6 +712,23 @@ function mockPermissionDefault(mode = 'ask') {
       expect(mockState.attachedFiles).toBe(files);
       expect((mockState as unknown as { requestInputFocus: ReturnType<typeof vi.fn> }).requestInputFocus)
         .toHaveBeenCalledTimes(1);
+    });
+
+    it('recovery copies a plain draft through setDraft and clears stale home rich text', () => {
+      const staleHomeDoc = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'stale' }] }] };
+      Object.assign(mockState, {
+        pendingNewSession: false,
+        pendingDraftId: null,
+        currentSessionPath: '/session/plain.jsonl',
+        currentSessionId: null,
+        drafts: { '/session/plain.jsonl': 'plain recovery', [HOME_DRAFT_KEY]: 'stale' },
+        draftDocs: { [HOME_DRAFT_KEY]: staleHomeDoc },
+      });
+
+      recoverPendingSessionDraftIdentity();
+
+      expect((mockState.drafts as Record<string, string>)[HOME_DRAFT_KEY]).toBe('plain recovery');
+      expect((mockState.draftDocs as Record<string, unknown>)[HOME_DRAFT_KEY]).toBeUndefined();
     });
   });
 
