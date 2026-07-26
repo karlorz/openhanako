@@ -66,7 +66,10 @@ import {
   collectBundledPluginPackageDependencies,
   copyBundledPluginRuntimeDependencies,
 } from "./build-server-plugin-runtime-deps.mjs";
-import { copyServerRuntimeAssets } from "./build-server-runtime-assets.mjs";
+import {
+  copyPackagedCliArtifactCore,
+  copyServerRuntimeAssets,
+} from "./build-server-runtime-assets.mjs";
 import { packDualKindSeed } from "./build-server-artifact.mjs";
 import { writeServerBuildInfo } from "./write-server-build-info.mjs";
 import {
@@ -162,6 +165,13 @@ if (fs.existsSync(pluginsSrc)) {
 // 这些模块必须按原相对路径落到 packaged server root，否则开发环境和安装包会分裂。
 for (const copiedDependency of await copyBundledPluginRuntimeDependencies({ rootDir: ROOT, outDir })) {
   console.log(`[build-server]   ${copiedDependency}`);
+}
+
+// Packaged CLI keeps createRequire() loads of artifact-core as relative
+// runtime requires under shared/artifact-core/. Stage them explicitly so
+// `hana --help` / server-runner work from the install-server layout.
+for (const copiedCore of copyPackagedCliArtifactCore({ rootDir: ROOT, outDir })) {
+  console.log(`[build-server]   ${copiedCore}`);
 }
 
 console.log("[build-server] resource files copied");
