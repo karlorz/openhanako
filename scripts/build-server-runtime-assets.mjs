@@ -46,6 +46,14 @@ export const PACKAGED_CLI_ARTIFACT_CORE_FILES = Object.freeze([
   // Transitive runtime requires from ota-core → contract-versions.{cjs,json}.
   "shared/contract-versions.cjs",
   "shared/contract-versions.json",
+  // ESM-imported by cli/data.ts + core/data-epoch-*.ts and externalized from the
+  // esbuild CLI bundle (see buildCliBundle). Its bare require("crypto"/"fs"/"path")
+  // cannot run inside esbuild's ESM CJS-interop shim, so it must load natively
+  // at runtime from shared/.
+  "shared/data-epoch.cjs",
+  // ESM-imported by cli/server-runner.ts + core/data-epoch-restore.ts, likewise
+  // externalized from the CLI bundle.
+  "shared/server-info-probe.cjs",
 ]);
 
 /**
