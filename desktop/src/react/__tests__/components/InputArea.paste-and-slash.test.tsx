@@ -27,7 +27,7 @@ const mocks = vi.hoisted(() => ({
   chainInserted: [] as unknown[],
   chainDeletedRanges: [] as Array<{ from: number; to: number }>,
   chainClearContent: vi.fn(),
-  ensureSession: vi.fn(async () => ({
+  ensureSession: vi.fn(async (_expectedPendingDraftId?: string | null) => ({
     sessionId: 'sess_input',
     sessionPath: '/session/input.jsonl',
     agentId: 'hana',
@@ -187,6 +187,10 @@ vi.mock('../../hooks/use-hana-fetch', () => ({
 
 vi.mock('../../stores/session-actions', () => ({
   ensureSession: mocks.ensureSession,
+  ensureSessionWithOutcome: async (expectedPendingDraftId?: string | null) => {
+    const ref = await mocks.ensureSession(expectedPendingDraftId);
+    return ref ? { status: 'ok', ref } : { status: 'identity', reason: 'missing session identity' };
+  },
   loadSessions: mocks.loadSessions,
   upsertOptimisticSessionFirstMessage: mocks.upsertOptimisticSessionFirstMessage,
 }));

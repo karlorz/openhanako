@@ -10,6 +10,10 @@ const mockLoadAgents = vi.fn(async () => {});
 const mockLoadAvatars = vi.fn();
 const mockLoadSessions = vi.fn(async () => {});
 const mockLoadPendingNewSessionPermissionDefault = vi.fn(async () => {});
+const mockPendingNewSessionIdentityPatch = vi.fn(() => ({
+  pendingNewSession: true as const,
+  pendingDraftId: 'pending-cold-start',
+}));
 const mockSwitchSession = vi.fn(async () => {});
 const mockConnectWebSocket = vi.fn();
 const mockGetWebSocket = vi.fn<() => WebSocket | null>(() => null);
@@ -53,6 +57,7 @@ vi.mock('../stores/agent-actions', () => ({
 vi.mock('../stores/session-actions', () => ({
   loadSessions: mockLoadSessions,
   loadPendingNewSessionPermissionDefault: mockLoadPendingNewSessionPermissionDefault,
+  pendingNewSessionIdentityPatch: mockPendingNewSessionIdentityPatch,
   switchSession: mockSwitchSession,
 }));
 
@@ -174,6 +179,7 @@ describe('initApp bridge indicator', () => {
     mockLoadAvatars.mockReset();
     mockLoadSessions.mockReset();
     mockLoadPendingNewSessionPermissionDefault.mockReset();
+    mockPendingNewSessionIdentityPatch.mockClear();
     mockLoadPendingNewSessionPermissionDefault.mockImplementation(async () => {
       mockState.pendingNewSessionPermissionMode = 'auto';
       mockState.sessionPermissionMode = 'auto';
@@ -633,6 +639,8 @@ describe('initApp bridge indicator', () => {
     await initApp();
 
     expect(mockState.pendingNewSession).toBe(true);
+    expect(mockState.pendingDraftId).toBe('pending-cold-start');
+    expect(mockPendingNewSessionIdentityPatch).toHaveBeenCalledTimes(1);
     expect(mockLoadPendingNewSessionPermissionDefault).toHaveBeenCalledTimes(1);
     expect(mockState.pendingNewSessionPermissionMode).toBe('auto');
     expect(mockState.sessionPermissionMode).toBe('auto');

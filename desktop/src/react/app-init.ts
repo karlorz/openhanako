@@ -14,6 +14,7 @@ import { applyAgentIdentity, loadAgents, loadAvatars } from './stores/agent-acti
 import {
   loadPendingNewSessionPermissionDefault,
   loadSessions,
+  pendingNewSessionIdentityPatch,
   reconcileCurrentSessionMessages,
   switchSession,
 } from './stores/session-actions';
@@ -281,7 +282,7 @@ export async function initApp(): Promise<void> {
   await loadModels();
 
   // 10. 加载 agents + sessions
-  useStore.setState({ pendingNewSession: true });
+  useStore.setState({ ...pendingNewSessionIdentityPatch() });
   await loadPendingNewSessionPermissionDefault();
   await loadAgents();
   await loadSessions();

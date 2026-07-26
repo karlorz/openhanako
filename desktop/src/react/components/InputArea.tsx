@@ -19,9 +19,11 @@ import { isAudioFileName } from '../utils/file-kind';
 import { useI18n } from '../hooks/use-i18n';
 import {
   continueDeletedAgentSession,
-  ensureSession,
+  ensureSessionWithOutcome,
   loadSessions,
+  recoverPendingSessionDraftIdentity,
   upsertOptimisticSessionFirstMessage,
+  type SessionEnsureFailure,
   type SessionRef,
 } from '../stores/session-actions';
 import { revealDeskDirectory, toggleJianSidebar } from '../stores/desk-actions';
@@ -86,6 +88,19 @@ function modelUnavailableMessageKey(reason: SessionModel['unavailableReason']): 
   if (reason === 'model_removed') return 'model.unavailableReason.modelRemoved';
   if (reason === 'provider_not_configured') return 'model.unavailableReason.providerNotConfigured';
   return 'model.unavailableReason.temporarilyUnavailable';
+}
+
+function showSessionResolutionFailure(
+  failure: SessionEnsureFailure,
+  fallbackDedupeKey: string,
+  text: string,
+  actionLabel: string,
+): void {
+  if (failure.status === 'create') return;
+  useStore.getState().addToast(text, 'error', 9000, {
+    dedupeKey: failure.status === 'draft-mismatch' ? 'send-identity-mismatch' : fallbackDedupeKey,
+    action: { label: actionLabel, onClick: recoverPendingSessionDraftIdentity },
+  });
 }
 
 function chatVideoMimeTypeForName(name: string, fallback?: string): string {
@@ -809,19 +824,18 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
       return false;
     }
 
-    let sessionRef: Readonly<SessionRef> | null = null;
-    if (pendingNewSession) {
-      sessionRef = await ensureSession(pendingDraftId);
-      if (!sessionRef) return false;
-      loadSessions();
-    } else {
-      const state = useStore.getState();
-      const projection = state.sessions.find(session => session.path === state.currentSessionPath);
-      const sessionId = state.currentSessionId || projection?.sessionId || null;
-      const agentId = projection?.agentId || state.currentAgentId || null;
-      if (!state.currentSessionPath || !sessionId || !agentId) return false;
-      sessionRef = Object.freeze({ sessionId, sessionPath: state.currentSessionPath, agentId });
+    const ensureOutcome = await ensureSessionWithOutcome(pendingNewSession ? pendingDraftId : null);
+    if (ensureOutcome.status !== 'ok') {
+      showSessionResolutionFailure(
+        ensureOutcome,
+        'send-missing-session',
+        t('error.noActiveSession'),
+        t('sidebar.newChat'),
+      );
+      return false;
     }
+    const sessionRef = ensureOutcome.ref;
+    if (pendingNewSession || !_s.currentSessionPath) loadSessions();
 
     ws.send(JSON.stringify({
       type: 'prompt',
@@ -1018,22 +1032,21 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
     window.setTimeout(restoreEditorFocus, 0);
   }, [inputLocked, restoreEditorFocus, surface]);
 
-  const ensureVoiceSessionRef = useCallback(async (): Promise<Readonly<SessionRef>> => {
+  const ensureVoiceSessionRef = useCallback(async (): Promise<Readonly<SessionRef> | null> => {
     const state = useStore.getState();
-    const sessionPath = state.currentSessionPath;
-    if (sessionPath) {
-      const projection = state.sessions.find(session => session.path === sessionPath);
-      const sessionId = state.currentSessionId || projection?.sessionId || null;
-      const agentId = projection?.agentId || state.currentAgentId || null;
-      if (!sessionId || !agentId) throw new Error('missing session identity');
-      return Object.freeze({ sessionId, sessionPath, agentId });
+    const ensureOutcome = await ensureSessionWithOutcome(state.pendingNewSession ? state.pendingDraftId : null);
+    if (ensureOutcome.status !== 'ok') {
+      showSessionResolutionFailure(
+        ensureOutcome,
+        'voice-missing-session',
+        t('error.noActiveSession'),
+        t('sidebar.newChat'),
+      );
+      return null;
     }
-    if (!pendingNewSession) throw new Error('missing session path');
-    const ref = await ensureSession(pendingDraftId);
-    if (!ref) throw new Error('failed to create session');
-    loadSessions();
-    return ref;
-  }, [pendingDraftId, pendingNewSession]);
+    if (state.pendingNewSession || !state.currentSessionPath) loadSessions();
+    return ensureOutcome.ref;
+  }, [t]);
 
   const sendVoiceAudioAttachment = useCallback(async (file: {
     fileId?: string;
@@ -1063,6 +1076,7 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
     setSending(true);
     try {
       const sessionRef = await ensureVoiceSessionRef();
+      if (!sessionRef) return false;
       const ws = getWebSocket();
       if (!ws || typeof ws.send !== 'function') {
         throw new Error('websocket unavailable');
@@ -1145,6 +1159,7 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
       audioRecordingSeqRef.current = index;
       const name = t('input.recordedAudioName', { index });
       const sessionRef = await ensureVoiceSessionRef();
+      if (!sessionRef) return;
       const res = await hanaFetch('/api/upload-blob', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1752,23 +1767,19 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
 
     try {
       let sessionRef = clickedSessionRef;
-      if (clickedPendingDraftId) {
-        sessionRef = await ensureSession(clickedPendingDraftId);
-        if (!sessionRef) {
-          // ensureSession 拿不到会话身份：不能静默吞掉这次发送，否则用户会以为点了没反应（#2101）。
-          useStore.getState().addToast(t('error.noActiveSession'), 'error', 6000, {
-            dedupeKey: 'send-missing-session',
-          });
+      if (clickState.pendingNewSession || !sessionRef) {
+        const ensureOutcome = await ensureSessionWithOutcome(clickedPendingDraftId);
+        if (ensureOutcome.status !== 'ok') {
+          showSessionResolutionFailure(
+            ensureOutcome,
+            'send-missing-session',
+            t('error.noActiveSession'),
+            t('sidebar.newChat'),
+          );
           return;
         }
+        sessionRef = ensureOutcome.ref;
         loadSessions();
-      }
-      if (!sessionRef) {
-        // 走到这里说明既不是 pending 新会话、也没有已激活会话身份——同样是无法发送，显式报错而非静默 return。
-        useStore.getState().addToast(t('error.noActiveSession'), 'error', 6000, {
-          dedupeKey: 'send-missing-session',
-        });
-        return;
       }
 
       // 分离原生媒体和普通附件；后端决定图片视觉桥、视频/音频原生能力或显式报错。

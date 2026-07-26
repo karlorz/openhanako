@@ -257,6 +257,12 @@ function installStoreMethods() {
   s.clearQuotedSelection = vi.fn();
   s.setActivePanel = vi.fn((v: unknown) => { mockState.activePanel = v; });
   s.requestInputFocus = vi.fn();
+  s.setDraft = vi.fn((key: string, text: string, doc?: unknown | null) => {
+    (mockState.drafts as Record<string, string>)[key] = text;
+    const draftDocs = mockState.draftDocs as Record<string, unknown>;
+    if (doc) draftDocs[key] = doc;
+    else delete draftDocs[key];
+  });
   s.setThinkingLevel = vi.fn((level: string) => { mockState.thinkingLevel = level; });
   s.setPendingNewSessionThinkingLevel = vi.fn((level: string | null) => { mockState.pendingNewSessionThinkingLevel = level; });
   s.setSessionPermissionMode = vi.fn((mode: string) => {
@@ -286,6 +292,7 @@ function installStoreMethods() {
 }
 
 import { hanaFetch } from '../../hooks/use-hana-fetch';
+import { HOME_DRAFT_KEY } from '../../../../../shared/input-drafts';
 import { clearChat } from '../../stores/agent-actions';
 import { loadDeskFiles } from '../../stores/desk-actions';
 import { bumpMessageLiveVersion, clearMessageLiveVersion } from '../../stores/message-live-version';
@@ -296,10 +303,12 @@ import {
   createNewSession,
   dismissSessionCapabilityDrift,
   ensureSession,
+  ensureSessionWithOutcome,
   loadMessages,
   loadSessions,
   pendingNewSessionIdentityPatch,
   pinSession,
+  recoverPendingSessionDraftIdentity,
   reconcileCurrentSessionMessages,
   refreshSessionCapabilities,
   switchSession,
@@ -608,6 +617,118 @@ function mockPermissionDefault(mode = 'ask') {
       const first = pendingNewSessionIdentityPatch();
       const second = pendingNewSessionIdentityPatch();
       expect(first.pendingDraftId).not.toBe(second.pendingDraftId);
+    });
+  });
+
+  describe('pending session identity recovery', () => {
+    it('heals a pending draft with a missing id before detached creation', async () => {
+      Object.assign(mockState, {
+        pendingNewSession: true,
+        pendingDraftId: null,
+        currentSessionPath: null,
+        currentAgentId: 'hana',
+        selectedFolder: '/workspace-heal',
+      });
+      mockFetch
+        .mockResolvedValueOnce(jsonResponse({
+          ok: true,
+          path: '/session/healed.jsonl',
+          sessionId: 'sess_healed',
+          agentId: 'hana',
+          cwd: '/workspace-heal',
+          workspaceFolders: [],
+        }))
+        .mockResolvedValueOnce(jsonResponse({
+          ok: true,
+          sessionId: 'sess_healed',
+          agentId: 'hana',
+          cwd: '/workspace-heal',
+          workspaceFolders: [],
+        }));
+
+      await expect(ensureSession()).resolves.toMatchObject({ sessionId: 'sess_healed' });
+
+      expect(mockFetch).toHaveBeenNthCalledWith(
+        1,
+        '/api/sessions/new-detached',
+        expect.objectContaining({ method: 'POST' }),
+      );
+    });
+
+    it('re-enters pending mode from a dead shell and creates a detached session', async () => {
+      Object.assign(mockState, {
+        pendingNewSession: false,
+        pendingDraftId: null,
+        currentSessionPath: null,
+        currentSessionId: null,
+        currentAgentId: 'hana',
+        selectedFolder: '/workspace-dead-shell',
+        attachedFiles: [{ path: '/tmp/kept.png', name: 'kept.png' }],
+      });
+      mockFetch
+        .mockResolvedValueOnce(jsonResponse({
+          ok: true,
+          path: '/session/recovered.jsonl',
+          sessionId: 'sess_recovered',
+          agentId: 'hana',
+          cwd: '/workspace-dead-shell',
+          workspaceFolders: [],
+        }))
+        .mockResolvedValueOnce(jsonResponse({
+          ok: true,
+          sessionId: 'sess_recovered',
+          agentId: 'hana',
+          cwd: '/workspace-dead-shell',
+          workspaceFolders: [],
+        }));
+
+      await expect(ensureSession()).resolves.toMatchObject({ sessionId: 'sess_recovered' });
+
+      expect(mockFetch.mock.calls.filter(([url]) => url === '/api/sessions/new-detached')).toHaveLength(1);
+      expect((mockState.attachedFilesBySession as Record<string, unknown[]>).sess_recovered)
+        .toEqual([{ path: '/tmp/kept.png', name: 'kept.png' }]);
+    });
+
+    it('recovery CTA reseeds a complete identity, preserves composer state, and focuses input', () => {
+      const homeDoc = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'keep me' }] }] };
+      const files = [{ path: '/tmp/kept.png', name: 'kept.png' }];
+      Object.assign(mockState, {
+        pendingNewSession: false,
+        pendingDraftId: null,
+        currentSessionPath: '/session/incomplete.jsonl',
+        currentSessionId: null,
+        drafts: { '/session/incomplete.jsonl': 'keep me' },
+        draftDocs: { '/session/incomplete.jsonl': homeDoc },
+        attachedFiles: files,
+      });
+
+      recoverPendingSessionDraftIdentity();
+
+      expect(mockState.pendingNewSession).toBe(true);
+      expect(mockState.pendingDraftId).toEqual(expect.stringMatching(/^pending-/));
+      expect(mockState.currentSessionPath).toBeNull();
+      expect((mockState.drafts as Record<string, string>).__home__).toBe('keep me');
+      expect((mockState.draftDocs as Record<string, unknown>).__home__).toEqual(homeDoc);
+      expect(mockState.attachedFiles).toBe(files);
+      expect((mockState as unknown as { requestInputFocus: ReturnType<typeof vi.fn> }).requestInputFocus)
+        .toHaveBeenCalledTimes(1);
+    });
+
+    it('recovery copies a plain draft through setDraft and clears stale home rich text', () => {
+      const staleHomeDoc = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'stale' }] }] };
+      Object.assign(mockState, {
+        pendingNewSession: false,
+        pendingDraftId: null,
+        currentSessionPath: '/session/plain.jsonl',
+        currentSessionId: null,
+        drafts: { '/session/plain.jsonl': 'plain recovery', [HOME_DRAFT_KEY]: 'stale' },
+        draftDocs: { [HOME_DRAFT_KEY]: staleHomeDoc },
+      });
+
+      recoverPendingSessionDraftIdentity();
+
+      expect((mockState.drafts as Record<string, string>)[HOME_DRAFT_KEY]).toBe('plain recovery');
+      expect((mockState.draftDocs as Record<string, unknown>)[HOME_DRAFT_KEY]).toBeUndefined();
     });
   });
 
@@ -1169,7 +1290,10 @@ function mockPermissionDefault(mode = 'ask') {
       });
       mockFetch.mockResolvedValueOnce(jsonResponse({ error: 'session skill snapshot failed' }, false));
 
-      await expect(ensureSession()).resolves.toBeNull();
+      await expect(ensureSessionWithOutcome()).resolves.toEqual({
+        status: 'create',
+        reason: 'session skill snapshot failed',
+      });
 
       expect(mockState.inlineErrors).toMatchObject({
         '': 'Create session failed: session skill snapshot failed',
@@ -1178,8 +1302,33 @@ function mockPermissionDefault(mode = 'ask') {
         'Create session failed: session skill snapshot failed',
         'error',
         6000,
+        expect.objectContaining({
+          dedupeKey: 'send-create-failed',
+          action: expect.objectContaining({ label: 'action.retry' }),
+        }),
       );
       expect(mockState.pendingNewSession).toBe(true);
+
+      mockFetch
+        .mockResolvedValueOnce(jsonResponse({
+          ok: true,
+          path: '/session/retry.jsonl',
+          sessionId: 'sess_retry',
+          agentId: 'hana',
+          workspaceFolders: [],
+        }))
+        .mockResolvedValueOnce(jsonResponse({
+          ok: true,
+          sessionId: 'sess_retry',
+          agentId: 'hana',
+          workspaceFolders: [],
+        }));
+      const addToast = mockState.addToast as ReturnType<typeof vi.fn>;
+      const toastOptions = addToast.mock.calls.at(-1)?.[3];
+      toastOptions?.action?.onClick();
+      await vi.waitFor(() => {
+        expect(mockFetch.mock.calls.filter(([url]) => url === '/api/sessions/new-detached')).toHaveLength(2);
+      });
     });
   });
 
