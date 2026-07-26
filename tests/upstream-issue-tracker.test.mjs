@@ -19,6 +19,7 @@ describe("upstream issue tracker", () => {
       "session-replay-marker-only-image-regenerate",
       "toolgroup-file-detail-link-context",
       "provider-model-removal-persistence",
+      "vision-capability-settings-sot",
       "remote-skill-viewer-local-file-ipc",
       "remote-skill-install-client-local-path",
       "plugin-iframe-remote-credential-query-leak",
