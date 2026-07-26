@@ -201,6 +201,56 @@ describe('MobileApp', () => {
     await waitForMobileChatReady();
   });
 
+  it('clears a rejected device access key while preserving the login error', async () => {
+    fetchMock.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/api/web-auth/session')) {
+        return Promise.resolve(jsonResponse({ authenticated: false, principal: null }));
+      }
+      if (url.includes('/api/web-auth/login')) {
+        return Promise.resolve(jsonErrorResponse(401, { error: 'invalid access key' }));
+      }
+      return Promise.resolve(jsonResponse(jsonResponseForMobile(url)));
+    });
+
+    render(<MobileApp />);
+
+    const secretInput = await screen.findByLabelText('访问密钥');
+    fireEvent.change(secretInput, { target: { value: 'hana_dev_rejected' } });
+    fireEvent.click(screen.getByRole('button', { name: '登录' }));
+
+    expect(await screen.findByText('invalid access key')).toBeInTheDocument();
+    expect(secretInput).toHaveValue('');
+    expect(readBrowserStorage()).not.toContain('hana_dev_rejected');
+  });
+
+  it('clears a rejected password while retaining the submitted username and login error', async () => {
+    fetchMock.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/api/web-auth/session')) {
+        return Promise.resolve(jsonResponse({ authenticated: false, principal: null }));
+      }
+      if (url.includes('/api/web-auth/login')) {
+        return Promise.resolve(jsonErrorResponse(401, { error: 'invalid password' }));
+      }
+      return Promise.resolve(jsonResponse(jsonResponseForMobile(url)));
+    });
+
+    render(<MobileApp />);
+
+    fireEvent.click(await screen.findByRole('tab', { name: '用户名密码' }));
+    const usernameInput = screen.getByLabelText('用户名');
+    const passwordInput = screen.getByLabelText('密码');
+    fireEvent.change(usernameInput, { target: { value: 'hana-owner' } });
+    fireEvent.change(passwordInput, { target: { value: 'rejected-password' } });
+    fireEvent.click(screen.getByRole('button', { name: '登录' }));
+
+    expect(await screen.findByText('invalid password')).toBeInTheDocument();
+    expect(usernameInput).toHaveValue('hana-owner');
+    expect(passwordInput).toHaveValue('');
+    expect(readBrowserStorage()).not.toContain('rejected-password');
+  });
+
   it('returns stale browser sessions without file scopes to login', async () => {
     fetchMock.mockImplementation((input: RequestInfo | URL) => {
       const url = String(input);
@@ -698,6 +748,92 @@ describe('MobileApp', () => {
     });
   });
 
+  it('tears down a partially initialized runtime when post-login recovery fails', async () => {
+    const recoveryMessages = createDeferred<Response>();
+    let sessionCalls = 0;
+    let messageCalls = 0;
+    let logoutCalls = 0;
+    let pendingSignal: AbortSignal | undefined;
+
+    fetchMock.mockImplementation((input: RequestInfo | URL, options?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('/api/web-auth/session')) {
+        sessionCalls += 1;
+        return Promise.resolve(jsonResponse(sessionCalls === 2
+          ? { authenticated: false, principal: null }
+          : { authenticated: true, principal: principal(['chat', 'resources.read', 'files.read', 'files.write']) }));
+      }
+      if (url.includes('/api/web-auth/login')) return Promise.resolve(jsonResponse({ ok: true }));
+      if (url.includes('/api/web-auth/logout')) {
+        logoutCalls += 1;
+        return Promise.resolve(jsonResponse({ ok: true }));
+      }
+      if (url.includes('/api/sessions/messages')) {
+        messageCalls += 1;
+        if (messageCalls === 2) return recoveryMessages.promise;
+      }
+      if (url.includes('/api/test-pending')) {
+        pendingSignal = options?.signal || undefined;
+        return new Promise<Response>((_resolve, reject) => {
+          pendingSignal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true });
+        });
+      }
+      return Promise.resolve(jsonResponse(jsonResponseForMobile(url, options)));
+    });
+
+    render(<MobileApp />);
+    await waitForMobileChatReady();
+    await openMobileSession('日常记录');
+    await waitFor(() => expect(useStore.getState().currentSessionPath).toBe('/hana/sessions/one.jsonl'));
+    act(() => {
+      useStore.getState().setDraft('/hana/sessions/one.jsonl', 'recover before failure');
+    });
+
+    fireEvent(window, new Event('focus'));
+    expect(await screen.findByText('你的会话已结束，请重新登录。')).toBeInTheDocument();
+    const originalSetDraft = useStore.getState().setDraft;
+    useStore.setState({
+      setDraft: vi.fn(() => {
+        throw new Error('recovery exploded');
+      }),
+    });
+
+    try {
+      loginWithDeviceSecret('hana_dev_recovery');
+      await waitFor(() => expect(messageCalls).toBe(2));
+      await waitFor(() => expect(MockWebSocket.instances).toHaveLength(2));
+      const recoverySocket = MockWebSocket.instances[1];
+      const pendingFetch = hanaFetch('/api/test-pending').catch(error => error);
+      await waitFor(() => expect(pendingSignal).toBeDefined());
+
+      await act(async () => {
+        recoveryMessages.resolve(jsonResponse({ messages: [], blocks: [], todos: [], hasMore: false, sessionFiles: [] }));
+        await Promise.resolve();
+      });
+
+      expect(await screen.findByText('recovery exploded')).toBeInTheDocument();
+      expect(screen.getByText('手机访问 Hana')).toBeInTheDocument();
+      expect(logoutCalls).toBe(1);
+      await waitFor(() => expect(pendingSignal?.aborted).toBe(true));
+      await expect(pendingFetch).resolves.toMatchObject({ name: 'AbortError' });
+      expect(recoverySocket?.onclose).toBeNull();
+      expect(document.querySelector('[data-mobile-principal]')).not.toBeInTheDocument();
+      expect(useStore.getState()).toMatchObject({
+        activeServerConnectionId: null,
+        activeServerConnection: null,
+        wsState: 'disconnected',
+        sessions: [],
+        currentSessionPath: null,
+        chatSessions: {},
+        agents: [],
+        models: [],
+        deskFiles: [],
+      });
+    } finally {
+      useStore.setState({ setDraft: originalSetDraft });
+    }
+  });
+
   it('re-pulls the open session on foreground when its revision drifted while backgrounded (#1610)', async () => {
     const sessionPath = '/hana/sessions/rc.jsonl';
     let diskRevision = 'rev-1';
@@ -1062,6 +1198,26 @@ function principal(scopes: string[], credentialKind = 'device_credential') {
     studioId: 'studio_1',
     scopes,
   };
+}
+
+function createDeferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+  reject: (reason?: unknown) => void;
+} {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+  return { promise, resolve, reject };
+}
+
+function readBrowserStorage(): string {
+  return [localStorage, sessionStorage]
+    .flatMap(storage => Array.from({ length: storage.length }, (_, index) => storage.getItem(storage.key(index) || '') || ''))
+    .join('\n');
 }
 
 function jsonResponseForMobile(

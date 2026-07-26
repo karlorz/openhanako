@@ -80,6 +80,14 @@ export function MobileApp(): React.ReactElement {
     setAuthState(next);
   }, []);
 
+  const clearAuthenticatedRuntime = useCallback(() => {
+    abortPendingHanaFetches();
+    disconnectWebSocket();
+    resetMobileRuntimeAfterAuthLoss();
+    authorityRef.current = null;
+    setPrincipal(null);
+  }, []);
+
   const transitionToSessionEnded = useCallback(() => {
     if (authStateRef.current !== 'ready') return;
     // Set the synchronous guard before any teardown so concurrent HTTP,
@@ -99,15 +107,11 @@ export function MobileApp(): React.ReactElement {
       attachments: selectedSessionPath ? state.attachedFiles : [],
     });
 
-    abortPendingHanaFetches();
-    disconnectWebSocket();
-    resetMobileRuntimeAfterAuthLoss();
-    authorityRef.current = null;
-    setPrincipal(null);
+    clearAuthenticatedRuntime();
     setLoginSecret('');
     setLoginPassword('');
     setLoginError((window.t ?? ((p: string) => p))('mobile.auth.sessionEnded'));
-  }, [updateAuthState]);
+  }, [clearAuthenticatedRuntime, updateAuthState]);
 
   const checkMobileAuthSession = useCallback((): Promise<boolean> => {
     if (authStateRef.current !== 'ready') return Promise.resolve(false);
@@ -133,43 +137,48 @@ export function MobileApp(): React.ReactElement {
   }, [transitionToSessionEnded]);
 
   const bootstrap = useCallback(async () => {
-    await ensureMobileAuthLocale();
-    const session = await readMobileAuthSession();
-    if (!session.authenticated || !session.principal) {
-      if (authStateRef.current === 'ready') transitionToSessionEnded();
-      else updateAuthState('login');
-      return;
-    }
-    if (!principalHasRequiredScopes(session.principal, MOBILE_REQUIRED_SCOPES)) {
-      await apiJson('/api/web-auth/logout', { method: 'POST' }).catch(() => null);
-      setPrincipal(null);
-      authorityRef.current = null;
-      recoverySnapshotRef.current = null;
-      setLoginError((window.t ?? ((p: string) => p))('mobile.auth.scopeError'));
-      updateAuthState('login');
-      return;
-    }
-    const { connection } = await initializeMobileRuntime(session.principal);
-    const nextAuthority: MobileAuthorityInput = connection;
-    const recovery = restoreMobileRecoverySnapshot(recoverySnapshotRef.current, {
-      authority: nextAuthority,
-      availableSessionPaths: useStore.getState().sessions.map(item => item.path),
-    });
-    if (recovery) {
-      const selected = useStore.getState().sessions.find(item => item.path === recovery.selectedSessionPath) || null;
-      await switchMobileSession(recovery.selectedSessionPath, selected);
-      const state = useStore.getState();
-      if (recovery.draftText || recovery.draftDoc) {
-        state.setDraft(recovery.selectedSessionPath, recovery.draftText, recovery.draftDoc);
+    try {
+      await ensureMobileAuthLocale();
+      const session = await readMobileAuthSession();
+      if (!session.authenticated || !session.principal) {
+        if (authStateRef.current === 'ready') transitionToSessionEnded();
+        else updateAuthState('login');
+        return;
       }
-      state.setAttachedFiles(recovery.attachments);
+      if (!principalHasRequiredScopes(session.principal, MOBILE_REQUIRED_SCOPES)) {
+        await apiJson('/api/web-auth/logout', { method: 'POST' }).catch(() => null);
+        setPrincipal(null);
+        authorityRef.current = null;
+        recoverySnapshotRef.current = null;
+        setLoginError((window.t ?? ((p: string) => p))('mobile.auth.scopeError'));
+        updateAuthState('login');
+        return;
+      }
+      const { connection } = await initializeMobileRuntime(session.principal);
+      const nextAuthority: MobileAuthorityInput = connection;
+      const recovery = restoreMobileRecoverySnapshot(recoverySnapshotRef.current, {
+        authority: nextAuthority,
+        availableSessionPaths: useStore.getState().sessions.map(item => item.path),
+      });
+      if (recovery) {
+        const selected = useStore.getState().sessions.find(item => item.path === recovery.selectedSessionPath) || null;
+        await switchMobileSession(recovery.selectedSessionPath, selected);
+        const state = useStore.getState();
+        if (recovery.draftText || recovery.draftDoc) {
+          state.setDraft(recovery.selectedSessionPath, recovery.draftText, recovery.draftDoc);
+        }
+        state.setAttachedFiles(recovery.attachments);
+      }
+      recoverySnapshotRef.current = null;
+      authorityRef.current = nextAuthority;
+      setPrincipal(session.principal);
+      setLoginError(null);
+      updateAuthState('ready');
+    } catch (error) {
+      clearAuthenticatedRuntime();
+      throw error;
     }
-    recoverySnapshotRef.current = null;
-    authorityRef.current = nextAuthority;
-    setPrincipal(session.principal);
-    setLoginError(null);
-    updateAuthState('ready');
-  }, [transitionToSessionEnded, updateAuthState]);
+  }, [clearAuthenticatedRuntime, transitionToSessionEnded, updateAuthState]);
 
   useEffect(() => {
     let cancelled = false;
@@ -209,18 +218,27 @@ export function MobileApp(): React.ReactElement {
   const login = async (event: React.FormEvent) => {
     event.preventDefault();
     setLoginError(null);
+    let loginSucceeded = false;
     try {
       const body = loginMode === 'device'
         ? { credential: loginSecret.trim() }
         : { username: loginUsername.trim(), password: loginPassword };
+      // Credentials are one-shot inputs. Copy them into the request body, then
+      // clear controlled form state before any network or bootstrap work can fail.
+      setLoginSecret('');
+      setLoginPassword('');
       await apiJson('/api/web-auth/login', {
         method: 'POST',
         body: JSON.stringify(body),
       });
-      setLoginSecret('');
-      setLoginPassword('');
+      loginSucceeded = true;
       await bootstrap();
     } catch (err) {
+      // A failed post-login bootstrap must not leave an authenticated cookie
+      // behind while the UI presents the credential form again.
+      if (loginSucceeded) {
+        await apiJson('/api/web-auth/logout', { method: 'POST' }).catch(() => null);
+      }
       setLoginError(err instanceof Error ? err.message : (window.t ?? ((p: string) => p))('mobile.auth.loginFailed'));
     }
   };
