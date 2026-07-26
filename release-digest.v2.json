@@ -3,14 +3,14 @@
   "entries": [
     {
       "schemaVersion": 1,
-      "tag": "v0.416.51-karlorz.6",
+      "tag": "v0.416.51-karlorz.7",
       "version": "0.416.51",
-      "previousTag": "v0.416.51-karlorz.5",
-      "generatedAt": "2026-07-27T09:15:00.000Z",
+      "previousTag": "v0.416.51-karlorz.6",
+      "generatedAt": "2026-07-27T10:50:00.000Z",
       "noUserFacingChanges": false,
       "summary": {
-        "zh": "补齐 hana CLI 的 contract-versions.json，修复安装包命令仍无法启动的问题。",
-        "en": "Ships contract-versions.json so the packaged hana CLI can finish loading."
+        "zh": "将 shared/*.cjs 从 CLI 的 ESM bundle 中外部化，修复 hana --help 因 esbuild CJS->ESM shim 无法处理裸 require(\"crypto\") 而崩溃的问题。",
+        "en": "Externalize shared/*.cjs from the CLI ESM bundle so hana --help stops crashing on esbuild's CJS->ESM shim throwing on bare require('crypto')."
       },
       "counts": {
         "feature": 0,
@@ -21,29 +21,29 @@
       "source": {
         "owner": "karlorz",
         "repo": "openhanako",
-        "commitRange": "v0.416.51-karlorz.5..HEAD",
-        "releaseUrl": "https://github.com/karlorz/openhanako/releases/tag/v0.416.51-karlorz.6",
+        "commitRange": "v0.416.51-karlorz.6..HEAD",
+        "releaseUrl": "https://github.com/karlorz/openhanako/releases/tag/v0.416.51-karlorz.7",
         "releaseNotes": ""
       },
       "items": [
         {
-          "id": "packaged-hana-cli-contract-versions-json",
+          "id": "packaged-hana-cli-externalize-shared-cjs",
           "kind": "fix",
           "importance": "high",
           "title": {
-            "zh": "hana CLI 补齐 contract-versions.json",
-            "en": "hana CLI includes contract-versions.json"
+            "zh": "hana CLI 外部化 shared/*.cjs，--help 退出码归零",
+            "en": "hana CLI externalizes shared/*.cjs so --help exits 0"
           },
           "summary": {
-            "zh": "contract-versions.cjs 依赖同目录 JSON 真相源；该文件现已打进安装包。",
-            "en": "contract-versions.cjs depends on the sibling JSON source of truth; that file is now packaged."
+            "zh": "cli/data.ts ESM 导入 shared/data-epoch.cjs，esbuild 将其内联进 ESM bundle，但 data-epoch.cjs 的裸 require('crypto'/'fs'/'path') 在 ESM shim 中抛出 'Dynamic require of crypto is not supported'。.6 补齐 JSON 后该问题暴露。将 data-epoch.cjs、contract-versions.cjs、server-info-probe.cjs 标记为 --external，改由 Node 原生 CJS 加载器在运行时解析，并将前两者打入 shared/ 目录。",
+            "en": "cli/data.ts ESM-imports shared/data-epoch.cjs, which esbuild inlines into the ESM bundle; data-epoch.cjs's bare require('crypto'/'fs'/'path') then throws inside esbuild's CJS->ESM shim. Surfaced once .6 shipped contract-versions.json. Fix: mark data-epoch.cjs, contract-versions.cjs, and server-info-probe.cjs as --external so Node's native CJS loader handles them at runtime, and stage data-epoch.cjs + server-info-probe.cjs into shared/."
           },
           "details": [],
           "sources": [
             {
               "type": "commit",
-              "ref": "HEAD",
-              "title": "fix(server): ship contract-versions.json for packaged hana CLI"
+              "ref": "6c1c8fe9",
+              "title": "fix(server): externalize shared/*.cjs from CLI bundle so hana --help exits 0"
             }
           ]
         }
