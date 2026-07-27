@@ -7966,7 +7966,7 @@
     },
     {
       "sourceFile": "server/index.ts",
-      "line": 700,
+      "line": 707,
       "kind": "persistent-store-constructor",
       "excerpt": "new ConfirmStore({ getSessionIdForPath: (sessionPath: string) => engine.getSessionIdForPath?.(sessionPath) || null, })",
       "reason": "ConfirmStore is deliberately process-memory-only: pending approvals time out or abort with their session and have no restart replay contract.",
@@ -7975,7 +7975,7 @@
     },
     {
       "sourceFile": "server/index.ts",
-      "line": 705,
+      "line": 712,
       "kind": "persistent-store-constructor",
       "excerpt": "new SubagentRunStore( path.join(hanakoHome, \"subagent-runs.json\"), { getSessionIdForPath: (sessionPath: string) => engine.getSessionIdForPath?.(sessionPath) || null }, )",
       "reason": "Constructs subagent stores.",
@@ -7984,7 +7984,7 @@
     },
     {
       "sourceFile": "server/index.ts",
-      "line": 711,
+      "line": 718,
       "kind": "persistent-store-constructor",
       "excerpt": "new SubagentThreadStore( path.join(hanakoHome, \"subagent-threads.json\"), { getSessionIdForPath: (sessionPath: string) => engine.getSessionIdForPath?.(sessionPath) || null }, )",
       "reason": "Constructs subagent stores.",
@@ -7993,7 +7993,7 @@
     },
     {
       "sourceFile": "server/index.ts",
-      "line": 722,
+      "line": 729,
       "kind": "persistent-store-constructor",
       "excerpt": "new WorkflowActivityStore( path.join(hanakoHome, \"workflow-activity.json\"), )",
       "reason": "Constructs the workflow activity store.",
@@ -8002,7 +8002,7 @@
     },
     {
       "sourceFile": "server/index.ts",
-      "line": 1140,
+      "line": 1147,
       "kind": "append-file",
       "excerpt": "fs.promises.appendFile(_bwsLogPath, chunk)",
       "reason": "Appends the browser worker log.",
@@ -8011,7 +8011,7 @@
     },
     {
       "sourceFile": "server/index.ts",
-      "line": 1199,
+      "line": 1206,
       "kind": "write-file",
       "excerpt": "fs.writeFileSync(serverInfoPath, JSON.stringify({ pid: process.pid, port: actualPort, host, configuredHost: serverRuntimeState.listenHost, networkMode: serverRuntimeState.mode, configuredMode: serverRuntimeState.configuredMode, configuredLi",
       "reason": "Writes or deletes live server discovery state.",
@@ -8020,7 +8020,7 @@
     },
     {
       "sourceFile": "server/index.ts",
-      "line": 1300,
+      "line": 1307,
       "kind": "remove-path",
       "excerpt": "fs.unlinkSync(path.join(hanakoHome, \"server-info.json\"))",
       "reason": "Writes or deletes live server discovery state.",
@@ -8245,7 +8245,7 @@
     },
     {
       "sourceFile": "server/routes/plugins.ts",
-      "line": 397,
+      "line": 398,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(userPluginsDir, { recursive: true })",
       "reason": "Creates, promotes, rolls back, or removes an installed plugin directory.",
@@ -8254,7 +8254,7 @@
     },
     {
       "sourceFile": "server/routes/plugins.ts",
-      "line": 421,
+      "line": 422,
       "kind": "copy-file",
       "excerpt": "fs.cpSync(pluginSrc, tmpTarget, { recursive: true })",
       "reason": "Creates, promotes, rolls back, or removes an installed plugin directory.",
@@ -8263,7 +8263,7 @@
     },
     {
       "sourceFile": "server/routes/plugins.ts",
-      "line": 428,
+      "line": 429,
       "kind": "remove-path",
       "excerpt": "fs.rmSync(cleanupPath, { recursive: true, force: true })",
       "reason": "One bounded cleanup list contains both HANA_HOME .installing staging and operating-system extraction temp; flow-sensitive attribution must replace this exact conditional site.",
@@ -8272,16 +8272,7 @@
     },
     {
       "sourceFile": "server/routes/plugins.ts",
-      "line": 473,
-      "kind": "remove-path",
-      "excerpt": "fs.rmSync(targetDir, { recursive: true, force: true })",
-      "reason": "Creates, promotes, rolls back, or removes an installed plugin directory.",
-      "storeId": "installed-plugins",
-      "exemptionId": null
-    },
-    {
-      "sourceFile": "server/routes/plugins.ts",
-      "line": 535,
+      "line": 474,
       "kind": "remove-path",
       "excerpt": "fs.rmSync(targetDir, { recursive: true, force: true })",
       "reason": "Creates, promotes, rolls back, or removes an installed plugin directory.",
@@ -8291,6 +8282,15 @@
     {
       "sourceFile": "server/routes/plugins.ts",
       "line": 536,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(targetDir, { recursive: true, force: true })",
+      "reason": "Creates, promotes, rolls back, or removes an installed plugin directory.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "server/routes/plugins.ts",
+      "line": 537,
       "kind": "rename",
       "excerpt": "fs.renameSync(stagedDir, targetDir)",
       "reason": "Creates, promotes, rolls back, or removes an installed plugin directory.",
@@ -8299,7 +8299,7 @@
     },
     {
       "sourceFile": "server/routes/plugins.ts",
-      "line": 562,
+      "line": 563,
       "kind": "remove-path",
       "excerpt": "fs.rmSync(cleanupPath, { recursive: true, force: true })",
       "reason": "One bounded cleanup list contains both HANA_HOME .installing staging and operating-system extraction temp; flow-sensitive attribution must replace this exact conditional site.",
@@ -8308,7 +8308,7 @@
     },
     {
       "sourceFile": "server/routes/plugins.ts",
-      "line": 668,
+      "line": 669,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(downloadsDir, { recursive: true })",
       "reason": "Caches a sha256-verified plugin release package.",
@@ -8317,7 +8317,7 @@
     },
     {
       "sourceFile": "server/routes/plugins.ts",
-      "line": 670,
+      "line": 671,
       "kind": "write-file",
       "excerpt": "fs.writeFileSync(packagePath, body)",
       "reason": "Caches a sha256-verified plugin release package.",
@@ -8326,7 +8326,7 @@
     },
     {
       "sourceFile": "server/routes/plugins.ts",
-      "line": 1144,
+      "line": 1145,
       "kind": "remove-path",
       "excerpt": "fs.rmSync(pluginDir, { recursive: true, force: true })",
       "reason": "Creates, promotes, rolls back, or removes an installed plugin directory.",

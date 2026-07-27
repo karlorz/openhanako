@@ -109105,11 +109105,21 @@
       "provenance": [
         {
           "root": "server-bootstrap",
+          "from": "server/routes/plugins.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
+          "from": "server/routes/web-auth.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
           "from": "server/index.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by server/index.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by server/routes/plugins.ts (import-statement); server/routes/web-auth.ts (import-statement); server/index.ts (import-statement)."
     },
     {
       "path": "server/index.ts",
