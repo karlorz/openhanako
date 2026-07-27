@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "tag": "v0.416.51-karlorz.7",
+  "tag": "v0.416.51-karlorz.8",
   "version": "0.416.51",
-  "previousTag": "v0.416.51-karlorz.6",
-  "generatedAt": "2026-07-27T10:50:00.000Z",
+  "previousTag": "v0.416.51-karlorz.7",
+  "generatedAt": "2026-07-27T15:24:00.000Z",
   "noUserFacingChanges": false,
   "summary": {
-    "zh": "将 shared/*.cjs 从 CLI 的 ESM bundle 中外部化，修复 hana --help 因 esbuild CJS->ESM shim 无法处理裸 require(\"crypto\") 而崩溃的问题。",
-    "en": "Externalize shared/*.cjs from the CLI ESM bundle so hana --help stops crashing on esbuild's CJS->ESM shim throwing on bare require('crypto')."
+    "zh": "为 Caddy 后的移动端 HTTPS 增加可信代理安全上下文与 Secure 会话 cookie，同时拒绝直接客户端伪造 X-Forwarded-Proto。",
+    "en": "Adds trusted reverse-proxy HTTPS context and Secure session cookies for Mobile behind Caddy while rejecting direct X-Forwarded-Proto spoofing."
   },
   "counts": {
     "feature": 0,
@@ -18,29 +18,29 @@
   "source": {
     "owner": "karlorz",
     "repo": "openhanako",
-    "commitRange": "v0.416.51-karlorz.6..HEAD",
-    "releaseUrl": "https://github.com/karlorz/openhanako/releases/tag/v0.416.51-karlorz.7",
+    "commitRange": "v0.416.51-karlorz.7..HEAD",
+    "releaseUrl": "https://github.com/karlorz/openhanako/releases/tag/v0.416.51-karlorz.8",
     "releaseNotes": ""
   },
   "items": [
     {
-      "id": "packaged-hana-cli-externalize-shared-cjs",
+      "id": "mobile-https-trusted-proxy-secure-cookies",
       "kind": "fix",
       "importance": "high",
       "title": {
-        "zh": "hana CLI 外部化 shared/*.cjs，--help 退出码归零",
-        "en": "hana CLI externalizes shared/*.cjs so --help exits 0"
+        "zh": "移动端 HTTPS 可信代理与 Secure cookie",
+        "en": "Trusted Mobile HTTPS proxy and Secure cookies"
       },
       "summary": {
-        "zh": "cli/data.ts ESM 导入 shared/data-epoch.cjs，esbuild 将其内联进 ESM bundle，但 data-epoch.cjs 的裸 require('crypto'/'fs'/'path') 在 ESM shim 中抛出 'Dynamic require of crypto is not supported'。.6 补齐 JSON 后该问题暴露。将 data-epoch.cjs、contract-versions.cjs、server-info-probe.cjs 标记为 --external，改由 Node 原生 CJS 加载器在运行时解析，并将前两者打入 shared/ 目录。",
-        "en": "cli/data.ts ESM-imports shared/data-epoch.cjs, which esbuild inlines into the ESM bundle; data-epoch.cjs's bare require('crypto'/'fs'/'path') then throws inside esbuild's CJS->ESM shim. Surfaced once .6 shipped contract-versions.json. Fix: mark data-epoch.cjs, contract-versions.cjs, and server-info-probe.cjs as --external so Node's native CJS loader handles them at runtime, and stage data-epoch.cjs + server-info-probe.cjs into shared/."
+        "zh": "仅当上游 socket peer 为 loopback 时才信任单值 X-Forwarded-Proto: https；HANA_SECURE_COOKIES=1 为 Web 会话签发与清除添加 Secure，插件资产会话复用同一可信安全上下文。直接 LAN/公网客户端即使伪造该 header 也不会被视为 HTTPS。",
+        "en": "Trust a single X-Forwarded-Proto: https value only when the immediate socket peer is loopback. HANA_SECURE_COOKIES=1 adds Secure to issued and cleared web-session cookies, and plugin asset sessions reuse the same trusted security context. Direct LAN/public clients cannot self-assert HTTPS with that header."
       },
       "details": [],
       "sources": [
         {
           "type": "commit",
-          "ref": "6c1c8fe9",
-          "title": "fix(server): externalize shared/*.cjs from CLI bundle so hana --help exits 0"
+          "ref": "1749b830",
+          "title": "fix(server): trust loopback HTTPS proxy context"
         }
       ]
     }
