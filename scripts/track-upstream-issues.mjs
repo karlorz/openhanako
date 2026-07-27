@@ -800,6 +800,21 @@ export const TRACKED_FIXES = [
       "Raw releases retain installers, runtime-only server bundles, compatibility metadata, checksums, and the committed digest while excluding updater, train, and mirror assets.",
     ],
   },
+  {
+    id: "packaged-cli-shared-cjs-externalize",
+    title: "Externalize shared/*.cjs from the packaged hana CLI ESM bundle so it loads runtime",
+    classification: "fork-only",
+    status: "local-verified",
+    commits: ["eed8ffc4", "4d67c5bd", "55c867b6", "6c1c8fe9"],
+    grouping: "packaging/cli: stage shared artifact-core + externalize CJS-with-builtin-requires from the esbuild ESM CLI bundle",
+    searches: [],
+    notes: [
+      "Fork packaging fix, no upstream issue: the packaged standalone CLI is a fork distribution shape.",
+      "Root cause chain (debugged across karlorz.3 -> .7): .3/.4 missing shared/artifact-core/*; .4/.5 missing shared/contract-versions.{cjs,json}; .6 shipped contract-versions.json (55c867b6) and unmasked a deeper failure, 'Dynamic require of crypto is not supported' from the inlined shared/data-epoch.cjs. .7 (6c1c8fe9) externalized shared/data-epoch.cjs, contract-versions.cjs, and server-info-probe.cjs from the esbuild CLI bundle (--format=esm) and staged data-epoch.cjs + server-info-probe.cjs into shared/, so Node's native CJS loader handles their bare require('crypto'/'fs'/'path').",
+      "Acceptance: hana --help exits 0 on sg01 v0.416.51-karlorz.7; artifact-activation-compatibility + build-server-open suites green; cli-closure-census baseline unchanged.",
+      "Check during every upstream release-tag sync that a new shared/*.cjs ESM-imported by the CLI closure and using bare node-builtin requires is either re-externalized here or refactored to a createRequire() pattern (like shared/artifact-core/*).",
+    ],
+  },
 ];
 
 export function markdownTable(rows) {

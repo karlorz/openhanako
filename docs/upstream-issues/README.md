@@ -25,6 +25,7 @@ This file tracks local fork fixes against upstream GitHub issues. The source of 
 | server-reinit-restore-backup-verification | fork-only | tracked/no-upstream-issue | none | install-server: reject wrong-root restore backups before data-root replacement |
 | node-test-ci-file-mode-hygiene | fork-only | tracked/no-upstream-issue | none | tests/lint: .mjs node tests, LF enforcement, and eslint coverage |
 | legacy-raw-release-profile-evidence | fork-only | tracked/no-upstream-issue | none | ci/release: explicit signed and legacy-raw fallback with runtime-only server evidence |
+| packaged-cli-shared-cjs-externalize | fork-only | local-verified | none | packaging/cli: stage shared artifact-core + externalize CJS-with-builtin-requires from the esbuild ESM CLI bundle |
 
 ## Rules
 
