@@ -1,6 +1,6 @@
 # OpenHanako Dev-Loop Setup Notes
 
-Generated during the 2026-06-15 remote attachment preview fix closeout. Last revised 2026-07-27 after Mobile session-loss UAT PASS and follow-up queue.
+Generated during the 2026-06-15 remote attachment preview fix closeout. Last revised 2026-07-27 after HTTPS/WSS Track D closeout on `v0.416.51-karlorz.8`.
 
 ## Discovery
 
@@ -12,13 +12,15 @@ Generated during the 2026-06-15 remote attachment preview fix closeout. Last rev
 - SkillWiki vault: resolved by `skillwiki path`; project wiki path `projects/openhanako`
 - Existing CI: `.github/workflows/ci.yml`, targets `main` and `dev`
 - Release workflow: `.github/workflows/build.yml`, tag-triggered `v*`
-- Latest **host** release: **`v0.416.51-karlorz.3`** on sg01 (Mobile session-loss UAT-01…09 PASS). Published prereleases also include `v0.416.51-karlorz.1` / `.2` and stable-base `v0.416.44-karlorz.1`.
-- **Pending (SkillWiki):** HTTPS/WSS installed-PWA coverage; next prerelease to ship packaged `hana` CLI `shared/artifact-core` fix (`eed8ffc4` on `dev`); PR #1 stays permanent draft never-merge.
+- Latest **host** release: **`v0.416.51-karlorz.8`** on sg01 (`8345b01a…`). Line includes packaged CLI fix (`.7`), loopback-trusted HTTPS proxy + `HANA_SECURE_COOKIES` (`.8`), Caddy `https://hana.karldigi.dev`. Published prereleases also include `v0.416.51-karlorz.{1..7}` and stable-base `v0.416.44-karlorz.1`.
+- **Track D closed (SkillWiki):** HTTPS/WSS/PWA browser UAT PASS under operator boundary; physical install lifecycle deferred. Ops doc: `docs/ops/sg01-https-caddy-14500-boundary.md`. PR #1 stays permanent draft never-merge.
+- **Public + LAN dual path:** public Mobile via HTTPS/Caddy; desktop LAN smoke still uses Tailscale `http://100.125.173.118:14500`.
 - Sync/release status: lastSynced = `train-beta-17` (prerelease channel).
 - Upstream sync workflow: `node scripts/sync-upstream.mjs --check` checks stable upstream releases by default; prerelease candidate review uses `--include-prerelease --check`; prerelease **mutate** requires double consent (see `FORK_SYNC.md` optional prerelease channel)
 - Fork sync rules: `docs/fork-sync/rules.yml` is the machine-readable policy used by `scripts/sync-upstream.mjs`.
 - Post-rebase fork sync verification: `node scripts/sync-upstream.mjs --post-rebase` prints Tier 3A local desktop install/version verification before Tier 3B sg01 live smoke. The installed `/Applications/HanaAgent.app` bundle metadata, `build-info.json`, and Settings → About must match `package.json` before the live smoke counts.
 - Tier 3B helper: `node scripts/hana-desktop-smoke-helper.mjs --restart --verify --url http://100.125.173.118:14500` restarts HanaAgent with Chromium remote debugging, clears renderer `localStorage`, restores only the saved LAN connection registry, reloads, then verifies token-auth identity fetch plus WebSocket open from the renderer. If no saved connection exists, prefer `HANA_DESKTOP_SMOKE_TOKEN=<device-key>` for the first helper run; `--token` is available for one-off local use but can leak through shell history or process listings. The helper must not print device tokens.
+- Public Mobile HTTPS smoke (attended, no secrets): `curl -sS -o /dev/null -w "%{http_code}\n" https://hana.karldigi.dev/mobile/` expect `200`; optional Playwright mobile UAT per vault `…/uat-phone-https.md`.
 - Web framework: Vite + React + Electron
 - Browser verification capability: `playwright-cli` plugin present
 - Deep research capability: `deep-research` plugin present
