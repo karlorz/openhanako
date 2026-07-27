@@ -26,6 +26,9 @@ This file tracks local fork fixes against upstream GitHub issues. The source of 
 | node-test-ci-file-mode-hygiene | fork-only | tracked/no-upstream-issue | none | tests/lint: .mjs node tests, LF enforcement, and eslint coverage |
 | legacy-raw-release-profile-evidence | fork-only | tracked/no-upstream-issue | none | ci/release: explicit signed and legacy-raw fallback with runtime-only server evidence |
 | packaged-cli-shared-cjs-externalize | fork-only | local-verified | none | packaging/cli: stage shared artifact-core + externalize CJS-with-builtin-requires from the esbuild ESM CLI bundle |
+| loopback-trusted-https-proxy-secure-cookies | fork-only | local-verified | none | server/auth: inferHttpRequestSecurity + HANA_SECURE_COOKIES for Caddy-terminated HTTPS/WSS Mobile |
+| data-epoch-windows-fail-closed-timeout | fork-only | local-verified | none | tests/ci: Windows PR dashboard flake on multi-fault data-epoch coordinator loop |
+| sg01-public-https-caddy-ops-docs | fork-only | tracked/no-upstream-issue | none | docs/ops: sg01 HTTPS/Caddy/14500 boundary and Cloudflare DNS-only decision |
 
 ## Rules
 
