@@ -25,6 +25,39 @@ export function inferHttpConnectionKind({
   return { connectionKind: null, reason: "invalid_network_mode" };
 }
 
+export function inferHttpRequestSecurity({
+  requestUrl,
+  forwardedProto,
+  remoteAddress,
+}: { requestUrl?: string; forwardedProto?: string; remoteAddress?: string } = {}) {
+  if (protocolFromUrl(requestUrl) === "https:") {
+    return { secure: true, reason: "native_https" };
+  }
+
+  const forwarded = String(forwardedProto || "").trim().toLowerCase();
+  if (!forwarded) return { secure: false, reason: "plain_http" };
+  if (!isLoopbackAddress(remoteAddress)) {
+    return { secure: false, reason: "untrusted_forwarded_proto" };
+  }
+  if (forwarded.includes(",")) {
+    return { secure: false, reason: "ambiguous_forwarded_proto" };
+  }
+  if (forwarded === "https") {
+    return { secure: true, reason: "trusted_forwarded_https" };
+  }
+  return { secure: false, reason: "forwarded_non_https" };
+}
+
+export function isSecureHttpRequest(c: any, getSecureRequest?: any) {
+  if (protocolFromUrl(c?.req?.url) === "https:") return true;
+  if (typeof getSecureRequest === "function" && getSecureRequest(c) === true) return true;
+  try {
+    return c.get("transportSecureRequest") === true;
+  } catch {
+    return false;
+  }
+}
+
 export function isLoopbackHost(hostHeader) {
   const host = normalizeHostHeader(hostHeader);
   if (!host) return false;
@@ -45,6 +78,14 @@ function normalizeHostHeader(hostHeader) {
     return raw.slice(0, colon);
   }
   return raw;
+}
+
+function protocolFromUrl(requestUrl) {
+  try {
+    return new URL(String(requestUrl || "")).protocol.toLowerCase();
+  } catch {
+    return "";
+  }
 }
 
 function isLoopbackAddress(remoteAddress) {
