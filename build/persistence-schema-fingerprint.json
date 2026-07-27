@@ -627,7 +627,7 @@
     ],
     "version": 2
   },
-  "payloadFingerprint": "sha256:0b2c82eaa949d0e072b0d267ff09f4d47f6b1c3a012abcd90451085fac193f76",
+  "payloadFingerprint": "sha256:9663d96e46f28d00e911a4efc8030553c77aeeee39f2466af930ef841909f3fa",
   "registry": [
     {
       "affectedByEpochMigration": true,
@@ -2879,7 +2879,7 @@
   "review": {
     "classification": "compatible",
     "compatibilityReason": "Stable v0.421.24 rebase receipt alignment: preserves the fork’s registered session-file staging write sites while incorporating upstream additive migration, explicit-agent identity, session-compaction, workspace, and persistence source/line/hash changes; no persistent store schema, file layout, site kind, protocol module, or DATA_EPOCH changed.",
-    "payloadFingerprint": "sha256:0b2c82eaa949d0e072b0d267ff09f4d47f6b1c3a012abcd90451085fac193f76"
+    "payloadFingerprint": "sha256:9663d96e46f28d00e911a4efc8030553c77aeeee39f2466af930ef841909f3fa"
   },
   "schemas": [
     {
@@ -3139,7 +3139,7 @@
       "contract": "verified plugin release ZIP naming by pluginId/version and expected sha256",
       "kind": "directory-contract",
       "module": "server/routes/plugins.ts",
-      "sourceHash": "sha256:2e225c1a1957cf2b9c37b516ecf22d12bebf428a0e021b601b205ad5ecb03952",
+      "sourceHash": "sha256:6628c97e6b2f447c207c926fc4a699c74ac325a942876800d1e7cdaf30bc1f59",
       "storeId": "plugin-download-cache"
     },
     {
@@ -3208,7 +3208,7 @@
       "contract": "server-info writer and desktop bootstrap reader",
       "kind": "runtime-contract",
       "module": "server/index.ts",
-      "sourceHash": "sha256:4103fe1a6e95dd2ddb5b19f0ae2b2499548fff160b021b1b9e8708200f43ebd5",
+      "sourceHash": "sha256:a814269a86004eef4ef44674db6c4410a0f463abb7d9c1591b99b61940ee7277",
       "storeId": "server-runtime-info"
     },
     {
@@ -8460,7 +8460,7 @@
     {
       "exemptionId": "in-memory-confirm-registry",
       "kind": "persistent-store-constructor",
-      "line": 710,
+      "line": 717,
       "reason": "ConfirmStore is deliberately process-memory-only: pending approvals time out or abort with their session and have no restart replay contract.",
       "sourceFile": "server/index.ts",
       "storeId": null
@@ -8468,7 +8468,7 @@
     {
       "exemptionId": null,
       "kind": "persistent-store-constructor",
-      "line": 715,
+      "line": 722,
       "reason": "Constructs subagent stores.",
       "sourceFile": "server/index.ts",
       "storeId": "subagent-state"
@@ -8476,7 +8476,7 @@
     {
       "exemptionId": null,
       "kind": "persistent-store-constructor",
-      "line": 721,
+      "line": 728,
       "reason": "Constructs subagent stores.",
       "sourceFile": "server/index.ts",
       "storeId": "subagent-state"
@@ -8484,7 +8484,7 @@
     {
       "exemptionId": null,
       "kind": "persistent-store-constructor",
-      "line": 732,
+      "line": 739,
       "reason": "Constructs the workflow activity store.",
       "sourceFile": "server/index.ts",
       "storeId": "workflow-state"
@@ -8492,7 +8492,7 @@
     {
       "exemptionId": null,
       "kind": "append-file",
-      "line": 1154,
+      "line": 1161,
       "reason": "Appends the browser worker log.",
       "sourceFile": "server/index.ts",
       "storeId": "runtime-diagnostics"
@@ -8500,7 +8500,7 @@
     {
       "exemptionId": null,
       "kind": "write-file",
-      "line": 1213,
+      "line": 1220,
       "reason": "Writes or deletes live server discovery state.",
       "sourceFile": "server/index.ts",
       "storeId": "server-runtime-info"
@@ -8508,7 +8508,7 @@
     {
       "exemptionId": null,
       "kind": "remove-path",
-      "line": 1314,
+      "line": 1321,
       "reason": "Writes or deletes live server discovery state.",
       "sourceFile": "server/index.ts",
       "storeId": "server-runtime-info"
@@ -8692,7 +8692,7 @@
     {
       "exemptionId": null,
       "kind": "mkdir",
-      "line": 396,
+      "line": 397,
       "reason": "Creates, promotes, rolls back, or removes an installed plugin directory.",
       "sourceFile": "server/routes/plugins.ts",
       "storeId": "installed-plugins"
@@ -8700,7 +8700,7 @@
     {
       "exemptionId": null,
       "kind": "copy-file",
-      "line": 420,
+      "line": 421,
       "reason": "Creates, promotes, rolls back, or removes an installed plugin directory.",
       "sourceFile": "server/routes/plugins.ts",
       "storeId": "installed-plugins"
@@ -8708,7 +8708,7 @@
     {
       "exemptionId": "conditional-plugin-install-cleanup",
       "kind": "remove-path",
-      "line": 427,
+      "line": 428,
       "reason": "One bounded cleanup list contains both HANA_HOME .installing staging and operating-system extraction temp; flow-sensitive attribution must replace this exact conditional site.",
       "sourceFile": "server/routes/plugins.ts",
       "storeId": null
@@ -8716,7 +8716,7 @@
     {
       "exemptionId": null,
       "kind": "remove-path",
-      "line": 472,
+      "line": 473,
       "reason": "Creates, promotes, rolls back, or removes an installed plugin directory.",
       "sourceFile": "server/routes/plugins.ts",
       "storeId": "installed-plugins"
@@ -8724,7 +8724,7 @@
     {
       "exemptionId": null,
       "kind": "remove-path",
-      "line": 534,
+      "line": 535,
       "reason": "Creates, promotes, rolls back, or removes an installed plugin directory.",
       "sourceFile": "server/routes/plugins.ts",
       "storeId": "installed-plugins"
@@ -8732,7 +8732,7 @@
     {
       "exemptionId": null,
       "kind": "rename",
-      "line": 535,
+      "line": 536,
       "reason": "Creates, promotes, rolls back, or removes an installed plugin directory.",
       "sourceFile": "server/routes/plugins.ts",
       "storeId": "installed-plugins"
@@ -8740,7 +8740,7 @@
     {
       "exemptionId": "conditional-plugin-install-cleanup",
       "kind": "remove-path",
-      "line": 561,
+      "line": 562,
       "reason": "One bounded cleanup list contains both HANA_HOME .installing staging and operating-system extraction temp; flow-sensitive attribution must replace this exact conditional site.",
       "sourceFile": "server/routes/plugins.ts",
       "storeId": null
@@ -8748,7 +8748,7 @@
     {
       "exemptionId": null,
       "kind": "mkdir",
-      "line": 667,
+      "line": 668,
       "reason": "Caches a sha256-verified plugin release package.",
       "sourceFile": "server/routes/plugins.ts",
       "storeId": "plugin-download-cache"
@@ -8756,7 +8756,7 @@
     {
       "exemptionId": null,
       "kind": "write-file",
-      "line": 669,
+      "line": 670,
       "reason": "Caches a sha256-verified plugin release package.",
       "sourceFile": "server/routes/plugins.ts",
       "storeId": "plugin-download-cache"
@@ -8764,7 +8764,7 @@
     {
       "exemptionId": null,
       "kind": "remove-path",
-      "line": 1143,
+      "line": 1144,
       "reason": "Creates, promotes, rolls back, or removes an installed plugin directory.",
       "sourceFile": "server/routes/plugins.ts",
       "storeId": "installed-plugins"
