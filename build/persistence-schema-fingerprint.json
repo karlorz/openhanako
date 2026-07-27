@@ -668,7 +668,7 @@
     ],
     "version": 3
   },
-  "payloadFingerprint": "sha256:93e54e3450adcb0389cf6d1455b4fa4ae6f7f935b63378fe363dfc2847123d54",
+  "payloadFingerprint": "sha256:e7f48be9ad4eca42dda99d80b0b4305ac358c1dcfbd18b998928e8240656a04d",
   "registry": [
     {
       "affectedByEpochMigration": true,
@@ -3122,7 +3122,7 @@
   "review": {
     "classification": "compatible",
     "compatibilityReason": "Stable rebase receipt alignment: preserves the fork’s registered session-file staging write sites while incorporating upstream additive migration, explicit-agent identity, session-compaction, workspace, and persistence source/line/hash changes; no persistent store schema, file layout, site kind, protocol module, or DATA_EPOCH changed.",
-    "payloadFingerprint": "sha256:93e54e3450adcb0389cf6d1455b4fa4ae6f7f935b63378fe363dfc2847123d54"
+    "payloadFingerprint": "sha256:e7f48be9ad4eca42dda99d80b0b4305ac358c1dcfbd18b998928e8240656a04d"
   },
   "schemas": [
     {
@@ -3452,7 +3452,7 @@
       "contract": "verified plugin release ZIP naming by pluginId/version and expected sha256",
       "kind": "directory-contract",
       "module": "server/routes/plugins.ts",
-      "sourceHash": "sha256:7aca9bf305209962b8db0710cd36df12ff761c41715c85b0965b5088a6a97bac",
+      "sourceHash": "sha256:c7d30d5bca0f14a2074fb2b66fc3b0a29f3dddfbbb6133491a87c8ef74d186d9",
       "storeId": "plugin-download-cache"
     },
     {
@@ -3521,7 +3521,7 @@
       "contract": "server-info writer and desktop bootstrap reader",
       "kind": "runtime-contract",
       "module": "server/index.ts",
-      "sourceHash": "sha256:9155d00339a7490e879a2ef337d3ecd46351abd06dbe799cdd233b3450cad38b",
+      "sourceHash": "sha256:f73ae48e13e64d9506ed6b57ecb46b4a1158bb57d950bcce23bc2afe8b97d864",
       "storeId": "server-runtime-info"
     },
     {
