@@ -33,6 +33,7 @@ describe("upstream issue tracker", () => {
       "server-reinit-restore-backup-verification",
       "node-test-ci-file-mode-hygiene",
       "legacy-raw-release-profile-evidence",
+      "packaged-cli-shared-cjs-externalize",
     ]);
   });
 
