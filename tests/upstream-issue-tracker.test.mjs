@@ -34,6 +34,9 @@ describe("upstream issue tracker", () => {
       "node-test-ci-file-mode-hygiene",
       "legacy-raw-release-profile-evidence",
       "packaged-cli-shared-cjs-externalize",
+      "loopback-trusted-https-proxy-secure-cookies",
+      "data-epoch-windows-fail-closed-timeout",
+      "sg01-public-https-caddy-ops-docs",
     ]);
   });
 
