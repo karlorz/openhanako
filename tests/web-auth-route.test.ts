@@ -55,7 +55,7 @@ describe("web auth route", () => {
       hanakoHome: tmpDir,
       authService,
       getConnectionKind: () => "lan",
-      secureCookies: false,
+      secureCookies: true,
       now: () => "2026-05-16T00:00:01.000Z",
     }));
 
@@ -70,6 +70,7 @@ describe("web auth route", () => {
     expect(setCookie).toContain("hana_session=");
     expect(setCookie).toContain("HttpOnly");
     expect(setCookie).toContain("SameSite=Strict");
+    expect(setCookie).toContain("; Secure");
     expect(setCookie).not.toContain(issued.secret);
     const body = await login.json();
     expect(body).toMatchObject({
@@ -89,6 +90,9 @@ describe("web auth route", () => {
       authenticated: true,
       principal: { userId: "user_local", studioId: "studio_local" },
     });
+
+    const logout = await app.request("/api/web-auth/logout", { method: "POST" });
+    expect(logout.headers.get("set-cookie")).toContain("Max-Age=0; Secure");
   });
 
   it("allows local account password login only over local or secure transport", async () => {
@@ -121,10 +125,12 @@ describe("web auth route", () => {
     });
     const app = new Hono();
     let connectionKind = "lan";
+    let secureRequest = false;
     app.route("/api", createWebAuthRoute({
       hanakoHome: tmpDir,
       authService,
       getConnectionKind: () => connectionKind,
+      getSecureRequest: () => secureRequest,
       getRuntimeContext: runtimeContext,
       secureCookies: false,
       now: () => "2026-05-16T00:00:01.000Z",
@@ -144,6 +150,15 @@ describe("web auth route", () => {
       body: JSON.stringify({ username: "hana-owner", password: "correct horse battery staple" }),
     });
     expect(spoofedHeader.status).toBe(400);
+
+    secureRequest = true;
+    const trustedProxy = await app.request("/api/web-auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Forwarded-Proto": "https" },
+      body: JSON.stringify({ username: "hana-owner", password: "correct horse battery staple" }),
+    });
+    expect(trustedProxy.status).toBe(200);
+    secureRequest = false;
 
     const secure = await app.request("https://hana.example.test/api/web-auth/login", {
       method: "POST",
@@ -199,4 +214,14 @@ describe("web auth route", () => {
     });
     expect(local.status).toBe(200);
   });
+
+  it("resolves the secure-cookie environment flag strictly", async () => {
+    const { resolveWebAuthSecureCookies } = await import("../server/routes/web-auth.ts");
+
+    expect(resolveWebAuthSecureCookies({ HANA_SECURE_COOKIES: "1" })).toBe(true);
+    expect(resolveWebAuthSecureCookies({ HANA_SECURE_COOKIES: "0" })).toBe(false);
+    expect(resolveWebAuthSecureCookies({ HANA_SECURE_COOKIES: "true" })).toBe(false);
+    expect(resolveWebAuthSecureCookies({})).toBe(false);
+  });
+
 });
