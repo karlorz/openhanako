@@ -7,6 +7,7 @@ import {
   revokeWebSession,
 } from "../../core/web-session-store.ts";
 import { normalizeAccessProfile, scopesForAccessProfile } from "../../shared/access-scope-profiles.ts";
+import { isSecureHttpRequest } from "../http/transport-context.ts";
 
 const DEFAULT_SESSION_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 
@@ -14,6 +15,7 @@ export function createWebAuthRoute({
   hanakoHome,
   authService,
   getConnectionKind,
+  getSecureRequest,
   getRuntimeContext,
   secureCookies = false,
   now = () => new Date().toISOString(),
@@ -21,6 +23,7 @@ export function createWebAuthRoute({
   hanakoHome?: any;
   authService?: any;
   getConnectionKind?: any;
+  getSecureRequest?: any;
   getRuntimeContext?: any;
   secureCookies?: boolean;
   now?: () => string;
@@ -45,6 +48,7 @@ export function createWebAuthRoute({
         hanakoHome,
         body,
         connectionKind,
+        getSecureRequest,
         getRuntimeContext,
       });
     if (principal?.error) return c.json({ error: principal.error }, principal.status || 400);
@@ -96,13 +100,14 @@ function authenticatePasswordLogin(c, {
   hanakoHome,
   body,
   connectionKind,
+  getSecureRequest,
   getRuntimeContext,
 }) {
   const username = typeof body?.username === "string" ? body.username : "";
   const password = typeof body?.password === "string" ? body.password : "";
   if (!username && !password) return { error: "credential_required", status: 400 };
   if (!username || !password) return null;
-  if (connectionKind !== "local" && !isSecureRequest(c)) {
+  if (connectionKind !== "local" && !isSecureHttpRequest(c, getSecureRequest)) {
     return { error: "password_login_requires_secure_context", status: 400 };
   }
   const verified = verifyLocalAccountPassword(hanakoHome, { username, password });
@@ -124,12 +129,8 @@ function authenticatePasswordLogin(c, {
   };
 }
 
-function isSecureRequest(c) {
-  try {
-    return new URL(c.req.url).protocol === "https:";
-  } catch {
-    return false;
-  }
+export function resolveWebAuthSecureCookies(env: Record<string, any> = {}) {
+  return env.HANA_SECURE_COOKIES === "1";
 }
 
 function resolveConnectionKind(c, getConnectionKind) {

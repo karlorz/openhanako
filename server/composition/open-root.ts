@@ -44,7 +44,7 @@ import { createServerIdentityRoute } from "../routes/server-identity.ts";
 import { createResourcesRoute } from "../routes/resources.ts";
 import { createResourceIoRoute } from "../routes/resource-io.ts";
 import { createUsageRoute } from "../routes/usage.ts";
-import { createWebAuthRoute } from "../routes/web-auth.ts";
+import { createWebAuthRoute, resolveWebAuthSecureCookies } from "../routes/web-auth.ts";
 import { createWebSocketAuthRoute } from "../routes/ws-auth.ts";
 import { createStudioWorkspacesRoute } from "../routes/studio-workspaces.ts";
 import { createMobileStaticRoute, resolveMobileStaticRouteOptions } from "../routes/mobile-static.ts";
@@ -86,7 +86,9 @@ export function registerOpenRoutes(app: Hono, ctx: CompositionContext): void {
     hanakoHome: engine.hanakoHome,
     authService: serverAuthService,
     getConnectionKind: (c: any) => c.get("transportConnectionKind"),
+    getSecureRequest: (c: any) => c.get("transportSecureRequest"),
     getRuntimeContext: () => engine.getRuntimeContext(),
+    secureCookies: resolveWebAuthSecureCookies(process.env),
   } as any));
   app.route("/api", createAccessRoute({
     engine,

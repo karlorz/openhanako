@@ -38,7 +38,7 @@ import {
   selectLoopbackListenPort,
 } from "../core/server-port-selection.ts";
 import { isCorsOriginAllowed } from "./http/cors-policy.ts";
-import { inferHttpConnectionKind } from "./http/transport-context.ts";
+import { inferHttpConnectionKind, inferHttpRequestSecurity } from "./http/transport-context.ts";
 import { authorizeHttpRoute, isPublicHttpRoute } from "./http/route-security.ts";
 
 // Pi SDK 的 fetch 请求会累积 AbortSignal listener，提高上限避免无害警告
@@ -596,9 +596,10 @@ export async function startServer(root: CompositionRoot = {}): Promise<void> {
     c.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
     if (c.req.method === "OPTIONS") return c.text("", 204);
 
+    const remoteAddress = (c.env as any)?.incoming?.socket?.remoteAddress;
     const transport = inferHttpConnectionKind({
       hostHeader: c.req.header("host"),
-      remoteAddress: (c.env as any)?.incoming?.socket?.remoteAddress,
+      remoteAddress,
       networkMode: serverRuntimeState.mode,
     } as any);
     if (!transport.connectionKind) {
@@ -606,6 +607,12 @@ export async function startServer(root: CompositionRoot = {}): Promise<void> {
     }
     const routePath = new URL(c.req.url).pathname;
     c.set("transportConnectionKind", transport.connectionKind);
+    const requestSecurity = inferHttpRequestSecurity({
+      requestUrl: c.req.url,
+      forwardedProto: c.req.header("x-forwarded-proto"),
+      remoteAddress,
+    });
+    c.set("transportSecureRequest", requestSecurity.secure);
 
     if (isResourceTicketContentRequest(c, routePath)) {
       await next();

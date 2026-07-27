@@ -39,6 +39,7 @@ import {
   PLUGIN_HOST_ROUTE_PLUGIN_IDS,
   isLocalOwnerPrincipal,
 } from "../http/route-security.ts";
+import { isSecureHttpRequest } from "../http/transport-context.ts";
 
 const log = createModuleLogger("plugin-install");
 
@@ -211,7 +212,7 @@ function appendPluginAssetSessionCookie(c: any, engine: any, pluginId: string, r
     pluginId,
     token: issued.token,
     maxAgeSeconds,
-    secure: new URL(c.req.url).protocol === "https:",
+    secure: isSecureHttpRequest(c),
   } as any));
   return new Response(response.body, {
     status: response.status,
