@@ -167,6 +167,10 @@ Expected service defaults:
 - Config directory: `/etc/hanaagent`.
 - Active bundle: `/opt/hanaagent/current`.
 - Default bind can remain the existing server default unless `/etc/hanaagent/server-network.json` is present.
+- For the fork host **sg01** public HTTPS topology (Caddy + `hana.karldigi.dev`,
+  Tailscale `:14500`, OCI port boundary), see
+  `docs/ops/sg01-https-caddy-14500-boundary.md`. Do not bind the app
+  loopback-only while Tailscale desktop clients still use plain `:14500`.
 
 Fresh install creates a new data root. It does not import provider, model,
 device, LAN, or pairing configuration. To clear an existing data root while
