@@ -108,6 +108,16 @@ function createApp(engine) {
   return app;
 }
 
+function createAppWithTransportSecurity(engine, secureRequest: boolean) {
+  const app = new Hono();
+  app.use("*", async (c, next) => {
+    (c as any).set("transportSecureRequest", secureRequest);
+    await next();
+  });
+  app.route("/api", createPluginsRoute(engine));
+  return app;
+}
+
 function createAppWithProductionPluginTicketBypass(engine) {
   const app = new Hono();
   app.use("*", async (c, next) => {
@@ -2232,6 +2242,43 @@ describe("plugin route request-level principal and capability context", () => {
           expiresAt: expect.any(String),
         },
       });
+    } finally {
+      fs.rmSync(tmpHome, { recursive: true, force: true });
+    }
+  });
+
+  it("marks plugin asset-session cookies Secure only for trusted secure transport", async () => {
+    const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "hana-plugin-secure-cookie-"));
+    try {
+      const engine = mockEngine({ hanakoHome: tmpHome });
+      const pluginApp = new Hono();
+      pluginApp.get("/page", (c) => c.html("<!doctype html>"));
+      engine.pluginManager.routeRegistry.set("media-board", pluginApp);
+
+      const insecureApp = createAppWithTransportSecurity(engine, false);
+      const insecureTicketRes = await insecureApp.request("/api/plugins/iframe-ticket", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ routeUrl: "/api/plugins/media-board/page" }),
+      });
+      const { ticket: insecureTicket } = await insecureTicketRes.json();
+      const spoofed = await insecureApp.request(
+        `/api/plugins/media-board/page?pluginIframeTicket=${encodeURIComponent(insecureTicket)}`,
+        { headers: { "X-Forwarded-Proto": "https" } },
+      );
+      expect(spoofed.headers.get("set-cookie")).not.toContain("; Secure");
+
+      const secureApp = createAppWithTransportSecurity(engine, true);
+      const secureTicketRes = await secureApp.request("/api/plugins/iframe-ticket", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ routeUrl: "/api/plugins/media-board/page" }),
+      });
+      const { ticket: secureTicket } = await secureTicketRes.json();
+      const trusted = await secureApp.request(
+        `/api/plugins/media-board/page?pluginIframeTicket=${encodeURIComponent(secureTicket)}`,
+      );
+      expect(trusted.headers.get("set-cookie")).toContain("; Secure");
     } finally {
       fs.rmSync(tmpHome, { recursive: true, force: true });
     }
