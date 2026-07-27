@@ -368,6 +368,11 @@ describe("coordinated epoch transition", () => {
     expect(fs.existsSync(dataEpochJournalPath(homeDir))).toBe(false);
   });
 
+  // Windows CI flake (PR #1 dashboard run 30232229820): this loop injects 18
+  // fault events and runs coordinateDataEpochStartup twice per event (36
+  // fs-I/O epochs), which can exceed the default 10s testTimeout on slower
+  // windows-latest runners. Same-SHA push CI (30232228452) was green, so
+  // raise only this test's budget instead of the suite-wide default.
   it("leaves every injected interruption fail-closed; only a proven committed tail is auto-cleaned", async () => {
     const events: DataEpochFaultEvent[] = [
       "journal:prepared",
@@ -419,7 +424,7 @@ describe("coordinated epoch transition", () => {
         expect(restart).toMatchObject({ allowed: false, reason: "incomplete-transition" });
       }
     }
-  });
+  }, 30_000);
 
   it("blocks a normal restart for every noncommitted journal phase", async () => {
     const phases = ["prepared", "checkpoint_complete", "barrier_raised", "migrating", "migrated", "validated"] as const;
