@@ -51,6 +51,7 @@ describe('ModelWidget', () => {
       <ModelWidget
         value={{ id: 'glm-5.2', provider: 'zhipu-coding' }}
         onSelect={onSelect}
+        allowClear
       />,
     );
 

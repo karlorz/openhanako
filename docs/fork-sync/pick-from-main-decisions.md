@@ -1,15 +1,13 @@
-# Pick-from-main decisions (2026-07-25)
+# Pick-from-main decisions (2026-07-28)
 
 > **Machine-readable source of truth:** `docs/fork-sync/pick-from-main-decisions.yml`
 > (loaded by `scripts/sync-upstream.mjs`). Keep this human table aligned when editing.
 
-Baseline (updated 2026-07-25 after the attended stable-then-prerelease sequence):
-`dev` first rebased onto stable **`v0.416.44`**, then onto upstream GitHub
-prerelease **`train-beta-17`**, paired release **`v0.416.51`**, package
-**`0.416.51`**, at upstream SHA
-`ef8a6f700191c2486effd3761a4bd2b7f3ad774c`. Dashboard pick-from-main still forbids cosmetic
+Baseline (updated 2026-07-28 after the attended stable sync): `dev` rebased
+onto stable **`v0.421.24`**, package **`0.421.24`**, at upstream SHA
+`e87769a070d12803247e5cc619dacf5814fe1f52`. Dashboard pick-from-main still forbids cosmetic
 force-adopt; residual PR #1 conflicts are expected under permanent-fork dual-profile.
-Pre-rebase backup: `backup/dev-before-prerelease-v0.416.51-20260725` @ `ea8f8f7d`.
+Pre-rebase backup: `backup/dev-before-stable-v0.421.24-20260728` @ `a21ffcb5`.
 
 ## Objective honesty
 
@@ -32,10 +30,10 @@ Pre-rebase backup: `backup/dev-before-prerelease-v0.416.51-20260725` @ `ea8f8f7d
 | `core/session-turn-actions.ts` | take-main | **wait-stable** | Trial adopt from main failed: imports missing `session-operation-lock.ts` and other main-only modules — requires full train package, not single-file pick |
 | `desktop/main.cjs` | human-review | **preserve-fork** | Probe + dual-profile boot orchestration; already isolated helpers |
 | `desktop/src/shared/launch-integrity.cjs` | take-main | **wait-stable** | Main is seed-only; fork retains legacy-raw install surface validation |
-| `package.json` | defer-to-stable-production-sync | **wait-stable** | Live package **`0.416.51`** after attended `train-beta-17` channel sync; dashboard must not pre-bump toward an unreleased main tip for cosmetics — further package identity only via attended sync/release |
+| `package.json` | defer-to-stable-production-sync | **wait-stable** | Live package **`0.421.24`** after the attended stable sync; dashboard must not pre-bump toward an unreleased main tip for cosmetics — further package identity only via attended sync/release |
 | `package-lock.json` | (paired with package) | **wait-stable** | Same as package.json |
-| `release-digest.v1.json` | take-main | **wait-stable** | Keep the attended `v0.416.51` digest; policy forbids copying a later unreleased main digest into dev |
-| `release-digest.v2.json` | take-main | **wait-stable** | Keep v2 aligned with `v0.416.51`; same prerelease digest-family policy |
+| `release-digest.v1.json` | take-main | **wait-stable** | Keep the attended `v0.421.24` digest; policy forbids copying a later unreleased main digest into dev |
+| `release-digest.v2.json` | take-main | **wait-stable** | Keep v2 aligned with `v0.421.24`; same stable digest-family policy |
 | `scripts/build-server.mjs` | preserve-both | **preserve-fork** | Compatibility-manifest / build-info packaging |
 | `scripts/fix-modules.cjs` | take-main | **wait-stable** | Fork carries explicit legacy-raw validation path required by dual-profile |
 | `server/index.ts` | preserve-both | **preserve-fork** | Feature contracts / build-info advertisement |
@@ -48,10 +46,10 @@ Pre-rebase backup: `backup/dev-before-prerelease-v0.416.51-20260725` @ `ea8f8f7d
 ## Expected residual conflicts
 
 Dashboard may still list packaging/digest dual-profile paths as CONFLICTING after
-`train-beta-17`. Residual conflict count is re-read from live `--conflict-plan`;
+`v0.421.24`. Residual conflict count is re-read from live `--conflict-plan`;
 absolute zero conflicts remains infeasible without abandoning permanent-fork
 dual-profile. The next **stable** production sync waits for a published
-non-prerelease newer than `v0.416.44`.
+non-prerelease newer than `v0.421.24`.
 
 ## PR #1
 

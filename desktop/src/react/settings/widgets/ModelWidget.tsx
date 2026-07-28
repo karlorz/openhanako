@@ -30,14 +30,14 @@ interface ModelWidgetProps {
   lookupModelMeta?: (id: string) => any;
   formatContext?: (n: number) => string;
   filterModel?: (model: ModelInfo) => boolean;
-  /** When true (default), show a None option so the user can empty the field. */
+  /** When true, show a None option so the user can empty the field. */
   allowClear?: boolean;
 }
 
 export function ModelWidget({
   value, onSelect,
   placeholder, formatContext, filterModel,
-  allowClear = true,
+  allowClear = false,
 }: ModelWidgetProps) {
   const t = window.t || ((k: string) => k);
   const [open, setOpen] = useState(false);

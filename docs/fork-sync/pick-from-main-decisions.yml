@@ -5,16 +5,16 @@
 
 schemaVersion: 1
 baseline:
-  recordedAt: "2026-07-25"
-  # Post attended prerelease-channel rebase onto train-beta-17 (package 0.416.51).
+  recordedAt: "2026-07-28"
+  # Post attended stable rebase onto v0.421.24 (package 0.421.24).
   # forkHead refreshed at doc update time; re-run conflict-plan for live count.
-  packageVersion: "0.416.51"
-  latestStableTag: "v0.416.44"
-  lastSyncedTag: "train-beta-17"
-  lastSyncedChannel: prerelease
+  packageVersion: "0.421.24"
+  latestStableTag: "v0.421.24"
+  lastSyncedTag: "v0.421.24"
+  lastSyncedChannel: stable
   stableSyncAvailable: false
-  preRebaseBackup: "backup/dev-before-prerelease-v0.416.51-20260725"
-  preRebaseHead: "ea8f8f7dbb6ec1e99b121e6a084024bc3c1bc5f6"
+  preRebaseBackup: "backup/dev-before-stable-v0.421.24-20260728"
+  preRebaseHead: "a21ffcb56c6d41181e6f87e26c0b43755c5078ea"
 
 # Decisions for planned conflict paths (and paired lockfile).
 # decision: adopt-now | wait-stable | preserve-fork
@@ -58,7 +58,7 @@ paths:
   - path: package.json
     plannerStrategy: defer-to-stable-production-sync
     decision: wait-stable
-    reason: Live package 0.416.51 after train-beta-17 channel sync; do not dashboard pre-bump toward an unreleased main tip
+    reason: Live package 0.421.24 after the attended stable sync; do not dashboard pre-bump toward an unreleased main tip
   - path: package-lock.json
     plannerStrategy: defer-to-stable-production-sync
     decision: wait-stable
@@ -66,11 +66,11 @@ paths:
   - path: release-digest.v1.json
     plannerStrategy: take-main
     decision: wait-stable
-    reason: Keep the attended train-beta-17 digest aligned to v0.416.51; do not copy a later unreleased main digest into dev
+    reason: Keep the attended stable digest aligned to v0.421.24; do not copy a later unreleased main digest into dev
   - path: release-digest.v2.json
     plannerStrategy: take-main
     decision: wait-stable
-    reason: Same prerelease digest family; keep v2 aligned with v0.416.51
+    reason: Same stable digest family; keep v2 aligned with v0.421.24
   - path: scripts/build-server.mjs
     plannerStrategy: preserve-both
     decision: preserve-fork
