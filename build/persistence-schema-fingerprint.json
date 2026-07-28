@@ -627,7 +627,7 @@
     ],
     "version": 2
   },
-  "payloadFingerprint": "sha256:c18a661c1831b7e5db1fa4a65790339fb220a0a33dc239eac4d46cdbe0e92d01",
+  "payloadFingerprint": "sha256:29a74990fa97e02a1721121fbcee76a40f44e257b855b406aa4e4484630ba34e",
   "registry": [
     {
       "affectedByEpochMigration": true,
@@ -2878,8 +2878,8 @@
   ],
   "review": {
     "classification": "compatible",
-    "compatibilityReason": "Track D only shifts recorded source locations and adds trusted HTTPS helper import provenance; persistent schemas and storage behavior are unchanged.",
-    "payloadFingerprint": "sha256:c18a661c1831b7e5db1fa4a65790339fb220a0a33dc239eac4d46cdbe0e92d01"
+    "compatibilityReason": "Optional model fallback centralization only shifts recorded core/agent source locations; persistent schemas, store ownership, and storage behavior are unchanged.",
+    "payloadFingerprint": "sha256:29a74990fa97e02a1721121fbcee76a40f44e257b855b406aa4e4484630ba34e"
   },
   "schemas": [
     {
@@ -3540,7 +3540,7 @@
     {
       "exemptionId": null,
       "kind": "mkdir",
-      "line": 315,
+      "line": 316,
       "reason": "Creates the memory directory and records legacy memories.db import state.",
       "sourceFile": "core/agent.ts",
       "storeId": "agent-memory"
@@ -3548,7 +3548,7 @@
     {
       "exemptionId": null,
       "kind": "persistent-store-constructor",
-      "line": 316,
+      "line": 317,
       "reason": "Constructs or migrates a FactStore.",
       "sourceFile": "core/agent.ts",
       "storeId": "agent-facts-sqlite"
@@ -3556,7 +3556,7 @@
     {
       "exemptionId": null,
       "kind": "database-open",
-      "line": 326,
+      "line": 327,
       "reason": "Constructs or migrates a FactStore.",
       "sourceFile": "core/agent.ts",
       "storeId": "agent-facts-sqlite"
@@ -3564,7 +3564,7 @@
     {
       "exemptionId": null,
       "kind": "write-file",
-      "line": 341,
+      "line": 342,
       "reason": "Creates the memory directory and records legacy memories.db import state.",
       "sourceFile": "core/agent.ts",
       "storeId": "agent-memory"
@@ -3572,7 +3572,7 @@
     {
       "exemptionId": null,
       "kind": "write-file",
-      "line": 345,
+      "line": 346,
       "reason": "Creates the memory directory and records legacy memories.db import state.",
       "sourceFile": "core/agent.ts",
       "storeId": "agent-memory"
@@ -3580,7 +3580,7 @@
     {
       "exemptionId": null,
       "kind": "persistent-store-constructor",
-      "line": 474,
+      "line": 481,
       "reason": "Constructs an agent or studio CronStore.",
       "sourceFile": "core/agent.ts",
       "storeId": "cron-automation"

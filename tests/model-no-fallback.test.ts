@@ -498,12 +498,42 @@ describe("模型选择无 fallback", () => {
         .toThrow(/noUtilityModel|utility 模型|utility model/);
     });
 
-    it("utility_large 未配置时抛错", () => {
+    it("utility_large 未配置时复用 small utility", () => {
       const mm = new ModelManager({ hanakoHome: tempDir });
       setupRouter(mm);
-      mm._availableModels = [{ id: "some-model", provider: "x" }];
-      expect(() => mm.resolveUtilityConfig({}, { utility: { id: "some-model", provider: "x" } }, {}))
-        .toThrow(/noUtilityLargeModel|utility_large 模型|utility_large model/);
+      mm._availableModels = [{
+        id: "some-model",
+        provider: "x",
+        _cred: { api: "openai-completions", apiKey: "sk-test", baseUrl: "https://test.example.com/v1" },
+      }];
+
+      const result = mm.resolveUtilityConfig(
+        {},
+        { utility: { id: "some-model", provider: "x" } },
+        {},
+      );
+
+      expect(result.utility).toMatchObject({ id: "some-model", provider: "x" });
+      expect(result.utility_large).toMatchObject({ id: "some-model", provider: "x" });
+    });
+
+    it("utility 和 utility_large 都未配置时复用 required chat", () => {
+      const mm = new ModelManager({ hanakoHome: tempDir });
+      setupRouter(mm);
+      mm._availableModels = [{
+        id: "chat-model",
+        provider: "x",
+        _cred: { api: "openai-completions", apiKey: "sk-test", baseUrl: "https://test.example.com/v1" },
+      }];
+
+      const result = mm.resolveUtilityConfig(
+        { models: { chat: { id: "chat-model", provider: "x" } } },
+        {},
+        {},
+      );
+
+      expect(result.utility).toMatchObject({ id: "chat-model", provider: "x" });
+      expect(result.utility_large).toMatchObject({ id: "chat-model", provider: "x" });
     });
 
     it("明确 small-only 调用时不要求 utility_large", () => {

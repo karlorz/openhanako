@@ -16,6 +16,7 @@ import {
   normalizeSearchApiKeys,
   normalizeSearchProvider,
 } from "../shared/search-providers.ts";
+import { resolveUtilityModelRefs } from "../shared/utility-model-fallback.ts";
 import {
   classifyWorkspacePathForGc,
   pruneMissingWorkspaceConfig,
@@ -247,9 +248,9 @@ export class ConfigCoordinator {
 
   _syncSharedModelsToAgent(agent, sharedModels) {
     if (!agent) return;
-    const chatModel = agent.config?.models?.chat || null;
-    agent.setUtilityModel?.(sharedModels.utility || agent.config?.models?.utility || chatModel);
-    agent.setMemoryModel?.(sharedModels.utility_large || agent.config?.models?.utility_large || chatModel);
+    const { utilityModelRef, largeModelRef } = resolveUtilityModelRefs(agent.config, sharedModels);
+    agent.setUtilityModel?.(utilityModelRef);
+    agent.setMemoryModel?.(largeModelRef);
   }
 
   // ── Search Config ──

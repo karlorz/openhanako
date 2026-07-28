@@ -181,6 +181,25 @@ describe('AgentTab settings agent selection', () => {
     expect(screen.getByTestId('memory-section')).toHaveAttribute('data-memory-enabled', 'true');
   });
 
+  it('keeps memory available when optional utility preferences are empty', async () => {
+    useSettingsStore.setState({
+      settingsConfig: {
+        agent: { name: 'Hana', yuan: 'hanako' },
+        memory: { enabled: true },
+        models: { chat: { id: 'chat', provider: 'openai' } },
+      },
+      globalModelsConfig: {
+        models: { utility: null, utility_large: null },
+      },
+    });
+    const { AgentTab } = await import('../../settings/tabs/AgentTab');
+
+    render(<AgentTab />);
+
+    expect(screen.getByTestId('memory-section')).toHaveAttribute('data-has-utility', 'true');
+    expect(screen.getByTestId('memory-section')).toHaveAttribute('data-memory-enabled', 'true');
+  });
+
   it('shows the provider icon in the selected agent chat model trigger', async () => {
     hanaFetchMock.mockImplementation(async (_url: string, _opts?: RequestInit): Promise<MockResponse> => ({
       json: async () => ({
