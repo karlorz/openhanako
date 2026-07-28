@@ -1,420 +1,51 @@
 {
   "schemaVersion": 1,
-  "tag": "v0.421.24-karlorz.1",
+  "tag": "v0.421.24-karlorz.2",
   "version": "0.421.24",
-  "previousTag": "v0.416.51-karlorz.9",
-  "generatedAt": "2026-07-27T03:09:13.000Z",
+  "previousTag": "v0.421.24-karlorz.1",
+  "generatedAt": "2026-07-28T11:33:58.000Z",
   "noUserFacingChanges": false,
   "summary": {
-    "zh": "这一版把「这件事属于哪个 Agent」彻底理清：以前同时开着桌面和手机、各自停在不同 Agent 上时，头像、Bridge 状态、技能开关、最近工作区甚至用量计费都可能落到另一个 Agent 身上，现在每个请求都必须说清自己问的是谁。用户名改成全局设置，改一次所有 Agent 都跟着改。三个人格的反思块统一为「每条新消息开头写一次」，yuan 选择器会标出每个人格写的是哪种思考块。另外修好了取消回复后重试/分叉/编辑消失、以及压缩任务并发互相覆盖的问题。",
-    "en": "This release settles the question of which agent a request is about. With a desktop and a phone client open on different agents, avatars, Bridge status, skill switches, recent workspaces and even token billing could land on the wrong one; every request now has to name the agent it is asking about. Your name becomes a single global setting, so changing it once reaches every agent. All three personas now open their reflection block once per incoming message, and the persona picker labels which block each one writes. Also fixes retry/fork/edit disappearing after you cancel a reply, and concurrent compaction runs overwriting each other."
+    "zh": "修复 Windows 独立服务器归档的校验和 sidecar，并在发布前逐一核对所有服务器归档与 SHA-256，避免无效校验值进入正式 Release。",
+    "en": "Fixes the Windows standalone-server checksum sidecar and verifies every server archive against its SHA-256 before publication, preventing invalid checksum values from reaching a Release."
   },
   "counts": {
-    "feature": 4,
-    "fix": 6,
+    "feature": 0,
+    "fix": 1,
     "improvement": 0,
-    "migration": 1
+    "migration": 0
   },
   "source": {
     "owner": "karlorz",
     "repo": "openhanako",
-    "commitRange": "v0.416.51-karlorz.9..HEAD",
-    "releaseUrl": "https://github.com/karlorz/openhanako/releases/tag/v0.421.24-karlorz.1",
+    "commitRange": "v0.421.24-karlorz.1..HEAD",
+    "releaseUrl": "https://github.com/karlorz/openhanako/releases/tag/v0.421.24-karlorz.2",
     "releaseNotes": ""
   },
   "items": [
     {
-      "id": "cancelled-reply-keeps-actions",
+      "id": "windows-server-checksum-sidecar",
       "kind": "fix",
       "importance": "high",
       "title": {
-        "zh": "取消回复后重试、分叉、编辑不再消失",
-        "en": "Retry, fork and edit survive a cancelled reply"
+        "zh": "Windows 服务器校验和恢复为标准 64 字符 SHA-256",
+        "en": "Windows server checksums return to standard 64-character SHA-256"
       },
       "summary": {
-        "zh": "中断一条正在生成的回复后，这一轮的重试／分叉／编辑按钮会立刻可用，不需要再重新加载会话。",
-        "en": "After you cancel a streaming reply, the retry, fork and edit actions for that turn stay available right away instead of returning only after a session reload."
+        "zh": "Windows 打包路径会让 GNU sha256sum 在输出行前添加转义标记，旧逻辑误把该标记写进 .sha256 文件，导致消费者读到的校验值不是 64 字符十六进制。现在打包器会剥离标记，并拒绝任何格式不合法的摘要。",
+        "en": "Windows packaging paths make GNU sha256sum prefix escaped output with a marker. The old parser copied that marker into the .sha256 file, so consumers did not receive a 64-character hexadecimal checksum. The packer now removes the marker and rejects malformed digest output."
       },
       "details": [
         {
-          "zh": "取消后不再弹出「空回复」的误报错误提示。",
-          "en": "Cancelling no longer raises a false empty-reply error."
-        },
-        {
-          "zh": "被取消的一轮不会重复记一遍上一轮的 token 用量。",
-          "en": "An aborted turn no longer re-logs the previous turn's token usage."
-        },
-        {
-          "zh": "第一轮被取消时也会正常生成会话标题，以前不会。",
-          "en": "A cancelled first turn now generates a session title; it previously never did."
+          "zh": "Release 工作流会在上传前重新计算五个平台服务器归档的 SHA-256，并同时检查 sidecar 的首个字段格式与归档字节是否匹配。",
+          "en": "Before upload, the Release workflow now recomputes SHA-256 for all five platform server archives and verifies both the sidecar token format and its match to the archive bytes."
         }
       ],
       "sources": [
         {
           "type": "commit",
-          "ref": "b6ab4ada6",
-          "title": "fix(session): deliver the final turn_end when a streaming session is aborted"
-        }
-      ]
-    },
-    {
-      "id": "agent-ownership-explicit",
-      "kind": "fix",
-      "importance": "high",
-      "title": {
-        "zh": "多个 Agent 同时打开时不再张冠李戴",
-        "en": "Requests no longer answer for the wrong agent"
-      },
-      "summary": {
-        "zh": "以前桌面端和手机端各自停在不同 Agent 上时，很多请求会按「当前聚焦的 Agent」作答，导致看到或改到另一个 Agent 的东西。现在每个请求都必须写明自己问的是哪个 Agent。",
-        "en": "With a desktop and a phone client open on different agents, many requests answered for whichever agent the server was focused on, so you could see or change another agent's state. Every request now has to name the agent it is about."
-      },
-      "details": [
-        {
-          "zh": "设置页显示所选 Agent 的头像，侧边栏 Bridge 状态点显示启动时那个 Agent 的状态。",
-          "en": "Settings shows the selected agent's avatar, and the sidebar Bridge dot shows the bootstrap agent's status."
-        },
-        {
-          "zh": "最近工作区、技能开关、插件面板、Bridge 消息记录都归属到发起操作的那个 Agent。",
-          "en": "Recent workspaces, skill switches, plugin surfaces and Bridge message records all belong to the agent that made the request."
-        },
-        {
-          "zh": "设置里点「检查供应商」的探测 token 不再记到某个 Agent 头上，改记全局工具账户，每个 Agent 的用量统计更准。",
-          "en": "The provider health probe in settings no longer bills its tokens to a focused agent; it goes to the global utility account, so per-agent usage totals are accurate."
-        },
-        {
-          "zh": "文件读取的可读范围改为所有 Agent 的 desk 目录，不再因为焦点移动而读不到本来有权读的文件。",
-          "en": "File reads now allow every agent's desk folder, so a moved focus no longer denies a file you were entitled to read."
-        }
-      ],
-      "sources": [
-        {
-          "type": "commit",
-          "ref": "d361668af",
-          "title": "fix(avatar): resolve the target agent explicitly on every avatar request"
-        },
-        {
-          "type": "commit",
-          "ref": "4c6b5314f",
-          "title": "fix(bridge): make bridge reads name the agent they are asking about"
-        },
-        {
-          "type": "commit",
-          "ref": "755e7e880",
-          "title": "fix: name the agent when recording a recent workspace"
-        },
-        {
-          "type": "commit",
-          "ref": "ea249fe5d",
-          "title": "fix(skills): require an explicit agent for skill bundle views"
-        },
-        {
-          "type": "commit",
-          "ref": "8287a306b",
-          "title": "fix(plugins): pass a real absence of an agent through to plugins"
-        },
-        {
-          "type": "commit",
-          "ref": "e2053a04d",
-          "title": "fix(models): bill the model health probe to the utility account"
-        },
-        {
-          "type": "commit",
-          "ref": "317163843",
-          "title": "fix(fs): allow every agent's desk root instead of the focused agent's"
-        },
-        {
-          "type": "commit",
-          "ref": "9aeee51b8",
-          "title": "fix(workspace): align new chat with primary agent"
-        }
-      ]
-    },
-    {
-      "id": "user-name-global-setting",
-      "kind": "feature",
-      "importance": "high",
-      "title": {
-        "zh": "用户名改成全局设置，改一次所有 Agent 生效",
-        "en": "Your name is now one global setting"
-      },
-      "summary": {
-        "zh": "以前每个 Agent 各存一份你的名字，在设置里改名只对当时那个 Agent 生效，新建 Agent 又会复制一份，越用越乱。现在名字存在全局设置里，改完立刻对所有已加载的 Agent 生效，不用重启。",
-        "en": "Each agent used to keep its own copy of your name, so renaming yourself in settings only reached the agent that window happened to show, and creating a new agent copied it again. The name now lives in global preferences and takes effect on every loaded agent immediately, with no restart."
-      },
-      "details": [
-        {
-          "zh": "系统提示词的用户资料段现在总会写出一个名字，没设置时用符合当前语言的中性称呼。",
-          "en": "The user profile section of the system prompt always states a name, falling back to a neutral placeholder in your language."
-        },
-        {
-          "zh": "助手自己调用设置工具改名时，写的也是全局设置。",
-          "en": "The settings tool an agent can call now writes the global name too."
-        }
-      ],
-      "sources": [
-        {
-          "type": "commit",
-          "ref": "c597221d9",
-          "title": "feat(config): make the user's name a single global setting"
-        },
-        {
-          "type": "commit",
-          "ref": "17b55252c",
-          "title": "fix(identity): make the user's name mean one thing across all agents"
-        }
-      ]
-    },
-    {
-      "id": "user-name-migration",
-      "kind": "migration",
-      "importance": "medium",
-      "title": {
-        "zh": "升级时清理各 Agent 配置里残留的用户名",
-        "en": "Upgrade clears leftover per-agent name copies"
-      },
-      "summary": {
-        "zh": "升级会把散在各个 Agent 配置里的用户名收拢成一份全局设置：优先采用主 Agent 那份，其余副本删除。如果你之前从没设过全局名字，会先把找到的那个提上来，不会丢。",
-        "en": "The upgrade consolidates the name copies scattered across agent configs into the single global setting: the primary agent's value wins and the rest are removed. If you had never set a global name, the one found is promoted first, so nothing is lost."
-      },
-      "details": [
-        {
-          "zh": "迁移可重复执行，不会因为多跑一次而出问题。",
-          "en": "The migration is idempotent and safe to run more than once."
-        }
-      ],
-      "sources": [
-        {
-          "type": "commit",
-          "ref": "17b55252c",
-          "title": "fix(identity): make the user's name mean one thing across all agents"
-        }
-      ]
-    },
-    {
-      "id": "compaction-integrity",
-      "kind": "fix",
-      "importance": "high",
-      "title": {
-        "zh": "压缩任务不再互相覆盖，取消后也不会偷偷重跑",
-        "en": "Compaction no longer overlaps or silently restarts"
-      },
-      "summary": {
-        "zh": "同一个会话上的压缩现在一次只跑一个，重复发起会明确报错而不是并发跑完互相覆盖结果；中途取消会真的停下，不再悄悄改用另一种方式重新总结一遍。",
-        "en": "Only one compaction runs per session now: a second request returns an error instead of racing and overwriting the first one's result. Cancelling mid-run actually stops, instead of quietly handing the work to a fresh full summary nobody was waiting for."
-      },
-      "details": [
-        {
-          "zh": "压缩请求与正常对话请求现在按同一套规则组装，不会因为细节不一致而丢掉供应商侧的缓存、白白多花钱。",
-          "en": "Compaction requests are now assembled by the same rules as live requests, so they stop losing the provider-side cache and paying for a cold prefix."
-        },
-        {
-          "zh": "压缩的思考强度与该会话正常请求保持一致，不会更低或干脆不思考。",
-          "en": "A compaction request now reasons exactly as the session's live requests do, where before it could reason less or not at all."
-        },
-        {
-          "zh": "切换模型时会等待正在进行的压缩，不再与之抢同一份历史。",
-          "en": "Switching models now stands aside for a running compaction instead of competing for the same history."
-        }
-      ],
-      "sources": [
-        {
-          "type": "commit",
-          "ref": "52a2f5c8c",
-          "title": "fix(compaction): isolate cache-preserving summaries"
-        },
-        {
-          "type": "commit",
-          "ref": "561987d48",
-          "title": "fix(compaction): one compaction per session, and stop when one is aborted"
-        },
-        {
-          "type": "commit",
-          "ref": "fa122b7b6",
-          "title": "fix(compaction): normalize the compaction request like the live one"
-        },
-        {
-          "type": "commit",
-          "ref": "b0b0a53c4",
-          "title": "fix(compaction): ask one question about whether a request reasons"
-        }
-      ]
-    },
-    {
-      "id": "yuan-reflection-anchored",
-      "kind": "feature",
-      "importance": "medium",
-      "title": {
-        "zh": "三个人格的反思块统一为每条消息开头写一次",
-        "en": "All personas open their reflection block once per message"
-      },
-      "summary": {
-        "zh": "以前不同人格对「什么时候写反思块」的规则不一样，有的按时间间隔、有的要求每次回复都写。现在统一：收到新消息后的第一次输出就写，写在开口说话和调用工具之前，下一条消息来之前不再重写。",
-        "en": "The personas used to disagree on when to write their reflection block, some on a time interval and some on every single response. They now share one rule: the block opens the first output after each new message, before speaking and before reaching for tools, and is not rewritten until the next message arrives."
-      },
-      "details": [
-        {
-          "zh": "用了工具的那一轮，可以在收尾回复开头补一行余韵，没变化时也可以不写。",
-          "en": "Turns that used tools may add a single afterglow line at the top of the closing reply, and may leave it out when nothing changed."
-        },
-        {
-          "zh": "每个人格保留自己的块名、词库、影响规则和标签样式。",
-          "en": "Each persona keeps its own block name, pools, influence rules and tag."
-        }
-      ],
-      "sources": [
-        {
-          "type": "commit",
-          "ref": "c310df0b4",
-          "title": "feat(yuan): anchor MOOD to the first output of each turn"
-        },
-        {
-          "type": "commit",
-          "ref": "bbfbb0014",
-          "title": "feat(yuan): anchor every persona's reflection block on the incoming message"
-        }
-      ]
-    },
-    {
-      "id": "yuan-picker-thinking-tags",
-      "kind": "feature",
-      "importance": "medium",
-      "title": {
-        "zh": "人格选择器标出各自的思考块，空改名为无",
-        "en": "The persona picker labels each thinking block"
-      },
-      "summary": {
-        "zh": "设置里的人格卡片下方会显示这个人格写的是哪种思考块（MOOD／PULSE／沉思）。没有思考模块的那个人格不带标签，名字从「空」改为「无」，描述里直接说明它按普通助手方式工作。",
-        "en": "Persona cards in settings now show which reflection block each one writes (MOOD / PULSE / 沉思). The persona without a divergent-thinking module carries no tag; its name changes from 空 to 无 and its description says outright that it behaves like an ordinary agent."
-      },
-      "details": [
-        {
-          "zh": "标签颜色取自卡片本身，跟随悬停和选中状态，不引入第二种配色。",
-          "en": "The tag draws its colour from the card itself, following hover and selected states without introducing a second colour."
-        },
-        {
-          "zh": "顺带修好了新建 Agent 浮层里该人格描述过长、把整排卡片撑高的问题。",
-          "en": "Also fixes that persona's description overflowing its square chip in the agent creation overlay and stretching the whole row."
-        }
-      ],
-      "sources": [
-        {
-          "type": "commit",
-          "ref": "60b101aa4",
-          "title": "feat(settings): label each yuan with its thinking block, rename kong to 无"
-        },
-        {
-          "type": "commit",
-          "ref": "df5b0ab8c",
-          "title": "fix(settings): give kong a short description in the agent creation overlay"
-        }
-      ]
-    },
-    {
-      "id": "persona-language-follows-locale",
-      "kind": "fix",
-      "importance": "medium",
-      "title": {
-        "zh": "人格语言跟随界面语言，不再在创建时被冻住",
-        "en": "Persona language follows your interface language"
-      },
-      "summary": {
-        "zh": "新建 Agent 时不再立刻按当时的语言把人格文件写死，未编辑过的人格会跟着界面语言走，等你真正改过并保存才落盘。以前可能出现中文人格配英文提示词骨架这种拧巴的组合。",
-        "en": "Creating an agent no longer freezes its persona files in whatever language was active at the time. An uncustomized persona follows your language setting live, and is written to disk only when you actually edit and save it. Previously an agent could end up with a Chinese persona file and an English prompt skeleton at once."
-      },
-      "details": [
-        {
-          "zh": "已经存在的人格文件不受影响，保持原样。",
-          "en": "Existing on-disk persona files are untouched."
-        },
-        {
-          "zh": "已有会话的提示词快照是冻结的，不受影响；新会话才跟随。",
-          "en": "Existing session prompt snapshots are frozen and unaffected; only new sessions follow."
-        }
-      ],
-      "sources": [
-        {
-          "type": "commit",
-          "ref": "7d50c21aa",
-          "title": "feat(agent): materialize identity/ishiki lazily instead of seeding at creation"
-        },
-        {
-          "type": "commit",
-          "ref": "977368a61",
-          "title": "fix(agent): resolve prompt locale via config override, global prefs, then en"
-        }
-      ]
-    },
-    {
-      "id": "tool-visibility-follows-switches",
-      "kind": "feature",
-      "importance": "medium",
-      "title": {
-        "zh": "关掉的能力，对应工具不再出现在助手眼前",
-        "en": "Disabled capabilities hide their tools"
-      },
-      "summary": {
-        "zh": "关闭频道或技能安装能力后，对应工具不再出现在助手可用的工具列表里。以前是看得见但一调用就失败，白白浪费一轮。",
-        "en": "With channels or skill installation disabled, the matching tool is no longer visible to the model. It used to be visible but fail on execution, wasting a turn."
-      },
-      "details": [
-        {
-          "zh": "开关改动前就已创建的会话保持原有工具清单不变。",
-          "en": "Sessions created before a toggle change keep their frozen tool snapshot."
-        }
-      ],
-      "sources": [
-        {
-          "type": "commit",
-          "ref": "d1fe2d8d7",
-          "title": "feat(tools): gate channel and install_skill injection on capability switches"
-        }
-      ]
-    },
-    {
-      "id": "reminder-header-time-leak",
-      "kind": "fix",
-      "importance": "medium",
-      "title": {
-        "zh": "提醒块不再顺带泄漏当前时间",
-        "en": "Reminder blocks no longer leak the wall clock"
-      },
-      "summary": {
-        "zh": "记忆、压缩通知这类提醒块的标题以前带着当前时间，等于绕过了「隔三小时才告知一次时间」的策略。现在标题固定，时间只通过显式的时间行传递。",
-        "en": "Reminder blocks for memory facts, compaction notices and the like used to carry the current time in their header, which bypassed the policy that only exposes time after a three-hour gap. The header is now static and time reaches the model only through the explicit time line."
-      },
-      "details": [
-        {
-          "zh": "历史记录里带时间戳的旧格式仍能正常读取。",
-          "en": "Historical transcripts with the old timestamped header still parse correctly."
-        }
-      ],
-      "sources": [
-        {
-          "type": "commit",
-          "ref": "64670e2a2",
-          "title": "fix(session): stop leaking wall-clock time through reminder block headers"
-        }
-      ]
-    },
-    {
-      "id": "cli-current-agent-marker",
-      "kind": "fix",
-      "importance": "low",
-      "title": {
-        "zh": "终端里的 agent list 会标出当前 Agent",
-        "en": "The terminal agent list marks the current agent"
-      },
-      "summary": {
-        "zh": "终端客户端的 agent list 之前读错了字段，导致无论当前是哪个 Agent，列表里都不会标记出来。现在会正常标出。",
-        "en": "The terminal client's agent list read the wrong field, so no entry was ever marked as current no matter which agent you were on. It now marks it correctly."
-      },
-      "details": [],
-      "sources": [
-        {
-          "type": "commit",
-          "ref": "82ecbcc78",
-          "title": "fix(cli): mark the current agent in the terminal agent list"
+          "ref": "d22386121",
+          "title": "fix(release): normalize server checksum sidecars"
         }
       ]
     }
