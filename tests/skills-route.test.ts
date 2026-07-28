@@ -791,6 +791,33 @@ describe("skills route", () => {
     });
   });
 
+  it("uses the global skill inventory for previews that omit agentId", async () => {
+    const { createSkillsRoute } = await import("../server/routes/skills.ts");
+    const app = new Hono();
+    const skillDir = path.join(tempRoot, "server-skills", "global-skill");
+    const focusedAgentDir = path.join(tempRoot, "focused-agent");
+    fs.mkdirSync(skillDir, { recursive: true });
+    fs.mkdirSync(focusedAgentDir, { recursive: true });
+    fs.writeFileSync(path.join(skillDir, "SKILL.md"), "---\nname: global-skill\n---\n# Global Skill\n", "utf-8");
+    fs.writeFileSync(path.join(focusedAgentDir, "config.yaml"), "agent:\n  name: Focused\n", "utf-8");
+    const getAllSkills = vi.fn((agentId) => agentId
+      ? [{ name: "focused-only-skill", baseDir: path.join(tempRoot, "focused-only") }]
+      : [{ name: "global-skill", baseDir: skillDir, filePath: path.join(skillDir, "SKILL.md"), source: "user" }]);
+    const engine = {
+      agentsDir: tempRoot,
+      currentAgentId: "focused-agent",
+      getAllSkills,
+    };
+
+    app.route("/api", createSkillsRoute(engine));
+
+    const res = await app.request("/api/skills/global-skill/files");
+
+    expect(res.status).toBe(200);
+    expect(getAllSkills).toHaveBeenCalledWith();
+    expect(getAllSkills).not.toHaveBeenCalledWith("focused-agent");
+  });
+
   it("rejects skill preview path traversal outside the installed skill root", async () => {
     const { createSkillsRoute } = await import("../server/routes/skills.ts");
     const app = new Hono();
