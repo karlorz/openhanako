@@ -164,7 +164,10 @@ export function createSkillsRoute(engine) {
       err.status = 400;
       throw err;
     }
-    const agentId = c.req.query("agentId") || engine.currentAgentId || "";
+    // A preview without agentId is a global installed-skill lookup. Falling
+    // back to the server's UI focus would let one client preview another
+    // client's per-agent skill view.
+    const agentId = c.req.query("agentId") || "";
     if (agentId && (!validateId(agentId) || !agentExists(engine, agentId))) {
       const err: any = new Error("agent not found");
       err.status = 404;
