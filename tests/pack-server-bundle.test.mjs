@@ -3,7 +3,23 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { execSync } from "node:child_process";
-import { packServerBundle } from "../scripts/pack-server-bundle.mjs";
+import { packServerBundle, parseSha256sumOutput } from "../scripts/pack-server-bundle.mjs";
+
+describe("parseSha256sumOutput", () => {
+  const digest = "a".repeat(64);
+
+  it("reads ordinary sha256sum output", () => {
+    expect(parseSha256sumOutput(`${digest}  archive.tar.gz\n`)).toBe(digest);
+  });
+
+  it("strips GNU's escaped-filename marker from Windows-path output", () => {
+    expect(parseSha256sumOutput(`\\${digest}  C:\\\\release\\\\archive.tar.gz\n`)).toBe(digest);
+  });
+
+  it("rejects malformed output instead of publishing an invalid sidecar", () => {
+    expect(() => parseSha256sumOutput(`\\${"b".repeat(63)}  archive.tar.gz\n`)).toThrow(/invalid digest/);
+  });
+});
 
 // packServerBundle shells out to `tar` and `sha256sum` and asserts POSIX
 // paths — it is a Linux/macOS-only test. Skip on Windows where those

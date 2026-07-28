@@ -14,6 +14,18 @@ function fail(message) {
   throw new Error(message);
 }
 
+export function parseSha256sumOutput(output) {
+  const line = String(output ?? "").trim().split(/\r?\n/, 1)[0] ?? "";
+  // GNU sha256sum prefixes the whole line with `\` when it escapes special
+  // characters in the filename (for example Windows path separators). The
+  // marker is not part of the digest and must not leak into the sidecar.
+  const match = /^\\?([a-fA-F0-9]{64})(?:\s|$)/.exec(line);
+  if (!match) {
+    fail(`packServerBundle: sha256sum returned an invalid digest: ${line || "<empty>"}`);
+  }
+  return match[1].toLowerCase();
+}
+
 // Stream-style sha256 via `sha256sum` so large tarballs (server bundles
 // include the Node runtime + node_modules, routinely 80-150MB) are not
 // read fully into memory. Matches how install-server.mjs verifies on the
@@ -23,7 +35,7 @@ function sha256OfFile(filePath) {
   if (result.status !== 0) {
     fail(`packServerBundle: sha256sum failed: ${result.stderr?.toString() || `exit ${result.status}`}`);
   }
-  return result.stdout.toString().trim().split(/\s+/)[0];
+  return parseSha256sumOutput(result.stdout);
 }
 
 export function packServerBundle(distServerDir, { tag, os, arch } = {}) {
