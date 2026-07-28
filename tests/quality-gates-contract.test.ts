@@ -128,6 +128,10 @@ describe("quality gates", () => {
   it("release verification requires server bundle checksum sidecars", () => {
     const buildWorkflow = readText(".github/workflows/build.yml");
 
+    expect(buildWorkflow).toContain("Verify server bundle checksum sidecars");
+    expect(buildWorkflow).toContain('[[ ! "$expected" =~ ^[[:xdigit:]]{64}$ ]]');
+    expect(buildWorkflow).toContain('actual=$(sha256sum "$bundle"');
+
     for (const target of [
       "linux-arm64",
       "linux-x64",
