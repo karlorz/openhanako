@@ -3121,7 +3121,7 @@
   ],
   "review": {
     "classification": "compatible",
-    "compatibilityReason": "Stable rebase receipt alignment: preserves the fork’s registered session-file staging write sites and optional-model preference handling while incorporating upstream additive migration, explicit-agent identity, session-compaction, workspace, and persistence source/line/hash changes; no persistent store schema, file layout, site kind, protocol module, or DATA_EPOCH changed.",
+    "compatibilityReason": "Stable fork-sync receipt alignment: preserves the fork’s registered session-file staging write sites and optional-model preference handling while incorporating upstream additive migration, explicit-agent identity, session-compaction, workspace, and persistence source/line/hash changes; no persistent store schema, file layout, site kind, protocol module, or DATA_EPOCH changed.",
     "payloadFingerprint": "sha256:e7f48be9ad4eca42dda99d80b0b4305ac358c1dcfbd18b998928e8240656a04d"
   },
   "schemas": [
