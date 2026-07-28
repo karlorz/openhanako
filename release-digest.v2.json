@@ -3,47 +3,60 @@
   "entries": [
     {
       "schemaVersion": 1,
-      "tag": "v0.416.51-karlorz.8",
+      "tag": "v0.416.51-karlorz.9",
       "version": "0.416.51",
-      "previousTag": "v0.416.51-karlorz.7",
-      "generatedAt": "2026-07-27T15:24:00.000Z",
+      "previousTag": "v0.416.51-karlorz.8",
+      "generatedAt": "2026-07-28T06:41:56.000Z",
       "noUserFacingChanges": false,
       "summary": {
-        "zh": "为 Caddy 后的移动端 HTTPS 增加可信代理安全上下文与 Secure 会话 cookie，同时拒绝直接客户端伪造 X-Forwarded-Proto。",
-        "en": "Adds trusted reverse-proxy HTTPS context and Secure session cookies for Mobile behind Caddy while rejecting direct X-Forwarded-Proto spoofing."
+        "zh": "允许将小型工具模型、大型工具模型和视觉辅助模型清空为“无（清空）”；大型工具模型优先回退到小型工具模型，聊天主模型仍保持必选。",
+        "en": "Allows the small utility, large utility, and auxiliary vision model preferences to be cleared with “None (empty)”; large utility falls back to small utility first, while the primary chat model remains required."
       },
       "counts": {
-        "feature": 0,
-        "fix": 1,
+        "feature": 1,
+        "fix": 0,
         "improvement": 0,
         "migration": 0
       },
       "source": {
         "owner": "karlorz",
         "repo": "openhanako",
-        "commitRange": "v0.416.51-karlorz.7..HEAD",
-        "releaseUrl": "https://github.com/karlorz/openhanako/releases/tag/v0.416.51-karlorz.8",
+        "commitRange": "v0.416.51-karlorz.8..HEAD",
+        "releaseUrl": "https://github.com/karlorz/openhanako/releases/tag/v0.416.51-karlorz.9",
         "releaseNotes": ""
       },
       "items": [
         {
-          "id": "mobile-https-trusted-proxy-secure-cookies",
-          "kind": "fix",
-          "importance": "high",
+          "id": "clear-optional-model-preferences",
+          "kind": "feature",
+          "importance": "medium",
           "title": {
-            "zh": "移动端 HTTPS 可信代理与 Secure cookie",
-            "en": "Trusted Mobile HTTPS proxy and Secure cookies"
+            "zh": "可清空可选模型偏好",
+            "en": "Clear optional model preferences"
           },
           "summary": {
-            "zh": "仅当上游 socket peer 为 loopback 时才信任单值 X-Forwarded-Proto: https；HANA_SECURE_COOKIES=1 为 Web 会话签发与清除添加 Secure，插件资产会话复用同一可信安全上下文。直接 LAN/公网客户端即使伪造该 header 也不会被视为 HTTPS。",
-            "en": "Trust a single X-Forwarded-Proto: https value only when the immediate socket peer is loopback. HANA_SECURE_COOKIES=1 adds Secure to issued and cleared web-session cookies, and plugin asset sessions reuse the same trusted security context. Direct LAN/public clients cannot self-assert HTTPS with that header."
+            "zh": "供应商设置中的小型工具模型、大型工具模型和视觉辅助模型现在都可选择“无（清空）”并自动保存；必要工作会按明确的模型回退链继续运行。",
+            "en": "The small utility, large utility, and auxiliary vision model fields in Provider settings can now be set to “None (empty)” and saved automatically, with required work continuing through an explicit model fallback chain."
           },
-          "details": [],
+          "details": [
+            {
+              "zh": "大型工具模型依次回退到有效的小型工具模型和必选聊天模型；小型工具模型回退到必选聊天模型。",
+              "en": "Large utility falls back to the effective small utility model and then the required chat model; small utility falls back to the required chat model."
+            },
+            {
+              "zh": "模型旁的图标是连接测试；清空选择后没有模型可测试，因此该按钮会隐藏。",
+              "en": "The icon beside a model is its connection test; it is hidden after clearing because there is no selected model to test."
+            },
+            {
+              "zh": "Agent 的聊天主模型仍为必选，不能清空。",
+              "en": "The Agent primary chat model remains required and cannot be cleared."
+            }
+          ],
           "sources": [
             {
               "type": "commit",
-              "ref": "1749b830",
-              "title": "fix(server): trust loopback HTTPS proxy context"
+              "ref": "8d498d8e",
+              "title": "feat(settings): allow clearing optional model preferences"
             }
           ]
         }
