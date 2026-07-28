@@ -543,6 +543,31 @@ jobs:
         with:
           path: artifacts
 
+      - name: Verify server bundle checksum sidecars
+        run: |
+          set -e
+          failures=0
+          while IFS= read -r -d '' bundle; do
+            sidecar="$bundle.sha256"
+            if [ ! -f "$sidecar" ]; then
+              echo "::error::missing checksum sidecar for $bundle"
+              failures=1
+              continue
+            fi
+            expected=$(awk 'NR == 1 { print $1 }' "$sidecar")
+            if [[ ! "$expected" =~ ^[[:xdigit:]]{64}$ ]]; then
+              echo "::error::invalid checksum token in $sidecar"
+              failures=1
+              continue
+            fi
+            actual=$(sha256sum "$bundle" | awk '{ print $1 }')
+            if [ "${expected,,}" != "$actual" ]; then
+              echo "::error::checksum mismatch for $bundle"
+              failures=1
+            fi
+          done < <(find artifacts -type f -name 'hanaagent-server-*.tar.gz' -print0)
+          test "$failures" -eq 0
+
       - name: Generate server compatibility manifest
         run: >-
           node scripts/build-server-compatibility-manifest.mjs --tag "${{ github.ref_name }}" --git-sha "${{ github.sha }}" --source-repository "${{ github.repository }}" --artifacts artifacts --output "hanaagent-server-compatibility-${{ github.ref_name }}.json"
