@@ -708,6 +708,7 @@
     "shared/tool-arg-summary.ts",
     "shared/tool-categories.ts",
     "shared/tool-outcome.ts",
+    "shared/utility-model-fallback.ts",
     "shared/video-mime.ts",
     "shared/workspace-history.ts",
     "shared/workspace-output.cjs",

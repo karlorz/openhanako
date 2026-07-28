@@ -19,6 +19,7 @@ import {
   type ExpCategory, parseExperience,
   ExperienceBlock, putExperience,
 } from './agent/AgentExperience';
+import { hasEffectiveUtilityModel } from '../../../../../shared/utility-model-fallback.ts';
 
 export function AgentTab() {
   const {
@@ -38,8 +39,8 @@ export function AgentTab() {
   const set = useSettingsStore(s => s.set);
   const getSettingsAgentId = useSettingsStore(s => s.getSettingsAgentId);
 
-  const hasUtilityModel = globalModelsConfig
-    ? !!(globalModelsConfig.models?.utility && globalModelsConfig.models?.utility_large)
+  const hasUtilityModel = globalModelsConfig && settingsConfig
+    ? hasEffectiveUtilityModel(settingsConfig, globalModelsConfig.models)
     : undefined;
   const selectedSettingsAgentId = settingsAgentId || currentAgentId;
 
