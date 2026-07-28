@@ -61,6 +61,7 @@ import {
   type ResolvedAgentAppearanceModelConfig,
   refreshAgentAppearanceProfileResource,
 } from "../lib/agent-appearance-summary.ts";
+import { resolveUtilityModelRefs } from "../shared/utility-model-fallback.ts";
 
 const moduleLog = createModuleLogger("agent");
 
@@ -382,19 +383,21 @@ export class Agent {
 
     log(`  [agent] 4. FactStore + SummaryManager 完成`);
 
-    // utility 模型：用户未配置时 fallback 到聊天模型
+    // utility 模型：large 复用 effective small，small 最终 fallback 到聊天模型。
     const chatModelRef = this._config.models?.chat || null;
     const userSetUtility = sharedModels.utility || this._config.models?.utility || null;
     const userSetUtilityLarge = sharedModels.utility_large || this._config.models?.utility_large || null;
+    const { utilityModelRef, largeModelRef } = resolveUtilityModelRefs(this._config, sharedModels);
 
-    this._utilityModel = userSetUtility || chatModelRef;
-    this._memoryModel = userSetUtilityLarge || chatModelRef;
+    this._utilityModel = utilityModelRef;
+    this._memoryModel = largeModelRef;
 
     if (!userSetUtility && chatModelRef) {
       moduleLog.log(`utility 模型未配置，使用聊天模型作为工具模型`);
     }
-    if (!userSetUtilityLarge && chatModelRef) {
-      moduleLog.log(`utility_large 模型未配置，使用聊天模型作为记忆模型`);
+    if (!userSetUtilityLarge && utilityModelRef) {
+      const fallbackName = userSetUtility ? "utility 模型" : "聊天模型";
+      moduleLog.log(`utility_large 模型未配置，使用${fallbackName}作为记忆模型`);
     }
 
     // 保存解析函数：每次 tick 现场调用，拿到最新凭证。
@@ -407,7 +410,11 @@ export class Agent {
       try {
         this._resolveModel(this._memoryModel, this._config);
       } catch (err) {
-        const src = userSetUtilityLarge ? "utility_large" : "聊天模型 fallback";
+        const src = userSetUtilityLarge
+          ? "utility_large"
+          : userSetUtility
+            ? "utility fallback"
+            : "聊天模型 fallback";
         moduleLog.warn(`记忆系统暂不可用：${src} 解析失败（改完凭证后 tick 会自动恢复） — ${err.message}`);
         this._cb?.emitDevLog?.(`记忆系统暂不可用：${src} 解析失败 — ${err.message}`, "warn");
       }

@@ -213,6 +213,32 @@ describe("updateConfig with agentId", () => {
     expect(targetAgent.setMemoryModel).toHaveBeenCalledWith({ id: "target-chat", provider: "deepseek" });
   });
 
+  it("setSharedModels 清空 large 时让记忆模型复用 effective small utility", () => {
+    let prefs = {
+      utility_model: { id: "util", provider: "openai" },
+      utility_large_model: { id: "large", provider: "openai" },
+    };
+    const { focusAgent, targetAgent, deps } = makeDeps({
+      getPrefs: () => ({
+        getPreferences: () => prefs,
+        savePreferences: (next) => { prefs = { ...next }; },
+      }),
+    });
+    focusAgent.setUtilityModel = vi.fn();
+    focusAgent.setMemoryModel = vi.fn();
+    targetAgent.setUtilityModel = vi.fn();
+    targetAgent.setMemoryModel = vi.fn();
+    const coord = new ConfigCoordinator(deps);
+
+    coord.setSharedModels({ utility_large: null });
+
+    const utilityRef = { id: "util", provider: "openai" };
+    expect(focusAgent.setUtilityModel).toHaveBeenCalledWith(utilityRef);
+    expect(focusAgent.setMemoryModel).toHaveBeenCalledWith(utilityRef);
+    expect(targetAgent.setUtilityModel).toHaveBeenCalledWith(utilityRef);
+    expect(targetAgent.setMemoryModel).toHaveBeenCalledWith(utilityRef);
+  });
+
   it("setSharedModels stores vision without mutating utility or memory runtime state", () => {
     let prefs = {
       vision_model: { id: "qwen-vl", provider: "dashscope" },

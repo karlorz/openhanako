@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useSettingsStore } from '../../store';
 import { hanaFetch } from '../../api';
 import {
@@ -33,6 +33,14 @@ function searchProviderNeedsApiKey(provider: string): boolean {
 
 function ToolModelTestBtn({ modelRef }: { modelRef: unknown }) {
   const [status, setStatus] = useState<'idle' | 'testing' | 'ok' | 'fail'>('idle');
+  const requestGenerationRef = useRef(0);
+  const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const statusLabel = t({
+    idle: 'settings.api.testModelConnection',
+    testing: 'settings.api.testingModelConnection',
+    ok: 'settings.api.modelConnectionSucceeded',
+    fail: 'settings.api.modelConnectionFailed',
+  }[status]);
 
   const ref = typeof modelRef === 'object' && modelRef !== null
     ? {
@@ -42,9 +50,32 @@ function ToolModelTestBtn({ modelRef }: { modelRef: unknown }) {
     : { id: String(modelRef || ''), provider: '' };
   const hasRef = !!ref.id;
 
+  useEffect(() => {
+    requestGenerationRef.current += 1;
+    if (resetTimerRef.current) {
+      clearTimeout(resetTimerRef.current);
+      resetTimerRef.current = null;
+    }
+    setStatus('idle');
+
+    return () => {
+      requestGenerationRef.current += 1;
+      if (resetTimerRef.current) {
+        clearTimeout(resetTimerRef.current);
+        resetTimerRef.current = null;
+      }
+    };
+  }, [ref.id, ref.provider]);
+
   const test = async () => {
     if (!hasRef) return;
+    const requestGeneration = ++requestGenerationRef.current;
+    if (resetTimerRef.current) {
+      clearTimeout(resetTimerRef.current);
+      resetTimerRef.current = null;
+    }
     setStatus('testing');
+    let nextStatus: 'ok' | 'fail';
     try {
       const res = await hanaFetch('/api/models/health', {
         method: 'POST',
@@ -52,32 +83,54 @@ function ToolModelTestBtn({ modelRef }: { modelRef: unknown }) {
         body: JSON.stringify({ modelId: ref.id, provider: ref.provider }),
       });
       const data = await res.json();
-      setStatus(data.ok ? 'ok' : 'fail');
+      nextStatus = data.ok ? 'ok' : 'fail';
     } catch {
-      setStatus('fail');
+      nextStatus = 'fail';
     }
-    setTimeout(() => setStatus('idle'), 3000);
+    if (requestGenerationRef.current !== requestGeneration) return;
+    setStatus(nextStatus);
+    resetTimerRef.current = setTimeout(() => {
+      if (requestGenerationRef.current === requestGeneration) {
+        setStatus('idle');
+        resetTimerRef.current = null;
+      }
+    }, 3000);
   };
 
   if (!hasRef) return null;
 
   return (
-    <button className={`${styles['pv-tool-test-btn']} ${styles[status] || ''}`} onClick={test} disabled={status === 'testing'}>
+    <button
+      type="button"
+      className={`${styles['pv-tool-test-btn']} ${styles[status] || ''}`}
+      onClick={test}
+      disabled={status === 'testing'}
+      aria-label={statusLabel}
+      title={statusLabel}
+    >
+      <span
+        className={styles['pv-tool-test-status']}
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        {statusLabel}
+      </span>
       {status === 'testing' ? (
-        <svg className={styles['spinning']} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg aria-hidden="true" className={styles['spinning']} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" />
           <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
         </svg>
       ) : status === 'ok' ? (
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <polyline points="20 6 9 17 4 12" />
         </svg>
       ) : status === 'fail' ? (
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
         </svg>
       ) : (
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
           <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" />
         </svg>
       )}
@@ -196,6 +249,7 @@ export function OtherModelsSection({ providers }: { providers: Record<string, { 
               }}
               lookupModelMeta={lookupModelMeta}
               formatContext={formatContext}
+              allowClear
             />
             <ToolModelTestBtn modelRef={globalModelsConfig?.models?.utility || ''} />
           </div>
@@ -212,6 +266,7 @@ export function OtherModelsSection({ providers }: { providers: Record<string, { 
               }}
               lookupModelMeta={lookupModelMeta}
               formatContext={formatContext}
+              allowClear
             />
             <ToolModelTestBtn modelRef={globalModelsConfig?.models?.utility_large || ''} />
           </div>
@@ -240,6 +295,7 @@ export function OtherModelsSection({ providers }: { providers: Record<string, { 
               lookupModelMeta={lookupModelMeta}
               formatContext={formatContext}
               filterModel={imageCapableOnly}
+              allowClear
             />
             <ToolModelTestBtn modelRef={globalModelsConfig?.models?.vision || ''} />
           </div>

@@ -2413,7 +2413,7 @@
     },
     {
       "sourceFile": "core/agent.ts",
-      "line": 349,
+      "line": 350,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(path.join(this.agentDir, \"memory\", \"summaries\"), { recursive: true })",
       "reason": "Creates the memory directory and records legacy memories.db import state.",
@@ -2422,7 +2422,7 @@
     },
     {
       "sourceFile": "core/agent.ts",
-      "line": 350,
+      "line": 351,
       "kind": "persistent-store-constructor",
       "excerpt": "new FactStore(this.factsDbPath)",
       "reason": "Constructs or migrates a FactStore.",
@@ -2431,7 +2431,7 @@
     },
     {
       "sourceFile": "core/agent.ts",
-      "line": 360,
+      "line": 361,
       "kind": "database-open",
       "excerpt": "new Database(oldMemoriesPath, { readonly: true })",
       "reason": "Constructs or migrates a FactStore.",
@@ -2440,7 +2440,7 @@
     },
     {
       "sourceFile": "core/agent.ts",
-      "line": 375,
+      "line": 376,
       "kind": "write-file",
       "excerpt": "fs.writeFileSync(migrationDone, new Date().toISOString())",
       "reason": "Creates the memory directory and records legacy memories.db import state.",
@@ -2449,7 +2449,7 @@
     },
     {
       "sourceFile": "core/agent.ts",
-      "line": 379,
+      "line": 380,
       "kind": "write-file",
       "excerpt": "fs.writeFileSync(migrationDone, `failed: ${err.message}`)",
       "reason": "Creates the memory directory and records legacy memories.db import state.",
@@ -2458,7 +2458,7 @@
     },
     {
       "sourceFile": "core/agent.ts",
-      "line": 508,
+      "line": 515,
       "kind": "persistent-store-constructor",
       "excerpt": "new CronStore( path.join(this.deskDir, \"cron-jobs.json\"), path.join(this.deskDir, \"cron-runs\"), )",
       "reason": "Constructs an agent or studio CronStore.",

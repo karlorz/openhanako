@@ -24,16 +24,20 @@ interface ModelWidgetProps {
   /** @deprecated 不再使用，保留兼容签名 */
   providers?: Record<string, { models?: string[]; base_url?: string }>;
   value?: ModelRef | null;
-  onSelect: (ref: ModelRef) => void;
+  /** Select a model, or null to clear the selection when allowClear is true. */
+  onSelect: (ref: ModelRef | null) => void;
   placeholder?: string;
   lookupModelMeta?: (id: string) => any;
   formatContext?: (n: number) => string;
   filterModel?: (model: ModelInfo) => boolean;
+  /** When true (default), show a None option so the user can empty the field. */
+  allowClear?: boolean;
 }
 
 export function ModelWidget({
   value, onSelect,
   placeholder, formatContext, filterModel,
+  allowClear = true,
 }: ModelWidgetProps) {
   const t = window.t || ((k: string) => k);
   const [open, setOpen] = useState(false);
@@ -132,6 +136,16 @@ export function ModelWidget({
           onClick={(e) => e.stopPropagation()}
         />
         <div className={styles['mdw-options']}>
+          {allowClear && (
+            <button
+              className={`${styles['mdw-option']}${!valueKey ? ' ' + styles['selected'] : ''} ${styles['mdw-option-clear']}`}
+              type="button"
+              data-testid="model-widget-clear"
+              onClick={() => { onSelect(null); setOpen(false); }}
+            >
+              <span className={styles['mdw-option-name']}>{t('settings.api.clearModel')}</span>
+            </button>
+          )}
           {Object.entries(grouped).map(([provider, items]) => (
             <div key={provider || '__none'}>
               {provider && <div className={styles['mdw-group-header']}>{provider}</div>}

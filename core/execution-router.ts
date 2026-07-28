@@ -18,6 +18,7 @@
 
 import { t } from "../lib/i18n.ts";
 import { isLocalBaseUrl } from "../shared/net-utils.ts";
+import { resolveUtilityModelRefs } from "../shared/utility-model-fallback.ts";
 import { composeResolvedModelExecution } from "./model-execution-config.ts";
 
 // 角色名称 -> preferences 字段名（SHARED_MODEL_KEYS 兼容）
@@ -90,11 +91,13 @@ export class ExecutionRouter {
   }
 
   _resolveUtilityModels(agentConfig, sharedModels, options: any = {}) {
-    const cfg = agentConfig || {};
     const requireUtilityLarge = options?.requireUtilityLarge !== false;
-    const chatModelRef = cfg.models?.chat || null;
-    const utilityModelRef = sharedModels?.utility || cfg.models?.utility || chatModelRef;
-    const largeModelRef = sharedModels?.utility_large || cfg.models?.utility_large || chatModelRef;
+    const cfg = agentConfig || {};
+    const resolvedRefs = resolveUtilityModelRefs(cfg, sharedModels);
+    const utilityModelRef = resolvedRefs.utilityModelRef;
+    const largeModelRef = requireUtilityLarge
+      ? resolvedRefs.largeModelRef
+      : sharedModels?.utility_large || cfg.models?.utility_large || null;
 
     if (!utilityModelRef) throw new Error(t("error.noUtilityModel"));
     if (requireUtilityLarge && !largeModelRef) throw new Error(t("error.noUtilityLargeModel"));
@@ -348,15 +351,16 @@ export class ExecutionRouter {
    */
   _resolveRef(roleOrRef, agentConfig, sharedModels) {
     const cfg = agentConfig || {};
+    const { utilityModelRef, largeModelRef } = resolveUtilityModelRefs(cfg, sharedModels);
 
-    // 内置角色名的查找顺序：sharedModels -> agentConfig.models
+    // 内置角色名使用与 agent 初始化、实时配置同步相同的 fallback 顺序。
     switch (roleOrRef) {
       case "chat":
         return cfg.models?.chat || null;
       case "utility":
-        return sharedModels?.utility || cfg.models?.utility || null;
+        return utilityModelRef;
       case "utility_large":
-        return sharedModels?.utility_large || cfg.models?.utility_large || null;
+        return largeModelRef;
       case "embed":
         return cfg.embedding_api?.model || null;
       default:
