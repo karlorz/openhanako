@@ -1,0 +1,90 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("../lib/memory/memory-ticker.js", () => ({
+  createMemoryTicker: () => ({
+    start: vi.fn(),
+    stop: vi.fn().mockResolvedValue(undefined),
+    tick: vi.fn().mockResolvedValue(undefined),
+    triggerNow: vi.fn(),
+    notifyTurn: vi.fn(),
+    notifySessionEnd: vi.fn().mockResolvedValue(undefined),
+    notifyPromoted: vi.fn().mockResolvedValue(undefined),
+    flushSession: vi.fn().mockResolvedValue(undefined),
+    getHealthStatus: vi.fn().mockReturnValue({}),
+  }),
+}));
+
+import { Agent } from "../core/agent.ts";
+
+function bootstrapAgent(rootDir: string) {
+  const agentsDir = path.join(rootDir, "agents");
+  const agentDir = path.join(agentsDir, "hana");
+  const userDir = path.join(rootDir, "user");
+  fs.mkdirSync(path.join(agentDir, "memory", "summaries"), { recursive: true });
+  fs.mkdirSync(path.join(agentDir, "desk"), { recursive: true });
+  fs.mkdirSync(path.join(agentDir, "sessions"), { recursive: true });
+  fs.mkdirSync(userDir, { recursive: true });
+
+  fs.writeFileSync(
+    path.join(agentDir, "config.yaml"),
+    [
+      "agent:",
+      "  name: Hana",
+      "  yuan: hanako",
+      "user:",
+      "  name: Tester",
+      "locale: en",
+      "memory:",
+      "  enabled: false",
+      "models:",
+      "  chat:",
+      "    id: chat-model",
+      "    provider: openai",
+    ].join("\n"),
+    "utf-8",
+  );
+  fs.writeFileSync(path.join(agentDir, "identity.md"), "identity\n", "utf-8");
+  fs.writeFileSync(path.join(agentDir, "ishiki.md"), "ishiki\n", "utf-8");
+  fs.writeFileSync(path.join(userDir, "user.md"), "user profile\n", "utf-8");
+
+  const productDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "lib");
+  return { agentsDir, productDir, userDir };
+}
+
+describe("Agent utility model initialization", () => {
+  const roots: string[] = [];
+
+  afterEach(() => {
+    while (roots.length) {
+      fs.rmSync(roots.pop()!, { recursive: true, force: true });
+    }
+  });
+
+  it("uses effective small utility for memory when utility_large is empty", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "hana-agent-utility-fallback-"));
+    roots.push(root);
+    const { agentsDir, productDir, userDir } = bootstrapAgent(root);
+    const agent = new Agent({ id: "hana", agentsDir, productDir, userDir } as any);
+    agent.setCallbacks({
+      getLearnSkills: () => ({}),
+      isChannelsEnabled: () => false,
+    });
+    const utilityRef = { id: "small-model", provider: "openai" };
+
+    await agent.init(
+      () => {},
+      { utility: utilityRef },
+      (ref) => ref,
+      async (ref) => ref,
+    );
+
+    expect(agent._utilityModel).toEqual(utilityRef);
+    expect(agent._memoryModel).toEqual(utilityRef);
+
+    await agent.dispose();
+  });
+});

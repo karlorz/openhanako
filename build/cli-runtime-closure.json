@@ -112944,6 +112944,28 @@
       "reason": "Reached via esbuild source module graph, imported by lib/pi-sdk/tool-outcome-adapter.ts (import-statement); core/message-utils.ts (import-statement); server/routes/chat.ts (import-statement); +1 more importer(s)."
     },
     {
+      "path": "shared/utility-model-fallback.ts",
+      "inputType": "source-graph",
+      "provenance": [
+        {
+          "root": "server-bootstrap",
+          "from": "core/execution-router.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
+          "from": "core/agent.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
+          "from": "core/config-coordinator.ts",
+          "kind": "import-statement"
+        }
+      ],
+      "reason": "Reached via esbuild source module graph, imported by core/execution-router.ts (import-statement); core/agent.ts (import-statement); core/config-coordinator.ts (import-statement)."
+    },
+    {
       "path": "shared/video-mime.ts",
       "inputType": "source-graph",
       "provenance": [
@@ -113138,9 +113160,9 @@
     }
   ],
   "stats": {
-    "totalFiles": 9656,
+    "totalFiles": 9657,
     "byInputType": {
-      "source-graph": 678,
+      "source-graph": 679,
       "runtime-asset": 11,
       "nft-runtime-trace": 8967
     }

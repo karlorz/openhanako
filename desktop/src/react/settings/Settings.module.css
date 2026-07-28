@@ -5714,13 +5714,21 @@ a.about-link:hover {
     border-radius: var(--radius-input, 6px);
     background: transparent;
     color: var(--text-secondary);
-    cursor: default;
-    transition: all var(--duration-fast);
+    cursor: pointer;
+    transition: color var(--duration-fast), border-color var(--duration-fast);
 }
 .pv-tool-test-btn:hover { color: var(--accent); border-color: var(--accent); }
+.pv-tool-test-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .pv-tool-test-btn.ok { color: #3a7d44; border-color: #3a7d44; }
 .pv-tool-test-btn.fail { color: #b44040; border-color: #b44040; }
 .pv-tool-test-btn.testing { color: var(--text-secondary); pointer-events: none; }
+
+.pv-tool-test-status {
+    position: absolute;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
 
 /* ── 模型下拉选择器 ── */
 
@@ -7791,6 +7799,17 @@ a.about-link:hover {
 .mdw-option.selected {
     color: var(--accent);
     font-weight: 600;
+}
+
+.mdw-option-clear {
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--overlay-light);
+    margin-bottom: var(--space-4);
+    padding-bottom: 0.45rem;
+}
+
+.mdw-option-clear.selected {
+    color: var(--text-muted);
 }
 
 .mdw-star {
