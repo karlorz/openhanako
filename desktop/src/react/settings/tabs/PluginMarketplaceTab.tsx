@@ -125,11 +125,21 @@ export function PluginMarketplaceTab() {
   const [switchingKey, setSwitchingKey] = useState<string | null>(null);
   const loadGenRef = React.useRef(0);
   const readmeGenRef = React.useRef(0);
+  const readmeKeyRef = React.useRef<string | null>(null);
 
-  const loadReadme = useCallback(async (plugin: MarketplacePlugin) => {
-    const gen = ++readmeGenRef.current;
+  const loadReadme = useCallback(async (plugin: MarketplacePlugin, opts: { force?: boolean } = {}) => {
+    const key = rowKey(plugin);
     setSelectedPlugin(plugin);
-    setReadme('');
+
+    // Same selection: keep current body (description/readme) — no flash on catalog refresh.
+    if (!opts.force && readmeKeyRef.current === key) {
+      return;
+    }
+
+    readmeKeyRef.current = key;
+    const gen = ++readmeGenRef.current;
+    // Keep description visible while README loads; never blank the panel.
+    setReadme((prev) => (prev && readmeKeyRef.current === key ? prev : (plugin.description || '')));
     setReadmeLoading(true);
     try {
       const qs = plugin.marketplaceId
@@ -152,7 +162,10 @@ export function PluginMarketplaceTab() {
         setReadme(plugin.description || '');
         return;
       }
-      setReadme(data.markdown || '');
+      // Avoid re-render flash when API returns the same description as body
+      const next = String(data.markdown || '').trim();
+      const desc = String(plugin.description || '').trim();
+      setReadme(next || desc);
     } catch {
       if (gen !== readmeGenRef.current) return;
       setReadme(plugin.description || '');
@@ -222,13 +235,19 @@ export function PluginMarketplaceTab() {
       if (plugins.length > 0) {
         setSelectedPlugin((prev) => {
           const keep = prev && plugins.some((p) => rowKey(p) === rowKey(prev));
-          const pick = keep ? prev! : plugins[0];
-          void loadReadme(pick);
+          const pick = keep
+            ? (plugins.find((p) => rowKey(p) === rowKey(prev!)) || prev!)
+            : plugins[0];
+          // Only fetch README when selection actually changes (prevents description flash).
+          if (!keep) {
+            void loadReadme(pick);
+          }
           return pick;
         });
       } else {
         setSelectedPlugin(null);
         setReadme('');
+        readmeKeyRef.current = null;
       }
     } catch (err: unknown) {
       if (gen !== loadGenRef.current) return;
@@ -465,9 +484,11 @@ export function PluginMarketplaceTab() {
                           <div
                             className={`preview-markdown ${styles['plugin-marketplace-readme']}`}
                             dangerouslySetInnerHTML={{
-                              __html: readmeLoading
-                                ? `<p>${t('settings.plugins.marketReadmeLoading')}</p>`
-                                : renderMarkdown(readme || selectedPlugin.description || ''),
+                              // Always keep description/readme body; never swap to a loading placeholder
+                              // (that flash is what made HyperFrames description flicker on refresh).
+                              __html: renderMarkdown(
+                                readme || selectedPlugin.description || (readmeLoading ? '' : ''),
+                              ),
                             }}
                           />
                         </>
