@@ -41,14 +41,17 @@ describe("compiled official marketplace source", () => {
       authority: "official",
       mutable: false,
     });
-    expect(official.url).toMatch(/^https:\/\//);
-    expect(official.sourceFingerprint).toBe(
-      buildSourceFingerprint({
-        kind: "url",
-        id: OFFICIAL_MARKETPLACE_ID,
-        url: official.url,
-      }),
-    );
+    expect(official.kind).toBe("url");
+    if (official.kind === "url") {
+      expect(official.url).toMatch(/^https:\/\//);
+      expect(official.sourceFingerprint).toBe(
+        buildSourceFingerprint({
+          kind: "url",
+          id: OFFICIAL_MARKETPLACE_ID,
+          url: official.url,
+        }),
+      );
+    }
   });
 });
 
@@ -108,7 +111,7 @@ describe("PluginMarketplaceSourceRegistry", () => {
     const loaded = registry.loadEffectiveSources();
     expect(loaded.degraded).toBe(true);
     expect(loaded.sources.every((s) => s.authority === "official")).toBe(true);
-    expect(loaded.sources.some((s) => s.url.includes("evil.example"))).toBe(false);
+    expect(loaded.sources.some((s) => s.kind === "url" && s.url.includes("evil.example"))).toBe(false);
 
     const cleanHome = makeHome();
     const clean = new PluginMarketplaceSourceRegistry({ hanakoHome: cleanHome });
