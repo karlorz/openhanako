@@ -1184,9 +1184,10 @@ Source management APIs:
 - `POST /api/plugins/marketplace/sources/:id/refresh` — refresh into last-known-good snapshot store
 - `DELETE /api/plugins/marketplace/sources/:id` — blocked while active/retained artifacts reference the source
 - `GET /api/plugins/marketplace/catalog` — composite rows with source badges and active/retained state
+- `POST /api/plugins/marketplace/:id/install` — resolves via official-wins or `marketplaceId` pin, retains artifact, writes install-record v2
 - `POST /api/plugins/:pluginId/source-switch` — transactional switch to another retained marketplace source
 
-Fresh bare install uses **official-wins**; multiple non-official matches require an explicit marketplace pin. Switching never copies state, secrets, or trust across sources. Remote sources are **public credential-free HTTPS only** in v1.
+Settings → Plugin marketplace includes **Add source** (URL / local server path / public Git), per-source refresh/remove, composite rows, and **Switch source**. Fresh bare install uses **official-wins**; multiple non-official matches require an explicit marketplace pin. Switching never copies state, secrets, or trust across sources. Remote sources are **public credential-free HTTPS only** in v1.
 
 Legacy env overrides remain available as a **read-only legacy overlay** (not official authority):
 
