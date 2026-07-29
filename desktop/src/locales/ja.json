@@ -2048,7 +2048,9 @@
       "marketSourceRefreshed": "マーケットソースを更新しました",
       "marketSourceRefreshFailed": "マーケットソースの更新に失敗しました",
       "marketSwitchSource": "ソース切替",
-      "marketRetained": "保持済み"
+      "marketRetained": "保持済み",
+      "marketSourcesSection": "マーケットソース",
+      "marketSourceLoading": "ソースを読み込み中…"
     },
     "mcp": {
       "masterTitle": "Master Switch",

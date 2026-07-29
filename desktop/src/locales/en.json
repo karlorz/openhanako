@@ -2090,6 +2090,8 @@
       "marketDowngradeConfirm": "Installed version is v{from}. Downgrade to v{to}?",
       "marketReadmeLoading": "Loading README…",
       "marketSelectPlugin": "Select a plugin to view its README",
+      "marketSourcesSection": "Marketplace sources",
+      "marketSourceLoading": "Loading sources…",
       "marketSourceAdd": "Add source",
       "marketSourceCancel": "Cancel",
       "marketSourceSubmit": "Validate & add",

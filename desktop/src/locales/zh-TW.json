@@ -2048,7 +2048,9 @@
       "marketSourceRefreshed": "已重新整理市場來源",
       "marketSourceRefreshFailed": "重新整理市場來源失敗",
       "marketSwitchSource": "切換來源",
-      "marketRetained": "已保留"
+      "marketRetained": "已保留",
+      "marketSourcesSection": "市場來源",
+      "marketSourceLoading": "正在載入來源…"
     },
     "mcp": {
       "masterTitle": "總開關",
