@@ -48,6 +48,20 @@ function sourceStatusLabel(status?: string): string {
   return status;
 }
 
+/** Map host/proxy/owner failures to actionable Settings copy. */
+export function mapMarketplaceSourceError(message: unknown, status?: number): string {
+  const msg = typeof message === 'string' ? message : message != null ? String(message) : '';
+  if (status === 403 || /studio\.owner/i.test(msg) || /studio owner/i.test(msg)) {
+    return t('settings.plugins.marketSourceStudioOwnerRequired');
+  }
+  // Old servers still route /plugins/marketplace/* through the plugin catch-all.
+  if (/marketplace/i.test(msg) && /not found/i.test(msg)) {
+    return t('settings.plugins.marketSourceServerTooOld');
+  }
+  if (msg) return msg;
+  return t('settings.plugins.marketSourceLoadFailed');
+}
+
 function authorityLabel(authority?: string): string {
   if (authority === 'official') return t('settings.plugins.marketSourceAuthorityOfficial');
   if (authority === 'legacy') return t('settings.plugins.marketSourceAuthorityLegacy');
@@ -79,12 +93,7 @@ export function MarketplaceSourcesPanel({
       const res = await hanaFetch('/api/plugins/marketplace/sources');
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data.error) {
-        const msg = data.error || data.detail || `HTTP ${res.status}`;
-        // Soft-hint for old servers that still route this as a plugin proxy.
-        if (typeof msg === 'string' && /marketplace/i.test(msg) && /not found/i.test(msg)) {
-          throw new Error(t('settings.plugins.marketSourceServerTooOld'));
-        }
-        throw new Error(typeof msg === 'string' ? msg : t('settings.plugins.marketSourceLoadFailed'));
+        throw new Error(mapMarketplaceSourceError(data.error || data.detail || `HTTP ${res.status}`, res.status));
       }
       const list = Array.isArray(data.sources) ? data.sources : [];
       setSources(list);
@@ -150,7 +159,9 @@ export function MarketplaceSourcesPanel({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data.error) {
-        throw new Error(data.error || data.detail || t('settings.plugins.marketSourceAddFailed'));
+        throw new Error(
+          mapMarketplaceSourceError(data.error || data.detail || t('settings.plugins.marketSourceAddFailed'), res.status),
+        );
       }
       showToast(t('settings.plugins.marketSourceAdded'), 'success');
       setShowAdd(false);
@@ -395,7 +406,7 @@ export function MarketplaceSourcesPanel({
                   className={styles['settings-input']}
                   value={form.gitUrl}
                   onChange={(e) => setForm((s) => ({ ...s, gitUrl: e.target.value }))}
-                  placeholder="https://github.com/org/repo.git"
+                  placeholder="https://github.com/karlorz/llm-wiki"
                   autoComplete="off"
                   spellCheck={false}
                 />
@@ -408,6 +419,7 @@ export function MarketplaceSourcesPanel({
                     className={styles['settings-input']}
                     value={form.gitRef}
                     onChange={(e) => setForm((s) => ({ ...s, gitRef: e.target.value }))}
+                    placeholder="refs/heads/main"
                     autoComplete="off"
                     spellCheck={false}
                   />
@@ -418,6 +430,7 @@ export function MarketplaceSourcesPanel({
                     className={styles['settings-input']}
                     value={form.indexPath}
                     onChange={(e) => setForm((s) => ({ ...s, indexPath: e.target.value }))}
+                    placeholder="marketplace.json (auto)"
                     autoComplete="off"
                     spellCheck={false}
                   />
