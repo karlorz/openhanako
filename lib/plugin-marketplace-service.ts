@@ -200,14 +200,7 @@ export class PluginMarketplaceService {
 
   resolveInstall(pluginId: string, marketplaceId?: string | null) {
     const coverage = this._coverage();
-    const rows = this.snapshots.listCurrentPlugins().map((p) => ({
-      marketplaceId: p.marketplaceId,
-      id: p.id,
-      name: p.name,
-      distribution: p.distribution,
-      version: p.version,
-      versions: p.versions,
-    })) as TaggedResolveRow[];
+    const rows = this.listResolveRows();
     return resolveMarketplacePlugin({
       pluginId,
       marketplaceId,
@@ -215,6 +208,30 @@ export class PluginMarketplaceService {
       sources: coverage,
       operation: "fresh-install",
     });
+  }
+
+  /** Full snapshot plugin row for install/readme after resolution. */
+  getCatalogPlugin(pluginId: string, marketplaceId: string) {
+    return this.snapshots.listCurrentPlugins().find(
+      (p) => p.id === pluginId && p.marketplaceId === marketplaceId,
+    ) || null;
+  }
+
+  listResolveRows(): TaggedResolveRow[] {
+    return this.snapshots.listCurrentPlugins().map((p) => ({
+      marketplaceId: p.marketplaceId,
+      id: p.id,
+      name: p.name,
+      distribution: p.distribution,
+      version: p.version,
+      versions: p.versions,
+      trust: p.trust,
+      description: p.description,
+      publisher: p.publisher,
+      readme: p.readme,
+      readmePath: p.readmePath,
+      readmeUrl: p.readmeUrl,
+    })) as TaggedResolveRow[];
   }
 
   _coverage(): MarketplaceResolveSourceCoverage[] {
