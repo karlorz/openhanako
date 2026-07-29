@@ -255,10 +255,51 @@ export class PluginMarketplaceService {
     });
   }
 
+  private _officialSeedPromise: Promise<void> | null = null;
+
+  /**
+   * Soft-seed the compiled official URL snapshot when missing/error so Settings is not empty.
+   * Does not throw; failures leave status as error with a readable message.
+   */
   ensureOfficialSnapshotSeeded(options: { url?: string } = {}) {
-    // Soft helper for tests: mark official ok empty if missing.
     const status = this.snapshots.getStatus(OFFICIAL_MARKETPLACE_ID);
-    return status;
+    if (status.state === "ok" || status.state === "stale" || status.state === "refreshing") {
+      return status;
+    }
+    if (!this._officialSeedPromise) {
+      this._officialSeedPromise = (async () => {
+        try {
+          const sources = this.registry.listSources();
+          const official = sources.find((s) => s.id === OFFICIAL_MARKETPLACE_ID) as any;
+          const url = options.url || official?.url;
+          if (!url) return;
+          await acquireAndPublishSourceSnapshot({
+            id: OFFICIAL_MARKETPLACE_ID,
+            name: official?.name || "OH Plugins Official",
+            kind: "url",
+            url,
+          }, {
+            store: this.snapshots,
+            fetchOptions: this.fetchOptions,
+            localAllowedRoot: this.localAllowedRoot,
+          });
+        } catch {
+          // markError already applied by acquire; leave status for UI
+        } finally {
+          this._officialSeedPromise = null;
+        }
+      })();
+    }
+    return this.snapshots.getStatus(OFFICIAL_MARKETPLACE_ID);
+  }
+
+  /** Awaitable seed used by routes that need plugins before responding. */
+  async ensureOfficialSnapshotSeededAsync(options: { url?: string } = {}) {
+    this.ensureOfficialSnapshotSeeded(options);
+    if (this._officialSeedPromise) {
+      await this._officialSeedPromise;
+    }
+    return this.snapshots.getStatus(OFFICIAL_MARKETPLACE_ID);
   }
 
   /**
