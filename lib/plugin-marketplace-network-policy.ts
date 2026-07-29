@@ -275,7 +275,23 @@ export function sanitizeAcquisitionError(
   err: unknown,
   options: { forRemote?: boolean } = {},
 ): SanitizedAcquisitionError {
-  const message = err instanceof Error ? err.message : String(err);
+  // Accept Error, plain { message, code }, or other values — never String(object) → "[object Object]".
+  let message: string;
+  if (err instanceof Error) {
+    message = err.message || String(err);
+  } else if (err && typeof err === "object" && typeof (err as any).message === "string") {
+    message = (err as any).message;
+  } else if (typeof err === "string") {
+    message = err;
+  } else if (err == null) {
+    message = "source error";
+  } else {
+    try {
+      message = JSON.stringify(err);
+    } catch {
+      message = "source error";
+    }
+  }
   const code = (err as any)?.code
     || (message.includes("Redirect") ? "PLUGIN_MARKETPLACE_FETCH_LIMIT"
       : message.includes("size limit") || message.includes("timed out") || message.includes("bytes")

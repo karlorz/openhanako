@@ -998,10 +998,12 @@ export function createPluginsRoute(engine: any) {
   }
 
   // ── Multi-source marketplace registry (Approach 1) ──
-  route.get("/plugins/marketplace/sources", (c) => {
+  route.get("/plugins/marketplace/sources", async (c) => {
     const { principal } = principalFlags(c);
     const forRemote = !isLocalOwnerPrincipal(principal);
     const svc = getMarketplaceService();
+    // Seed official snapshot before listing so local Settings is not empty/error on first open.
+    await svc.ensureOfficialSnapshotSeededAsync();
     return c.json({ sources: svc.listSources({ forRemote }) });
   });
 
@@ -1055,10 +1057,11 @@ export function createPluginsRoute(engine: any) {
     }
   });
 
-  route.get("/plugins/marketplace/catalog", (c) => {
+  route.get("/plugins/marketplace/catalog", async (c) => {
     const flags = principalFlags(c);
     const forRemote = !flags.isLocalOwner;
     const svc = getMarketplaceService();
+    await svc.ensureOfficialSnapshotSeededAsync();
     return c.json(svc.listCatalogRows({ forRemote }));
   });
 

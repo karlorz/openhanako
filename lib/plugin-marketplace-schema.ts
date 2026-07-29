@@ -14,6 +14,8 @@ const PLUGIN_ALLOWED = new Set([
   "id",
   "name",
   "publisher",
+  // OH-Plugins / community catalogs often use author instead of (or with) publisher
+  "author",
   "version",
   "description",
   "license",
@@ -33,6 +35,8 @@ const PLUGIN_ALLOWED = new Set([
   "readmeMarkdown",
   "readmePath",
   "readmeUrl",
+  // Optional package source hint used by some OH catalog entries (not distribution)
+  "source",
 ]);
 const VERSION_ALLOWED = new Set(["version", "compatibility", "distribution"]);
 const DISTRIBUTION_RELEASE_ALLOWED = new Set(["kind", "packageUrl", "sha256"]);
@@ -311,7 +315,10 @@ function parsePlugin(
 
   const id = assertPluginId(raw.id);
   const name = requireBoundedString(raw.name, "plugin.name") || id;
-  const publisher = requireBoundedString(raw.publisher, "plugin.publisher") || "unknown";
+  const authorName = extractAuthorName(raw.author);
+  const publisher = requireBoundedString(raw.publisher, "plugin.publisher")
+    || authorName
+    || "unknown";
   const description = optionalBoundedString(raw.description, "plugin.description", MAX_MARKETPLACE_DESCRIPTION_LENGTH) || "";
   const versionTop = optionalBoundedString(raw.version, "plugin.version");
   const distribution = raw.distribution === undefined
@@ -484,4 +491,17 @@ function assertAllowedKeys(obj: Record<string, unknown>, allowed: Set<string>, l
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+/** Accept string author or { name } object (OH-Plugins / Claude-adjacent catalogs). */
+function extractAuthorName(author: unknown): string | null {
+  if (typeof author === "string") {
+    const t = author.trim();
+    return t && t.length <= MAX_MARKETPLACE_STRING_LENGTH ? t : null;
+  }
+  if (isPlainObject(author) && typeof author.name === "string") {
+    const t = author.name.trim();
+    return t && t.length <= MAX_MARKETPLACE_STRING_LENGTH ? t : null;
+  }
+  return null;
 }
