@@ -2061,6 +2061,7 @@
       "marketSourceLoadFailed": "マーケットソースの読み込みに失敗しました",
       "marketSourceServerTooOld": "この Hana サーバーはまだマルチソース市場に対応していません。対応ビルドのローカル版を使うか、リモートをアップグレードしてください。",
       "marketSourceStudioOwnerRequired": "この接続でマーケットソースを追加・変更するにはスタジオ所有者権限が必要です。",
+      "marketInstallSkills": "スキルをインストール",
       "marketSourceRefreshAll": "ソース一覧を再読込",
       "marketSourceStatusOk": "OK",
       "marketSourceStatusStale": "古い",

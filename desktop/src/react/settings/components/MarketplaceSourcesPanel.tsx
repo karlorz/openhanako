@@ -99,8 +99,14 @@ export function MarketplaceSourcesPanel({
       setSources(list);
       onSourcesChanged?.(list);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
-      setSources([]);
+      const msg = err instanceof Error ? err.message : String(err);
+      // Soft: keep previous list on transient network abort/fetch failures
+      if (!/abort|Failed to fetch/i.test(msg)) {
+        setError(mapMarketplaceSourceError(msg));
+        setSources([]);
+      } else {
+        setError((prev) => prev || mapMarketplaceSourceError(msg));
+      }
     } finally {
       setLoading(false);
     }

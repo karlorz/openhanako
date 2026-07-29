@@ -2061,6 +2061,7 @@
       "marketSourceLoadFailed": "載入市場來源失敗",
       "marketSourceServerTooOld": "目前 Hana 伺服器尚不支援多來源市場。請使用含多市場功能的本機安裝，或升級遠端伺服器。",
       "marketSourceStudioOwnerRequired": "在此連線上新增或變更市場來源需要工作室所有者權限。",
+      "marketInstallSkills": "安裝技能",
       "marketSourceRefreshAll": "重新載入來源列表",
       "marketSourceStatusOk": "正常",
       "marketSourceStatusStale": "過期",
