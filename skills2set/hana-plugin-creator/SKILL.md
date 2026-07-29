@@ -182,6 +182,11 @@ python3 skills2set/hana-plugin-creator/scripts/create_hana_plugin.py "Jimeng Pro
 
 - Marketplace metadata lives in the `OH-Plugins` repository, not inside `project-hana`.
 - Official source plugins may live in `OH-Plugins/official-plugins/<plugin-id>/` with a matching `plugins/<plugin-id>.yaml`.
+- Hana supports multiple named marketplace sources; OH-Plugins remains the compiled official default. Custom sources are URL, local, or public HTTPS Git.
+- Catalog identity is `{marketplaceId, pluginId}` (optional `pluginId@marketplaceId`). Runtime still uses bare `pluginId` with **one active marketplace source per server**.
+- Data, configuration, sensitive configuration, backups, and trust are source-qualified. Switching sources does not copy state or secrets.
+- Release packages must include lowercase 64-hex `sha256`. Remote marketplaces are public credential-free HTTPS only in v1.
+- Optional health self-test: plugins may expose a cheap activation check for source-switch health; catalog refresh never executes plugin code.
 - Each marketplace entry needs one README source: `readme`, `readmePath`, or `readmeUrl`. Use `readmePath` only for local file marketplaces; use inline `readme` or HTTPS `readmeUrl` for URL marketplaces.
 - Prefer `versions[]` once a plugin has more than one release line. Each version item declares `version`, `compatibility.minAppVersion`, and its own `distribution`.
 - For a single release, root `version`, `compatibility`, and `distribution` remain valid; Hana normalizes them into a single version entry.

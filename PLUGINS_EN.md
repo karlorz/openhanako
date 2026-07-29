@@ -1092,9 +1092,16 @@ await this.ctx.bus.request("task:remove", { taskId: "my-task-123" });
 
 TaskRegistry persists task records and schedule metadata. On restart, active tasks are marked as 'recovering'; plugins must re-register handlers in onload() and resume or fail recovering tasks.
 
-### Official Plugin Marketplace
+### Official Plugin Marketplace (multi-source)
 
-The "Open plugin marketplace" button in Settings -> Plugins opens a full marketplace subpage that reads `/api/plugins/marketplace`. Hana follows the Obsidian-style official community catalog model: third-party authors submit plugins to `OH-Plugins`, while users browse, install, enable, and disable plugins without managing marketplace sources.
+The "Open plugin marketplace" button in Settings -> Plugins opens a marketplace subpage. Hana keeps **OH-Plugins** as the compiled always-on official catalog and also supports **named custom sources** (URL, local path, and public HTTPS Git).
+
+| Layer | Identity |
+|------|----------|
+| Catalog row | `{marketplaceId, pluginId}` (optional `pluginId@marketplaceId`) |
+| Retained artifact | `{marketplaceId, pluginId, artifactDigest}` |
+| Persistent state / trust | source-qualified (`plugin-data/<marketplaceId>/<pluginId>/`, trust grants per artifact) |
+| Runtime slot | bare `pluginId` — **one active source per plugin per server** |
 
 Default official catalog:
 
@@ -1102,7 +1109,18 @@ Default official catalog:
 https://raw.githubusercontent.com/liliMozi/OH-Plugins/main/marketplace.json
 ```
 
-Developer overrides remain available:
+Source management APIs:
+
+- `GET /api/plugins/marketplace/sources` — list official + custom + status (`ok` / `stale` / `error` / `refreshing`)
+- `POST /api/plugins/marketplace/sources` — add URL/local/Git after first validated snapshot (`studio.owner`; local also requires loopback local-owner)
+- `POST /api/plugins/marketplace/sources/:id/refresh` — refresh into last-known-good snapshot store
+- `DELETE /api/plugins/marketplace/sources/:id` — blocked while active/retained artifacts reference the source
+- `GET /api/plugins/marketplace/catalog` — composite rows with source badges and active/retained state
+- `POST /api/plugins/:pluginId/source-switch` — transactional switch to another retained marketplace source
+
+Fresh bare install uses **official-wins**; multiple non-official matches require an explicit marketplace pin. Switching never copies state, secrets, or trust across sources. Remote sources are **public credential-free HTTPS only** in v1.
+
+Legacy env overrides remain available as a **read-only legacy overlay** (not official authority):
 
 - `HANA_PLUGIN_MARKETPLACE_FILE=/path/to/marketplace.json`
 - `HANA_PLUGIN_MARKETPLACE_URL=https://.../marketplace.json`
@@ -1149,7 +1167,7 @@ The marketplace UI shows the plugin list and README in a wider settings subpage.
 
 Marketplace version management uses `versions[]` as the long-term contract: each item declares `version`, that version's `compatibility.minAppVersion`, and its own `distribution`. If `versions[]` is absent, Hana treats the root-level `version` / `compatibility` / `distribution` as a single version entry. The client chooses the highest SemVer version compatible with the current app, while exposing `latestVersion`, `selectedVersion`, `installedVersion`, `updateAvailable`, `downgrade`, `reinstall`, `compatible`, `installAction`, and `canInstall` for UI state.
 
-If the installed version is newer than the highest compatible marketplace version, the action is marked as `downgrade` and install requires explicit `allowDowngrade: true`. Drag-and-drop / local path installs also reject implicit downgrades. Updates back up the previous plugin directory under `${HANA_HOME}/plugin-backups/<pluginId>/`; if the new version fails to load, Hana restores and reloads the old directory. Successful installs are recorded in `${HANA_HOME}/plugin-installs.json` with source, version, release URL, and sha256 so later marketplace state is explicit.
+If the installed version is newer than the highest compatible marketplace version, the action is marked as `downgrade` and install requires explicit `allowDowngrade: true`. Drag-and-drop / local path installs also reject implicit downgrades. Updates back up under `${HANA_HOME}/plugin-backups/<marketplaceId>/<pluginId>/` when marketplace-qualified (legacy bare `${HANA_HOME}/plugin-backups/<pluginId>/` still works). Successful installs are recorded in `${HANA_HOME}/plugin-installs.json` (v2: active pointer + retained map + switch journal/history). Immutable retained packages live under `${HANA_HOME}/plugin-artifacts/<marketplaceId>/<pluginId>/<digest>/`.
 
 ## Forward Compatibility
 

@@ -28,12 +28,29 @@ interface MarketplacePlugin {
   compatible?: boolean;
   canInstall?: boolean;
   installAction?: 'install' | 'update' | 'downgrade' | 'reinstall' | 'incompatible';
+  /** Multi-source composite fields (Approach 1). */
+  marketplaceId?: string;
+  compositeKey?: string;
+  sourceAuthority?: 'official' | 'custom' | 'legacy';
+  sourceStatus?: string;
+  active?: boolean;
+  retained?: boolean;
+}
+
+interface MarketplaceSourceRow {
+  id: string;
+  name?: string;
+  kind?: string;
+  authority?: string;
+  status?: string;
+  mutable?: boolean;
 }
 
 interface MarketplaceResponse {
   source?: { kind?: string; configured?: boolean; path?: string; url?: string };
   plugins: MarketplacePlugin[];
   warnings?: string[];
+  sources?: MarketplaceSourceRow[];
 }
 
 function marketVersion(plugin: MarketplacePlugin): string {
@@ -63,6 +80,10 @@ function marketVersionStatus(plugin: MarketplacePlugin): string | null {
   return null;
 }
 
+function rowKey(plugin: MarketplacePlugin): string {
+  return plugin.compositeKey || (plugin.marketplaceId ? `${plugin.id}@${plugin.marketplaceId}` : plugin.id);
+}
+
 export function PluginMarketplaceTab() {
   const showToast = useSettingsStore(s => s.showToast);
   const set = useSettingsStore(s => s.set);
@@ -72,13 +93,17 @@ export function PluginMarketplaceTab() {
   const [readme, setReadme] = useState('');
   const [readmeLoading, setReadmeLoading] = useState(false);
   const [installingPluginId, setInstallingPluginId] = useState<string | null>(null);
+  const [switchingKey, setSwitchingKey] = useState<string | null>(null);
 
   const loadReadme = useCallback(async (plugin: MarketplacePlugin) => {
     setSelectedPlugin(plugin);
     setReadme('');
     setReadmeLoading(true);
     try {
-      const res = await hanaFetch(`/api/plugins/marketplace/${encodeURIComponent(plugin.id)}/readme`);
+      const qs = plugin.marketplaceId
+        ? `?marketplaceId=${encodeURIComponent(plugin.marketplaceId)}`
+        : '';
+      const res = await hanaFetch(`/api/plugins/marketplace/${encodeURIComponent(plugin.id)}/readme${qs}`);
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       setReadme(data.markdown || '');
@@ -92,12 +117,54 @@ export function PluginMarketplaceTab() {
   const loadMarketplace = useCallback(async () => {
     setMarketplaceLoading(true);
     try {
-      const res = await hanaFetch('/api/plugins/marketplace');
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
+      // Prefer multi-source catalog when available; fall back to legacy single marketplace list.
+      let data: any = null;
+      let sources: MarketplaceSourceRow[] = [];
+      try {
+        const [catalogRes, sourcesRes] = await Promise.all([
+          hanaFetch('/api/plugins/marketplace/catalog'),
+          hanaFetch('/api/plugins/marketplace/sources'),
+        ]);
+        if (catalogRes.ok) {
+          data = await catalogRes.json();
+          if (Array.isArray(data.plugins)) {
+            data.plugins = data.plugins.map((row: any) => ({
+              id: row.pluginId || row.id,
+              name: row.name,
+              version: row.version,
+              description: row.description,
+              publisher: row.publisher,
+              trust: row.trust,
+              distribution: row.distribution,
+              marketplaceId: row.marketplaceId,
+              compositeKey: row.compositeKey || `${row.pluginId || row.id}@${row.marketplaceId}`,
+              sourceAuthority: row.sourceAuthority,
+              sourceStatus: row.sourceStatus,
+              active: row.active,
+              retained: row.retained,
+              installed: !!row.active,
+              canInstall: !row.active,
+              installAction: row.active ? 'reinstall' : 'install',
+              compatible: true,
+            }));
+          }
+        }
+        if (sourcesRes.ok) {
+          const srcData = await sourcesRes.json();
+          sources = Array.isArray(srcData.sources) ? srcData.sources : [];
+        }
+      } catch {
+        data = null;
+      }
+      if (!data || data.error || !Array.isArray(data.plugins)) {
+        const res = await hanaFetch('/api/plugins/marketplace');
+        data = await res.json();
+        if (data.error) throw new Error(data.error);
+      }
       const plugins = Array.isArray(data.plugins) ? data.plugins : [];
       const next = {
         source: data.source || {},
+        sources: sources.length ? sources : data.sources || [],
         plugins,
         warnings: Array.isArray(data.warnings) ? data.warnings : [],
       };
@@ -128,7 +195,7 @@ export function PluginMarketplaceTab() {
       : false;
     if (plugin.installAction === 'downgrade' && !allowDowngrade) return;
 
-    setInstallingPluginId(plugin.id);
+    setInstallingPluginId(rowKey(plugin));
     try {
       const res = await hanaFetch(`/api/plugins/marketplace/${encodeURIComponent(plugin.id)}/install`, {
         method: 'POST',
@@ -136,6 +203,7 @@ export function PluginMarketplaceTab() {
         body: JSON.stringify({
           version: plugin.selectedVersion || undefined,
           allowDowngrade,
+          marketplaceId: plugin.marketplaceId || undefined,
         }),
       });
       const data = await res.json();
@@ -200,6 +268,21 @@ export function PluginMarketplaceTab() {
           </p>
         ) : (
           <>
+            {marketplace.sources && marketplace.sources.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+                {marketplace.sources.map((src) => (
+                  <span
+                    key={src.id}
+                    className={styles['skills-source-badge']}
+                    title={`${src.id} · ${src.status || 'unknown'}`}
+                    style={{ marginRight: 0 }}
+                  >
+                    {(src.authority || src.kind || 'source') + ': ' + (src.name || src.id)}
+                    {src.status ? ` (${src.status})` : ''}
+                  </span>
+                ))}
+              </div>
+            )}
             {marketplace.warnings && marketplace.warnings.length > 0 && (
               <p className={`${styles['settings-muted-note']} ${styles['skills-empty']}`} style={{ color: 'var(--danger, #c55)' }}>
                 {marketplace.warnings[0]}
@@ -214,18 +297,28 @@ export function PluginMarketplaceTab() {
                 <div className={styles['skills-list-block']}>
                   {marketplace.plugins.map(plugin => (
                     <div
-                      key={plugin.id}
+                      key={rowKey(plugin)}
                       className={styles['skills-list-item']}
                       onClick={() => loadReadme(plugin)}
-                      style={selectedPlugin?.id === plugin.id ? { background: 'var(--bg-hover)' } : undefined}
+                      style={selectedPlugin && rowKey(selectedPlugin) === rowKey(plugin) ? { background: 'var(--bg-hover)' } : undefined}
                     >
                       <div className={styles['skills-list-info']}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                           <span className={styles['skills-list-name']}>{plugin.name}</span>
                           <span className={styles['skills-list-name-hint']}>v{marketVersion(plugin)}</span>
-                          {plugin.installed && (
+                          {plugin.marketplaceId && (
+                            <span className={styles['skills-source-badge']} style={{ marginRight: 0 }}>
+                              {plugin.sourceAuthority || plugin.marketplaceId}
+                            </span>
+                          )}
+                          {(plugin.installed || plugin.active) && (
                             <span className={styles['skills-source-badge']} style={{ marginRight: 0 }}>
                               {t('settings.plugins.marketInstalled')}
+                            </span>
+                          )}
+                          {plugin.retained && !plugin.active && (
+                            <span className={styles['skills-source-badge']} style={{ marginRight: 0 }}>
+                              retained
                             </span>
                           )}
                           {plugin.updateAvailable && (
@@ -237,6 +330,7 @@ export function PluginMarketplaceTab() {
                         {plugin.description && <span className={styles['skills-list-desc']}>{plugin.description}</span>}
                         <span className={styles['skills-list-desc']}>
                           {(plugin.publisher || 'unknown') + ' · ' + (plugin.trust || 'restricted')}
+                          {plugin.marketplaceId ? ` · ${plugin.marketplaceId}` : ''}
                         </span>
                       </div>
                     </div>
@@ -253,6 +347,7 @@ export function PluginMarketplaceTab() {
                               <div className={styles['skills-list-name']}>{selectedPlugin.name}</div>
                               <div className={styles['skills-list-desc']}>
                                 {(selectedPlugin.publisher || 'unknown') + ' · v' + marketVersion(selectedPlugin)}
+                                {selectedPlugin.marketplaceId ? ` · ${selectedPlugin.marketplaceId}` : ''}
                               </div>
                               {marketVersionStatus(selectedPlugin) && (
                                 <div className={styles['skills-list-desc']}>
@@ -260,16 +355,48 @@ export function PluginMarketplaceTab() {
                                 </div>
                               )}
                             </div>
-                            <button
-                              className={styles['settings-save-btn-sm']}
-                              disabled={!selectedPlugin.canInstall || installingPluginId === selectedPlugin.id}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                installPlugin(selectedPlugin);
-                              }}
-                            >
-                              {marketInstallLabel(selectedPlugin)}
-                            </button>
+                            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                              <button
+                                className={styles['settings-save-btn-sm']}
+                                disabled={!selectedPlugin.canInstall || installingPluginId === rowKey(selectedPlugin)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  installPlugin(selectedPlugin);
+                                }}
+                              >
+                                {marketInstallLabel(selectedPlugin)}
+                              </button>
+                              {selectedPlugin.marketplaceId && selectedPlugin.retained && !selectedPlugin.active && (
+                                <button
+                                  className={styles['settings-save-btn-sm']}
+                                  disabled={switchingKey === rowKey(selectedPlugin)}
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    if (!window.confirm(
+                                      `Switch active source to ${selectedPlugin.marketplaceId}? State and trust stay source-isolated; rollback is automatic on failure.`,
+                                    )) return;
+                                    setSwitchingKey(rowKey(selectedPlugin));
+                                    try {
+                                      const res = await hanaFetch(`/api/plugins/${encodeURIComponent(selectedPlugin.id)}/source-switch`, {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ marketplaceId: selectedPlugin.marketplaceId }),
+                                      });
+                                      const data = await res.json();
+                                      if (!data.ok) throw new Error(data.error?.message || data.error || 'switch failed');
+                                      showToast('Source switched', 'success');
+                                      await loadMarketplace();
+                                    } catch (err: unknown) {
+                                      showToast(err instanceof Error ? err.message : String(err), 'error');
+                                    } finally {
+                                      setSwitchingKey(null);
+                                    }
+                                  }}
+                                >
+                                  Switch source
+                                </button>
+                              )}
+                            </div>
                           </div>
                           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                             {(selectedPlugin.contributions || []).map(item => (
