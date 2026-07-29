@@ -346,7 +346,7 @@ export class PluginMarketplaceSourceRegistry {
       return {
         sources: this._composeEffective([]),
         degraded: true,
-        error: loaded.error,
+        error: ("error" in loaded ? loaded.error : null) || "malformed registry",
       };
     }
     return {
@@ -369,7 +369,7 @@ export class PluginMarketplaceSourceRegistry {
       const descriptor = validateDescriptor(rawDescriptor);
       const loaded = this._loadDurable();
       if (!loaded.ok) {
-        throw new Error(`Invalid registry (degraded): ${loaded.error}`);
+        throw new Error(`Invalid registry (degraded): ${"error" in loaded ? loaded.error : "malformed registry"}`);
       }
       this._assertExpectedRevision(loaded.file.revision, options.expectedRevision);
       if (loaded.file.sources.some((s) => s.id === descriptor.id)) {
@@ -400,7 +400,7 @@ export class PluginMarketplaceSourceRegistry {
       }
       const loaded = this._loadDurable();
       if (!loaded.ok) {
-        throw new Error(`Invalid registry (degraded): ${loaded.error}`);
+        throw new Error(`Invalid registry (degraded): ${"error" in loaded ? loaded.error : "malformed registry"}`);
       }
       this._assertExpectedRevision(loaded.file.revision, options.expectedRevision);
       const index = loaded.file.sources.findIndex((s) => s.id === id);

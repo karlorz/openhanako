@@ -118,7 +118,7 @@ describe("resolveMarketplacePlugin", () => {
       sources,
     });
     expect(result.ok).toBe(false);
-    if (!result.ok) {
+    if (result.ok === false) {
       expect(result.code).toBe("AMBIGUOUS");
       expect(result.candidates).toEqual([
         { marketplaceId: "other-plugins", pluginId: "demo" },
@@ -191,7 +191,7 @@ describe("resolveMarketplacePlugin", () => {
       operation: "update",
     });
     expect(bareLifecycle).toMatchObject({ ok: false, code: "NOT_FOUND" });
-    if (!bareLifecycle.ok) {
+    if (bareLifecycle.ok === false) {
       expect(bareLifecycle.message).toMatch(/provenance|marketplaceId/i);
     }
   });

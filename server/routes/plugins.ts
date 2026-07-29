@@ -39,6 +39,10 @@ import {
   isLocalOwnerPrincipal,
 } from "../http/route-security.ts";
 import { isSecureHttpRequest } from "../http/transport-context.ts";
+import { PluginMarketplaceService } from "../../lib/plugin-marketplace-service.ts";
+import { PluginSourceSwitchCoordinator } from "../../lib/plugin-source-switch.ts";
+import { PluginInstallRecords } from "../../lib/plugin-install-records.ts";
+import { PluginArtifactStore } from "../../lib/plugin-artifact-store.ts";
 
 const log = createModuleLogger("plugin-install");
 
@@ -971,6 +975,129 @@ export function createPluginsRoute(engine: any) {
       fetchImpl: engine.fetch,
     } as any);
   }
+
+  function getMarketplaceService() {
+    if (engine.pluginMarketplaceService) return engine.pluginMarketplaceService as PluginMarketplaceService;
+    return new PluginMarketplaceService({
+      hanakoHome: engine.hanakoHome,
+      fetchOptions: engine.fetch ? { fetchImpl: engine.fetch } : undefined,
+    });
+  }
+
+  function principalFlags(c: any) {
+    const principal = c.get?.("requestPrincipal") || c.env?.requestPrincipal || null;
+    const isLocalOwner = isLocalOwnerPrincipal(principal);
+    // studio.owner is treated as local-owner loopback principal for v1 mutations,
+    // matching existing desktop management routes.
+    const isStudioOwner = isLocalOwner || principal?.scopes?.includes?.("studio.owner") === true
+      || principal?.role === "owner";
+    return { isLocalOwner, isStudioOwner, principal };
+  }
+
+  // ── Multi-source marketplace registry (Approach 1) ──
+  route.get("/plugins/marketplace/sources", (c) => {
+    const { principal } = principalFlags(c);
+    const forRemote = !isLocalOwnerPrincipal(principal);
+    const svc = getMarketplaceService();
+    return c.json({ sources: svc.listSources({ forRemote }) });
+  });
+
+  route.post("/plugins/marketplace/sources", async (c) => {
+    const flags = principalFlags(c);
+    const body = await c.req.json().catch(() => ({}));
+    try {
+      const svc = getMarketplaceService();
+      const result = await svc.addSource(body, {
+        isStudioOwner: flags.isStudioOwner,
+        isLocalOwner: flags.isLocalOwner,
+      });
+      return c.json(result, 201);
+    } catch (err: any) {
+      return c.json({
+        error: err.message,
+        code: err.code || "PLUGIN_MARKETPLACE_SOURCE_INVALID",
+      }, err.status || 400);
+    }
+  });
+
+  route.delete("/plugins/marketplace/sources/:marketplaceId", (c) => {
+    const flags = principalFlags(c);
+    try {
+      const svc = getMarketplaceService();
+      const result = svc.removeSource(c.req.param("marketplaceId"), {
+        isStudioOwner: flags.isStudioOwner,
+      });
+      return c.json(result);
+    } catch (err: any) {
+      return c.json({
+        error: err.message,
+        code: err.code || "PLUGIN_MARKETPLACE_SOURCE_INVALID",
+      }, err.status || 400);
+    }
+  });
+
+  route.post("/plugins/marketplace/sources/:marketplaceId/refresh", async (c) => {
+    const flags = principalFlags(c);
+    try {
+      const svc = getMarketplaceService();
+      const status = await svc.refreshSource(c.req.param("marketplaceId"), {
+        isStudioOwner: flags.isStudioOwner,
+      });
+      return c.json({ marketplaceId: c.req.param("marketplaceId"), status });
+    } catch (err: any) {
+      return c.json({
+        error: err.message,
+        code: err.code || "PLUGIN_MARKETPLACE_SOURCE_INVALID",
+      }, err.status || 400);
+    }
+  });
+
+  route.get("/plugins/marketplace/catalog", (c) => {
+    const flags = principalFlags(c);
+    const forRemote = !flags.isLocalOwner;
+    const svc = getMarketplaceService();
+    return c.json(svc.listCatalogRows({ forRemote }));
+  });
+
+  route.post("/plugins/:pluginId/source-switch", async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    const pluginId = c.req.param("pluginId");
+    try {
+      const records = new PluginInstallRecords({ hanakoHome: engine.hanakoHome });
+      const artifacts = new PluginArtifactStore({ hanakoHome: engine.hanakoHome });
+      const pluginsDir = path.join(engine.hanakoHome, "plugins");
+      const coordinator = new PluginSourceSwitchCoordinator({
+        records,
+        artifacts,
+        pluginsDir,
+        runtime: {
+          async unloadActive(id) {
+            await engine.pluginManager?.disablePlugin?.(id)?.catch?.(() => {});
+          },
+          async activateCandidate(input) {
+            // Re-scan/load after active projection swap when plugin manager is present.
+            await engine.pluginManager?.installPlugin?.(input.artifactPath)?.catch?.(() => {});
+            await engine.pluginManager?.enablePlugin?.(input.pluginId)?.catch?.(() => {});
+          },
+          async healthCheck() {
+            return true;
+          },
+        },
+      });
+      const result = await coordinator.switchSource({
+        pluginId,
+        marketplaceId: body.marketplaceId,
+        artifactDigest: body.artifactDigest,
+        version: body.version,
+      });
+      return c.json(result, result.ok ? 200 : 409);
+    } catch (err: any) {
+      return c.json({
+        error: err.message,
+        code: err.code || "PLUGIN_SOURCE_SWITCH_HEALTH_FAILED",
+      }, err.status || 500);
+    }
+  });
 
   route.get("/plugins/marketplace", async (c) => {
     const pm = engine.pluginManager;

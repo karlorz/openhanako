@@ -319,7 +319,7 @@ export class PluginInstallRecords {
 
   isSourceInUse(marketplaceId: string): boolean {
     const file = this._read();
-    for (const record of Object.values(file.plugins)) {
+    for (const record of Object.values(file.plugins) as any[]) {
       if (!record) continue;
       if (record.activeMarketplaceId === marketplaceId) return true;
       if (record.retained?.[marketplaceId] && Object.keys(record.retained[marketplaceId]).length) {
@@ -344,7 +344,7 @@ export class PluginInstallRecords {
       let changed = false;
       const migrated: string[] = [];
       const legacyUnqualified: string[] = [];
-      for (const [id, raw] of Object.entries(file.plugins)) {
+      for (const [id, raw] of Object.entries(file.plugins) as [string, any][]) {
         if (raw?.schemaVersion === 2) continue;
         const v2 = this._v1ToV2View(raw);
         file.plugins[id] = v2;
