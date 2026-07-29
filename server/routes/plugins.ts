@@ -1170,6 +1170,14 @@ export function createPluginsRoute(engine: any) {
                 markdown,
               });
             }
+            // Claude / multi-source rows often have description only — soft empty, not 404.
+            if (row) {
+              return c.json({
+                pluginId,
+                marketplaceId: resolved.row.marketplaceId,
+                markdown: row.description || "",
+              });
+            }
           } else if (marketplaceId && resolved.ok === false) {
             return c.json({
               error: resolved.message || "not found",
