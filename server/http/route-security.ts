@@ -544,6 +544,8 @@ function isPluginSettingsReadRoute(verb, routePath) {
     || routePath === "/api/plugins/event-bus/capabilities"
     || routePath === "/api/plugins/diagnostics"
     || routePath === "/api/plugins/marketplace"
+    || routePath === "/api/plugins/marketplace/sources"
+    || routePath === "/api/plugins/marketplace/catalog"
     || /^\/api\/plugins\/marketplace\/[^/]+\/readme$/.test(routePath)
     || /^\/api\/plugins\/[^/]+\/config-schema$/.test(routePath)
     || /^\/api\/plugins\/[^/]+\/config$/.test(routePath);
@@ -555,8 +557,16 @@ function isPluginSettingsWriteRoute(verb, routePath) {
     || /^\/api\/plugins\/[^/]+\/config$/.test(routePath)
     || /^\/api\/plugins\/[^/]+\/enabled$/.test(routePath)
   ))
-    || (verb === "POST" && /^\/api\/plugins\/marketplace\/[^/]+\/install$/.test(routePath))
-    || (verb === "DELETE" && /^\/api\/plugins\/[^/]+$/.test(routePath));
+    || (verb === "POST" && (
+      routePath === "/api/plugins/marketplace/sources"
+      || /^\/api\/plugins\/marketplace\/[^/]+\/install$/.test(routePath)
+      || /^\/api\/plugins\/marketplace\/sources\/[^/]+\/refresh$/.test(routePath)
+      || /^\/api\/plugins\/[^/]+\/source-switch$/.test(routePath)
+    ))
+    || (verb === "DELETE" && (
+      /^\/api\/plugins\/marketplace\/sources\/[^/]+$/.test(routePath)
+      || /^\/api\/plugins\/[^/]+$/.test(routePath)
+    ));
 }
 
 function isPluginUiReadRoute(verb, routePath) {
