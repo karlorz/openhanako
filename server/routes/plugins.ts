@@ -37,6 +37,7 @@ import {
 import {
   PLUGIN_HOST_ROUTE_PLUGIN_IDS,
   isLocalOwnerPrincipal,
+  isStudioOwnerPrincipal,
 } from "../http/route-security.ts";
 import { isSecureHttpRequest } from "../http/transport-context.ts";
 import { PluginMarketplaceService } from "../../lib/plugin-marketplace-service.ts";
@@ -988,11 +989,17 @@ export function createPluginsRoute(engine: any) {
   }
 
   function principalFlags(c: any) {
-    const principal = c.get?.("requestPrincipal") || c.env?.requestPrincipal || null;
+    // HTTP auth middleware sets authPrincipal (not requestPrincipal). Local desktop
+    // loopback tokens are kind=local_user + credentialKind=loopback_token.
+    const principal = readAuthPrincipal(c)
+      || c.get?.("requestPrincipal")
+      || c.env?.requestPrincipal
+      || null;
     const isLocalOwner = isLocalOwnerPrincipal(principal);
-    // studio.owner is treated as local-owner loopback principal for v1 mutations,
-    // matching existing desktop management routes.
-    const isStudioOwner = isLocalOwner || principal?.scopes?.includes?.("studio.owner") === true
+    // Local owner counts as studio.owner for marketplace mutations (desktop Settings).
+    const isStudioOwner = isStudioOwnerPrincipal(principal)
+      || isLocalOwner
+      || principal?.scopes?.includes?.("studio.owner") === true
       || principal?.role === "owner";
     return { isLocalOwner, isStudioOwner, principal };
   }
