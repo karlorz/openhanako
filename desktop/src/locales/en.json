@@ -2278,6 +2278,7 @@
       "marketSourceLoadFailed": "Failed to load marketplace sources",
       "marketSourceServerTooOld": "This Hana server does not support multi-source marketplaces yet. Use a local install built with multi-marketplace, or upgrade the remote server.",
       "marketSourceStudioOwnerRequired": "Studio owner access is required to add or change marketplace sources on this connection.",
+      "marketInstallSkills": "Install skills",
       "marketSourceRemove": "Remove",
       "marketSourceRefresh": "Refresh",
       "marketSourceRefreshAll": "Reload source list",

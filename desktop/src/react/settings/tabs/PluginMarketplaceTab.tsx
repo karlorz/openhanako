@@ -54,6 +54,9 @@ function marketInstallLabel(plugin: MarketplacePlugin): string {
   if (plugin.installAction === 'downgrade') return t('settings.plugins.marketDowngrade');
   if (plugin.installAction === 'reinstall') return t('settings.plugins.marketReinstall');
   if (plugin.installAction === 'update' || plugin.updateAvailable) return t('settings.plugins.marketUpdate');
+  if ((plugin as any).installTarget === 'skills' || (plugin as any).catalogFormat === 'claude') {
+    return t('settings.plugins.marketInstallSkills') || 'Install skills';
+  }
   return t('settings.plugins.marketInstall');
 }
 
@@ -76,6 +79,40 @@ function rowKey(plugin: MarketplacePlugin): string {
   return plugin.compositeKey || (plugin.marketplaceId ? `${plugin.id}@${plugin.marketplaceId}` : plugin.id);
 }
 
+function mapCatalogRow(row: any): MarketplacePlugin {
+  const id = row.pluginId || row.id;
+  const marketplaceId = row.marketplaceId;
+  const active = !!row.active;
+  const installMeta = row.install && typeof row.install === 'object' ? row.install : {};
+  const catalogFormat = row.catalogFormat || installMeta.catalogFormat || null;
+  // Prefer server canInstall; Claude skills-lane uses install.canInstall; Hana plugins use active/release.
+  const serverCanInstall = row.canInstall === true
+    || installMeta.canInstall === true
+    || (catalogFormat !== 'claude' && !active && row.distribution?.kind === 'release');
+  return {
+    id,
+    name: row.name,
+    version: row.version,
+    description: row.description,
+    publisher: row.publisher,
+    trust: row.trust,
+    distribution: row.distribution,
+    marketplaceId,
+    compositeKey: row.compositeKey || (marketplaceId ? `${id}@${marketplaceId}` : id),
+    sourceAuthority: row.sourceAuthority,
+    sourceStatus: row.sourceStatus,
+    active,
+    retained: row.retained,
+    installed: active,
+    canInstall: serverCanInstall && !active,
+    installAction: active ? 'reinstall' : 'install',
+    compatible: true,
+    // surface for install button copy
+    ...(catalogFormat ? { catalogFormat } as any : {}),
+    ...(installMeta.installTarget ? { installTarget: installMeta.installTarget } as any : {}),
+  };
+}
+
 export function PluginMarketplaceTab() {
   const showToast = useSettingsStore(s => s.showToast);
   const set = useSettingsStore(s => s.set);
@@ -86,8 +123,11 @@ export function PluginMarketplaceTab() {
   const [readmeLoading, setReadmeLoading] = useState(false);
   const [installingPluginId, setInstallingPluginId] = useState<string | null>(null);
   const [switchingKey, setSwitchingKey] = useState<string | null>(null);
+  const loadGenRef = React.useRef(0);
+  const readmeGenRef = React.useRef(0);
 
   const loadReadme = useCallback(async (plugin: MarketplacePlugin) => {
+    const gen = ++readmeGenRef.current;
     setSelectedPlugin(plugin);
     setReadme('');
     setReadmeLoading(true);
@@ -95,87 +135,117 @@ export function PluginMarketplaceTab() {
       const qs = plugin.marketplaceId
         ? `?marketplaceId=${encodeURIComponent(plugin.marketplaceId)}`
         : '';
-      const res = await hanaFetch(`/api/plugins/marketplace/${encodeURIComponent(plugin.id)}/readme${qs}`);
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      setReadme(data.markdown || '');
-    } catch (err: unknown) {
-      showToast(t('settings.plugins.marketReadmeLoadError') + ': ' + (err instanceof Error ? err.message : String(err)), 'error');
-    } finally {
-      setReadmeLoading(false);
-    }
-  }, [showToast]);
-
-  const loadMarketplace = useCallback(async () => {
-    setMarketplaceLoading(true);
-    try {
-      // Prefer multi-source catalog when available; fall back to legacy single marketplace list.
-      let data: any = null;
-      let sources: MarketplaceSourceRow[] = [];
+      // Soft-fail: many Claude rows have no README; do not fail the whole tab.
+      let res: Response;
       try {
-        const [catalogRes, sourcesRes] = await Promise.all([
-          hanaFetch('/api/plugins/marketplace/catalog'),
-          hanaFetch('/api/plugins/marketplace/sources'),
-        ]);
-        if (catalogRes.ok) {
-          data = await catalogRes.json();
-          if (Array.isArray(data.plugins)) {
-            data.plugins = data.plugins.map((row: any) => ({
-              id: row.pluginId || row.id,
-              name: row.name,
-              version: row.version,
-              description: row.description,
-              publisher: row.publisher,
-              trust: row.trust,
-              distribution: row.distribution,
-              marketplaceId: row.marketplaceId,
-              compositeKey: row.compositeKey || `${row.pluginId || row.id}@${row.marketplaceId}`,
-              sourceAuthority: row.sourceAuthority,
-              sourceStatus: row.sourceStatus,
-              active: row.active,
-              retained: row.retained,
-              installed: !!row.active,
-              canInstall: !row.active,
-              installAction: row.active ? 'reinstall' : 'install',
-              compatible: true,
-            }));
-          }
-        }
-        if (sourcesRes.ok) {
-          const srcData = await sourcesRes.json();
-          sources = Array.isArray(srcData.sources) ? srcData.sources : [];
-        }
+        res = await hanaFetch(`/api/plugins/marketplace/${encodeURIComponent(plugin.id)}/readme${qs}`, {
+          timeout: 15_000,
+        });
       } catch {
-        data = null;
+        if (gen !== readmeGenRef.current) return;
+        setReadme(plugin.description || '');
+        return;
       }
-      if (!data || data.error || !Array.isArray(data.plugins)) {
-        const res = await hanaFetch('/api/plugins/marketplace');
-        data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (gen !== readmeGenRef.current) return;
+      if (data.error || !data.markdown) {
+        setReadme(plugin.description || '');
+        return;
+      }
+      setReadme(data.markdown || '');
+    } catch {
+      if (gen !== readmeGenRef.current) return;
+      setReadme(plugin.description || '');
+    } finally {
+      if (gen === readmeGenRef.current) setReadmeLoading(false);
+    }
+  }, []);
+
+  const loadMarketplace = useCallback(async (opts: { silent?: boolean } = {}) => {
+    const gen = ++loadGenRef.current;
+    if (!opts.silent) setMarketplaceLoading(true);
+    try {
+      // Fetch independently so one slow/failing call does not wipe the other.
+      let plugins: MarketplacePlugin[] = [];
+      let sources: MarketplaceSourceRow[] = [];
+      let source: MarketplaceResponse['source'] = {};
+      let warnings: string[] = [];
+      let multiOk = false;
+
+      try {
+        const catalogRes = await hanaFetch('/api/plugins/marketplace/catalog', { timeout: 45_000 });
+        const data = await catalogRes.json();
+        if (Array.isArray(data.plugins)) {
+          plugins = data.plugins.map(mapCatalogRow);
+          multiOk = true;
+        }
+        if (Array.isArray(data.sources)) {
+          sources = data.sources;
+        }
+        if (Array.isArray(data.warnings)) warnings = data.warnings;
+      } catch {
+        // fall through to legacy
+      }
+
+      if (!sources.length) {
+        try {
+          const sourcesRes = await hanaFetch('/api/plugins/marketplace/sources', { timeout: 45_000 });
+          const srcData = await sourcesRes.json();
+          if (Array.isArray(srcData.sources)) sources = srcData.sources;
+        } catch {
+          // keep empty; multi catalog may still have plugins
+        }
+      }
+
+      if (!multiOk) {
+        const res = await hanaFetch('/api/plugins/marketplace', { timeout: 45_000 });
+        const data = await res.json();
         if (data.error) throw new Error(data.error);
+        plugins = Array.isArray(data.plugins) ? data.plugins : [];
+        source = data.source || {};
+        if (Array.isArray(data.warnings)) warnings = data.warnings;
+      } else if (sources.length) {
+        source = { kind: 'multi', configured: true };
       }
-      const plugins = Array.isArray(data.plugins) ? data.plugins : [];
+
+      if (gen !== loadGenRef.current) return;
+
       const next = {
-        source: data.source || {},
-        sources: sources.length ? sources : data.sources || [],
+        source: source || {},
+        sources,
         plugins,
-        warnings: Array.isArray(data.warnings) ? data.warnings : [],
+        warnings,
       };
       setMarketplace(next);
+
+      // Select first plugin without blocking list load on README network.
       if (plugins.length > 0) {
-        await loadReadme(plugins[0]);
+        setSelectedPlugin((prev) => {
+          const keep = prev && plugins.some((p) => rowKey(p) === rowKey(prev));
+          const pick = keep ? prev! : plugins[0];
+          void loadReadme(pick);
+          return pick;
+        });
       } else {
         setSelectedPlugin(null);
         setReadme('');
       }
     } catch (err: unknown) {
-      showToast(t('settings.plugins.marketLoadError') + ': ' + (err instanceof Error ? err.message : String(err)), 'error');
+      if (gen !== loadGenRef.current) return;
+      // Keep prior plugins if we already showed some — avoid flash-to-empty on flaky fetch.
+      setMarketplace((prev) => prev || { source: {}, plugins: [], sources: [], warnings: [] });
+      const msg = err instanceof Error ? err.message : String(err);
+      // Soft: do not toast transient network abort/fetch noise if list may still be usable
+      if (!/abort|The user aborted|Failed to fetch/i.test(msg)) {
+        showToast(t('settings.plugins.marketLoadError') + ': ' + msg, 'error');
+      }
     } finally {
-      setMarketplaceLoading(false);
+      if (gen === loadGenRef.current) setMarketplaceLoading(false);
     }
   }, [loadReadme, showToast]);
 
   useEffect(() => {
-    loadMarketplace();
+    void loadMarketplace();
   }, [loadMarketplace]);
 
   const installPlugin = async (plugin: MarketplacePlugin) => {
@@ -209,8 +279,10 @@ export function PluginMarketplaceTab() {
     }
   };
 
-  const statusText = marketplace?.source?.configured
-    ? t('settings.plugins.marketplaceCount', { count: String(marketplace.plugins.length) })
+  const sourceCount = marketplace?.sources?.length || 0;
+  const pluginCount = marketplace?.plugins?.length || 0;
+  const statusText = pluginCount > 0 || sourceCount > 0 || marketplace?.source?.configured
+    ? t('settings.plugins.marketplaceCount', { count: String(pluginCount) })
     : t('settings.plugins.marketplaceNoSource');
 
   return (
@@ -255,7 +327,12 @@ export function PluginMarketplaceTab() {
 
       <SettingsSection surface="plain">
         <div style={{ marginBottom: 14 }}>
-          <MarketplaceSourcesPanel onSourcesChanged={() => { void loadMarketplace(); }} />
+          <MarketplaceSourcesPanel
+            // Debounce parent reloads: sources panel already lists sources; only refresh catalog after mutations.
+            onSourcesChanged={() => {
+              window.setTimeout(() => { void loadMarketplace({ silent: true }); }, 100);
+            }}
+          />
         </div>
         {!marketplace ? (
           <p className={`${styles['settings-muted-note']} ${styles['skills-empty']}`}>
