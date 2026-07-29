@@ -133,4 +133,62 @@ describe("PluginMarketplaceService", () => {
       ),
     ).rejects.toMatchObject({ code: "PLUGIN_MARKETPLACE_SOURCE_FORBIDDEN" });
   });
+
+  it("pins install resolution to marketplaceId and returns catalog plugin", async () => {
+    const home = makeHome();
+    seedOfficial(home);
+    const catalog = {
+      schemaVersion: 1,
+      plugins: [{
+        schemaVersion: 1,
+        id: "demo",
+        name: "Team Demo",
+        publisher: "Team",
+        version: "2.0.0",
+        description: "Demo",
+        repository: "https://example.com/demo",
+        compatibility: {},
+        trust: "restricted",
+        permissions: [],
+        contributions: [],
+        distribution: {
+          kind: "release",
+          packageUrl: "https://example.com/demo2.zip",
+          sha256: "b".repeat(64),
+        },
+      }],
+    };
+    const svc = new PluginMarketplaceService({
+      hanakoHome: home,
+      env: {},
+      fetchOptions: {
+        fetchImpl: async () => new Response(JSON.stringify(catalog), { status: 200 }),
+        lookup: async () => [{ address: "93.184.216.34", family: 4 }],
+      },
+    });
+    await svc.addSource(
+      {
+        id: "team-plugins",
+        name: "Team",
+        kind: "url",
+        url: "https://example.com/marketplace.json",
+      },
+      { isStudioOwner: true },
+    );
+
+    const bare = svc.resolveInstall("demo");
+    expect(bare).toMatchObject({ ok: true, mode: "official" });
+
+    const pinned = svc.resolveInstall("demo", "team-plugins");
+    expect(pinned).toMatchObject({ ok: true, mode: "qualified" });
+    if (pinned.ok) {
+      expect(pinned.row.marketplaceId).toBe("team-plugins");
+      const full = svc.getCatalogPlugin("demo", pinned.row.marketplaceId);
+      expect(full?.version).toBe("2.0.0");
+      expect(full?.distribution).toMatchObject({ kind: "release", sha256: "b".repeat(64) });
+    }
+
+    const missing = svc.resolveInstall("demo", "no-such-source");
+    expect(missing).toMatchObject({ ok: false, code: "NOT_FOUND" });
+  });
 });
