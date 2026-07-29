@@ -2276,7 +2276,9 @@
       "marketSourceRefreshed": "已刷新市场源",
       "marketSourceRefreshFailed": "刷新市场源失败",
       "marketSwitchSource": "切换源",
-      "marketRetained": "已保留"
+      "marketRetained": "已保留",
+      "marketSourcesSection": "市场源",
+      "marketSourceLoading": "正在加载源…"
     },
     "mcp": {
       "masterTitle": "总开关",

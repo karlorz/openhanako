@@ -6,6 +6,7 @@ import { t } from '../helpers';
 import styles from '../Settings.module.css';
 import { SettingsSection } from '../components/SettingsSection';
 import { SettingsRow } from '../components/SettingsRow';
+import { MarketplaceSourcesPanel } from '../components/MarketplaceSourcesPanel';
 import { SelectWidget, Toggle, type SelectOption } from '@/ui';
 
 const platform = window.platform;
@@ -464,7 +465,16 @@ export function PluginsTab() {
           <span className={styles['skills-list-name']}>{t('settings.plugins.marketplaceTitle')}</span>
           <span className={styles['skills-list-desc']}>{t('settings.plugins.marketplaceHint')}</span>
         </div>
-        <div className={styles['skills-list-actions']}>{marketplaceButton}</div>
+        <div className={styles['skills-list-actions']} style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {marketplaceButton}
+        </div>
+      </div>
+      {/* First-class multi-source management on Plugins tab (not only inside browse subpage). */}
+      <div style={{ marginTop: 10 }}>
+        <div className={styles['skills-list-desc']} style={{ marginBottom: 6 }}>
+          {t('settings.plugins.marketSourcesSection')}
+        </div>
+        <MarketplaceSourcesPanel compact />
       </div>
     </div>
   );

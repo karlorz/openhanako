@@ -2207,7 +2207,9 @@
       "marketSourceRefreshed": "마켓 소스를 새로고침했습니다",
       "marketSourceRefreshFailed": "마켓 소스 새로고침 실패",
       "marketSwitchSource": "소스 전환",
-      "marketRetained": "보관됨"
+      "marketRetained": "보관됨",
+      "marketSourcesSection": "마켓 소스",
+      "marketSourceLoading": "소스 불러오는 중…"
     },
     "mcp": {
       "masterTitle": "Master Switch",
