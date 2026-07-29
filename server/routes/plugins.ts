@@ -1268,6 +1268,48 @@ export function createPluginsRoute(engine: any) {
           "PLUGIN_VERSION_DOWNGRADE",
         );
       }
+      // Claude catalog → skills-lane (not Hana deep plugin zip).
+      const claudeInstall = plugin?.install && typeof plugin.install === "object"
+        ? plugin.install as Record<string, unknown>
+        : null;
+      if (claudeInstall?.catalogFormat === "claude") {
+        if (!svc || !sourceMarketplaceId) {
+          return c.json({ error: "Claude marketplace install requires multi-source service" }, 400);
+        }
+        const userSkillsDir = engine.userSkillsDir;
+        if (!userSkillsDir) {
+          return c.json({ error: "User skills directory not available" }, 500);
+        }
+        try {
+          const flags = principalFlags(c);
+          const result = await svc.installClaudePluginSkills(plugin.id, sourceMarketplaceId, {
+            userSkillsDir,
+            isStudioOwner: flags.isStudioOwner,
+          });
+          try {
+            await engine.reloadSkills?.();
+          } catch {
+            // best-effort reload
+          }
+          return c.json({
+            ok: true,
+            installTarget: "skills",
+            catalogFormat: "claude",
+            marketplaceId: result.marketplaceId,
+            pluginId: result.pluginId,
+            skills: result.skills,
+            skipped: result.skipped,
+            resolvedRevision: result.resolvedRevision,
+          });
+        } catch (err: any) {
+          const status = err?.status || 400;
+          return c.json({
+            error: err?.message || String(err),
+            code: err?.code || "PLUGIN_MARKETPLACE_SOURCE_INVALID",
+          }, status);
+        }
+      }
+
       const installCandidate = marketplacePluginForVersion(plugin, versionState);
       const sourcePath = marketplace.resolveSourceDistribution(installCandidate)
         || (installCandidate.distribution?.kind === "source" && installCandidate.distribution?.path

@@ -1,9 +1,8 @@
 import fs from "fs";
 import { buildSourceFingerprint } from "./plugin-marketplace-identity.ts";
-import { parseMarketplaceCatalogStrict } from "./plugin-marketplace-schema.ts";
 import {
-  MarketplaceSnapshotStore,
   type MarketplaceSnapshot,
+  type MarketplaceSnapshotStore,
 } from "./plugin-marketplace-snapshots.ts";
 import { safeFetchText, type SafeFetchOptions } from "./plugin-marketplace-network-policy.ts";
 import {
@@ -11,6 +10,10 @@ import {
   resolveContainedPath,
 } from "./plugin-marketplace-path-policy.ts";
 import type { MarketplaceSourceDescriptor } from "./plugin-marketplace-sources.ts";
+import {
+  listMarketplaceIndexCandidates,
+  parseMarketplaceCatalogAuto,
+} from "./plugin-marketplace-detect.ts";
 
 export interface AcquireSnapshotOptions {
   store: MarketplaceSnapshotStore;
@@ -47,23 +50,20 @@ export async function acquireAndPublishSourceSnapshot(
         candidatePath: source.path,
         allowAbsolute: true,
       });
-      const indexPath = source.indexPath || "marketplace.json";
-      const filePath = assertContainedRegularFile({
-        rootDir: sourceDir,
-        candidatePath: indexPath,
-      });
-      rawText = fs.readFileSync(filePath, "utf8");
+      const candidates = listMarketplaceIndexCandidates(source.indexPath);
+      const resolved = resolveLocalIndexFile(sourceDir, candidates);
+      rawText = fs.readFileSync(resolved.filePath, "utf8");
       fingerprintInput = {
         kind: "local",
         id: source.id,
         path: source.path,
-        indexPath: source.indexPath,
+        indexPath: resolved.indexPath,
       };
     } else {
       throw new Error(`Unsupported source kind for P1a adapters: ${(source as any).kind}`);
     }
 
-    const parsed = parseMarketplaceCatalogStrict(rawText, {
+    const parsed = parseMarketplaceCatalogAuto(rawText, {
       marketplaceId: source.id,
       sourceKind,
     });
@@ -82,4 +82,25 @@ export async function acquireAndPublishSourceSnapshot(
     });
     throw err;
   }
+}
+
+function resolveLocalIndexFile(
+  sourceDir: string,
+  candidates: string[],
+): { filePath: string; indexPath: string } {
+  let lastErr: unknown = null;
+  for (const candidate of candidates) {
+    try {
+      const filePath = assertContainedRegularFile({
+        rootDir: sourceDir,
+        candidatePath: candidate,
+      });
+      return { filePath, indexPath: candidate };
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr instanceof Error
+    ? lastErr
+    : new Error(`Marketplace index not found (tried ${candidates.join(", ")})`);
 }

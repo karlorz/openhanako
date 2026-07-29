@@ -178,6 +178,9 @@ export class PluginMarketplaceService {
       const install = this.records.get(plugin.id);
       const active = install?.activeMarketplaceId === plugin.marketplaceId;
       const retained = Boolean(install?.retained?.[plugin.marketplaceId]);
+      const installMeta = plugin.install && typeof plugin.install === "object"
+        ? plugin.install as Record<string, unknown>
+        : {};
       return {
         compositeKey: `${plugin.id}@${plugin.marketplaceId}`,
         marketplaceId: plugin.marketplaceId,
@@ -188,6 +191,11 @@ export class PluginMarketplaceService {
         publisher: plugin.publisher,
         trust: plugin.trust,
         distribution: plugin.distribution,
+        install: installMeta,
+        catalogFormat: typeof installMeta.catalogFormat === "string" ? installMeta.catalogFormat : null,
+        installTarget: typeof installMeta.installTarget === "string" ? installMeta.installTarget : null,
+        canInstall: installMeta.canInstall === true
+          || (plugin.distribution?.kind === "release" && !!(plugin.distribution as any).packageUrl),
         sourceAuthority: source?.authority || "custom",
         sourceStatus: source?.status || "error",
         active,
@@ -251,5 +259,127 @@ export class PluginMarketplaceService {
     // Soft helper for tests: mark official ok empty if missing.
     const status = this.snapshots.getStatus(OFFICIAL_MARKETPLACE_ID);
     return status;
+  }
+
+  /**
+   * Install a Claude-catalog plugin as Hana user skills (skills-lane).
+   * Requires relative package source and studio.owner for mutation consistency with addSource.
+   */
+  async installClaudePluginSkills(
+    pluginId: string,
+    marketplaceId: string,
+    options: {
+      userSkillsDir: string;
+      isStudioOwner?: boolean;
+      execGit?: any;
+    },
+  ): Promise<{
+    marketplaceId: string;
+    pluginId: string;
+    skills: string[];
+    skipped: Array<{ path: string; reason: string }>;
+    resolvedRevision: string | null;
+  }> {
+    if (!options.isStudioOwner) {
+      const err = new Error("studio.owner required to install marketplace skills") as Error & {
+        code: string;
+        status: number;
+      };
+      err.code = "PLUGIN_MARKETPLACE_SOURCE_FORBIDDEN";
+      err.status = 403;
+      throw err;
+    }
+
+    const plugin = this.getCatalogPlugin(pluginId, marketplaceId);
+    if (!plugin) {
+      const err = new Error(`Catalog plugin not found: ${pluginId}@${marketplaceId}`) as Error & {
+        code: string;
+        status: number;
+      };
+      err.code = "NOT_FOUND";
+      err.status = 404;
+      throw err;
+    }
+    const installMeta = (plugin.install || {}) as Record<string, unknown>;
+    if (installMeta.catalogFormat !== "claude") {
+      const err = new Error("Not a Claude catalog plugin") as Error & { code: string; status: number };
+      err.code = "PLUGIN_MARKETPLACE_SOURCE_INVALID";
+      err.status = 400;
+      throw err;
+    }
+    if (installMeta.canInstall !== true || installMeta.sourceKind !== "relative") {
+      const err = new Error(
+        "Claude plugin source is not installable in v1 (relative package path required)",
+      ) as Error & { code: string; status: number };
+      err.code = "PLUGIN_MARKETPLACE_SOURCE_INVALID";
+      err.status = 400;
+      throw err;
+    }
+    const packagePath = typeof installMeta.source === "string" ? installMeta.source : "";
+    if (!packagePath) {
+      const err = new Error("Claude plugin missing relative source path") as Error & {
+        code: string;
+        status: number;
+      };
+      err.code = "PLUGIN_MARKETPLACE_SOURCE_INVALID";
+      err.status = 400;
+      throw err;
+    }
+
+    const sources = this.registry.listSources();
+    const source = sources.find((s) => s.id === marketplaceId);
+    if (!source || source.kind !== "git") {
+      const err = new Error(
+        "Claude skills install currently requires a git marketplace source",
+      ) as Error & { code: string; status: number };
+      err.code = "PLUGIN_MARKETPLACE_SOURCE_INVALID";
+      err.status = 400;
+      throw err;
+    }
+
+    const { materializeGitMarketplacePackage } = await import("./plugin-marketplace-git-cache.ts");
+    const {
+      installClaudeSkillsFromPackage,
+      writeClaudeSkillsInstallRecord,
+    } = await import("./plugin-marketplace-claude-skills.ts");
+
+    const materialized = await materializeGitMarketplacePackage(
+      {
+        id: source.id,
+        kind: "git",
+        gitUrl: (source as any).gitUrl,
+        gitRef: (source as any).gitRef,
+        indexPath: (source as any).indexPath,
+      },
+      {
+        hanakoHome: this._hanakoHome,
+        packagePath,
+        execGit: options.execGit,
+      },
+    );
+
+    const result = installClaudeSkillsFromPackage({
+      packageRoot: materialized.packageRoot,
+      installDir: options.userSkillsDir,
+      owner: "user",
+    });
+
+    writeClaudeSkillsInstallRecord(this._hanakoHome, {
+      kind: "claude-skills",
+      marketplaceId,
+      pluginId,
+      packagePath,
+      resolvedRevision: materialized.resolvedRevision,
+      skills: result.installed.map((s) => s.name),
+      installedAt: new Date().toISOString(),
+    });
+
+    return {
+      marketplaceId,
+      pluginId,
+      skills: result.installed.map((s) => s.name),
+      skipped: result.skipped,
+      resolvedRevision: materialized.resolvedRevision,
+    };
   }
 }
