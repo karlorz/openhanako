@@ -1607,6 +1607,10 @@ export function createPluginsRoute(engine: any) {
 
   route.all("/plugins/:pluginId/*", async (c) => {
     const pluginId = c.req.param("pluginId");
+    // Host-owned path segments must never be treated as community plugin ids.
+    if (PLUGIN_HOST_ROUTE_PLUGIN_IDS.has(pluginId)) {
+      return c.json({ error: "not found", code: "PLUGIN_HOST_ROUTE" }, 404);
+    }
     const pluginApp = engine.pluginManager?.getRouteApp(pluginId);
     if (!pluginApp) return c.json({ error: `Plugin "${pluginId}" not found` }, 404);
     let iframeTicket = null;
