@@ -2066,7 +2066,7 @@
       "marketSourceKindGit": "Git(공개 HTTPS)",
       "marketSourceLocalPathHint": "Hana 서버 허용 로컬 루트 아래에서 해석합니다. 로컬 owner 권한이 필요합니다.",
       "marketSourceUrlHint": "자격 증명 없는 공개 HTTPS marketplace.json.",
-      "marketSourceGitHint": "공개 HTTPS Git만 지원(SSH/비공개 불가). https://github.com/karlorz/llm-wiki 같은 URL을 붙여넣으세요. 루트 marketplace.json이 없으면 Claude .claude-plugin/marketplace.json을 자동 감지합니다.",
+      "marketSourceGitHint": "공개 HTTPS Git만 지원(SSH/비공개 불가). https://github.com/example-org/hana-marketplace 같은 URL을 붙여넣으세요. 루트 marketplace.json이 없으면 Claude .claude-plugin/marketplace.json을 자동 감지합니다.",
       "marketSourceLoadFailed": "마켓 소스 불러오기 실패",
       "marketSourceServerTooOld": "이 Hana 서버는 아직 다중 소스 마켓을 지원하지 않습니다. 해당 빌드의 로컬 설치를 쓰거나 원격 서버를 업그레이드하세요.",
       "marketSourceStudioOwnerRequired": "이 연결에서 마켓 소스를 추가하거나 변경하려면 스튜디오 소유자 권한이 필요합니다.",

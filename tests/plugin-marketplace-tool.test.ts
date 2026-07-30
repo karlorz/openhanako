@@ -184,10 +184,11 @@ describe("plugin_marketplace Agent tool", () => {
         id: `plugin-marketplace:${sourceQualifiedId("skillwiki")}`,
       },
       sideEffect: {
-        summary: "Installs a marketplace package into Hana.",
+        summary: expect.stringContaining(`exact source-qualified package skillwiki@${MARKETPLACE_ID}`),
         pluginId: "skillwiki",
         marketplaceId: MARKETPLACE_ID,
         planToken: "plan-token",
+        ownerRequired: true,
       },
     });
     expect(tool.sessionPermission.resolveInvocation({

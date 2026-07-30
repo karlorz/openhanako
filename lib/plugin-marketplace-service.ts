@@ -38,6 +38,7 @@ import {
   ClaudeCompatibilityBindingService,
   type ClaudeCompatibilityBinding,
 } from "./claude-compatibility.ts";
+import type { TaggedMarketplacePlugin } from "./plugin-marketplace-schema.ts";
 
 export interface MarketplaceServiceOptions {
   hanakoHome: string;
@@ -68,6 +69,8 @@ export interface MarketplaceCapabilityContract {
     nativeAgentPluginAccess: boolean;
     controlPlaneDiagnostics: boolean;
     controlPlaneActivationWrites: boolean;
+    claudeCompatibilityBridgeValidation: boolean;
+    desktopClaudeCompatibilityBridgeTransport: boolean;
   };
   unsupported: Array<{ code: string; message: string }>;
   upgradeGuidance: string | null;
@@ -130,6 +133,8 @@ export class PluginMarketplaceService {
         nativeAgentPluginAccess: true,
         controlPlaneDiagnostics: true,
         controlPlaneActivationWrites: true,
+        claudeCompatibilityBridgeValidation: true,
+        desktopClaudeCompatibilityBridgeTransport: false,
       },
       unsupported: [
         {
@@ -141,8 +146,9 @@ export class PluginMarketplaceService {
     };
   }
 
-  getRegistryStatus(): MarketplaceSourceRegistryStatus {
-    return this.registry.getStatus();
+  getRegistryStatus(options: { forRemote?: boolean } = {}): MarketplaceSourceRegistryStatus {
+    const status = this.registry.getStatus();
+    return options.forRemote ? { ...status, path: "[server-local path redacted]" } : status;
   }
 
   getControlPlaneDiagnostics(options: { forRemote?: boolean } = {}): MarketplaceControlPlaneDiagnosticReport {
@@ -261,10 +267,23 @@ export class PluginMarketplaceService {
 
   listSources(options: { forRemote?: boolean } = {}) {
     const listed = this.registry.listSources({ forRemote: options.forRemote });
+    return this._listSourcesWithCatalogCounts(listed, this.snapshots.listCurrentPlugins(), options);
+  }
+
+  _listSourcesWithCatalogCounts(
+    listed: EffectiveMarketplaceSource[],
+    plugins: TaggedMarketplacePlugin[],
+    options: { forRemote?: boolean } = {},
+  ) {
+    const catalogCounts = new Map<string, number>();
+    for (const plugin of plugins) {
+      catalogCounts.set(plugin.marketplaceId, (catalogCounts.get(plugin.marketplaceId) || 0) + 1);
+    }
     return listed.map((source) => {
       const status = this.snapshots.getStatus(source.id);
       return {
         ...source,
+        catalogCount: catalogCounts.get(source.id) || 0,
         status: status.state,
         catalogSha256: status.state === "ok" || status.state === "stale" || status.state === "refreshing"
           ? status.current?.catalogSha256 || null
@@ -424,10 +443,11 @@ export class PluginMarketplaceService {
     return this.snapshots.getStatus(marketplaceId);
   }
 
-  listCatalogRows(options: { forRemote?: boolean } = {}) {
-    const sources = this.listSources({ forRemote: options.forRemote });
-    const sourceById = new Map(sources.map((s) => [s.id, s]));
+  listCatalogRows(options: { forRemote?: boolean; agentId?: string | null } = {}) {
     const plugins = this.snapshots.listCurrentPlugins();
+    const listed = this.registry.listSources({ forRemote: options.forRemote });
+    const sources = this._listSourcesWithCatalogCounts(listed, plugins, { forRemote: options.forRemote });
+    const sourceById = new Map(sources.map((s) => [s.id, s]));
     const activations = this.registry.getControlPlaneActivations();
     const installedRuntimePluginRefs = this.installedRuntimePluginRefs();
     const installedMarketplaceSkillRefs = this.installedMarketplaceSkillRefs();
@@ -462,6 +482,16 @@ export class PluginMarketplaceService {
             installedMarketplaceSkillRefs,
           }))
         : [];
+      const nativeAgentPluginAccess = inspection.destination === "native-plugin" && options.agentId
+        ? computeNativeAgentPluginAccess({
+            identity: runtimeIdentity,
+            agentId: options.agentId,
+            activations,
+            sources,
+            installedRuntimePluginRefs,
+            nativeContributions: inspection.capabilityInventory.nativePluginContributions,
+          })
+        : null;
       return {
         compositeKey: `${plugin.id}@${plugin.marketplaceId}`,
         marketplaceId: plugin.marketplaceId,
@@ -483,6 +513,7 @@ export class PluginMarketplaceService {
         installPlan,
         runtimeActivation,
         marketplaceSkillActivations,
+        nativeAgentPluginAccess,
         canInstall: inspection.installable,
         sourceAuthority: source?.authority || "custom",
         sourceStatus: source?.status || "error",

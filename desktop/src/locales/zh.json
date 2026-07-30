@@ -2132,7 +2132,7 @@
       "marketSourceKindGit": "Git（公开 HTTPS）",
       "marketSourceLocalPathHint": "在 Hana 服务器允许的本地根目录下解析。需要本机 owner 权限。",
       "marketSourceUrlHint": "无需凭据的公开 HTTPS marketplace.json。",
-      "marketSourceGitHint": "仅支持公开 HTTPS Git（无 SSH/私有仓）。可粘贴如 https://github.com/karlorz/llm-wiki；若根目录无 marketplace.json，将自动识别 Claude 的 .claude-plugin/marketplace.json。",
+      "marketSourceGitHint": "仅支持公开 HTTPS Git（无 SSH/私有仓）。可粘贴如 https://github.com/example-org/hana-marketplace；若根目录无 marketplace.json，将自动识别 Claude 的 .claude-plugin/marketplace.json。",
       "marketSourceLoadFailed": "加载市场源失败",
       "marketSourceServerTooOld": "当前 Hana 服务器尚不支持多源市场。请使用含多市场功能的本地安装，或升级远程服务器。",
       "marketSourceStudioOwnerRequired": "在此连接上添加或修改市场源需要工作室所有者权限。",

@@ -138,6 +138,12 @@ describe("marketplace sources auth principal", () => {
         multiSourceBrowse: true,
         sourceConfigDigest: true,
         nativeMarketplaceInstall: false,
+        claudeCompatibilityBridgeValidation: true,
+        desktopClaudeCompatibilityBridgeTransport: false,
+      },
+      access: {
+        isStudioOwner: true,
+        isLocalOwner: true,
       },
       registry: {
         revision: 0,
@@ -395,6 +401,14 @@ describe("marketplace sources auth principal", () => {
       plugins: parsed.plugins,
     });
     const app = createAppWithPrincipal(engine, localOwner);
+
+    const stale = await app.request("/api/plugins/marketplace/native-page/install", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ marketplaceId: "oh-plugins-official", expectedRevision: 99 }),
+    });
+    expect(stale.status).toBe(409);
+    expect(await stale.json()).toMatchObject({ code: "PLUGIN_MARKETPLACE_REGISTRY_STALE" });
 
     const res = await app.request("/api/plugins/marketplace/native-page/install", {
       method: "POST",

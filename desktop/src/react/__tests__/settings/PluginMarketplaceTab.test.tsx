@@ -3,7 +3,7 @@
  */
 
 import React from 'react';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PluginMarketplaceTab } from '../../settings/tabs/PluginMarketplaceTab';
@@ -11,11 +11,11 @@ import { PluginMarketplaceTab } from '../../settings/tabs/PluginMarketplaceTab';
 const mockHanaFetch = vi.fn();
 const mockSet = vi.fn();
 const mockShowToast = vi.fn();
+let mockStoreState: Record<string, any>;
 
 vi.mock('../../settings/store', () => ({
   useSettingsStore: (selector?: (state: any) => unknown) => {
-    const state = { set: mockSet, showToast: mockShowToast };
-    return selector ? selector(state) : state;
+    return selector ? selector(mockStoreState) : mockStoreState;
   },
 }));
 
@@ -77,8 +77,16 @@ function catalogPlugin(overrides: Record<string, unknown> = {}) {
 
 function mockCatalog(plugins: unknown[]) {
   mockHanaFetch.mockImplementation(async (url: string) => {
-    if (url === '/api/plugins/marketplace/catalog') {
-      return jsonResponse({ plugins, sources: [], warnings: [] });
+    if (url.startsWith('/api/plugins/marketplace/catalog')) {
+      return jsonResponse({
+        plugins,
+        sources: [],
+        warnings: [],
+        capabilities: { supported: true, features: { claudeCompatibilityBindings: true } },
+        access: { isStudioOwner: true, isLocalOwner: true },
+        registry: { revision: 7, digest: 'a'.repeat(64), degraded: false },
+        configDiagnostics: { ok: true, degraded: false, path: '/srv/hana/plugin-marketplaces.json', digest: 'a'.repeat(64), file: { revision: 7, activations: {} }, diagnostics: [], summary: { revision: 7 } },
+      });
     }
     if (url.includes('/readme')) {
       return jsonResponse({ markdown: '' });
@@ -95,16 +103,24 @@ describe('PluginMarketplaceTab inspector rendering', () => {
     mockHanaFetch.mockReset();
     mockSet.mockReset();
     mockShowToast.mockReset();
-    window.t = ((key: string) => {
+    mockStoreState = {
+      set: mockSet,
+      showToast: mockShowToast,
+      agents: [],
+      currentAgentId: null,
+      settingsAgentId: null,
+    };
+    window.t = ((key: string, params?: Record<string, string>) => {
       const labels: Record<string, string> = {
         'settings.plugins.marketBack': 'Back',
         'settings.plugins.marketplaceHint': 'Install marketplace packages',
-        'settings.plugins.marketplaceCount': '1 package',
+        'settings.plugins.marketplaceCount': `${params?.count || '0'} package`,
         'settings.plugins.marketLoading': 'Loading...',
         'settings.plugins.marketInstall': 'Install',
         'settings.plugins.marketInstallSkills': 'Install skills',
         'settings.plugins.marketIncompatible': 'Incompatible',
         'settings.plugins.marketSelectPlugin': 'Select a package',
+        'settings.plugins.marketplaceEmpty': 'No plugins to browse',
       };
       return labels[key] || key;
     }) as typeof window.t;
@@ -238,5 +254,174 @@ describe('PluginMarketplaceTab inspector rendering', () => {
 
     expect(promptSpy).not.toHaveBeenCalled();
     expect(mockHanaFetch).not.toHaveBeenCalledWith('/api/plugins/marketplace/native-page/install', expect.anything());
+  });
+
+  it('distinguishes a supported empty catalog from an unsupported or missing source state', async () => {
+    mockCatalog([]);
+
+    render(<PluginMarketplaceTab />);
+
+    expect(await screen.findByText('0 package')).toBeInTheDocument();
+    expect(screen.getByText('No plugins to browse')).toBeInTheDocument();
+    expect(screen.getByText('Supported server')).toBeInTheDocument();
+    expect(screen.queryByText('settings.plugins.marketplaceNoSource')).not.toBeInTheDocument();
+  });
+
+  it('shows degraded last-known-good JSON diagnostics and repair guidance', async () => {
+    mockHanaFetch.mockImplementation(async (url: string) => {
+      if (url === '/api/plugins/marketplace/capabilities') {
+        return jsonResponse({
+          supported: true,
+          features: { claudeCompatibilityBindings: false },
+          access: { isStudioOwner: true, isLocalOwner: false },
+          registry: { revision: 4, digest: 'b'.repeat(64), degraded: true, lastKnownGood: true, path: '[server-local path redacted]', diagnostic: 'Malformed JSON' },
+          configDiagnostics: {
+            ok: false,
+            degraded: true,
+            path: '[server-local path redacted]',
+            digest: 'b'.repeat(64),
+            file: { revision: 4, activations: {} },
+            diagnostics: [{ severity: 'error', code: 'INVALID_JSON', path: '$', message: 'Repair malformed JSON and reload.' }],
+            summary: { revision: 4, schemaVersion: 2 },
+          },
+        });
+      }
+      if (url.startsWith('/api/plugins/marketplace/catalog')) {
+        return jsonResponse({ plugins: [], sources: [], warnings: [], capabilities: { supported: true }, access: { isStudioOwner: true }, registry: { revision: 4, digest: 'b'.repeat(64), degraded: true, diagnostic: 'Malformed JSON' }, configDiagnostics: { degraded: true, path: '[server-local path redacted]', digest: 'b'.repeat(64), file: { revision: 4, activations: {} }, diagnostics: [{ code: 'INVALID_JSON', path: '$', message: 'Repair malformed JSON and reload.' }], summary: { revision: 4 } } });
+      }
+      if (url === '/api/plugins/marketplace/sources') return jsonResponse({ sources: [] });
+      return jsonResponse({ plugins: [] });
+    });
+
+    render(<PluginMarketplaceTab />);
+
+    expect(await screen.findByText('degraded / last-known-good')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Claude compatibility & advanced JSON configuration'));
+    expect(screen.getByText('Invalid edit · last-known-good active')).toBeInTheDocument();
+    expect(screen.getByText('[server-local path redacted]')).toBeInTheDocument();
+    expect(screen.getByText('$: Repair malformed JSON and reload.')).toBeInTheDocument();
+  });
+
+  it('routes Hana-compatible marketplace packages to existing Skills Settings', async () => {
+    mockCatalog([catalogPlugin()]);
+    render(<PluginMarketplaceTab />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Manage in Skills' }));
+
+    expect(mockSet).toHaveBeenCalledWith({ activeTab: 'skills' });
+    expect(screen.getByText('Skills Settings / Agent Skill Toggles (not Native Plugins)')).toBeInTheDocument();
+  });
+
+  it('shows selected-Agent native access separately and writes the exact qualified identity', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    mockStoreState.agents = [{ id: 'agent-a', name: 'Agent A' }];
+    mockStoreState.currentAgentId = 'agent-a';
+    const native = catalogPlugin({
+      pluginId: 'native-page',
+      id: 'native-page',
+      name: 'Native Page',
+      marketplaceId: 'official',
+      compositeKey: 'native-page@official',
+      installTarget: 'native-plugin',
+      installAdapter: 'plugin-manager',
+      installable: false,
+      canInstall: false,
+      capabilityInventory: {
+        skills: [],
+        nativePluginContributions: ['tools', 'routes'],
+        agentFacing: ['tools'],
+        serverImpact: ['routes'],
+        unsupportedClaudeComponents: [],
+      },
+      runtimeActivation: { state: 'desired-not-installed', reason: 'native runtime plugin artifact is not installed' },
+      nativeAgentPluginAccess: {
+        identity: 'native-page@official',
+        agentId: 'agent-a',
+        enabled: false,
+        state: 'disabled',
+        reason: 'native Agent Plugin Access is disabled and artifact is not installed',
+        serverGlobalContributions: ['routes'],
+      },
+    });
+    mockHanaFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === '/api/plugins/marketplace/capabilities') return jsonResponse({ supported: true, features: {}, access: { isStudioOwner: true }, registry: { revision: 7, digest: 'a'.repeat(64) }, configDiagnostics: { file: { revision: 7, activations: {} }, summary: { revision: 7 } } });
+      if (url === '/api/plugins/marketplace/catalog?agentId=agent-a') return jsonResponse({ plugins: [native], sources: [], capabilities: { supported: true, features: {} }, access: { isStudioOwner: true }, registry: { revision: 7, digest: 'a'.repeat(64) }, configDiagnostics: { file: { revision: 7, activations: {} }, summary: { revision: 7 } } });
+      if (url === '/api/plugins/marketplace/sources') return jsonResponse({ sources: [] });
+      if (url === '/api/plugins/marketplace/config/activations') {
+        const body = JSON.parse(String(init?.body || '{}'));
+        expect(body).toMatchObject({
+          expectedRevision: 7,
+          expectedDigest: 'a'.repeat(64),
+          activations: { agentPluginAccess: { 'agent-a': { 'native-page@official': { enabled: true, contributions: ['tools'] } } } },
+        });
+        return jsonResponse({ revision: 8 });
+      }
+      if (url.includes('/readme')) return jsonResponse({ markdown: '' });
+      return jsonResponse({});
+    });
+
+    render(<PluginMarketplaceTab />);
+
+    expect(await screen.findByText('Selected-Agent Plugin Access')).toBeInTheDocument();
+    expect(screen.getByText(/Routes, providers, extensions/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Enable Agent Access' }));
+
+    expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('native-page@official'));
+    expect(await screen.findByText('desired-not-installed · native runtime plugin artifact is not installed')).toBeInTheDocument();
+  });
+
+  it('renders live, mirror, and snapshot compatibility state with redacted paths and bridge limits', async () => {
+    mockHanaFetch.mockImplementation(async (url: string) => {
+      if (url === '/api/plugins/marketplace/capabilities') return jsonResponse({ supported: true, features: { claudeCompatibilityBindings: true }, access: { isStudioOwner: false, isLocalOwner: false }, registry: { revision: 2, digest: 'c'.repeat(64), path: '[server-local path redacted]' }, configDiagnostics: { path: '[server-local path redacted]', file: { revision: 2 }, summary: { revision: 2 } } });
+      if (url.startsWith('/api/plugins/marketplace/catalog')) return jsonResponse({ plugins: [], sources: [], capabilities: { supported: true, features: { claudeCompatibilityBindings: true } }, access: { isStudioOwner: false }, registry: { revision: 2, digest: 'c'.repeat(64), path: '[server-local path redacted]' }, configDiagnostics: { path: '[server-local path redacted]', file: { revision: 2 }, summary: { revision: 2 } } });
+      if (url === '/api/plugins/marketplace/sources') return jsonResponse({ sources: [] });
+      if (url === '/api/plugins/marketplace/compatibility/bindings') return jsonResponse({ bindings: ['live', 'mirror', 'snapshot'].map((mode, index) => ({ binding: { id: `${mode}-binding`, mode, enabled: true, inputs: [{ role: 'user-settings', path: '[server-local path redacted]' }] }, state: { digest: String(index + 1).repeat(64), warnings: mode === 'live' ? [{ code: 'CLAUDE_HOOK_EXCLUDED', message: 'Claude hooks are excluded.' }] : [] }, lastKnownGood: mode === 'mirror', diagnostic: mode === 'mirror' ? { code: 'CLAUDE_COMPAT_INPUT_INVALID', message: 'Repair the authorized input.', graceExpired: true } : null, pendingBoundary: 'next-agent-snapshot' })) });
+      return jsonResponse({});
+    });
+
+    render(<PluginMarketplaceTab />);
+    fireEvent.click(await screen.findByText('Claude compatibility & advanced JSON configuration'));
+
+    expect(screen.getByText('live-binding')).toBeInTheDocument();
+    expect(screen.getByText('mirror-binding')).toBeInTheDocument();
+    expect(screen.getByText('snapshot-binding')).toBeInTheDocument();
+    expect(screen.getAllByText('[server-local path redacted]').length).toBeGreaterThan(0);
+    expect(screen.getByText('Claude hooks are excluded.')).toBeInTheDocument();
+    expect(screen.getByText('Desktop bridge transport: unavailable in this build.')).toBeInTheDocument();
+  });
+
+  it('keeps duplicate package identities keyboard-operable and source-qualified', async () => {
+    mockCatalog([
+      catalogPlugin({ marketplaceId: 'market-a', compositeKey: 'skillwiki@market-a' }),
+      catalogPlugin({ marketplaceId: 'market-b', compositeKey: 'skillwiki@market-b', description: 'Second source' }),
+    ]);
+    render(<PluginMarketplaceTab />);
+
+    const second = await screen.findByRole('button', { name: 'Inspect skillwiki@market-b' });
+    second.focus();
+    expect(second).toHaveFocus();
+    fireEvent.click(second);
+
+    expect(screen.getAllByText('skillwiki@market-a').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('skillwiki@market-b').length).toBeGreaterThan(0);
+    expect(second).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('surfaces owner or install-permission denial without reporting success', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    mockHanaFetch.mockImplementation(async (url: string) => {
+      if (url === '/api/plugins/marketplace/capabilities') return jsonResponse({ supported: true, features: {}, access: { isStudioOwner: false }, registry: { revision: 1, digest: 'd'.repeat(64) } });
+      if (url.startsWith('/api/plugins/marketplace/catalog')) return jsonResponse({ plugins: [catalogPlugin()], sources: [], capabilities: { supported: true, features: {} }, access: { isStudioOwner: false }, registry: { revision: 1, digest: 'd'.repeat(64) } });
+      if (url === '/api/plugins/marketplace/sources') return jsonResponse({ sources: [] });
+      if (url.includes('/readme')) return jsonResponse({ markdown: '' });
+      if (url === '/api/plugins/marketplace/skillwiki/install') return jsonResponse({ error: 'studio.owner or install permission required', code: 'PLUGIN_MARKETPLACE_SOURCE_FORBIDDEN' }, 403);
+      return jsonResponse({});
+    });
+    render(<PluginMarketplaceTab />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Install skills' }));
+
+    await waitFor(() => expect(mockShowToast).toHaveBeenCalledWith(expect.stringContaining('studio.owner or install permission required'), 'error'));
+    expect(mockShowToast).not.toHaveBeenCalledWith(expect.any(String), 'success');
   });
 });

@@ -297,6 +297,32 @@ describe('extractToolDetail', () => {
     expect(d.hrefType).toBe('url');
   });
 
+  it('marketplace mutation detail names the exact target and stale-protected plan', () => {
+    expect(extractToolDetail('plugin_marketplace', {
+      action: 'install',
+      pluginId: 'review-tools',
+      marketplaceId: 'team-market',
+      planToken: '1234567890abcdef',
+    }).text).toBe('confirm install · review-tools@team-market · plan 12345678');
+
+    expect(extractToolDetail('plugin_marketplace', {
+      action: 'set_activations',
+      expectedRevision: 12,
+    }).text).toBe('confirm activation change · rev 12');
+  });
+
+  it('marketplace compatibility detail distinguishes preview, execution, and bridge validation', () => {
+    expect(extractToolDetail('plugin_marketplace', {
+      action: 'plan_compat_mutation',
+      compatAction: 'promote',
+      bindingId: 'claude-live',
+    }).text).toBe('preview Claude promote · claude-live');
+    expect(extractToolDetail('plugin_marketplace', {
+      action: 'validate_compat_bridge',
+      bindingId: 'claude-live',
+    }).text).toBe('validate sanitized bridge · claude-live');
+  });
+
   it('未知工具取第一个字符串参数作详情', () => {
     expect(extractToolDetail('unknown_tool', { foo: 'bar' }).text).toBe('bar');
   });

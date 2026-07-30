@@ -1026,6 +1026,14 @@ export function createPluginsRoute(engine: any) {
     };
   }
 
+  function marketplaceAccessPayload(flags: ReturnType<typeof principalFlags>) {
+    return {
+      isStudioOwner: flags.isStudioOwner,
+      isLocalOwner: flags.isLocalOwner,
+      connectionKind: flags.principal?.connectionKind || flags.principal?.kind || "unknown",
+    };
+  }
+
   // ── Multi-source marketplace registry (Approach 1) ──
   route.get("/plugins/marketplace/capabilities", (c) => {
     try {
@@ -1033,7 +1041,8 @@ export function createPluginsRoute(engine: any) {
       const svc = getMarketplaceService();
       return c.json({
         ...svc.getCapabilityContract(),
-        registry: svc.getRegistryStatus(),
+        access: marketplaceAccessPayload(flags),
+        registry: svc.getRegistryStatus({ forRemote: !flags.isLocalOwner }),
         configDiagnostics: svc.getControlPlaneDiagnostics({ forRemote: !flags.isLocalOwner }),
       });
     } catch (err: any) {
@@ -1053,20 +1062,22 @@ export function createPluginsRoute(engine: any) {
     const svc = getMarketplaceService();
     return c.json({
       capabilities: svc.getCapabilityContract(),
-      registry: svc.getRegistryStatus(),
+      access: marketplaceAccessPayload(flags),
+      registry: svc.getRegistryStatus({ forRemote: !flags.isLocalOwner }),
       configDiagnostics: svc.getControlPlaneDiagnostics({ forRemote: !flags.isLocalOwner }),
     });
   });
 
   route.get("/plugins/marketplace/sources", async (c) => {
-    const { principal } = principalFlags(c);
-    const forRemote = !isLocalOwnerPrincipal(principal);
+    const flags = principalFlags(c);
+    const forRemote = !flags.isLocalOwner;
     const svc = getMarketplaceService();
     // Seed official snapshot before listing so local Settings is not empty/error on first open.
     await svc.ensureOfficialSnapshotSeededAsync();
     return c.json({
       capabilities: svc.getCapabilityContract(),
-      registry: svc.getRegistryStatus(),
+      access: marketplaceAccessPayload(flags),
+      registry: svc.getRegistryStatus({ forRemote }),
       sources: svc.listSources({ forRemote }),
     });
   });
@@ -1136,7 +1147,7 @@ export function createPluginsRoute(engine: any) {
       });
       return c.json({
         ...result,
-        registry: svc.getRegistryStatus(),
+        registry: svc.getRegistryStatus({ forRemote: !flags.isLocalOwner }),
         configDiagnostics: svc.getControlPlaneDiagnostics({ forRemote: !flags.isLocalOwner }),
       });
     } catch (err: any) {
@@ -1152,7 +1163,8 @@ export function createPluginsRoute(engine: any) {
     const svc = getMarketplaceService();
     return c.json({
       capabilities: svc.getCapabilityContract(),
-      registry: svc.getRegistryStatus(),
+      access: marketplaceAccessPayload(flags),
+      registry: svc.getRegistryStatus({ forRemote: !flags.isLocalOwner }),
       bindings: svc.listClaudeCompatibilityBindings({ forRemote: !flags.isLocalOwner }),
     });
   });
@@ -1188,7 +1200,7 @@ export function createPluginsRoute(engine: any) {
       });
       return c.json({
         result,
-        registry: svc.getRegistryStatus(),
+        registry: svc.getRegistryStatus({ forRemote: !flags.isLocalOwner }),
         bindings: svc.listClaudeCompatibilityBindings({ forRemote: !flags.isLocalOwner }),
       });
     } catch (err: any) {
@@ -1245,11 +1257,14 @@ export function createPluginsRoute(engine: any) {
     const flags = principalFlags(c);
     const forRemote = !flags.isLocalOwner;
     const svc = getMarketplaceService();
+    const agentId = c.req.query("agentId") || null;
     await svc.ensureOfficialSnapshotSeededAsync();
     return c.json({
       capabilities: svc.getCapabilityContract(),
-      registry: svc.getRegistryStatus(),
-      ...svc.listCatalogRows({ forRemote }),
+      access: marketplaceAccessPayload(flags),
+      registry: svc.getRegistryStatus({ forRemote }),
+      configDiagnostics: svc.getControlPlaneDiagnostics({ forRemote }),
+      ...svc.listCatalogRows({ forRemote, agentId }),
     });
   });
 
@@ -1384,12 +1399,13 @@ export function createPluginsRoute(engine: any) {
     const pm = engine.pluginManager;
     if (!pm) return c.json({ error: "Plugin manager not available" }, 500);
     const pluginId = c.req.param("id");
+    const body = await c.req.json().catch(() => ({}));
     const {
       sessionPath,
       version: targetVersion,
       allowDowngrade = false,
       marketplaceId: requestedMarketplaceId = null,
-    } = await c.req.json().catch(() => ({}));
+    } = body;
 
     try {
       const marketplace = getMarketplace();
@@ -1404,6 +1420,7 @@ export function createPluginsRoute(engine: any) {
       // Multi-source resolve first when durable home exists (official-wins / qualified / ambiguous).
       if (engine.hanakoHome) {
         svc = getMarketplaceService();
+        svc.assertRegistryWritePrecondition(expectedRegistryPreconditionsFromBody(body));
         svc.assertRegistryUsableForAcquisition();
         resolution = svc.resolveInstall(pluginId, requestedMarketplaceId);
         if (resolution.ok === true) {
