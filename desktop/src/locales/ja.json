@@ -779,6 +779,11 @@
       "done": "📥 インストール完了",
       "failed": "📥 インストールできなかった"
     },
+    "plugin_marketplace": {
+      "running": "🧩 {name} がマーケットプレイスを確認しています",
+      "done": "🧩 マーケットプレイス操作が完了しました",
+      "failed": "🧩 マーケットプレイス操作に失敗しました"
+    },
     "update_settings": {
       "running": "⚙️ {name} は設定を変更中",
       "done": "⚙️ 変更した",
@@ -1208,6 +1213,10 @@
           "install_skill": {
             "label": "スキルをインストール",
             "summary": "GitHub またはスキルライブラリから新しいスキルをインストール"
+          },
+          "plugin_marketplace": {
+            "label": "プラグインマーケットプレイス",
+            "summary": "マーケットプレイスパッケージを確認し、対応する Hana スキルを確認付きでインストール"
           },
           "update_settings": {
             "label": "設定を変更",

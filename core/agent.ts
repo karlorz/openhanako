@@ -27,6 +27,7 @@ import { createComputerUseTool } from "../lib/tools/computer-use-tool.ts";
 import { createPinnedMemoryTools } from "../lib/tools/pinned-memory.ts";
 import { createExperienceTools } from "../lib/tools/experience.ts";
 import { createInstallSkillTool } from "../lib/tools/install-skill.ts";
+import { createPluginMarketplaceTool } from "../lib/tools/plugin-marketplace-tool.ts";
 import { createNotifyTool } from "../lib/tools/notify-tool.ts";
 import { createUpdateSettingsTool } from "../lib/tools/update-settings-tool.ts";
 import { createSessionFoldersTool } from "../lib/tools/session-folders-tool.ts";
@@ -108,6 +109,7 @@ export class Agent {
   declare _factStore: any;
   declare _getOwnerIds: any;
   declare _installSkillTool: any;
+  declare _pluginMarketplaceTool: any;
   declare _listAgents: any;
   declare _memoryMasterEnabled: any;
   declare _memoryModel: any;
@@ -646,6 +648,9 @@ export class Agent {
       registerSessionFile: (entry) => this._cb?.registerSessionFile?.(entry),
       resolveSessionFile: resolveActiveSessionFile,
     });
+    this._pluginMarketplaceTool = createPluginMarketplaceTool({
+      getEngine: () => this._cb?.getEngine?.(),
+    });
 
     // 11. subagent 工具
     const subagentToolDeps = {
@@ -944,6 +949,7 @@ export class Agent {
       this._browserTool,
       ...computerUseTools,
       ...installSkillTools,
+      this._pluginMarketplaceTool,
       this._notifyTool,
       this._stopTaskTool,
       this._updateSettingsTool,

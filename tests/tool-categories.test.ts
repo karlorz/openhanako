@@ -41,7 +41,7 @@ describe("tool-categories constants", () => {
 
   it("OPTIONAL_TOOL_NAMES is exactly the user-toggleable whitelist", () => {
     expect(new Set(OPTIONAL_TOOL_NAMES)).toEqual(
-      new Set(["automation", "beautify", "browser", "install_skill", "office", "session", "update_settings", "workflow"])
+      new Set(["automation", "beautify", "browser", "install_skill", "office", "plugin_marketplace", "session", "update_settings", "workflow"])
     );
   });
 

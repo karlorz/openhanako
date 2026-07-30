@@ -779,6 +779,11 @@
       "done": "📥 装好了",
       "failed": "📥 没装上"
     },
+    "plugin_marketplace": {
+      "running": "🧩 {name} 正在检查插件市场",
+      "done": "🧩 插件市场操作完成",
+      "failed": "🧩 插件市场操作失败"
+    },
     "update_settings": {
       "running": "⚙️ {name} 正在改设置",
       "done": "⚙️ 改好了",
@@ -1248,6 +1253,10 @@
           "install_skill": {
             "label": "安装技能",
             "summary": "从 GitHub 或技能库安装新技能"
+          },
+          "plugin_marketplace": {
+            "label": "插件市场",
+            "summary": "检查市场包，并在确认后安装支持的 Hana 技能"
           },
           "office": {
             "label": "Office",

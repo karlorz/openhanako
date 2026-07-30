@@ -1,0 +1,321 @@
+import { describe, expect, it, vi } from "vitest";
+import { createPluginMarketplaceTool } from "../lib/tools/plugin-marketplace-tool.ts";
+
+const MARKETPLACE_ID = "llm-wiki";
+
+function sourceQualifiedId(pluginId: string, marketplaceId = MARKETPLACE_ID) {
+  return `${pluginId}@${marketplaceId}`;
+}
+
+function claudeSkillPlugin(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "skillwiki",
+    name: "SkillWiki",
+    version: "0.10.22",
+    publisher: "LLM Wiki",
+    trust: "restricted",
+    install: {
+      catalogFormat: "claude",
+      sourceKind: "relative",
+      source: "packages/skills",
+      canInstall: true,
+    },
+    ...overrides,
+  };
+}
+
+function nativePlugin() {
+  return {
+    id: "native-page",
+    name: "Native Page",
+    version: "1.0.0",
+    publisher: "Hana",
+    trust: "full-access",
+    contributions: ["tools", "routes"],
+    distribution: {
+      kind: "release",
+      packageUrl: "https://example.com/native-page.zip",
+      sha256: "a".repeat(64),
+    },
+  };
+}
+
+function unsupportedClaudePlugin() {
+  return claudeSkillPlugin({
+    id: "remote-claude",
+    install: {
+      catalogFormat: "claude",
+      sourceKind: "git-subdir",
+      canInstall: false,
+    },
+  });
+}
+
+function makeMarketplaceService(plugin: any = claudeSkillPlugin()) {
+  return {
+    ensureOfficialSnapshotSeededAsync: vi.fn().mockResolvedValue({ state: "ok" }),
+    listSources: vi.fn().mockReturnValue([
+      { id: MARKETPLACE_ID, name: "LLM Wiki", kind: "git", authority: "custom", status: "ok" },
+    ]),
+    listCatalogRows: vi.fn().mockReturnValue({
+      sources: [{ id: MARKETPLACE_ID, name: "LLM Wiki", kind: "git", authority: "custom", status: "ok" }],
+      plugins: [{
+        pluginId: (plugin as any).id,
+        marketplaceId: MARKETPLACE_ID,
+        compositeKey: sourceQualifiedId((plugin as any).id),
+        installTarget: "hana-skills",
+      }],
+    }),
+    resolveInstall: vi.fn().mockImplementation((pluginId: string, marketplaceId?: string | null) => ({
+      ok: true,
+      mode: marketplaceId ? "qualified" : "unique",
+      row: { marketplaceId: marketplaceId || MARKETPLACE_ID, pluginId },
+    })),
+    getCatalogPlugin: vi.fn().mockReturnValue(plugin),
+    installClaudePluginSkills: vi.fn().mockResolvedValue({
+      marketplaceId: MARKETPLACE_ID,
+      pluginId: (plugin as any).id,
+      skills: ["skillwiki"],
+      skipped: [],
+      warnings: [],
+      resolvedRevision: "abc123",
+    }),
+  };
+}
+
+function makeTool(options: {
+  plugin?: Record<string, unknown>;
+  userSkillsDir?: string | null;
+  reloadSkills?: () => Promise<void>;
+} = {}) {
+  const marketplaceService = makeMarketplaceService(options.plugin);
+  const reloadSkills = options.reloadSkills || vi.fn().mockResolvedValue(undefined);
+  const tool = createPluginMarketplaceTool({
+    getEngine: () => ({
+      pluginMarketplaceService: marketplaceService,
+      userSkillsDir: options.userSkillsDir === null ? null : "/tmp/hana-user-skills",
+      reloadSkills,
+    }),
+  });
+  return { tool, marketplaceService, reloadSkills };
+}
+
+async function getPlanToken(tool: ReturnType<typeof createPluginMarketplaceTool>, pluginId: string) {
+  const plan = await tool.execute("plan-call", {
+    action: "plan_install",
+    pluginId,
+    marketplaceId: MARKETPLACE_ID,
+  });
+  expect(plan.isError).toBeUndefined();
+  expect((plan.details as any).planToken).toEqual(expect.any(String));
+  return (plan.details as any).planToken as string;
+}
+
+describe("plugin_marketplace Agent tool", () => {
+  it("declares read permissions for inspection and review permissions for installs", () => {
+    const { tool } = makeTool();
+
+    expect(tool.sessionPermission.resolveInvocation({ action: "list_catalog" })).toMatchObject({
+      action: "read",
+      kind: "read",
+      capability: "plugin_marketplace.read",
+      target: { type: "setting", id: "plugin-marketplace:marketplace" },
+    });
+    expect(tool.sessionPermission.resolveInvocation({
+      action: "plan_install",
+      pluginId: "skillwiki",
+      marketplaceId: MARKETPLACE_ID,
+    })).toMatchObject({
+      action: "read",
+      kind: "read",
+      capability: "plugin_marketplace.read",
+      target: {
+        type: "setting",
+        id: `plugin-marketplace:${sourceQualifiedId("skillwiki")}`,
+      },
+    });
+    expect(tool.sessionPermission.resolveInvocation({
+      action: "install",
+      pluginId: "skillwiki",
+      marketplaceId: MARKETPLACE_ID,
+      planToken: "plan-token",
+    })).toMatchObject({
+      action: "install",
+      kind: "review",
+      capability: "plugin_marketplace.install",
+      target: {
+        type: "setting",
+        id: `plugin-marketplace:${sourceQualifiedId("skillwiki")}`,
+      },
+      sideEffect: {
+        summary: "Installs a marketplace package into Hana.",
+        pluginId: "skillwiki",
+        marketplaceId: MARKETPLACE_ID,
+        planToken: "plan-token",
+      },
+    });
+    expect(tool.sessionPermission.resolveInvocation({
+      action: "install",
+      pluginId: "skillwiki",
+      marketplaceId: MARKETPLACE_ID,
+    })).toBeNull();
+    expect(tool.sessionPermission.resolveInvocation({ action: "remove_source" })).toBeNull();
+  });
+
+  it("lists catalog rows through the marketplace service", async () => {
+    const { tool, marketplaceService } = makeTool();
+
+    const result = await tool.execute("call-1", { action: "list_catalog" });
+
+    expect(result.isError).toBeUndefined();
+    expect(marketplaceService.ensureOfficialSnapshotSeededAsync).toHaveBeenCalledTimes(1);
+    expect(result.details).toMatchObject({
+      ok: true,
+      plugins: [{ pluginId: "skillwiki", marketplaceId: MARKETPLACE_ID }],
+    });
+  });
+
+  it("returns inspector and install-plan fields for a package", async () => {
+    const { tool } = makeTool();
+
+    const result = await tool.execute("call-1", {
+      action: "plan_install",
+      pluginId: "skillwiki",
+      marketplaceId: MARKETPLACE_ID,
+    });
+
+    expect(result.isError).toBeUndefined();
+    expect(result.details).toMatchObject({
+      ok: true,
+      pluginId: "skillwiki",
+      marketplaceId: MARKETPLACE_ID,
+      identity: sourceQualifiedId("skillwiki"),
+      installTarget: "hana-skills",
+      installAdapter: "skill-manager",
+      installable: true,
+      confirmationLevel: "inline",
+      capabilityInventory: {
+        agentFacing: ["skills"],
+      },
+      installPlan: {
+        action: "install",
+        destination: "hana-skills",
+        installAdapter: "skill-manager",
+        installable: true,
+      },
+      planToken: expect.any(String),
+    });
+  });
+
+  it("rejects unsupported Claude packages without mutating", async () => {
+    const { tool, marketplaceService } = makeTool({ plugin: unsupportedClaudePlugin() });
+    const planToken = await getPlanToken(tool, "remote-claude");
+
+    const result = await tool.execute("call-1", {
+      action: "install",
+      pluginId: "remote-claude",
+      marketplaceId: MARKETPLACE_ID,
+      planToken,
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.details).toMatchObject({
+      ok: false,
+      code: "PLUGIN_MARKETPLACE_UNSUPPORTED",
+      pluginId: "remote-claude",
+      installTarget: "unsupported",
+      installable: false,
+    });
+    expect(marketplaceService.installClaudePluginSkills).not.toHaveBeenCalled();
+  });
+
+  it("keeps native plugin installs out of the Agent until PluginManager contract audit is complete", async () => {
+    const { tool, marketplaceService } = makeTool({ plugin: nativePlugin() });
+    const planToken = await getPlanToken(tool, "native-page");
+
+    const result = await tool.execute("call-1", {
+      action: "install",
+      pluginId: "native-page",
+      marketplaceId: MARKETPLACE_ID,
+      planToken,
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.details).toMatchObject({
+      ok: false,
+      code: "PLUGIN_MARKETPLACE_NATIVE_INSTALL_NOT_AGENT_ENABLED",
+      pluginId: "native-page",
+      installTarget: "native-plugin",
+      confirmationLevel: "typed-exact",
+    });
+    expect((result.details as any).warnings).toEqual(expect.arrayContaining([
+      "native plugin requests full-access review",
+      "native plugin has server-impacting contributions: routes",
+    ]));
+    expect(marketplaceService.installClaudePluginSkills).not.toHaveBeenCalled();
+  });
+
+  it("requires a fresh install plan token before mutating", async () => {
+    const { tool, marketplaceService } = makeTool();
+
+    const missing = await tool.execute("call-1", {
+      action: "install",
+      pluginId: "skillwiki",
+      marketplaceId: MARKETPLACE_ID,
+    });
+    expect(missing.isError).toBe(true);
+    expect(missing.details).toMatchObject({
+      ok: false,
+      code: "PLUGIN_MARKETPLACE_PLAN_TOKEN_REQUIRED",
+    });
+
+    const stale = await tool.execute("call-2", {
+      action: "install",
+      pluginId: "skillwiki",
+      marketplaceId: MARKETPLACE_ID,
+      planToken: "stale-token",
+    });
+    expect(stale.isError).toBe(true);
+    expect(stale.details).toMatchObject({
+      ok: false,
+      code: "PLUGIN_MARKETPLACE_PLAN_STALE",
+      pluginId: "skillwiki",
+      marketplaceId: MARKETPLACE_ID,
+      receivedPlanToken: "stale-token",
+      expectedPlanToken: expect.any(String),
+    });
+    expect(marketplaceService.installClaudePluginSkills).not.toHaveBeenCalled();
+  });
+
+  it("installs Hana skill packages and reloads skills after approval has passed", async () => {
+    const { tool, marketplaceService, reloadSkills } = makeTool();
+    const planToken = await getPlanToken(tool, "skillwiki");
+
+    const result = await tool.execute("call-1", {
+      action: "install",
+      pluginId: "skillwiki",
+      marketplaceId: MARKETPLACE_ID,
+      planToken,
+    });
+
+    expect(result.isError).toBeUndefined();
+    expect(marketplaceService.installClaudePluginSkills).toHaveBeenCalledWith(
+      "skillwiki",
+      MARKETPLACE_ID,
+      {
+        userSkillsDir: "/tmp/hana-user-skills",
+        isStudioOwner: true,
+      },
+    );
+    expect(reloadSkills).toHaveBeenCalledTimes(1);
+    expect(result.details).toMatchObject({
+      ok: true,
+      installTarget: "hana-skills",
+      catalogFormat: "claude",
+      marketplaceId: MARKETPLACE_ID,
+      pluginId: "skillwiki",
+      skills: ["skillwiki"],
+      resolvedRevision: "abc123",
+    });
+  });
+});
