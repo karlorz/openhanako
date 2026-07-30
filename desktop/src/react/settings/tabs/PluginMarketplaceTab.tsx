@@ -7,6 +7,8 @@ import { MarketplaceSourcesPanel, type MarketplaceSourceRow } from '../component
 import { renderMarkdown } from '../../utils/markdown';
 import styles from '../Settings.module.css';
 
+const marketplaceBadgeClassName = `${styles['skills-source-badge']} ${styles['plugin-marketplace-badge']}`;
+
 interface MarketplacePlugin {
   id: string;
   name: string;
@@ -650,7 +652,7 @@ export function PluginMarketplaceTab() {
         <span className={styles['skills-list-desc']}>{t('settings.plugins.marketplaceHint')}</span>
         <div className={styles['plugin-marketplace-toolbar-actions']}>
           {marketplace && (
-            <span className={styles['skills-source-badge']} style={{ marginRight: 0 }}>
+            <span className={marketplaceBadgeClassName}>
               {statusText}
             </span>
           )}
@@ -763,12 +765,12 @@ export function PluginMarketplaceTab() {
                             <span className={styles['skills-list-name']}>{plugin.name}</span>
                             <span className={styles['skills-list-name-hint']}>v{marketVersion(plugin)}</span>
                             {plugin.marketplaceId && (
-                              <span className={styles['skills-source-badge']} style={{ marginRight: 0 }}>
+                              <span className={marketplaceBadgeClassName}>
                                 {sourceQualifiedId(plugin)}
                               </span>
                             )}
                             {plugin.installTarget && (
-                              <span className={styles['skills-source-badge']} style={{ marginRight: 0 }}>
+                              <span className={marketplaceBadgeClassName}>
                                 {marketTargetLabel(plugin.installTarget)}
                               </span>
                             )}
@@ -783,17 +785,17 @@ export function PluginMarketplaceTab() {
                               </span>
                             )}
                             {(plugin.installed || plugin.active) && (
-                              <span className={styles['skills-source-badge']} style={{ marginRight: 0 }}>
+                              <span className={marketplaceBadgeClassName}>
                                 {t('settings.plugins.marketInstalled')}
                               </span>
                             )}
                             {plugin.retained && !plugin.active && (
-                              <span className={styles['skills-source-badge']} style={{ marginRight: 0 }}>
+                              <span className={marketplaceBadgeClassName}>
                                 retained
                               </span>
                             )}
                             {plugin.updateAvailable && (
-                              <span className={styles['skills-source-badge']} style={{ marginRight: 0 }}>
+                              <span className={marketplaceBadgeClassName}>
                                 {t('settings.plugins.marketUpdateAvailable')}
                               </span>
                             )}
@@ -981,7 +983,7 @@ export function PluginMarketplaceTab() {
                           </div>
                           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                             {(selectedPlugin.contributions || []).map(item => (
-                              <span key={item} className={styles['skills-source-badge']} style={{ marginRight: 0 }}>
+                              <span key={item} className={marketplaceBadgeClassName}>
                                 {item}
                               </span>
                             ))}

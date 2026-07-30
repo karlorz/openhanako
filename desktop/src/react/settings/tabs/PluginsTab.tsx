@@ -10,6 +10,7 @@ import { MarketplaceSourcesPanel } from '../components/MarketplaceSourcesPanel';
 import { SelectWidget, Toggle, type SelectOption } from '@/ui';
 
 const platform = window.platform;
+const marketplaceBadgeClassName = `${styles['skills-source-badge']} ${styles['plugin-marketplace-badge']}`;
 
 interface PluginInfo {
   id: string;
@@ -109,9 +110,9 @@ function ContributionBadges({ contributions }: { contributions?: string[] }) {
       {contributions.map(c => (
         <span
           key={c}
-          className={styles['skills-source-badge']}
+          className={marketplaceBadgeClassName}
           style={{
-            marginRight: 0, opacity: 1,
+            opacity: 1,
             background: 'var(--overlay-light, rgba(0,0,0,0.05))',
             padding: '1px 6px', borderRadius: 'var(--radius-sm)',
           }}
@@ -608,7 +609,7 @@ export function PluginsTab() {
           title={t('settings.plugins.diagnosticsTitle')}
           surface="plain"
           context={
-            <span className={styles['skills-source-badge']} style={{ marginRight: 0 }}>
+            <span className={marketplaceBadgeClassName}>
               {t('settings.plugins.diagnosticsSummary', {
                 capabilities: String(diagnostics.eventBus.filter(item => item.available).length),
                 total: String(diagnostics.eventBus.length),
@@ -645,12 +646,12 @@ export function PluginsTab() {
                         <span className={styles['skills-list-name']}>{plugin.name || plugin.id}</span>
                         <span className={styles['skills-list-name-hint']}>{plugin.id}</span>
                         {plugin.status && (
-                          <span className={styles['skills-source-badge']} style={{ marginRight: 0 }}>
+                          <span className={marketplaceBadgeClassName}>
                             {plugin.status}
                           </span>
                         )}
                         {plugin.activationState && (
-                          <span className={styles['skills-source-badge']} style={{ marginRight: 0 }}>
+                          <span className={marketplaceBadgeClassName}>
                             {plugin.activationState}
                           </span>
                         )}

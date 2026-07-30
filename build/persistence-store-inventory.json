@@ -877,7 +877,15 @@
         "plugins/{pluginId}",
         "plugin-installs.json",
         "plugin-backups/{pluginId}",
-        "plugin-marketplace/marketplace.json"
+        "plugin-backups/{marketplaceId}/{pluginId}",
+        "plugin-artifacts/{marketplaceId}/{pluginId}/{artifactDigest}",
+        "plugin-marketplace/marketplace.json",
+        "plugin-marketplaces.json",
+        "plugin-marketplace-cache/{sourceId}",
+        "plugin-marketplace-git/{sourceId}",
+        "plugin-marketplace-claude-skills/{marketplaceId}/{pluginId}.json",
+        "claude-compatibility/{mode}/{bindingId}.json",
+        "plugin-trust.json"
       ],
       "pathExclusions": [],
       "pathKind": "tree",
@@ -885,7 +893,7 @@
       "schemaSource": {
         "kind": "directory-contract",
         "module": "core/plugin-manager.ts",
-        "contract": "installed manifest, install receipt, backup, and source-package directory protocols"
+        "contract": "installed manifest, install receipt, backup, multi-source artifacts, marketplace registry, Claude skill provenance, and compatibility-state protocols"
       },
       "schemaContract": {
         "kind": "protocol",
@@ -896,7 +904,8 @@
         "PluginManager.loadPlugins"
       ],
       "migrationEntry": [
-        "plugin installation compatibility checks"
+        "plugin installation compatibility checks",
+        "PluginInstallRecords.migrateToV2"
       ],
       "protocolModules": [],
       "firstPossibleOpenPhase": "engine_construct",
@@ -907,7 +916,7 @@
       "affectedByEpochMigration": true,
       "bootstrapSafety": null,
       "preCoordinatorReadProjection": null,
-      "identityContract": "pluginId from manifest is identity; versions and directories are locators/generations.",
+      "identityContract": "Bare pluginId remains the active runtime projection identity; retained artifacts, trust, backups, Claude skill provenance, and compatibility state remain source-, package-, binding-, or digest-qualified.",
       "exemption": null
     },
     {
@@ -1210,7 +1219,9 @@
       "ownerModule": "core/plugin-config.ts",
       "pathPattern": "plugin-data/{pluginId}",
       "pathPatterns": [
-        "plugin-data/{pluginId}"
+        "plugin-data/{pluginId}",
+        "plugin-data/{marketplaceId}/{pluginId}",
+        "plugin-secrets/{marketplaceId}/{pluginId}"
       ],
       "pathExclusions": [
         "plugin-data/office/jobs",
@@ -1240,12 +1251,12 @@
       "firstPossibleOpenPhase": "engine_construct",
       "firstPossibleWritePhase": "runtime_ready",
       "epochPolicy": "epoch-managed",
-      "checkpointPolicy": "Checkpoint by pluginId and declared migrationVersion; never infer one schema for plugin-data/**.",
-      "restorePolicy": "Restore only when the same pluginId and a compatible manifest/migrationVersion are available.",
+      "checkpointPolicy": "Checkpoint by marketplace-qualified plugin identity and declared migrationVersion; never infer one schema for plugin-data/**.",
+      "restorePolicy": "Restore only when the same marketplaceId+pluginId and a compatible manifest/migrationVersion are available. Incomplete switch journals recover to the last committed active pointer.",
       "affectedByEpochMigration": true,
       "bootstrapSafety": null,
       "preCoordinatorReadProjection": null,
-      "identityContract": "pluginId from the active manifest owns exactly its plugin-data subtree.",
+      "identityContract": "Marketplace plugins own plugin-data/{marketplaceId}/{pluginId}; bare pluginId paths remain legacy/unqualified until migrated. Active runtime projection is bare plugins/{pluginId}.",
       "exemption": {
         "reason": "Dynamic plugin schemas must be registered by pluginId and migrationVersion before a coordinated data migration consumes them.",
         "expiresOn": "2026-12-31"
@@ -2413,7 +2424,7 @@
     },
     {
       "sourceFile": "core/agent.ts",
-      "line": 350,
+      "line": 352,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(path.join(this.agentDir, \"memory\", \"summaries\"), { recursive: true })",
       "reason": "Creates the memory directory and records legacy memories.db import state.",
@@ -2422,7 +2433,7 @@
     },
     {
       "sourceFile": "core/agent.ts",
-      "line": 351,
+      "line": 353,
       "kind": "persistent-store-constructor",
       "excerpt": "new FactStore(this.factsDbPath)",
       "reason": "Constructs or migrates a FactStore.",
@@ -2431,7 +2442,7 @@
     },
     {
       "sourceFile": "core/agent.ts",
-      "line": 361,
+      "line": 363,
       "kind": "database-open",
       "excerpt": "new Database(oldMemoriesPath, { readonly: true })",
       "reason": "Constructs or migrates a FactStore.",
@@ -2440,7 +2451,7 @@
     },
     {
       "sourceFile": "core/agent.ts",
-      "line": 376,
+      "line": 378,
       "kind": "write-file",
       "excerpt": "fs.writeFileSync(migrationDone, new Date().toISOString())",
       "reason": "Creates the memory directory and records legacy memories.db import state.",
@@ -2449,7 +2460,7 @@
     },
     {
       "sourceFile": "core/agent.ts",
-      "line": 380,
+      "line": 382,
       "kind": "write-file",
       "excerpt": "fs.writeFileSync(migrationDone, `failed: ${err.message}`)",
       "reason": "Creates the memory directory and records legacy memories.db import state.",
@@ -2458,7 +2469,7 @@
     },
     {
       "sourceFile": "core/agent.ts",
-      "line": 515,
+      "line": 517,
       "kind": "persistent-store-constructor",
       "excerpt": "new CronStore( path.join(this.deskDir, \"cron-jobs.json\"), path.join(this.deskDir, \"cron-runs\"), )",
       "reason": "Constructs an agent or studio CronStore.",
@@ -5895,6 +5906,24 @@
       "exemptionId": null
     },
     {
+      "sourceFile": "lib/claude-compatibility.ts",
+      "line": 161,
+      "kind": "mkdir",
+      "excerpt": "fs.mkdirSync(dirPath, options)",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/claude-compatibility.ts",
+      "line": 162,
+      "kind": "write-file",
+      "excerpt": "fs.writeFileSync(filePath, data, encoding)",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
       "sourceFile": "lib/compat/checks/config-yaml.ts",
       "line": 25,
       "kind": "rename",
@@ -6768,110 +6797,470 @@
       "exemptionId": null
     },
     {
+      "sourceFile": "lib/plugin-artifact-store.ts",
+      "line": 79,
+      "kind": "mkdir",
+      "excerpt": "fs.mkdirSync(path.dirname(dest), { recursive: true })",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/plugin-artifact-store.ts",
+      "line": 81,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(tmp, { recursive: true, force: true })",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/plugin-artifact-store.ts",
+      "line": 82,
+      "kind": "copy-file",
+      "excerpt": "fs.cpSync(input.packageDir, tmp, { recursive: true })",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/plugin-artifact-store.ts",
+      "line": 83,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(dest, { recursive: true, force: true })",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/plugin-artifact-store.ts",
+      "line": 84,
+      "kind": "rename",
+      "excerpt": "fs.renameSync(tmp, dest)",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/plugin-artifact-store.ts",
+      "line": 101,
+      "kind": "write-file",
+      "excerpt": "fs.writeFileSync(metaPath, `${JSON.stringify(info, null, 2)}\\n`, \"utf8\")",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/plugin-artifact-store.ts",
+      "line": 120,
+      "kind": "write-file",
+      "excerpt": "fs.writeFileSync( path.join(info.artifactPath, \".hana-artifact.json\"), `${JSON.stringify(info, null, 2)}\\n`, \"utf8\", )",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/plugin-artifact-store.ts",
+      "line": 168,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(dest, { recursive: true, force: true })",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
       "sourceFile": "lib/plugin-install-backups.ts",
       "line": 29,
       "kind": "remove-path",
       "excerpt": "fs.rmSync(entry.fullPath, { recursive: true, force: true })",
-      "reason": "Backs up or records an installed plugin package.",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
       "storeId": "installed-plugins",
       "exemptionId": null
     },
     {
       "sourceFile": "lib/plugin-install-backups.ts",
-      "line": 42,
+      "line": 53,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(backupRoot, { recursive: true })",
-      "reason": "Backs up or records an installed plugin package.",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
       "storeId": "installed-plugins",
       "exemptionId": null
     },
     {
       "sourceFile": "lib/plugin-install-backups.ts",
-      "line": 46,
+      "line": 57,
       "kind": "remove-path",
       "excerpt": "fs.rmSync(tmpDir, { recursive: true, force: true })",
-      "reason": "Backs up or records an installed plugin package.",
-      "storeId": "installed-plugins",
-      "exemptionId": null
-    },
-    {
-      "sourceFile": "lib/plugin-install-backups.ts",
-      "line": 47,
-      "kind": "copy-file",
-      "excerpt": "fs.cpSync(pluginDir, tmpDir, { recursive: true })",
-      "reason": "Backs up or records an installed plugin package.",
-      "storeId": "installed-plugins",
-      "exemptionId": null
-    },
-    {
-      "sourceFile": "lib/plugin-install-backups.ts",
-      "line": 48,
-      "kind": "rename",
-      "excerpt": "fs.renameSync(tmpDir, backupDir)",
-      "reason": "Backs up or records an installed plugin package.",
-      "storeId": "installed-plugins",
-      "exemptionId": null
-    },
-    {
-      "sourceFile": "lib/plugin-install-backups.ts",
-      "line": 56,
-      "kind": "mkdir",
-      "excerpt": "fs.mkdirSync(parent, { recursive: true })",
-      "reason": "Backs up or records an installed plugin package.",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
       "storeId": "installed-plugins",
       "exemptionId": null
     },
     {
       "sourceFile": "lib/plugin-install-backups.ts",
       "line": 58,
-      "kind": "remove-path",
-      "excerpt": "fs.rmSync(targetDir, { recursive: true, force: true })",
-      "reason": "Backs up or records an installed plugin package.",
+      "kind": "copy-file",
+      "excerpt": "fs.cpSync(pluginDir, tmpDir, { recursive: true })",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
       "storeId": "installed-plugins",
       "exemptionId": null
     },
     {
       "sourceFile": "lib/plugin-install-backups.ts",
       "line": 59,
+      "kind": "rename",
+      "excerpt": "fs.renameSync(tmpDir, backupDir)",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/plugin-install-backups.ts",
+      "line": 73,
+      "kind": "mkdir",
+      "excerpt": "fs.mkdirSync(parent, { recursive: true })",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/plugin-install-backups.ts",
+      "line": 75,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(targetDir, { recursive: true, force: true })",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/plugin-install-backups.ts",
+      "line": 76,
       "kind": "copy-file",
       "excerpt": "fs.cpSync(backup.backupDir, targetDir, { recursive: true })",
-      "reason": "Backs up or records an installed plugin package.",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
       "storeId": "installed-plugins",
       "exemptionId": null
     },
     {
       "sourceFile": "lib/plugin-install-records.ts",
-      "line": 26,
+      "line": 90,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(path.dirname(filePath), { recursive: true })",
-      "reason": "Backs up or records an installed plugin package.",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
       "storeId": "installed-plugins",
       "exemptionId": null
     },
     {
       "sourceFile": "lib/plugin-install-records.ts",
-      "line": 27,
+      "line": 91,
       "kind": "atomic-write",
       "excerpt": "atomicWriteSync(filePath, `${JSON.stringify(value, null, 2)}\\n`)",
-      "reason": "Backs up or records an installed plugin package.",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
       "storeId": "installed-plugins",
       "exemptionId": null
     },
     {
       "sourceFile": "lib/plugin-install-records.ts",
-      "line": 84,
+      "line": 147,
       "kind": "atomic-write",
       "excerpt": "atomicWriteJson(this._path, records)",
-      "reason": "Backs up or records an installed plugin package.",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
       "storeId": "installed-plugins",
       "exemptionId": null
     },
     {
       "sourceFile": "lib/plugin-install-records.ts",
-      "line": 92,
+      "line": 375,
+      "kind": "copy-file",
+      "excerpt": "fs.copyFileSync(this._path, checkpoint)",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/plugin-marketplace-claude-skills.ts",
+      "line": 226,
+      "kind": "mkdir",
+      "excerpt": "fs.mkdirSync(path.dirname(filePath), { recursive: true })",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/plugin-marketplace-claude-skills.ts",
+      "line": 237,
+      "kind": "write-file",
+      "excerpt": "fs.writeFileSync(filePath, JSON.stringify(payload, null, 2) + \"\\n\", \"utf8\")",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/plugin-marketplace-git-cache.ts",
+      "line": 80,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(staging, { recursive: true, force: true })",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/plugin-marketplace-git-cache.ts",
+      "line": 81,
+      "kind": "mkdir",
+      "excerpt": "fs.mkdirSync(staging, { recursive: true })",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/plugin-marketplace-git-cache.ts",
+      "line": 140,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(staging, { recursive: true, force: true })",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/plugin-marketplace-git-cache.ts",
+      "line": 151,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(staging, { recursive: true, force: true })",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/plugin-marketplace-git-cache.ts",
+      "line": 273,
+      "kind": "write-file",
+      "excerpt": "fs.writeFileSync(packageCacheMarkerPath(dir), JSON.stringify(marker, null, 2) + \"\\n\", \"utf8\")",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/plugin-marketplace-git-cache.ts",
+      "line": 338,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(entry.fullPath, { recursive: true, force: true })",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/plugin-marketplace-git-cache.ts",
+      "line": 377,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(staging, { recursive: true, force: true })",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/plugin-marketplace-git-cache.ts",
+      "line": 378,
+      "kind": "mkdir",
+      "excerpt": "fs.mkdirSync(staging, { recursive: true })",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/plugin-marketplace-git-cache.ts",
+      "line": 429,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(oldTarget, { recursive: true, force: true })",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/plugin-marketplace-git-cache.ts",
+      "line": 430,
+      "kind": "rename",
+      "excerpt": "fs.renameSync(target, oldTarget)",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/plugin-marketplace-git-cache.ts",
+      "line": 432,
+      "kind": "rename",
+      "excerpt": "fs.renameSync(staging, target)",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/plugin-marketplace-git-cache.ts",
+      "line": 434,
+      "kind": "rename",
+      "excerpt": "fs.renameSync(oldTarget, target)",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/plugin-marketplace-git-cache.ts",
+      "line": 437,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(oldTarget, { recursive: true, force: true })",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/plugin-marketplace-git-cache.ts",
+      "line": 447,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(staging, { recursive: true, force: true })",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/plugin-marketplace-snapshots.ts",
+      "line": 63,
+      "kind": "mkdir",
+      "excerpt": "fs.mkdirSync(sourceDir, { recursive: true })",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/plugin-marketplace-snapshots.ts",
+      "line": 67,
+      "kind": "mkdir",
+      "excerpt": "fs.mkdirSync(generationDir, { recursive: true })",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/plugin-marketplace-snapshots.ts",
+      "line": 70,
       "kind": "atomic-write",
-      "excerpt": "atomicWriteJson(this._path, records)",
-      "reason": "Backs up or records an installed plugin package.",
+      "excerpt": "atomicWriteSync(snapshotPath, `${JSON.stringify(snapshot, null, 2)}\\n`)",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/plugin-marketplace-snapshots.ts",
+      "line": 190,
+      "kind": "mkdir",
+      "excerpt": "fs.mkdirSync(dir, { recursive: true })",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/plugin-marketplace-snapshots.ts",
+      "line": 191,
+      "kind": "atomic-write",
+      "excerpt": "atomicWriteSync(this._metaPath(sourceId), `${JSON.stringify(meta, null, 2)}\\n`)",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/plugin-marketplace-sources.ts",
+      "line": 138,
+      "kind": "mkdir",
+      "excerpt": "fs.mkdirSync(p, o)",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/plugin-marketplace-sources.ts",
+      "line": 142,
+      "kind": "write-file",
+      "excerpt": "fs.writeFileSync(p, data, encoding)",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/plugin-source-switch.ts",
+      "line": 316,
+      "kind": "mkdir",
+      "excerpt": "fs.mkdirSync(parent, { recursive: true })",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/plugin-source-switch.ts",
+      "line": 318,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(tmp, { recursive: true, force: true })",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/plugin-source-switch.ts",
+      "line": 319,
+      "kind": "copy-file",
+      "excerpt": "fs.cpSync(artifactPath, tmp, { recursive: true })",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/plugin-source-switch.ts",
+      "line": 321,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(path.join(tmp, \".hana-artifact.json\"), { force: true })",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/plugin-source-switch.ts",
+      "line": 322,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(activeDir, { recursive: true, force: true })",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/plugin-source-switch.ts",
+      "line": 323,
+      "kind": "rename",
+      "excerpt": "fs.renameSync(tmp, activeDir)",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/plugin-source-switch.ts",
+      "line": 335,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(activeDir, { recursive: true, force: true })",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/plugin-trust-store.ts",
+      "line": 54,
+      "kind": "mkdir",
+      "excerpt": "fs.mkdirSync(path.dirname(this._path), { recursive: true })",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/plugin-trust-store.ts",
+      "line": 55,
+      "kind": "atomic-write",
+      "excerpt": "atomicWriteSync(this._path, `${JSON.stringify(file, null, 2)}\\n`)",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
       "storeId": "installed-plugins",
       "exemptionId": null
     },
@@ -7516,7 +7905,7 @@
     },
     {
       "sourceFile": "lib/skills/skill-package-installer.ts",
-      "line": 176,
+      "line": 177,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(installDir, { recursive: true })",
       "reason": "Installs, exports, uploads, or records skill packages.",
@@ -7525,7 +7914,7 @@
     },
     {
       "sourceFile": "lib/skills/skill-package-installer.ts",
-      "line": 184,
+      "line": 191,
       "kind": "write-file",
       "excerpt": "fs.writeFileSync( skillFilePath, rewriteSkillInstallMetadata(content, safeName, { defaultEnabled }), \"utf-8\", )",
       "reason": "Installs, exports, uploads, or records skill packages.",
@@ -7534,7 +7923,7 @@
     },
     {
       "sourceFile": "lib/skills/skill-package-installer.ts",
-      "line": 300,
+      "line": 307,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(extractDir, { recursive: true })",
       "reason": "Installs, exports, uploads, or records skill packages.",
@@ -7543,7 +7932,7 @@
     },
     {
       "sourceFile": "lib/skills/skill-package-installer.ts",
-      "line": 338,
+      "line": 345,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(skillDir, { recursive: true })",
       "reason": "Installs, exports, uploads, or records skill packages.",
@@ -7552,7 +7941,7 @@
     },
     {
       "sourceFile": "lib/skills/skill-package-installer.ts",
-      "line": 339,
+      "line": 346,
       "kind": "write-file",
       "excerpt": "fs.writeFileSync( path.join(skillDir, \"SKILL.md\"), rewriteSkillInstallMetadata(content, safeName, { defaultEnabled }), \"utf-8\", )",
       "reason": "Installs, exports, uploads, or records skill packages.",
@@ -7561,7 +7950,7 @@
     },
     {
       "sourceFile": "lib/skills/skill-package-installer.ts",
-      "line": 388,
+      "line": 395,
       "kind": "write-file",
       "excerpt": "fs.writeFileSync(zipPath, bytes)",
       "reason": "Installs, exports, uploads, or records skill packages.",
@@ -7570,7 +7959,7 @@
     },
     {
       "sourceFile": "lib/skills/skill-package-installer.ts",
-      "line": 389,
+      "line": 396,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(extractDir, { recursive: true })",
       "reason": "Installs, exports, uploads, or records skill packages.",
@@ -8227,25 +8616,25 @@
     },
     {
       "sourceFile": "server/routes/plugins.ts",
-      "line": 397,
+      "line": 403,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(userPluginsDir, { recursive: true })",
-      "reason": "Creates, promotes, rolls back, or removes an installed plugin directory.",
+      "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
       "storeId": "installed-plugins",
       "exemptionId": null
     },
     {
       "sourceFile": "server/routes/plugins.ts",
-      "line": 421,
+      "line": 427,
       "kind": "copy-file",
       "excerpt": "fs.cpSync(pluginSrc, tmpTarget, { recursive: true })",
-      "reason": "Creates, promotes, rolls back, or removes an installed plugin directory.",
+      "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
       "storeId": "installed-plugins",
       "exemptionId": null
     },
     {
       "sourceFile": "server/routes/plugins.ts",
-      "line": 428,
+      "line": 434,
       "kind": "remove-path",
       "excerpt": "fs.rmSync(cleanupPath, { recursive: true, force: true })",
       "reason": "One bounded cleanup list contains both HANA_HOME .installing staging and operating-system extraction temp; flow-sensitive attribution must replace this exact conditional site.",
@@ -8254,34 +8643,34 @@
     },
     {
       "sourceFile": "server/routes/plugins.ts",
-      "line": 473,
+      "line": 479,
       "kind": "remove-path",
       "excerpt": "fs.rmSync(targetDir, { recursive: true, force: true })",
-      "reason": "Creates, promotes, rolls back, or removes an installed plugin directory.",
+      "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
       "storeId": "installed-plugins",
       "exemptionId": null
     },
     {
       "sourceFile": "server/routes/plugins.ts",
-      "line": 535,
+      "line": 541,
       "kind": "remove-path",
       "excerpt": "fs.rmSync(targetDir, { recursive: true, force: true })",
-      "reason": "Creates, promotes, rolls back, or removes an installed plugin directory.",
+      "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
       "storeId": "installed-plugins",
       "exemptionId": null
     },
     {
       "sourceFile": "server/routes/plugins.ts",
-      "line": 536,
+      "line": 542,
       "kind": "rename",
       "excerpt": "fs.renameSync(stagedDir, targetDir)",
-      "reason": "Creates, promotes, rolls back, or removes an installed plugin directory.",
+      "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
       "storeId": "installed-plugins",
       "exemptionId": null
     },
     {
       "sourceFile": "server/routes/plugins.ts",
-      "line": 562,
+      "line": 568,
       "kind": "remove-path",
       "excerpt": "fs.rmSync(cleanupPath, { recursive: true, force: true })",
       "reason": "One bounded cleanup list contains both HANA_HOME .installing staging and operating-system extraction temp; flow-sensitive attribution must replace this exact conditional site.",
@@ -8290,7 +8679,7 @@
     },
     {
       "sourceFile": "server/routes/plugins.ts",
-      "line": 668,
+      "line": 674,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(downloadsDir, { recursive: true })",
       "reason": "Caches a sha256-verified plugin release package.",
@@ -8299,7 +8688,7 @@
     },
     {
       "sourceFile": "server/routes/plugins.ts",
-      "line": 670,
+      "line": 676,
       "kind": "write-file",
       "excerpt": "fs.writeFileSync(packagePath, body)",
       "reason": "Caches a sha256-verified plugin release package.",
@@ -8308,10 +8697,10 @@
     },
     {
       "sourceFile": "server/routes/plugins.ts",
-      "line": 1144,
+      "line": 1708,
       "kind": "remove-path",
       "excerpt": "fs.rmSync(pluginDir, { recursive: true, force: true })",
-      "reason": "Creates, promotes, rolls back, or removes an installed plugin directory.",
+      "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
       "storeId": "installed-plugins",
       "exemptionId": null
     },
