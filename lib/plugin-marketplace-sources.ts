@@ -10,6 +10,10 @@ import {
   type MarketplaceSourceFingerprintInput,
 } from "./plugin-marketplace-identity.ts";
 import { DEFAULT_OFFICIAL_PLUGIN_MARKETPLACE_URL } from "./plugin-marketplace.ts";
+import {
+  validateClaudeCompatibilityBindings,
+  type ClaudeCompatibilityBinding,
+} from "./claude-compatibility.ts";
 
 export const OFFICIAL_MARKETPLACE_ID = "oh-plugins-official";
 export const OFFICIAL_MARKETPLACE_NAME = "OH Plugins Official";
@@ -39,7 +43,7 @@ export interface MarketplaceSourcesFile {
   revision: number;
   sources: MarketplaceSourceDescriptor[];
   activations?: MarketplaceControlPlaneActivations;
-  claudeCompatibility?: { bindings?: unknown[] };
+  claudeCompatibility?: { bindings?: ClaudeCompatibilityBinding[] };
 }
 
 export interface MarketplaceControlPlaneActivations {
@@ -378,16 +382,21 @@ function validateActivations(raw: unknown): MarketplaceControlPlaneActivations |
   return out;
 }
 
-function validateClaudeCompatibility(raw: unknown): { bindings?: unknown[] } | undefined {
+function validateClaudeCompatibility(raw: unknown): { bindings?: ClaudeCompatibilityBinding[] } | undefined {
   if (raw === undefined) return undefined;
   if (!isPlainObject(raw)) {
     throw new Error("Malformed marketplace source registry: claudeCompatibility must be an object");
+  }
+  for (const key of Object.keys(raw)) {
+    if (key !== "bindings") {
+      throw new Error(`Malformed marketplace source registry: unsupported claudeCompatibility field: ${key}`);
+    }
   }
   if (raw.bindings !== undefined && !Array.isArray(raw.bindings)) {
     throw new Error("Malformed marketplace source registry: claudeCompatibility.bindings must be an array");
   }
   return {
-    ...(Array.isArray(raw.bindings) ? { bindings: raw.bindings.slice() } : {}),
+    ...(Array.isArray(raw.bindings) ? { bindings: validateClaudeCompatibilityBindings(raw.bindings) } : {}),
   };
 }
 
@@ -850,6 +859,12 @@ export class PluginMarketplaceSourceRegistry {
     return structuredClone(loaded.file.activations || {});
   }
 
+  getClaudeCompatibilityBindings(): ClaudeCompatibilityBinding[] {
+    const loaded = this._loadDurable();
+    const bindings = loaded.file?.claudeCompatibility?.bindings;
+    return structuredClone(bindings || []);
+  }
+
   diagnoseControlPlane(): MarketplaceControlPlaneDiagnosticReport {
     if (!this._fs.existsSync(this._path)) {
       const empty = emptyFile();
@@ -921,6 +936,30 @@ export class PluginMarketplaceSourceRegistry {
         revision: diagnostics.file.revision,
         activations: structuredClone(diagnostics.file.activations || {}),
       };
+    });
+  }
+
+  setClaudeCompatibilityBindings(
+    rawBindings: unknown,
+    options: MutationOptions = {},
+  ): { revision: number; bindings: ClaudeCompatibilityBinding[] } {
+    return this._withLockSync(() => {
+      this._assertMutable();
+      const bindings = validateClaudeCompatibilityBindings(rawBindings);
+      const loaded = this._loadDurable();
+      if (!loaded.ok) {
+        throw new Error(`Invalid registry (degraded): ${"error" in loaded ? loaded.error : "malformed registry"}`);
+      }
+      this._assertExpectedRevision(loaded.file.revision, options.expectedRevision);
+      this._assertExpectedDigest(loaded.digest, options.expectedDigest);
+      const next: MarketplaceSourcesFile = {
+        ...loaded.file,
+        schemaVersion: MARKETPLACE_CONTROL_PLANE_SCHEMA_VERSION,
+        revision: loaded.file.revision + 1,
+        claudeCompatibility: { bindings },
+      };
+      this._persist(next);
+      return { revision: next.revision, bindings: structuredClone(bindings) };
     });
   }
 

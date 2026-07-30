@@ -15,7 +15,13 @@ const ACTIONS = [
   "install",
   "diagnose_config",
   "set_activations",
+  "list_compat_bindings",
+  "plan_compat_mutation",
+  "execute_compat_mutation",
+  "validate_compat_bridge",
 ] as const;
+
+const COMPAT_ACTIONS = ["link", "refresh", "disable", "remove", "snapshot-import", "promote"] as const;
 
 function sourceQualifiedId(pluginId: string, marketplaceId?: string | null) {
   return marketplaceId ? `${pluginId}@${marketplaceId}` : pluginId;
@@ -53,12 +59,17 @@ function getEngine(deps: { getEngine?: () => any }) {
 }
 
 function getMarketplaceService(engine: any) {
-  if (engine.pluginMarketplaceService) return engine.pluginMarketplaceService as PluginMarketplaceService;
-  if (!engine.hanakoHome) throw new Error("HANA_HOME is required for marketplace management");
-  return new PluginMarketplaceService({
-    hanakoHome: engine.hanakoHome,
-    fetchOptions: engine.fetch ? { fetchImpl: engine.fetch } : undefined,
-  });
+  let service = engine.pluginMarketplaceService as PluginMarketplaceService | undefined;
+  if (!service) {
+    if (!engine.hanakoHome) throw new Error("HANA_HOME is required for marketplace management");
+    service = new PluginMarketplaceService({
+      hanakoHome: engine.hanakoHome,
+      fetchOptions: engine.fetch ? { fetchImpl: engine.fetch } : undefined,
+    });
+    engine.pluginMarketplaceService = service;
+  }
+  service.startClaudeCompatibilityPolling?.();
+  return service;
 }
 
 function serviceCapabilityPayload(svc: PluginMarketplaceService) {
@@ -187,6 +198,26 @@ function resolveInvocation(input: any = {}) {
       },
     };
   }
+  if (action === "execute_compat_mutation") {
+    if (!planToken || !asText(input.compatAction)) return null;
+    return {
+      action: "update",
+      kind: "review",
+      capability: "plugin_marketplace.configure",
+      target: {
+        type: "setting",
+        id: `plugin-marketplace:claude-compat:${asText(input.bindingId) || "new"}`,
+        label: `Claude compatibility ${asText(input.compatAction)}`,
+      },
+      sideEffect: {
+        summary: "Updates a server-owned Claude compatibility binding after stale-protected preview.",
+        compatAction: asText(input.compatAction),
+        bindingId: asText(input.bindingId) || null,
+        virtualSourceId: asText(input.virtualSourceId) || null,
+        planToken,
+      },
+    };
+  }
   if (ACTIONS.includes(action as any)) {
     return {
       action: "read",
@@ -232,6 +263,24 @@ export function createPluginMarketplaceTool(deps: {
       expectedDigest: Type.Optional(Type.String({
         description: "Expected plugin-marketplaces.json digest. Used by set_activations to reject stale writes.",
       })),
+      compatAction: Type.Optional(StringEnum(COMPAT_ACTIONS as unknown as string[], {
+        description: "Claude compatibility lifecycle action for plan_compat_mutation or execute_compat_mutation.",
+      })),
+      binding: Type.Optional(Type.Any({
+        description: "Strict Claude compatibility binding descriptor for a link action.",
+      })),
+      bindingId: Type.Optional(Type.String({
+        description: "Claude compatibility binding id.",
+      })),
+      virtualSourceId: Type.Optional(Type.String({
+        description: "Exact virtual source id for an owner-confirmed promote action.",
+      })),
+      bridgeEnvelope: Type.Optional(Type.Any({
+        description: "Sanitized, versioned desktop bridge envelope to validate without mutation.",
+      })),
+      serverId: Type.Optional(Type.String({ description: "Expected server id for bridge validation." })),
+      deviceId: Type.Optional(Type.String({ description: "Expected bridge device id." })),
+      sessionId: Type.Optional(Type.String({ description: "Expected bridge session id." })),
     }),
     execute: async (_toolCallId: string, params: any = {}) => {
       try {
@@ -364,6 +413,67 @@ export function createPluginMarketplaceTool(deps: {
             ...serviceCapabilityPayload(svc),
             configDiagnostics: svc.getControlPlaneDiagnostics(),
           };
+          return toolOk(safeJson(details), details);
+        }
+
+        if (action === "list_compat_bindings") {
+          const details = {
+            ok: true,
+            ...serviceCapabilityPayload(svc),
+            bindings: svc.listClaudeCompatibilityBindings(),
+          };
+          return toolOk(safeJson(details), details);
+        }
+
+        if (action === "plan_compat_mutation") {
+          const compatAction = asText(params.compatAction);
+          if (!COMPAT_ACTIONS.includes(compatAction as any)) {
+            return toolError("compatAction is required", { ok: false, code: "PLUGIN_MARKETPLACE_CLAUDE_COMPAT_ACTION_REQUIRED" });
+          }
+          const plan = svc.planClaudeCompatibilityMutation({
+            action: compatAction as any,
+            binding: params.binding,
+            bindingId: asText(params.bindingId) || undefined,
+            virtualSourceId: asText(params.virtualSourceId) || undefined,
+          });
+          const details = { ok: true, plan };
+          return toolOk(safeJson(details), details);
+        }
+
+        if (action === "execute_compat_mutation") {
+          const compatAction = asText(params.compatAction);
+          const planToken = asText(params.planToken);
+          if (!COMPAT_ACTIONS.includes(compatAction as any) || !planToken) {
+            return toolError("compatAction and planToken are required", { ok: false, code: "PLUGIN_MARKETPLACE_CLAUDE_COMPAT_PLAN_REQUIRED" });
+          }
+          const result = svc.executeClaudeCompatibilityMutation({
+            action: compatAction as any,
+            planToken,
+            isStudioOwner: true,
+            binding: params.binding,
+            bindingId: asText(params.bindingId) || undefined,
+            virtualSourceId: asText(params.virtualSourceId) || undefined,
+          });
+          const details = { ok: true, result, ...serviceCapabilityPayload(svc) };
+          return toolOk(safeJson(details), details);
+        }
+
+        if (action === "validate_compat_bridge") {
+          const serverId = asText(params.serverId);
+          const bindingId = asText(params.bindingId);
+          if (!serverId || !bindingId || !params.bridgeEnvelope) {
+            return toolError("serverId, bindingId, and bridgeEnvelope are required", {
+              ok: false,
+              code: "PLUGIN_MARKETPLACE_CLAUDE_COMPAT_BRIDGE_REQUIRED",
+            });
+          }
+          const envelope = svc.validateClaudeCompatibilityBridge(params.bridgeEnvelope, {
+            serverId,
+            serverBindingId: bindingId,
+            deviceId: asText(params.deviceId) || undefined,
+            sessionId: asText(params.sessionId) || undefined,
+          });
+          const details = { ok: true, envelope };
           return toolOk(safeJson(details), details);
         }
 

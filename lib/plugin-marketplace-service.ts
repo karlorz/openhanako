@@ -34,6 +34,10 @@ import {
   computeRuntimePluginActivation,
 } from "./plugin-marketplace-activation.ts";
 import { listClaudeSkillsInstallRecords } from "./plugin-marketplace-claude-skills.ts";
+import {
+  ClaudeCompatibilityBindingService,
+  type ClaudeCompatibilityBinding,
+} from "./claude-compatibility.ts";
 
 export interface MarketplaceServiceOptions {
   hanakoHome: string;
@@ -80,6 +84,8 @@ export class PluginMarketplaceService {
   declare artifacts: PluginArtifactStore;
   declare fetchOptions?: SafeFetchOptions;
   declare localAllowedRoot: string;
+  declare claudeCompatibility: ClaudeCompatibilityBindingService;
+  declare _claudeCompatibilityPollTimer: ReturnType<typeof setInterval> | null;
 
   constructor(options: MarketplaceServiceOptions) {
     this._hanakoHome = options.hanakoHome;
@@ -95,6 +101,11 @@ export class PluginMarketplaceService {
     this.snapshots = new MarketplaceSnapshotStore({ hanakoHome: options.hanakoHome });
     this.records = new PluginInstallRecords({ hanakoHome: options.hanakoHome });
     this.artifacts = new PluginArtifactStore({ hanakoHome: options.hanakoHome });
+    this.claudeCompatibility = new ClaudeCompatibilityBindingService({
+      hanakoHome: options.hanakoHome,
+      registry: this.registry,
+    });
+    this._claudeCompatibilityPollTimer = null;
   }
 
   getCapabilityContract(): MarketplaceCapabilityContract {
@@ -113,7 +124,7 @@ export class PluginMarketplaceService {
         claudeCatalogClassification: true,
         marketplaceSkillInstall: true,
         agentMarketplaceManagement: true,
-        claudeCompatibilityBindings: false,
+        claudeCompatibilityBindings: true,
         nativeMarketplaceInstall: false,
         exactSourceQualifiedActivation: true,
         nativeAgentPluginAccess: true,
@@ -125,10 +136,6 @@ export class PluginMarketplaceService {
           code: "PLUGIN_MARKETPLACE_NATIVE_INSTALL_PREVIEW_ONLY",
           message: "Native marketplace packages are classified for review only until the PluginManager contract audit is complete.",
         },
-        {
-          code: "PLUGIN_MARKETPLACE_CLAUDE_BINDINGS_NOT_ENABLED",
-          message: "Persistent Claude compatibility bindings are reserved for a later marketplace slice.",
-        },
       ],
       upgradeGuidance: null,
     };
@@ -138,8 +145,76 @@ export class PluginMarketplaceService {
     return this.registry.getStatus();
   }
 
-  getControlPlaneDiagnostics(): MarketplaceControlPlaneDiagnosticReport {
-    return this.registry.diagnoseControlPlane();
+  getControlPlaneDiagnostics(options: { forRemote?: boolean } = {}): MarketplaceControlPlaneDiagnosticReport {
+    const report = this.registry.diagnoseControlPlane();
+    const bindings = report.file?.claudeCompatibility?.bindings;
+    if (!options.forRemote || !bindings) return report;
+    return {
+      ...report,
+      file: {
+        ...report.file!,
+        claudeCompatibility: {
+          bindings: bindings.map((binding) => ({
+            ...binding,
+            inputs: binding.inputs.map((input) => ({ ...input, path: "[server-local path redacted]" })),
+          })),
+        },
+      },
+    };
+  }
+
+  listClaudeCompatibilityBindings(options: { forRemote?: boolean } = {}) {
+    return this.claudeCompatibility.listBindings({ redactPaths: options.forRemote === true });
+  }
+
+  planClaudeCompatibilityMutation(input: Parameters<ClaudeCompatibilityBindingService["planMutation"]>[0]) {
+    return this.claudeCompatibility.planMutation(input);
+  }
+
+  executeClaudeCompatibilityMutation(input: Parameters<ClaudeCompatibilityBindingService["executeMutation"]>[0]) {
+    return this.claudeCompatibility.executeMutation(input);
+  }
+
+  refreshClaudeCompatibilityBinding(bindingId: string) {
+    return this.claudeCompatibility.refresh(bindingId);
+  }
+
+  pollClaudeCompatibilityBindings() {
+    return this.claudeCompatibility.pollLiveBindings();
+  }
+
+  startClaudeCompatibilityPolling(intervalMs = 15_000) {
+    if (this._claudeCompatibilityPollTimer) return;
+    this._pollClaudeCompatibilityBindingsSafely();
+    this._claudeCompatibilityPollTimer = setInterval(
+      () => this._pollClaudeCompatibilityBindingsSafely(),
+      Math.max(1_000, intervalMs),
+    );
+    this._claudeCompatibilityPollTimer.unref?.();
+  }
+
+  stopClaudeCompatibilityPolling() {
+    if (!this._claudeCompatibilityPollTimer) return;
+    clearInterval(this._claudeCompatibilityPollTimer);
+    this._claudeCompatibilityPollTimer = null;
+  }
+
+  _pollClaudeCompatibilityBindingsSafely() {
+    try {
+      this.pollClaudeCompatibilityBindings();
+    } catch {
+      // Binding diagnostics retain last-known-good state and the next bounded
+      // poll retries, so polling must not prevent the service from starting.
+    }
+  }
+
+  validateClaudeCompatibilityBridge(value: unknown, expected: {
+    serverId: string;
+    serverBindingId: string;
+    deviceId?: string;
+    sessionId?: string;
+  }) {
+    return this.claudeCompatibility.validateBridgeEnvelope(value, expected);
   }
 
   assertRegistryWritePrecondition(options: { expectedRevision?: number; expectedDigest?: string } = {}) {

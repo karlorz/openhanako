@@ -100,6 +100,22 @@ function makeMarketplaceService(plugin: any = claudeSkillPlugin()) {
         runtimePlugins: { [`skillwiki@${MARKETPLACE_ID}`]: { enabled: true } },
       },
     }),
+    listClaudeCompatibilityBindings: vi.fn().mockReturnValue([]),
+    planClaudeCompatibilityMutation: vi.fn().mockImplementation((input) => ({
+      ...input,
+      revision: 1,
+      digest: "a".repeat(64),
+      planToken: "compat-plan-token",
+    })),
+    executeClaudeCompatibilityMutation: vi.fn().mockReturnValue({
+      binding: { id: "claude-live", mode: "live", enabled: true },
+      state: { digest: "b".repeat(64) },
+    }),
+    validateClaudeCompatibilityBridge: vi.fn().mockReturnValue({
+      version: "claude-compatibility-bridge.v1",
+      serverId: "server-1",
+      serverBindingId: "claude-live",
+    }),
   };
 }
 
@@ -192,6 +208,17 @@ describe("plugin_marketplace Agent tool", () => {
       },
     });
     expect(tool.sessionPermission.resolveInvocation({ action: "remove_source" })).toBeNull();
+    expect(tool.sessionPermission.resolveInvocation({
+      action: "execute_compat_mutation",
+      compatAction: "refresh",
+      bindingId: "claude-live",
+      planToken: "compat-plan-token",
+    })).toMatchObject({
+      action: "update",
+      kind: "review",
+      capability: "plugin_marketplace.configure",
+      target: { id: "plugin-marketplace:claude-compat:claude-live" },
+    });
   });
 
   it("lists catalog rows through the marketplace service", async () => {
@@ -257,6 +284,59 @@ describe("plugin_marketplace Agent tool", () => {
         runtimePlugins: { [`skillwiki@${MARKETPLACE_ID}`]: { enabled: true } },
       },
     });
+  });
+
+  it("plans and executes stale-protected Claude compatibility lifecycle mutations", async () => {
+    const { tool, marketplaceService } = makeTool();
+    const binding = {
+      id: "claude-live",
+      mode: "live",
+      enabled: true,
+      inputs: [{ role: "user-settings", path: "/tmp/claude/settings.json" }],
+    };
+
+    const planned = await tool.execute("compat-plan", {
+      action: "plan_compat_mutation",
+      compatAction: "link",
+      binding,
+    });
+    expect(planned.isError).toBeUndefined();
+    expect(marketplaceService.planClaudeCompatibilityMutation).toHaveBeenCalledWith({
+      action: "link",
+      binding,
+      bindingId: undefined,
+      virtualSourceId: undefined,
+    });
+
+    const executed = await tool.execute("compat-execute", {
+      action: "execute_compat_mutation",
+      compatAction: "link",
+      binding,
+      planToken: "compat-plan-token",
+    });
+    expect(executed.isError).toBeUndefined();
+    expect(marketplaceService.executeClaudeCompatibilityMutation).toHaveBeenCalledWith(expect.objectContaining({
+      action: "link",
+      binding,
+      planToken: "compat-plan-token",
+      isStudioOwner: true,
+    }));
+  });
+
+  it("validates bridge envelopes without promoting, installing, or changing activation", async () => {
+    const { tool, marketplaceService } = makeTool();
+    const result = await tool.execute("bridge", {
+      action: "validate_compat_bridge",
+      serverId: "server-1",
+      bindingId: "claude-live",
+      deviceId: "device-1",
+      sessionId: "session-1",
+      bridgeEnvelope: { version: "claude-compatibility-bridge.v1" },
+    });
+    expect(result.isError).toBeUndefined();
+    expect(marketplaceService.validateClaudeCompatibilityBridge).toHaveBeenCalledTimes(1);
+    expect(marketplaceService.installClaudePluginSkills).not.toHaveBeenCalled();
+    expect(marketplaceService.setControlPlaneActivations).not.toHaveBeenCalled();
   });
 
   it("returns inspector and install-plan fields for a package", async () => {
