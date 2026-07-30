@@ -153,10 +153,16 @@ export class PluginMarketplaceService {
 
   getControlPlaneDiagnostics(options: { forRemote?: boolean } = {}): MarketplaceControlPlaneDiagnosticReport {
     const report = this.registry.diagnoseControlPlane();
+    if (!options.forRemote) return report;
     const bindings = report.file?.claudeCompatibility?.bindings;
-    if (!options.forRemote || !bindings) return report;
-    return {
+    const redactedReport = {
       ...report,
+      path: "[server-local path redacted]",
+    };
+    if (!bindings) return redactedReport;
+
+    return {
+      ...redactedReport,
       file: {
         ...report.file!,
         claudeCompatibility: {
