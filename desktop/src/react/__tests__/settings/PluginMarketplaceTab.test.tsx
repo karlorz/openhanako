@@ -3,7 +3,7 @@
  */
 
 import React from 'react';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PluginMarketplaceTab } from '../../settings/tabs/PluginMarketplaceTab';
@@ -31,8 +31,8 @@ vi.mock('../../utils/markdown', () => ({
   renderMarkdown: (markdown: string) => markdown,
 }));
 
-function jsonResponse(body: unknown): Response {
-  return { json: async () => body } as Response;
+function jsonResponse(body: unknown, status?: number): Response {
+  return { status, ok: status == null ? true : status >= 200 && status < 300, json: async () => body } as Response;
 }
 
 function catalogPlugin(overrides: Record<string, unknown> = {}) {
@@ -169,7 +169,25 @@ describe('PluginMarketplaceTab inspector rendering', () => {
     expect(screen.getByText('Claude package source kind is not installable in Hana v1: git-subdir')).toBeInTheDocument();
   });
 
-  it('requires typed-exact confirmation before native marketplace install mutation', async () => {
+  it('shows unsupported-server guidance instead of falling back to an empty marketplace', async () => {
+    mockHanaFetch.mockImplementation(async (url: string) => {
+      if (url === '/api/plugins/marketplace/capabilities') {
+        return jsonResponse({
+          supported: false,
+          code: 'PLUGIN_MARKETPLACE_UNSUPPORTED_SERVER',
+          upgradeGuidance: 'Upgrade the connected Hana server to use marketplace sources.',
+        }, 404);
+      }
+      return jsonResponse({ plugins: [catalogPlugin()], sources: [], warnings: [] });
+    });
+
+    render(<PluginMarketplaceTab />);
+
+    expect(await screen.findByText('Upgrade the connected Hana server to use marketplace sources.')).toBeInTheDocument();
+    expect(mockHanaFetch).not.toHaveBeenCalledWith('/api/plugins/marketplace/catalog', expect.anything());
+  });
+
+  it('shows native marketplace packages as preview-only until PluginManager audit completes', async () => {
     const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue('native-page@official');
     mockCatalog([
       catalogPlugin({
@@ -183,6 +201,8 @@ describe('PluginMarketplaceTab inspector rendering', () => {
         catalogFormat: null,
         installTarget: 'native-plugin',
         installAdapter: 'plugin-manager',
+        installable: false,
+        canInstall: false,
         confirmationLevel: 'typed-exact',
         capabilityInventory: {
           skills: [],
@@ -191,29 +211,32 @@ describe('PluginMarketplaceTab inspector rendering', () => {
           serverImpact: ['routes'],
           unsupportedClaudeComponents: [],
         },
-        warnings: ['native plugin requests full-access review'],
+        warnings: [
+          'native marketplace install is preview-only until the PluginManager contract audit is complete',
+          'native plugin requests full-access review',
+        ],
         installPlan: {
           action: 'install',
           destination: 'native-plugin',
           installAdapter: 'plugin-manager',
           confirmationLevel: 'typed-exact',
-          warnings: ['native plugin requests full-access review'],
-          installable: true,
+          warnings: [
+            'native marketplace install is preview-only until the PluginManager contract audit is complete',
+            'native plugin requests full-access review',
+          ],
+          installable: false,
         },
       }),
     ]);
 
     render(<PluginMarketplaceTab />);
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Install' }));
+    const installButton = await screen.findByRole('button', { name: 'Inspect only' });
+    expect(installButton).toBeDisabled();
+    expect(screen.getByText('native marketplace install is preview-only until the PluginManager contract audit is complete')).toBeInTheDocument();
+    fireEvent.click(installButton);
 
-    await waitFor(() => {
-      expect(promptSpy).toHaveBeenCalledWith(expect.stringContaining('Type native-page@official to install.'));
-    });
-    await waitFor(() => {
-      expect(mockHanaFetch).toHaveBeenCalledWith('/api/plugins/marketplace/native-page/install', expect.objectContaining({
-        method: 'POST',
-      }));
-    });
+    expect(promptSpy).not.toHaveBeenCalled();
+    expect(mockHanaFetch).not.toHaveBeenCalledWith('/api/plugins/marketplace/native-page/install', expect.anything());
   });
 });

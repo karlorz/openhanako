@@ -5,6 +5,7 @@ import {
   resolveLegacyMarketplaceOverlay,
   type MarketplaceSourceDescriptor,
   type EffectiveMarketplaceSource,
+  type MarketplaceSourceRegistryStatus,
 } from "./plugin-marketplace-sources.ts";
 import { MarketplaceSnapshotStore } from "./plugin-marketplace-snapshots.ts";
 import { acquireAndPublishSourceSnapshot } from "./plugin-marketplace-adapters.ts";
@@ -28,6 +29,28 @@ export interface MarketplaceServiceOptions {
   localAllowedRoot?: string;
   officialUrl?: string;
   env?: NodeJS.ProcessEnv;
+}
+
+export interface MarketplaceCapabilityContract {
+  schemaVersion: 1;
+  supported: boolean;
+  version: "plugin-marketplace-capabilities.v1";
+  sourceKinds: Array<"url" | "local" | "git">;
+  installTargets: Array<"native-plugin" | "hana-skills" | "unsupported">;
+  features: {
+    multiSourceBrowse: boolean;
+    ownerSourceLifecycle: boolean;
+    sourceConfigRevision: boolean;
+    sourceConfigDigest: boolean;
+    lastKnownGoodRegistry: boolean;
+    claudeCatalogClassification: boolean;
+    marketplaceSkillInstall: boolean;
+    agentMarketplaceManagement: boolean;
+    claudeCompatibilityBindings: boolean;
+    nativeMarketplaceInstall: boolean;
+  };
+  unsupported: Array<{ code: string; message: string }>;
+  upgradeGuidance: string | null;
 }
 
 /**
@@ -58,6 +81,73 @@ export class PluginMarketplaceService {
     this.artifacts = new PluginArtifactStore({ hanakoHome: options.hanakoHome });
   }
 
+  getCapabilityContract(): MarketplaceCapabilityContract {
+    return {
+      schemaVersion: 1,
+      supported: true,
+      version: "plugin-marketplace-capabilities.v1",
+      sourceKinds: ["url", "local", "git"],
+      installTargets: ["native-plugin", "hana-skills", "unsupported"],
+      features: {
+        multiSourceBrowse: true,
+        ownerSourceLifecycle: true,
+        sourceConfigRevision: true,
+        sourceConfigDigest: true,
+        lastKnownGoodRegistry: true,
+        claudeCatalogClassification: true,
+        marketplaceSkillInstall: true,
+        agentMarketplaceManagement: true,
+        claudeCompatibilityBindings: false,
+        nativeMarketplaceInstall: false,
+      },
+      unsupported: [
+        {
+          code: "PLUGIN_MARKETPLACE_NATIVE_INSTALL_PREVIEW_ONLY",
+          message: "Native marketplace packages are classified for review only until the PluginManager contract audit is complete.",
+        },
+        {
+          code: "PLUGIN_MARKETPLACE_CLAUDE_BINDINGS_NOT_ENABLED",
+          message: "Persistent Claude compatibility bindings are reserved for a later marketplace slice.",
+        },
+      ],
+      upgradeGuidance: null,
+    };
+  }
+
+  getRegistryStatus(): MarketplaceSourceRegistryStatus {
+    return this.registry.getStatus();
+  }
+
+  assertRegistryWritePrecondition(options: { expectedRevision?: number; expectedDigest?: string } = {}) {
+    if (options.expectedRevision === undefined && options.expectedDigest === undefined) return;
+    const status = this.getRegistryStatus();
+    if (status.degraded) {
+      const err = new Error(`Invalid registry (degraded): ${status.diagnostic || "malformed registry"}`) as Error & {
+        code: string;
+        status: number;
+      };
+      err.code = "PLUGIN_MARKETPLACE_REGISTRY_DEGRADED";
+      err.status = 409;
+      throw err;
+    }
+    if (options.expectedRevision !== undefined && options.expectedRevision !== status.revision) {
+      const err = new Error(
+        `Marketplace registry revision conflict: expected ${options.expectedRevision}, current ${status.revision}`,
+      ) as Error & { code: string; status: number };
+      err.code = "PLUGIN_MARKETPLACE_REGISTRY_STALE";
+      err.status = 409;
+      throw err;
+    }
+    if (options.expectedDigest !== undefined && options.expectedDigest !== status.digest) {
+      const err = new Error(
+        `Marketplace registry digest conflict: expected ${options.expectedDigest}, current ${status.digest}`,
+      ) as Error & { code: string; status: number };
+      err.code = "PLUGIN_MARKETPLACE_REGISTRY_STALE";
+      err.status = 409;
+      throw err;
+    }
+  }
+
   listSources(options: { forRemote?: boolean } = {}) {
     const listed = this.registry.listSources({ forRemote: options.forRemote });
     return listed.map((source) => {
@@ -84,6 +174,8 @@ export class PluginMarketplaceService {
   async addSource(descriptor: MarketplaceSourceDescriptor, options: {
     isLocalOwner?: boolean;
     isStudioOwner?: boolean;
+    expectedRevision?: number;
+    expectedDigest?: string;
   } = {}) {
     if (!options.isStudioOwner) {
       const err = new Error("studio.owner required to mutate marketplace sources") as Error & { code: string; status: number };
@@ -97,6 +189,10 @@ export class PluginMarketplaceService {
       err.status = 403;
       throw err;
     }
+    this.assertRegistryWritePrecondition({
+      expectedRevision: options.expectedRevision,
+      expectedDigest: options.expectedDigest,
+    });
     // Validate first snapshot before committing registry (except git until Task 6 wired here)
     if (descriptor.kind === "git") {
       // Allow registry add only after snapshot publish via git adapter (Task 6).
@@ -112,10 +208,17 @@ export class PluginMarketplaceService {
         localAllowedRoot: this.localAllowedRoot,
       });
     }
-    return this.registry.addSource(descriptor);
+    return this.registry.addSource(descriptor, {
+      expectedRevision: options.expectedRevision,
+      expectedDigest: options.expectedDigest,
+    });
   }
 
-  removeSource(marketplaceId: string, options: { isStudioOwner?: boolean } = {}) {
+  removeSource(marketplaceId: string, options: {
+    isStudioOwner?: boolean;
+    expectedRevision?: number;
+    expectedDigest?: string;
+  } = {}) {
     if (!options.isStudioOwner) {
       const err = new Error("studio.owner required") as Error & { code: string; status: number };
       err.code = "PLUGIN_MARKETPLACE_SOURCE_FORBIDDEN";
@@ -123,6 +226,8 @@ export class PluginMarketplaceService {
       throw err;
     }
     return this.registry.removeSource(marketplaceId, {
+      expectedRevision: options.expectedRevision,
+      expectedDigest: options.expectedDigest,
       isSourceInUse: (id) =>
         this.artifacts.isSourceInUse(id) || this.records.isSourceInUse(id),
     });

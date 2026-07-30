@@ -70,12 +70,38 @@ describe("PluginMarketplaceService", () => {
       compositeKey: "demo@oh-plugins-official",
       installTarget: "native-plugin",
       installAdapter: "plugin-manager",
+      installable: false,
       confirmationLevel: "capability-review",
       installPlan: {
         action: "install",
         destination: "native-plugin",
         installAdapter: "plugin-manager",
+        installable: false,
       },
+    });
+  });
+
+  it("reports the server-owned marketplace capability contract and registry status", () => {
+    const home = makeHome();
+    const svc = new PluginMarketplaceService({ hanakoHome: home, env: {} });
+    expect(svc.getCapabilityContract()).toMatchObject({
+      supported: true,
+      version: "plugin-marketplace-capabilities.v1",
+      features: {
+        multiSourceBrowse: true,
+        sourceConfigRevision: true,
+        sourceConfigDigest: true,
+        lastKnownGoodRegistry: true,
+        marketplaceSkillInstall: true,
+        agentMarketplaceManagement: true,
+        claudeCompatibilityBindings: false,
+        nativeMarketplaceInstall: false,
+      },
+    });
+    expect(svc.getRegistryStatus()).toMatchObject({
+      revision: 0,
+      degraded: false,
+      digest: expect.stringMatching(/^[a-f0-9]{64}$/),
     });
   });
 

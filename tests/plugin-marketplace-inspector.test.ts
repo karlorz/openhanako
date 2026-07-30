@@ -47,7 +47,7 @@ describe("MarketplacePackageInspector", () => {
     expect(inspection.warnings[0]).toMatch(/not installable/i);
   });
 
-  it("classifies Hana release packages as native plugins through PluginManager", () => {
+  it("classifies Hana release packages as native-plugin preview-only until audit completes", () => {
     const inspection = inspectMarketplacePackage({
       id: "demo",
       trust: "restricted",
@@ -60,10 +60,13 @@ describe("MarketplacePackageInspector", () => {
     expect(inspection).toMatchObject({
       destination: "native-plugin",
       installAdapter: "plugin-manager",
-      installable: true,
+      installable: false,
       confirmationLevel: "capability-review",
     });
     expect(inspection.capabilityInventory.agentFacing).toEqual(["tools"]);
+    expect(inspection.warnings).toContain(
+      "native marketplace install is preview-only until the PluginManager contract audit is complete",
+    );
   });
 
   it("escalates full-access server-impacting native packages to typed exact confirmation", () => {
@@ -77,8 +80,10 @@ describe("MarketplacePackageInspector", () => {
       },
     });
     expect(inspection.confirmationLevel).toBe("typed-exact");
+    expect(inspection.installable).toBe(false);
     expect(inspection.capabilityInventory.serverImpact).toEqual(["routes", "providers"]);
     expect(inspection.warnings).toEqual(expect.arrayContaining([
+      "native marketplace install is preview-only until the PluginManager contract audit is complete",
       "native plugin requests full-access review",
       "native plugin has server-impacting contributions: routes, providers",
     ]));
