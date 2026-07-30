@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   discoverClaudeSkillDirs,
   installClaudeSkillsFromPackage,
+  inspectClaudePackageWarnings,
   readClaudeSkillsInstallRecord,
   writeClaudeSkillsInstallRecord,
 } from "../lib/plugin-marketplace-claude-skills.ts";
@@ -92,6 +93,57 @@ describe("installClaudeSkillsFromPackage", () => {
     expect(rec?.skills.sort()).toEqual(["wiki-ingest", "wiki-query"]);
     expect(rec?.kind).toBe("claude-skills");
   });
+
+  it("preserves an existing installed skill on marketplace name collision", () => {
+    const packageRoot = makeTemp("pkg-collision-");
+    writeSkill(path.join(packageRoot, "wiki-query"), "wiki-query", "marketplace version");
+    const installDir = makeTemp("skills-collision-");
+    writeSkill(path.join(installDir, "wiki-query"), "wiki-query", "existing user version");
+    const before = fs.readFileSync(path.join(installDir, "wiki-query", "SKILL.md"), "utf8");
+
+    const result = installClaudeSkillsFromPackage({
+      packageRoot,
+      installDir,
+      owner: "user",
+    });
+
+    expect(result.installed).toEqual([]);
+    expect(result.skipped).toHaveLength(1);
+    expect(result.skipped[0].reason).toMatch(/already exists/i);
+    expect(fs.readFileSync(path.join(installDir, "wiki-query", "SKILL.md"), "utf8")).toBe(before);
+  });
+
+  it("reports unsupported Claude components and package dependency signals", () => {
+    const packageRoot = makeTemp("pkg-warnings-");
+    writeSkill(path.join(packageRoot, "skills", "wiki-query"), "wiki-query");
+    fs.mkdirSync(path.join(packageRoot, ".claude-plugin"), { recursive: true });
+    fs.writeFileSync(
+      path.join(packageRoot, ".claude-plugin", "plugin.json"),
+      JSON.stringify({ skills: "./skills", hooks: { PostToolUse: [] }, mcpServers: { demo: {} } }),
+      "utf8",
+    );
+    fs.writeFileSync(
+      path.join(packageRoot, "package.json"),
+      JSON.stringify({ bin: { skillwiki: "bin/skillwiki.js" }, scripts: { postinstall: "node setup.js" }, dependencies: { zx: "^8.0.0" } }),
+      "utf8",
+    );
+    fs.mkdirSync(path.join(packageRoot, "scripts"), { recursive: true });
+
+    const warnings = inspectClaudePackageWarnings(packageRoot);
+    expect(warnings).toEqual(expect.arrayContaining([
+      "unsupported Claude component not installed: hooks",
+      "unsupported Claude component not installed: mcpServers",
+      "package declares external CLI binaries; Hana does not install or execute them",
+      "package declares npm scripts; Hana does not run package lifecycle or helper scripts",
+      "package declares npm dependencies; Hana imports skills without running package installation",
+      "package contains scripts/ resources outside imported skills; Hana does not execute them",
+    ]));
+
+    const installDir = makeTemp("skills-warnings-");
+    const result = installClaudeSkillsFromPackage({ packageRoot, installDir });
+    expect(result.installed.map((s) => s.name)).toEqual(["wiki-query"]);
+    expect(result.warnings).toEqual(warnings);
+  });
 });
 
 describe("PluginMarketplaceService.installClaudePluginSkills", () => {
@@ -152,10 +204,73 @@ describe("PluginMarketplaceService.installClaudePluginSkills", () => {
     });
 
     expect(result.skills.sort()).toEqual(["wiki-query", "wiki-sync"]);
+    expect(result.warnings).toEqual([]);
     expect(result.resolvedRevision).toBe("dddddddddddddddddddddddddddddddddddddddd");
     expect(fs.existsSync(path.join(skillsDir, "wiki-query", "SKILL.md"))).toBe(true);
     const rec = readClaudeSkillsInstallRecord(home, "llm-wiki", "skillwiki");
     expect(rec?.skills.sort()).toEqual(["wiki-query", "wiki-sync"]);
+    expect(rec?.warnings).toBeUndefined();
+  });
+
+  it("fails zero-success marketplace skill installs and does not write provenance", async () => {
+    const home = makeTemp("svc-empty-home-");
+    const skillsDir = makeTemp("svc-empty-skills-");
+    const svc = new PluginMarketplaceService({ hanakoHome: home, env: {} });
+    const catalog = {
+      name: "llm-wiki",
+      owner: { name: "karlorz" },
+      plugins: [{
+        name: "skillwiki",
+        version: "0.1.0",
+        source: "./packages/skills",
+      }],
+    };
+    const parsed = parseMarketplaceCatalogAuto(JSON.stringify(catalog), {
+      marketplaceId: "llm-wiki",
+      sourceKind: "git",
+    });
+    svc.snapshots.publish("llm-wiki", {
+      sourceId: "llm-wiki",
+      sourceFingerprint: "f".repeat(64),
+      catalogSha256: parsed.catalogSha256,
+      fetchedAt: new Date().toISOString(),
+      plugins: parsed.plugins,
+    });
+    svc.registry.addSource({
+      id: "llm-wiki",
+      name: "llm-wiki",
+      kind: "git",
+      gitUrl: "https://github.com/karlorz/llm-wiki.git",
+      gitRef: "refs/heads/main",
+    });
+    writeSkill(path.join(skillsDir, "wiki-query"), "wiki-query", "existing user version");
+    const before = fs.readFileSync(path.join(skillsDir, "wiki-query", "SKILL.md"), "utf8");
+
+    const execGit = vi.fn(async (_bin: string, args: string[]) => {
+      if (args[0] === "clone") {
+        const dest = args[args.length - 1] as string;
+        fs.mkdirSync(dest, { recursive: true });
+        writeSkill(path.join(dest, "packages", "skills", "wiki-query"), "wiki-query", "marketplace version");
+        return "";
+      }
+      if (args.includes("sparse-checkout")) return "";
+      if (args.includes("rev-parse")) return "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\n";
+      if (args.includes("checkout")) return "";
+      return "";
+    });
+
+    await expect(
+      svc.installClaudePluginSkills("skillwiki", "llm-wiki", {
+        userSkillsDir: skillsDir,
+        isStudioOwner: true,
+        execGit: execGit as any,
+      }),
+    ).rejects.toMatchObject({
+      code: "PLUGIN_MARKETPLACE_SKILLS_INSTALL_EMPTY",
+      status: 409,
+    });
+    expect(fs.readFileSync(path.join(skillsDir, "wiki-query", "SKILL.md"), "utf8")).toBe(before);
+    expect(readClaudeSkillsInstallRecord(home, "llm-wiki", "skillwiki")).toBeNull();
   });
 
   it("rejects install without studio.owner", async () => {

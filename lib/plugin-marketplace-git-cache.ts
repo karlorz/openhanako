@@ -1,4 +1,5 @@
 import { spawn } from "child_process";
+import { createHash } from "crypto";
 import fs from "fs";
 import path from "path";
 import { assertMarketplaceId, buildSourceFingerprint, DEFAULT_MARKETPLACE_INDEX_PATH } from "./plugin-marketplace-identity.ts";
@@ -15,6 +16,7 @@ export const GIT_MARKETPLACE_CACHE_DIR = "plugin-marketplace-git";
 export const DEFAULT_GIT_TIMEOUT_MS = 60_000;
 export const DEFAULT_GIT_MAX_OUTPUT_BYTES = 2 * 1024 * 1024;
 export const DEFAULT_GIT_MAX_DISK_BYTES = 50 * 1024 * 1024;
+export const DEFAULT_GIT_PACKAGE_CACHE_MAX_ENTRIES = 10;
 
 const STRICT_REF_PATTERN = /^(refs\/heads\/[A-Za-z0-9._/-]+|refs\/tags\/[A-Za-z0-9._/-]+|[0-9a-f]{40})$/;
 
@@ -64,6 +66,7 @@ export async function acquireGitMarketplaceSnapshot(
 
   const work = (async () => {
     options.store.markRefreshing(sourceId);
+    let staging: string | null = null;
     try {
       const normalized = normalizeGitMarketplaceUrl(source.gitUrl);
       const gitUrl = assertPublicGitHttpsUrl(normalized.gitUrl).href;
@@ -73,7 +76,7 @@ export async function acquireGitMarketplaceSnapshot(
       const indexCandidates = listMarketplaceIndexCandidates(configuredIndex);
 
       const cacheRoot = path.join(options.hanakoHome, GIT_MARKETPLACE_CACHE_DIR, sourceId);
-      const staging = path.join(cacheRoot, `stage-${Date.now()}-${process.pid}`);
+      staging = path.join(cacheRoot, `stage-${Date.now()}-${process.pid}`);
       fs.rmSync(staging, { recursive: true, force: true });
       fs.mkdirSync(staging, { recursive: true });
 
@@ -135,6 +138,7 @@ export async function acquireGitMarketplaceSnapshot(
       // Immutable generation is owned by snapshot store; clean staging after success.
       const published = options.store.publish(sourceId, snapshot);
       fs.rmSync(staging, { recursive: true, force: true });
+      staging = null;
       return published;
     } catch (err: any) {
       options.store.markError(sourceId, {
@@ -144,6 +148,7 @@ export async function acquireGitMarketplaceSnapshot(
       throw err;
     } finally {
       inFlight.delete(sourceId);
+      if (staging) fs.rmSync(staging, { recursive: true, force: true });
     }
   })();
 
@@ -248,9 +253,95 @@ export function hashGitSourceIdentity(source: GitSourceDescriptor): string {
   });
 }
 
+function stablePackageCacheName(input: {
+  sourceId: string;
+  gitUrl: string;
+  gitRef: string;
+  packagePath: string;
+}): string {
+  return createHash("sha256")
+    .update(JSON.stringify(input))
+    .digest("hex")
+    .slice(0, 24);
+}
+
+function packageCacheMarkerPath(dir: string): string {
+  return path.join(dir, ".hana-marketplace-package.json");
+}
+
+function writePackageCacheMarker(dir: string, marker: Record<string, unknown>) {
+  fs.writeFileSync(packageCacheMarkerPath(dir), JSON.stringify(marker, null, 2) + "\n", "utf8");
+}
+
+function readPackageCacheMarker(dir: string): Record<string, unknown> | null {
+  const markerPath = packageCacheMarkerPath(dir);
+  if (!fs.existsSync(markerPath)) return null;
+  try {
+    const raw = JSON.parse(fs.readFileSync(markerPath, "utf8"));
+    return raw && typeof raw === "object" && !Array.isArray(raw) ? raw as Record<string, unknown> : null;
+  } catch {
+    return null;
+  }
+}
+
+function readCachedPackageMaterialization(
+  target: string,
+  expected: {
+    sourceId: string;
+    gitUrl: string;
+    gitRef: string;
+    packagePath: string;
+  },
+): { packageRoot: string; resolvedRevision: string; repoRoot: string } | null {
+  const packageRoot = path.join(target, expected.packagePath);
+  try {
+    if (!fs.statSync(packageRoot).isDirectory()) return null;
+  } catch {
+    return null;
+  }
+  const marker = readPackageCacheMarker(target);
+  if (!marker) return null;
+  const resolvedRevision = typeof marker.resolvedRevision === "string" ? marker.resolvedRevision : "";
+  if (!/^[0-9a-f]{40}$/.test(resolvedRevision)) return null;
+  if (
+    marker.sourceId !== expected.sourceId
+    || marker.gitUrl !== expected.gitUrl
+    || marker.gitRef !== expected.gitRef
+    || marker.packagePath !== expected.packagePath
+  ) {
+    return null;
+  }
+  try {
+    // Touch mtime so prunePackageCache treats hits as recently used.
+    const now = new Date();
+    fs.utimesSync(target, now, now);
+  } catch {
+    /* ignore */
+  }
+  return { packageRoot, resolvedRevision, repoRoot: target };
+}
+
+function prunePackageCache(cacheRoot: string, keepDir: string, maxEntries = DEFAULT_GIT_PACKAGE_CACHE_MAX_ENTRIES) {
+  if (!fs.existsSync(cacheRoot)) return;
+  const keep = path.resolve(keepDir);
+  const entries = fs.readdirSync(cacheRoot, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
+    .map((entry) => {
+      const fullPath = path.join(cacheRoot, entry.name);
+      let mtimeMs = 0;
+      try { mtimeMs = fs.statSync(fullPath).mtimeMs; } catch { /* ignore */ }
+      return { fullPath, mtimeMs };
+    })
+    .filter((entry) => path.resolve(entry.fullPath) !== keep)
+    .sort((a, b) => b.mtimeMs - a.mtimeMs);
+  for (const entry of entries.slice(Math.max(0, maxEntries - 1))) {
+    fs.rmSync(entry.fullPath, { recursive: true, force: true });
+  }
+}
+
 /**
  * Materialize a relative package path from a git marketplace source for skills-lane install.
- * Performs a shallow clone and sparse checkout of packagePath only.
+ * Reuses a stable package cache entry when present; otherwise shallow-clones with sparse checkout.
  */
 export async function materializeGitMarketplacePackage(
   source: GitSourceDescriptor,
@@ -269,7 +360,20 @@ export async function materializeGitMarketplacePackage(
   const gitRef = assertStrictGitRef(source.gitRef || normalized.gitRef);
 
   const cacheRoot = path.join(options.hanakoHome, GIT_MARKETPLACE_CACHE_DIR, sourceId, "packages");
-  const staging = path.join(cacheRoot, `pkg-${Date.now()}-${process.pid}`);
+  const cacheKey = {
+    sourceId,
+    gitUrl,
+    gitRef,
+    packagePath: options.packagePath,
+  };
+  const target = path.join(cacheRoot, stablePackageCacheName(cacheKey));
+  const cached = readCachedPackageMaterialization(target, cacheKey);
+  if (cached) {
+    prunePackageCache(cacheRoot, target);
+    return cached;
+  }
+
+  const staging = path.join(cacheRoot, `.stage-${Date.now()}-${process.pid}`);
   fs.rmSync(staging, { recursive: true, force: true });
   fs.mkdirSync(staging, { recursive: true });
 
@@ -280,37 +384,69 @@ export async function materializeGitMarketplacePackage(
     ? gitRef.replace(/^refs\/heads\//, "").replace(/^refs\/tags\//, "")
     : gitRef;
 
-  await execGit(gitBin, [
-    "clone",
-    "--depth", "1",
-    "--no-tags",
-    "--branch", branch,
-    "--single-branch",
-    "--filter=blob:none",
-    "--sparse",
-    gitUrl,
-    staging,
-  ], { timeoutMs, cwd: options.hanakoHome });
-
-  // Sparse checkout the package path (and parent tree for plugin.json if present)
   try {
-    await execGit(gitBin, ["-C", staging, "sparse-checkout", "set", "--cone", options.packagePath], {
-      timeoutMs,
-    });
-  } catch {
-    // Fallback: full checkout of path
-    await execGit(gitBin, ["-C", staging, "checkout", "HEAD", "--", options.packagePath], { timeoutMs });
-  }
+    await execGit(gitBin, [
+      "clone",
+      "--depth", "1",
+      "--no-tags",
+      "--branch", branch,
+      "--single-branch",
+      "--filter=blob:none",
+      "--sparse",
+      gitUrl,
+      staging,
+    ], { timeoutMs, cwd: options.hanakoHome });
 
-  const rev = (await execGit(gitBin, ["-C", staging, "rev-parse", "HEAD"], { timeoutMs })).trim();
-  const packageRoot = path.join(staging, options.packagePath);
-  if (!fs.existsSync(packageRoot) || !fs.statSync(packageRoot).isDirectory()) {
-    throw Object.assign(
-      new Error(`Package path not found in git tree: ${options.packagePath}`),
-      { code: "PLUGIN_MARKETPLACE_SOURCE_INVALID" },
-    );
+    // Sparse checkout the package path (and parent tree for plugin.json if present)
+    try {
+      await execGit(gitBin, ["-C", staging, "sparse-checkout", "set", "--cone", options.packagePath], {
+        timeoutMs,
+      });
+    } catch {
+      // Fallback: full checkout of path
+      await execGit(gitBin, ["-C", staging, "checkout", "HEAD", "--", options.packagePath], { timeoutMs });
+    }
+
+    const rev = (await execGit(gitBin, ["-C", staging, "rev-parse", "HEAD"], { timeoutMs })).trim();
+    if (!/^[0-9a-f]{40}$/.test(rev)) {
+      throw Object.assign(new Error("Failed to resolve git revision"), { code: "PLUGIN_MARKETPLACE_GIT_UNAVAILABLE" });
+    }
+    const stagedPackageRoot = path.join(staging, options.packagePath);
+    if (!fs.existsSync(stagedPackageRoot) || !fs.statSync(stagedPackageRoot).isDirectory()) {
+      throw Object.assign(
+        new Error(`Package path not found in git tree: ${options.packagePath}`),
+        { code: "PLUGIN_MARKETPLACE_SOURCE_INVALID" },
+      );
+    }
+
+    writePackageCacheMarker(staging, {
+      ...cacheKey,
+      resolvedRevision: rev,
+      materializedAt: new Date().toISOString(),
+    });
+
+    const oldTarget = `${target}.old-${Date.now()}-${process.pid}`;
+    fs.rmSync(oldTarget, { recursive: true, force: true });
+    if (fs.existsSync(target)) fs.renameSync(target, oldTarget);
+    try {
+      fs.renameSync(staging, target);
+    } catch (err) {
+      if (fs.existsSync(oldTarget)) fs.renameSync(oldTarget, target);
+      throw err;
+    } finally {
+      fs.rmSync(oldTarget, { recursive: true, force: true });
+    }
+
+    prunePackageCache(cacheRoot, target);
+    return {
+      packageRoot: path.join(target, options.packagePath),
+      resolvedRevision: rev,
+      repoRoot: target,
+    };
+  } catch (err) {
+    fs.rmSync(staging, { recursive: true, force: true });
+    throw err;
   }
-  return { packageRoot, resolvedRevision: rev, repoRoot: staging };
 }
 
 async function readGitCatalogIndex(options: {

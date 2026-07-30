@@ -1311,12 +1311,13 @@ export function createPluginsRoute(engine: any) {
           }
           return c.json({
             ok: true,
-            installTarget: "skills",
+            installTarget: "hana-skills",
             catalogFormat: "claude",
             marketplaceId: result.marketplaceId,
             pluginId: result.pluginId,
             skills: result.skills,
             skipped: result.skipped,
+            warnings: result.warnings,
             resolvedRevision: result.resolvedRevision,
           });
         } catch (err: any) {
@@ -1324,6 +1325,8 @@ export function createPluginsRoute(engine: any) {
           return c.json({
             error: err?.message || String(err),
             code: err?.code || "PLUGIN_MARKETPLACE_SOURCE_INVALID",
+            ...(Array.isArray(err?.skipped) ? { skipped: err.skipped } : {}),
+            ...(Array.isArray(err?.warnings) ? { warnings: err.warnings } : {}),
           }, status);
         }
       }

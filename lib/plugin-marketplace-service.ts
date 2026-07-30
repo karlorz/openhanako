@@ -17,6 +17,10 @@ import { PluginInstallRecords } from "./plugin-install-records.ts";
 import { PluginArtifactStore } from "./plugin-artifact-store.ts";
 import type { SafeFetchOptions } from "./plugin-marketplace-network-policy.ts";
 import { sanitizeAcquisitionError } from "./plugin-marketplace-network-policy.ts";
+import {
+  createMarketplaceInstallPlan,
+  inspectMarketplacePackage,
+} from "./plugin-marketplace-inspector.ts";
 
 export interface MarketplaceServiceOptions {
   hanakoHome: string;
@@ -181,6 +185,9 @@ export class PluginMarketplaceService {
       const installMeta = plugin.install && typeof plugin.install === "object"
         ? plugin.install as Record<string, unknown>
         : {};
+      const inspection = inspectMarketplacePackage(plugin);
+      const installPlan = createMarketplaceInstallPlan(inspection);
+      const catalogFormat = typeof installMeta.catalogFormat === "string" ? installMeta.catalogFormat : null;
       return {
         compositeKey: `${plugin.id}@${plugin.marketplaceId}`,
         marketplaceId: plugin.marketplaceId,
@@ -192,10 +199,15 @@ export class PluginMarketplaceService {
         trust: plugin.trust,
         distribution: plugin.distribution,
         install: installMeta,
-        catalogFormat: typeof installMeta.catalogFormat === "string" ? installMeta.catalogFormat : null,
-        installTarget: typeof installMeta.installTarget === "string" ? installMeta.installTarget : null,
-        canInstall: installMeta.canInstall === true
-          || (plugin.distribution?.kind === "release" && !!(plugin.distribution as any).packageUrl),
+        catalogFormat,
+        installTarget: inspection.destination,
+        installAdapter: inspection.installAdapter,
+        installable: inspection.installable,
+        confirmationLevel: inspection.confirmationLevel,
+        capabilityInventory: inspection.capabilityInventory,
+        warnings: inspection.warnings,
+        installPlan,
+        canInstall: inspection.installable,
         sourceAuthority: source?.authority || "custom",
         sourceStatus: source?.status || "error",
         active,
@@ -319,6 +331,7 @@ export class PluginMarketplaceService {
     pluginId: string;
     skills: string[];
     skipped: Array<{ path: string; reason: string }>;
+    warnings: string[];
     resolvedRevision: string | null;
   }> {
     if (!options.isStudioOwner) {
@@ -403,7 +416,22 @@ export class PluginMarketplaceService {
       packageRoot: materialized.packageRoot,
       installDir: options.userSkillsDir,
       owner: "user",
+      // default conflictPolicy is preserve for marketplace imports
     });
+
+    if (result.installed.length === 0) {
+      const err = new Error("No Claude marketplace skills were installed") as Error & {
+        code: string;
+        status: number;
+        skipped?: Array<{ path: string; reason: string }>;
+        warnings?: string[];
+      };
+      err.code = "PLUGIN_MARKETPLACE_SKILLS_INSTALL_EMPTY";
+      err.status = 409;
+      err.skipped = result.skipped;
+      err.warnings = result.warnings;
+      throw err;
+    }
 
     writeClaudeSkillsInstallRecord(this._hanakoHome, {
       kind: "claude-skills",
@@ -412,6 +440,7 @@ export class PluginMarketplaceService {
       packagePath,
       resolvedRevision: materialized.resolvedRevision,
       skills: result.installed.map((s) => s.name),
+      warnings: result.warnings,
       installedAt: new Date().toISOString(),
     });
 
@@ -420,6 +449,7 @@ export class PluginMarketplaceService {
       pluginId,
       skills: result.installed.map((s) => s.name),
       skipped: result.skipped,
+      warnings: result.warnings,
       resolvedRevision: materialized.resolvedRevision,
     };
   }
