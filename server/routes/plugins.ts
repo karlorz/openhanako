@@ -979,14 +979,19 @@ export function createPluginsRoute(engine: any) {
   }
 
   function getMarketplaceService() {
-    if (engine.pluginMarketplaceService) return engine.pluginMarketplaceService as PluginMarketplaceService;
-    if (!engine.hanakoHome) {
-      throw new Error("HANA_HOME is required for multi-source marketplace service");
+    let service = engine.pluginMarketplaceService as PluginMarketplaceService | undefined;
+    if (!service) {
+      if (!engine.hanakoHome) {
+        throw new Error("HANA_HOME is required for multi-source marketplace service");
+      }
+      service = new PluginMarketplaceService({
+        hanakoHome: engine.hanakoHome,
+        fetchOptions: engine.fetch ? { fetchImpl: engine.fetch } : undefined,
+      });
+      engine.pluginMarketplaceService = service;
     }
-    return new PluginMarketplaceService({
-      hanakoHome: engine.hanakoHome,
-      fetchOptions: engine.fetch ? { fetchImpl: engine.fetch } : undefined,
-    });
+    service.startClaudeCompatibilityPolling?.();
+    return service;
   }
 
   function principalFlags(c: any) {
@@ -1024,11 +1029,12 @@ export function createPluginsRoute(engine: any) {
   // ── Multi-source marketplace registry (Approach 1) ──
   route.get("/plugins/marketplace/capabilities", (c) => {
     try {
+      const flags = principalFlags(c);
       const svc = getMarketplaceService();
       return c.json({
         ...svc.getCapabilityContract(),
         registry: svc.getRegistryStatus(),
-        configDiagnostics: svc.getControlPlaneDiagnostics(),
+        configDiagnostics: svc.getControlPlaneDiagnostics({ forRemote: !flags.isLocalOwner }),
       });
     } catch (err: any) {
       return c.json({
@@ -1043,11 +1049,12 @@ export function createPluginsRoute(engine: any) {
   });
 
   route.get("/plugins/marketplace/config", (c) => {
+    const flags = principalFlags(c);
     const svc = getMarketplaceService();
     return c.json({
       capabilities: svc.getCapabilityContract(),
       registry: svc.getRegistryStatus(),
-      configDiagnostics: svc.getControlPlaneDiagnostics(),
+      configDiagnostics: svc.getControlPlaneDiagnostics({ forRemote: !flags.isLocalOwner }),
     });
   });
 
@@ -1130,12 +1137,90 @@ export function createPluginsRoute(engine: any) {
       return c.json({
         ...result,
         registry: svc.getRegistryStatus(),
-        configDiagnostics: svc.getControlPlaneDiagnostics(),
+        configDiagnostics: svc.getControlPlaneDiagnostics({ forRemote: !flags.isLocalOwner }),
       });
     } catch (err: any) {
       return c.json({
         error: err.message,
         code: err.code || "PLUGIN_MARKETPLACE_CONTROL_PLANE_INVALID",
+      }, err.status || 400);
+    }
+  });
+
+  route.get("/plugins/marketplace/compatibility/bindings", (c) => {
+    const flags = principalFlags(c);
+    const svc = getMarketplaceService();
+    return c.json({
+      capabilities: svc.getCapabilityContract(),
+      registry: svc.getRegistryStatus(),
+      bindings: svc.listClaudeCompatibilityBindings({ forRemote: !flags.isLocalOwner }),
+    });
+  });
+
+  route.post("/plugins/marketplace/compatibility/plan", async (c) => {
+    const flags = principalFlags(c);
+    if (!flags.isStudioOwner) {
+      return c.json({
+        error: "studio.owner required to plan Claude compatibility mutations",
+        code: "PLUGIN_MARKETPLACE_CLAUDE_COMPAT_FORBIDDEN",
+      }, 403);
+    }
+    const body = await c.req.json().catch(() => ({}));
+    try {
+      const svc = getMarketplaceService();
+      return c.json({ plan: svc.planClaudeCompatibilityMutation(body) });
+    } catch (err: any) {
+      return c.json({
+        error: err.message,
+        code: err.code || "PLUGIN_MARKETPLACE_CLAUDE_COMPAT_INVALID",
+      }, err.status || 400);
+    }
+  });
+
+  route.post("/plugins/marketplace/compatibility/execute", async (c) => {
+    const flags = principalFlags(c);
+    const body = await c.req.json().catch(() => ({}));
+    try {
+      const svc = getMarketplaceService();
+      const result = svc.executeClaudeCompatibilityMutation({
+        ...body,
+        isStudioOwner: flags.isStudioOwner,
+      });
+      return c.json({
+        result,
+        registry: svc.getRegistryStatus(),
+        bindings: svc.listClaudeCompatibilityBindings({ forRemote: !flags.isLocalOwner }),
+      });
+    } catch (err: any) {
+      return c.json({
+        error: err.message,
+        code: err.code || "PLUGIN_MARKETPLACE_CLAUDE_COMPAT_INVALID",
+      }, err.status || 400);
+    }
+  });
+
+  route.post("/plugins/marketplace/compatibility/bridge/validate", async (c) => {
+    const flags = principalFlags(c);
+    if (!flags.isStudioOwner) {
+      return c.json({
+        error: "studio.owner required to validate a Claude compatibility bridge",
+        code: "PLUGIN_MARKETPLACE_CLAUDE_COMPAT_FORBIDDEN",
+      }, 403);
+    }
+    const body = await c.req.json().catch(() => ({}));
+    try {
+      const svc = getMarketplaceService();
+      const envelope = svc.validateClaudeCompatibilityBridge(body.envelope, {
+        serverId: body.serverId,
+        serverBindingId: body.bindingId,
+        deviceId: body.deviceId,
+        sessionId: body.sessionId,
+      });
+      return c.json({ ok: true, envelope });
+    } catch (err: any) {
+      return c.json({
+        error: err.message,
+        code: err.code || "PLUGIN_MARKETPLACE_CLAUDE_COMPAT_BRIDGE_INVALID",
       }, err.status || 400);
     }
   });

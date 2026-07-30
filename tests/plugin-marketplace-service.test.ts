@@ -1,7 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { PluginMarketplaceService } from "../lib/plugin-marketplace-service.ts";
 import { MarketplaceSnapshotStore } from "../lib/plugin-marketplace-snapshots.ts";
 import { parseMarketplaceCatalogStrict } from "../lib/plugin-marketplace-schema.ts";
@@ -13,6 +13,7 @@ function makeHome() {
   return dir;
 }
 afterEach(() => {
+  vi.useRealTimers();
   while (tempDirs.length) {
     const d = tempDirs.pop();
     if (d) fs.rmSync(d, { recursive: true, force: true });
@@ -94,7 +95,7 @@ describe("PluginMarketplaceService", () => {
         lastKnownGoodRegistry: true,
         marketplaceSkillInstall: true,
         agentMarketplaceManagement: true,
-        claudeCompatibilityBindings: false,
+        claudeCompatibilityBindings: true,
         nativeMarketplaceInstall: false,
       },
     });
@@ -103,6 +104,26 @@ describe("PluginMarketplaceService", () => {
       degraded: false,
       digest: expect.stringMatching(/^[a-f0-9]{64}$/),
     });
+  });
+
+  it("runs one singleton-safe bounded digest poll loop for live compatibility bindings", async () => {
+    vi.useFakeTimers();
+    const svc = new PluginMarketplaceService({ hanakoHome: makeHome(), env: {} });
+    const poll = vi.spyOn(svc.claudeCompatibility, "pollLiveBindings").mockReturnValue([]);
+    try {
+      svc.startClaudeCompatibilityPolling(1_000);
+      svc.startClaudeCompatibilityPolling(1_000);
+      expect(poll).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(3_000);
+      expect(poll).toHaveBeenCalledTimes(4);
+
+      svc.stopClaudeCompatibilityPolling();
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(poll).toHaveBeenCalledTimes(4);
+    } finally {
+      svc.stopClaudeCompatibilityPolling();
+      vi.useRealTimers();
+    }
   });
 
   it("adds a URL source after successful snapshot with studio.owner", async () => {
