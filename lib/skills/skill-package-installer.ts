@@ -129,7 +129,7 @@ function assertNoSymlinkEntries(dir: any) {
   }
 }
 
-function assertInstallTargetInsideRoot(targetDir: any, installDir: any) {
+export function assertInstallTargetInsideRoot(targetDir: any, installDir: any) {
   const root = path.resolve(installDir);
   const target = path.resolve(targetDir);
   if (target !== root && target.startsWith(root + path.sep)) return;

@@ -4,6 +4,8 @@ import path from "path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
 import { createPluginsRoute } from "../server/routes/plugins.ts";
+import { writeClaudeSkillsInstallRecord } from "../lib/plugin-marketplace-claude-skills.ts";
+import { loadConfig, saveConfig } from "../lib/memory/config-loader.ts";
 
 const tempDirs: string[] = [];
 function makeHome() {
@@ -421,5 +423,83 @@ describe("marketplace sources auth principal", () => {
       code: "PLUGIN_MARKETPLACE_NATIVE_INSTALL_PREVIEW_ONLY",
     });
     expect(installPlugin).not.toHaveBeenCalled();
+  });
+
+  it("owner can uninstall an exact marketplace skills package and clean Agent references", async () => {
+    const home = makeHome();
+    const engine = createEngine(home);
+    engine.agentsDir = path.join(home, "agents");
+    engine.reloadSkills = vi.fn(async () => {});
+    engine.emitEvent = vi.fn();
+    const skillDir = path.join(engine.userSkillsDir, "wiki-query");
+    fs.mkdirSync(skillDir, { recursive: true });
+    fs.writeFileSync(path.join(skillDir, "SKILL.md"), "---\nname: wiki-query\n---\n", "utf8");
+    const agentConfig = path.join(engine.agentsDir, "agent-a", "config.yaml");
+    fs.mkdirSync(path.dirname(agentConfig), { recursive: true });
+    fs.writeFileSync(agentConfig, "{}\n", "utf8");
+    saveConfig(agentConfig, { skills: { enabled: ["wiki-query", "other"] } });
+    writeClaudeSkillsInstallRecord(home, {
+      kind: "claude-skills",
+      marketplaceId: "llm-wiki",
+      pluginId: "skillwiki",
+      packagePath: "packages/skills",
+      resolvedRevision: "abc",
+      skills: ["wiki-query", "wiki-sync"],
+      installedAt: "2026-07-31T00:00:00.000Z",
+    });
+    const app = createAppWithPrincipal(engine, localOwner);
+
+    const res = await app.request("/api/plugins/marketplace/skillwiki/skills", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ marketplaceId: "llm-wiki" }),
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body).toMatchObject({
+      ok: true,
+      marketplaceId: "llm-wiki",
+      pluginId: "skillwiki",
+      deleted: ["wiki-query"],
+      alreadyMissing: ["wiki-sync"],
+      failed: [],
+      referenceCleanup: { updatedAgents: ["agent-a"], failedAgents: [] },
+    });
+    expect(fs.existsSync(skillDir)).toBe(false);
+    expect(loadConfig(agentConfig)?.skills?.enabled).toEqual(["other"]);
+    expect(engine.reloadSkills).toHaveBeenCalledOnce();
+    expect(engine.emitEvent).toHaveBeenCalledWith(expect.objectContaining({
+      type: "app_event",
+      event: expect.objectContaining({ type: "skills-changed" }),
+    }), null);
+  });
+
+  it("rejects marketplace skills uninstall without owner before filesystem mutation", async () => {
+    const home = makeHome();
+    const engine = createEngine(home);
+    const skillDir = path.join(engine.userSkillsDir, "wiki-query");
+    fs.mkdirSync(skillDir, { recursive: true });
+    fs.writeFileSync(path.join(skillDir, "SKILL.md"), "---\nname: wiki-query\n---\n", "utf8");
+    writeClaudeSkillsInstallRecord(home, {
+      kind: "claude-skills",
+      marketplaceId: "llm-wiki",
+      pluginId: "skillwiki",
+      packagePath: "packages/skills",
+      resolvedRevision: "abc",
+      skills: ["wiki-query"],
+      installedAt: "2026-07-31T00:00:00.000Z",
+    });
+    const app = createAppWithPrincipal(engine, null);
+
+    const res = await app.request("/api/plugins/marketplace/skillwiki/skills", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ marketplaceId: "llm-wiki" }),
+    });
+
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({ code: "PLUGIN_MARKETPLACE_SOURCE_FORBIDDEN" });
+    expect(fs.existsSync(skillDir)).toBe(true);
   });
 });
