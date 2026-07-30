@@ -1090,6 +1090,24 @@ export function createPluginsRoute(engine: any) {
     }
   });
 
+  route.put("/plugins/marketplace/sources/:marketplaceId/enabled", async (c) => {
+    const flags = principalFlags(c);
+    const body = await c.req.json().catch(() => ({}));
+    try {
+      const svc = getMarketplaceService();
+      const result = svc.setSourceEnabled(c.req.param("marketplaceId"), body.enabled !== false, {
+        isStudioOwner: flags.isStudioOwner,
+        ...expectedRegistryPreconditionsFromBody(body),
+      });
+      return c.json(result);
+    } catch (err: any) {
+      return c.json({
+        error: err.message,
+        code: err.code || "PLUGIN_MARKETPLACE_SOURCE_INVALID",
+      }, err.status || 400);
+    }
+  });
+
   route.post("/plugins/marketplace/sources/:marketplaceId/refresh", async (c) => {
     const flags = principalFlags(c);
     try {

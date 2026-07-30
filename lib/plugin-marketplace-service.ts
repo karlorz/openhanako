@@ -22,6 +22,16 @@ import {
   createMarketplaceInstallPlan,
   inspectMarketplacePackage,
 } from "./plugin-marketplace-inspector.ts";
+import {
+  buildMarketplaceSkillRef,
+  buildPluginMarketplaceRef,
+} from "./plugin-marketplace-identity.ts";
+import {
+  computeMarketplaceSkillActivation,
+  computeNativeAgentPluginAccess,
+  computeRuntimePluginActivation,
+} from "./plugin-marketplace-activation.ts";
+import { listClaudeSkillsInstallRecords } from "./plugin-marketplace-claude-skills.ts";
 
 export interface MarketplaceServiceOptions {
   hanakoHome: string;
@@ -48,6 +58,8 @@ export interface MarketplaceCapabilityContract {
     agentMarketplaceManagement: boolean;
     claudeCompatibilityBindings: boolean;
     nativeMarketplaceInstall: boolean;
+    exactSourceQualifiedActivation: boolean;
+    nativeAgentPluginAccess: boolean;
   };
   unsupported: Array<{ code: string; message: string }>;
   upgradeGuidance: string | null;
@@ -99,6 +111,8 @@ export class PluginMarketplaceService {
         agentMarketplaceManagement: true,
         claudeCompatibilityBindings: false,
         nativeMarketplaceInstall: false,
+        exactSourceQualifiedActivation: true,
+        nativeAgentPluginAccess: true,
       },
       unsupported: [
         {
@@ -233,6 +247,23 @@ export class PluginMarketplaceService {
     });
   }
 
+  setSourceEnabled(marketplaceId: string, enabled: boolean, options: {
+    isStudioOwner?: boolean;
+    expectedRevision?: number;
+    expectedDigest?: string;
+  } = {}) {
+    if (!options.isStudioOwner) {
+      const err = new Error("studio.owner required") as Error & { code: string; status: number };
+      err.code = "PLUGIN_MARKETPLACE_SOURCE_FORBIDDEN";
+      err.status = 403;
+      throw err;
+    }
+    return this.registry.setSourceEnabled(marketplaceId, enabled, {
+      expectedRevision: options.expectedRevision,
+      expectedDigest: options.expectedDigest,
+    });
+  }
+
   async refreshSource(marketplaceId: string, options: { isStudioOwner?: boolean } = {}) {
     if (!options.isStudioOwner) {
       const err = new Error("studio.owner required") as Error & { code: string; status: number };
@@ -282,6 +313,9 @@ export class PluginMarketplaceService {
     const sources = this.listSources({ forRemote: options.forRemote });
     const sourceById = new Map(sources.map((s) => [s.id, s]));
     const plugins = this.snapshots.listCurrentPlugins();
+    const activations = this.registry.getControlPlaneActivations();
+    const installedRuntimePluginRefs = this.installedRuntimePluginRefs();
+    const installedMarketplaceSkillRefs = this.installedMarketplaceSkillRefs();
     const rows = plugins.map((plugin) => {
       const source = sourceById.get(plugin.marketplaceId);
       const install = this.records.get(plugin.id);
@@ -293,6 +327,26 @@ export class PluginMarketplaceService {
       const inspection = inspectMarketplacePackage(plugin);
       const installPlan = createMarketplaceInstallPlan(inspection);
       const catalogFormat = typeof installMeta.catalogFormat === "string" ? installMeta.catalogFormat : null;
+      const runtimeIdentity = buildPluginMarketplaceRef({
+        pluginId: plugin.id,
+        marketplaceId: plugin.marketplaceId,
+      });
+      const runtimeActivation = computeRuntimePluginActivation({
+        identity: runtimeIdentity,
+        activations,
+        sources,
+        installedRuntimePluginRefs,
+      });
+      const marketplaceSkillActivations = inspection.destination === "hana-skills"
+        ? installedMarketplaceSkillRefs
+          .filter((identity) => identity.endsWith(`@${plugin.marketplaceId}/${plugin.id}`))
+          .map((identity) => computeMarketplaceSkillActivation({
+            identity,
+            activations,
+            sources,
+            installedMarketplaceSkillRefs,
+          }))
+        : [];
       return {
         compositeKey: `${plugin.id}@${plugin.marketplaceId}`,
         marketplaceId: plugin.marketplaceId,
@@ -312,15 +366,86 @@ export class PluginMarketplaceService {
         capabilityInventory: inspection.capabilityInventory,
         warnings: inspection.warnings,
         installPlan,
+        runtimeActivation,
+        marketplaceSkillActivations,
         canInstall: inspection.installable,
         sourceAuthority: source?.authority || "custom",
         sourceStatus: source?.status || "error",
+        sourceEnabled: source?.enabled !== false,
         active,
         retained,
-        available: true,
+        available: source?.enabled !== false,
       };
     });
     return { sources, plugins: rows };
+  }
+
+  installedRuntimePluginRefs(): string[] {
+    const refs = new Set<string>();
+    for (const record of this.records.list()) {
+      for (const marketplaceId of Object.keys(record.retained || {})) {
+        if (marketplaceId === "legacy-unqualified") continue;
+        refs.add(buildPluginMarketplaceRef({
+          pluginId: record.pluginId,
+          marketplaceId,
+        }));
+      }
+    }
+    return [...refs].sort();
+  }
+
+  installedMarketplaceSkillRefs(): string[] {
+    const refs: string[] = [];
+    for (const record of listClaudeSkillsInstallRecords(this._hanakoHome)) {
+      for (const skillName of record.skills || []) {
+        refs.push(buildMarketplaceSkillRef({
+          skillName,
+          marketplaceId: record.marketplaceId,
+          pluginId: record.pluginId,
+        }));
+      }
+    }
+    return refs.sort();
+  }
+
+  getRuntimePluginActivation(pluginId: string, marketplaceId: string) {
+    return computeRuntimePluginActivation({
+      identity: buildPluginMarketplaceRef({ pluginId, marketplaceId }),
+      activations: this.registry.getControlPlaneActivations(),
+      sources: this.registry.listSources(),
+      installedRuntimePluginRefs: this.installedRuntimePluginRefs(),
+    });
+  }
+
+  getMarketplaceSkillActivation(
+    skillName: string,
+    marketplaceId: string,
+    pluginId: string,
+    options: { agentId?: string | null } = {},
+  ) {
+    return computeMarketplaceSkillActivation({
+      identity: { skillName, marketplaceId, pluginId },
+      agentId: options.agentId,
+      activations: this.registry.getControlPlaneActivations(),
+      sources: this.registry.listSources(),
+      installedMarketplaceSkillRefs: this.installedMarketplaceSkillRefs(),
+    });
+  }
+
+  getNativeAgentPluginAccess(
+    agentId: string,
+    pluginId: string,
+    marketplaceId: string,
+    nativeContributions: Iterable<string> = [],
+  ) {
+    return computeNativeAgentPluginAccess({
+      identity: buildPluginMarketplaceRef({ pluginId, marketplaceId }),
+      agentId,
+      activations: this.registry.getControlPlaneActivations(),
+      sources: this.registry.listSources(),
+      installedRuntimePluginRefs: this.installedRuntimePluginRefs(),
+      nativeContributions,
+    });
   }
 
   resolveInstall(pluginId: string, marketplaceId?: string | null) {
