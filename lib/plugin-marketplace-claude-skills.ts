@@ -1,7 +1,11 @@
 import fs from "fs";
 import path from "path";
 import { assertMarketplaceId, assertPluginId } from "./plugin-marketplace-identity.ts";
-import { installSkillPackageFromDirectory } from "./skills/skill-package-installer.ts";
+import {
+  assertInstallTargetInsideRoot,
+  installSkillPackageFromDirectory,
+  sanitizeSkillName,
+} from "./skills/skill-package-installer.ts";
 
 export const CLAUDE_SKILLS_INSTALL_DIR = "plugin-marketplace-claude-skills";
 
@@ -28,6 +32,25 @@ export interface ClaudeSkillsInstallRecord {
   skills: string[];
   warnings?: string[];
   installedAt: string;
+}
+
+export type ClaudeSkillsInstallState = "not-installed" | "installed" | "partial" | "stale-record";
+
+export interface ReconciledClaudeSkillsInstall {
+  state: ClaudeSkillsInstallState;
+  recorded: string[];
+  present: string[];
+  missing: string[];
+  invalid: string[];
+}
+
+export interface ClaudeSkillsUninstallResult extends ReconciledClaudeSkillsInstall {
+  marketplaceId: string;
+  pluginId: string;
+  complete: boolean;
+  deleted: string[];
+  alreadyMissing: string[];
+  failed: Array<{ name: string; error: string }>;
 }
 
 export interface DiscoverClaudeSkillDirsOptions {
@@ -242,11 +265,15 @@ export function readClaudeSkillsInstallRecord(
   marketplaceId: string,
   pluginId: string,
 ): ClaudeSkillsInstallRecord | null {
-  const filePath = claudeSkillsRecordPath(hanakoHome, marketplaceId, pluginId);
+  const expectedMarketplaceId = assertMarketplaceId(marketplaceId);
+  const expectedPluginId = assertPluginId(pluginId);
+  const filePath = claudeSkillsRecordPath(hanakoHome, expectedMarketplaceId, expectedPluginId);
   if (!fs.existsSync(filePath)) return null;
   try {
     const raw = JSON.parse(fs.readFileSync(filePath, "utf8"));
     if (raw?.kind !== "claude-skills") return null;
+    if (raw.marketplaceId !== expectedMarketplaceId || raw.pluginId !== expectedPluginId) return null;
+    if (!Array.isArray(raw.skills) || raw.skills.some((name: unknown) => typeof name !== "string")) return null;
     return raw as ClaudeSkillsInstallRecord;
   } catch {
     return null;
@@ -262,7 +289,12 @@ export function listClaudeSkillsInstallRecords(hanakoHome: string): ClaudeSkills
     for (const file of fs.readdirSync(path.join(root, source.name), { withFileTypes: true })) {
       if (!file.isFile() || !file.name.endsWith(".json")) continue;
       const pluginId = file.name.slice(0, -".json".length);
-      const record = readClaudeSkillsInstallRecord(hanakoHome, source.name, pluginId);
+      let record: ClaudeSkillsInstallRecord | null = null;
+      try {
+        record = readClaudeSkillsInstallRecord(hanakoHome, source.name, pluginId);
+      } catch {
+        // Ignore malformed filesystem entries outside the strict marketplace identity grammar.
+      }
       if (record) out.push(record);
     }
   }
@@ -270,4 +302,148 @@ export function listClaudeSkillsInstallRecords(hanakoHome: string): ClaudeSkills
     a.marketplaceId.localeCompare(b.marketplaceId)
     || a.pluginId.localeCompare(b.pluginId)
   );
+}
+
+function normalizedRecordedSkills(record: ClaudeSkillsInstallRecord): string[] {
+  return [...new Set(record.skills)];
+}
+
+function resolveRecordedSkillPath(userSkillsDir: string, skillName: string): string | null {
+  const normalized = sanitizeSkillName(skillName);
+  if (!normalized || normalized !== skillName) return null;
+  const root = path.resolve(userSkillsDir);
+  const candidate = path.resolve(root, normalized);
+  try {
+    assertInstallTargetInsideRoot(candidate, root);
+    return candidate;
+  } catch {
+    return null;
+  }
+}
+
+export function reconcileClaudeSkillsInstall(
+  record: ClaudeSkillsInstallRecord | null,
+  userSkillsDir: string,
+): ReconciledClaudeSkillsInstall {
+  if (!record) {
+    return { state: "not-installed", recorded: [], present: [], missing: [], invalid: [] };
+  }
+
+  const recorded = normalizedRecordedSkills(record);
+  const present: string[] = [];
+  const missing: string[] = [];
+  const invalid: string[] = [];
+  for (const skillName of recorded) {
+    const skillPath = resolveRecordedSkillPath(userSkillsDir, skillName);
+    if (!skillPath) invalid.push(skillName);
+    else if (fs.existsSync(skillPath)) present.push(skillName);
+    else missing.push(skillName);
+  }
+
+  const state: ClaudeSkillsInstallState = recorded.length > 0
+    && present.length === recorded.length
+    && invalid.length === 0
+    ? "installed"
+    : present.length > 0
+      ? "partial"
+      : "stale-record";
+  return { state, recorded, present, missing, invalid };
+}
+
+export function reconcileClaudeSkillsInstallRecord(
+  hanakoHome: string,
+  marketplaceId: string,
+  pluginId: string,
+  userSkillsDir = path.join(hanakoHome, "skills"),
+): ReconciledClaudeSkillsInstall {
+  const record = readClaudeSkillsInstallRecord(hanakoHome, marketplaceId, pluginId);
+  return reconcileClaudeSkillsInstall(record, userSkillsDir);
+}
+
+export function removeClaudeSkillsInstallRecord(
+  hanakoHome: string,
+  marketplaceId: string,
+  pluginId: string,
+): void {
+  const filePath = claudeSkillsRecordPath(hanakoHome, marketplaceId, pluginId);
+  fs.rmSync(filePath, { force: true });
+  const sourceDir = path.dirname(filePath);
+  try {
+    if (fs.readdirSync(sourceDir).length === 0) fs.rmdirSync(sourceDir);
+  } catch {
+    // The source directory may already be absent or may contain other package records.
+  }
+}
+
+export function uninstallClaudeSkillsInstallRecord(options: {
+  hanakoHome: string;
+  marketplaceId: string;
+  pluginId: string;
+  userSkillsDir?: string;
+  removeDir?: (dir: string) => void;
+}): ClaudeSkillsUninstallResult | null {
+  const marketplaceId = assertMarketplaceId(options.marketplaceId);
+  const pluginId = assertPluginId(options.pluginId);
+  const record = readClaudeSkillsInstallRecord(options.hanakoHome, marketplaceId, pluginId);
+  if (!record) return null;
+
+  const userSkillsDir = options.userSkillsDir || path.join(options.hanakoHome, "skills");
+  const before = reconcileClaudeSkillsInstallRecord(
+    options.hanakoHome,
+    marketplaceId,
+    pluginId,
+    userSkillsDir,
+  );
+  const removeDir = options.removeDir || ((dir: string) => fs.rmSync(dir, { recursive: true, force: true }));
+  const deleted: string[] = [];
+  const alreadyMissing: string[] = [];
+  const failed: Array<{ name: string; error: string }> = [];
+
+  for (const skillName of before.recorded) {
+    const skillPath = resolveRecordedSkillPath(userSkillsDir, skillName);
+    if (!skillPath) {
+      failed.push({ name: skillName, error: "invalid recorded skill name" });
+      continue;
+    }
+    if (!fs.existsSync(skillPath)) {
+      alreadyMissing.push(skillName);
+      continue;
+    }
+    try {
+      removeDir(skillPath);
+      if (fs.existsSync(skillPath)) {
+        failed.push({ name: skillName, error: "skill directory still exists after removal" });
+      } else {
+        deleted.push(skillName);
+      }
+    } catch (err: any) {
+      failed.push({ name: skillName, error: err?.message || String(err) });
+    }
+  }
+
+  const unresolved = failed.map((item) => item.name);
+  if (unresolved.length === 0) {
+    removeClaudeSkillsInstallRecord(options.hanakoHome, marketplaceId, pluginId);
+  } else {
+    writeClaudeSkillsInstallRecord(options.hanakoHome, {
+      ...record,
+      marketplaceId,
+      pluginId,
+      skills: unresolved,
+    });
+  }
+
+  return {
+    marketplaceId,
+    pluginId,
+    state: before.state,
+    recorded: before.recorded,
+    present: before.present,
+    missing: before.missing,
+    invalid: before.invalid,
+    complete: failed.length === 0,
+    deleted,
+    alreadyMissing,
+    failed,
+  };
 }

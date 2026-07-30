@@ -32,6 +32,7 @@ import {
 import { exportSkillBundlePackage } from "../../lib/skill-bundles/package-service.ts";
 import { createModuleLogger } from "../../lib/debug-log.ts";
 import { materializeUploadedSkillPackage } from "../utils/uploaded-skill-package.ts";
+import { removeAgentSkillReferences } from "../../lib/skills/remove-skill-references.ts";
 
 const log = createModuleLogger("skills");
 const MAX_SKILL_PREVIEW_BYTES = 2 * 1024 * 1024;
@@ -680,21 +681,9 @@ export function createSkillsRoute(engine) {
       rmDirSync(userSkillPath);
 
       // 从所有 agent 的 enabled 列表中移除
-      const agentsDir = engine.agentsDir;
-      for (const agentName of fs.readdirSync(agentsDir)) {
-        const configPath = path.join(agentsDir, agentName, "config.yaml");
-        if (!fs.existsSync(configPath)) continue;
-        try {
-          const { loadConfig } = await import("../../lib/memory/config-loader.ts");
-          const cfg = loadConfig(configPath);
-          const enabled = cfg?.skills?.enabled;
-          if (Array.isArray(enabled) && enabled.includes(name)) {
-            const filtered = enabled.filter(n => n !== name);
-            saveConfig(configPath, { skills: { enabled: filtered } });
-          }
-        } catch (e) {
-          log.error(`清理 agent ${agentName} 的 skill 引用失败: ${e.message}`);
-        }
+      const referenceCleanup = removeAgentSkillReferences(engine.agentsDir, [name]);
+      for (const failure of referenceCleanup.failedAgents) {
+        log.error(`清理 agent ${failure.agentId} 的 skill 引用失败: ${failure.error}`);
       }
 
       // 重新加载 skills

@@ -423,6 +423,7 @@ describe("HTTP route security policy", () => {
       ["PUT", "/api/plugins/media-board/enabled"],
       ["DELETE", "/api/plugins/media-board"],
       ["POST", "/api/plugins/marketplace/media-board/install"],
+      ["DELETE", "/api/plugins/marketplace/skillwiki/skills"],
       ["GET", "/api/plugins/mcp/state?agentId=hana"],
       ["PUT", "/api/plugins/mcp/enabled"],
       ["POST", "/api/plugins/mcp/servers"],
@@ -452,6 +453,7 @@ describe("HTTP route security policy", () => {
       ["GET", "/api/media/image/providers"],
       ["PUT", "/api/media/image/config"],
       ["PUT", "/api/plugins/media-board/config"],
+      ["DELETE", "/api/plugins/marketplace/skillwiki/skills"],
       ["GET", "/api/plugins/mcp/state?agentId=hana"],
       ["PUT", "/api/plugins/mcp/enabled"],
     ]) {

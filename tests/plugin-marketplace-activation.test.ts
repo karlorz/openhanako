@@ -26,6 +26,12 @@ function writeRegistry(home: string, value: unknown) {
   fs.writeFileSync(path.join(home, "plugin-marketplaces.json"), `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
+function writeInstalledSkill(home: string, name: string) {
+  const dir = path.join(home, "skills", name);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, "SKILL.md"), `---\nname: ${name}\n---\n`, "utf8");
+}
+
 function seedSnapshot(home: string, marketplaceId: string, plugins: any[]) {
   const store = new MarketplaceSnapshotStore({ hanakoHome: home });
   const parsed = parseMarketplaceCatalogStrict({ schemaVersion: 1, plugins }, {
@@ -224,6 +230,7 @@ describe("marketplace exact activation and native Agent Plugin Access", () => {
       skills: ["review"],
       installedAt: new Date().toISOString(),
     });
+    writeInstalledSkill(home, "review");
     const svc = new PluginMarketplaceService({ hanakoHome: home, env: {} });
     svc.records.retainAndActivate({
       pluginId: "native-tools",
@@ -319,6 +326,7 @@ describe("marketplace exact activation and native Agent Plugin Access", () => {
       skills: ["review"],
       installedAt: new Date().toISOString(),
     });
+    writeInstalledSkill(home, "review");
     const svc = new PluginMarketplaceService({ hanakoHome: home, env: {} });
 
     expect(svc.listCatalogRows().plugins[0]).toMatchObject({

@@ -34,8 +34,10 @@ interface MarketplacePlugin {
   /** Multi-source composite fields (Approach 1). */
   marketplaceId?: string;
   compositeKey?: string;
-  sourceAuthority?: 'official' | 'custom' | 'legacy';
+  sourceAuthority?: 'official' | 'custom' | 'legacy' | 'removed';
   sourceStatus?: string;
+  sourceEnabled?: boolean;
+  available?: boolean;
   active?: boolean;
   retained?: boolean;
   catalogFormat?: string | null;
@@ -61,6 +63,13 @@ interface MarketplacePlugin {
   } | null;
   runtimeActivation?: { state?: string; reason?: string | null; enabled?: boolean } | null;
   marketplaceSkillActivations?: Array<{ identity?: string; state?: string; reason?: string | null; enabled?: boolean }>;
+  packageInstall?: {
+    state: 'not-installed' | 'installed' | 'partial' | 'stale-record';
+    recorded: string[];
+    present: string[];
+    missing: string[];
+    invalid?: string[];
+  };
   nativeAgentPluginAccess?: {
     identity?: string;
     agentId?: string;
@@ -136,21 +145,30 @@ function marketVersion(plugin: MarketplacePlugin): string {
   return plugin.selectedVersion || plugin.latestVersion || plugin.version || '0.0.0';
 }
 
+function isSkillsTarget(target?: string | null): boolean {
+  return target === 'hana-skills' || target === 'skills';
+}
+
 function marketInstallLabel(plugin: MarketplacePlugin): string {
+  if (isSkillsTarget(plugin.installTarget)) {
+    if (plugin.packageInstall?.state === 'installed') return 'Uninstall skills';
+    if (plugin.packageInstall?.state === 'partial') return 'Uninstall remaining skills';
+    if (plugin.packageInstall?.state === 'stale-record') return 'Clear stale installation';
+  }
   if (plugin.installTarget === 'unsupported' || plugin.installable === false) return 'Inspect only';
   if (plugin.compatible === false || plugin.installAction === 'incompatible') return t('settings.plugins.marketIncompatible');
   if (plugin.installAction === 'downgrade') return t('settings.plugins.marketDowngrade');
   if (plugin.installAction === 'reinstall') return t('settings.plugins.marketReinstall');
   if (plugin.installAction === 'update' || plugin.updateAvailable) return t('settings.plugins.marketUpdate');
   // Trust server installTarget; keep legacy "skills" for older catalog rows mid-upgrade.
-  if (plugin.installTarget === 'hana-skills' || plugin.installTarget === 'skills') {
+  if (isSkillsTarget(plugin.installTarget)) {
     return t('settings.plugins.marketInstallSkills') || 'Install skills';
   }
   return t('settings.plugins.marketInstall');
 }
 
 function marketTargetLabel(target?: string | null): string {
-  if (target === 'hana-skills' || target === 'skills') return 'Hana skills';
+  if (isSkillsTarget(target)) return 'Hana skills';
   if (target === 'native-plugin') return 'Native plugin';
   if (target === 'unsupported') return 'Unsupported';
   return target || 'Unknown';
@@ -192,6 +210,17 @@ function inventoryGroups(plugin: MarketplacePlugin): Array<{ key: string; label:
 }
 
 function marketVersionStatus(plugin: MarketplacePlugin): string | null {
+  if (isSkillsTarget(plugin.installTarget)) {
+    if (plugin.packageInstall?.state === 'installed') {
+      return `${plugin.packageInstall.present.length} marketplace skill director${plugin.packageInstall.present.length === 1 ? 'y' : 'ies'} installed`;
+    }
+    if (plugin.packageInstall?.state === 'partial') {
+      return `${plugin.packageInstall.present.length} present · ${plugin.packageInstall.missing.length} already missing`;
+    }
+    if (plugin.packageInstall?.state === 'stale-record') {
+      return `${plugin.packageInstall.missing.length} recorded skill director${plugin.packageInstall.missing.length === 1 ? 'y' : 'ies'} already missing`;
+    }
+  }
   if (plugin.installTarget === 'unsupported' || plugin.installable === false) return 'Unsupported package';
   if (plugin.compatible === false || plugin.installAction === 'incompatible') return t('settings.plugins.marketIncompatible');
   if (plugin.installAction === 'downgrade') {
@@ -221,6 +250,10 @@ function mapCatalogRow(row: any): MarketplacePlugin {
   const serverCanInstall = row.canInstall === true
     || (row.canInstall == null && installMeta.canInstall === true);
   const installable = row.installable ?? installMeta.installable;
+  const packageInstall = row.packageInstall || { state: 'not-installed', recorded: [], present: [], missing: [], invalid: [] };
+  const installTarget = row.installTarget || installMeta.installTarget || null;
+  const isSkillsPackage = isSkillsTarget(installTarget);
+  const skillsInstalled = isSkillsPackage && packageInstall.state !== 'not-installed';
   return {
     id,
     name: row.name,
@@ -233,14 +266,20 @@ function mapCatalogRow(row: any): MarketplacePlugin {
     compositeKey: row.compositeKey || (marketplaceId ? `${id}@${marketplaceId}` : id),
     sourceAuthority: row.sourceAuthority,
     sourceStatus: row.sourceStatus,
+    sourceEnabled: row.sourceEnabled,
+    available: row.available,
     active,
     retained: row.retained,
-    installed: active,
-    canInstall: serverCanInstall && installable !== false && !active,
-    installAction: installable === false ? 'incompatible' : (active ? 'reinstall' : 'install'),
+    installed: isSkillsPackage ? skillsInstalled : active,
+    canInstall: isSkillsPackage
+      ? serverCanInstall && installable !== false && packageInstall.state === 'not-installed' && row.available !== false
+      : serverCanInstall && installable !== false && !active,
+    installAction: isSkillsPackage
+      ? (packageInstall.state === 'not-installed' ? 'install' : 'reinstall')
+      : (installable === false ? 'incompatible' : (active ? 'reinstall' : 'install')),
     compatible: installable === false ? false : true,
     catalogFormat,
-    installTarget: row.installTarget || installMeta.installTarget || null,
+    installTarget,
     installAdapter: row.installAdapter || installMeta.installAdapter || null,
     installable: installable == null ? serverCanInstall : !!installable,
     confirmationLevel: row.confirmationLevel || installMeta.confirmationLevel || null,
@@ -249,6 +288,7 @@ function mapCatalogRow(row: any): MarketplacePlugin {
     installPlan: row.installPlan || null,
     runtimeActivation: row.runtimeActivation || null,
     marketplaceSkillActivations: Array.isArray(row.marketplaceSkillActivations) ? row.marketplaceSkillActivations : [],
+    packageInstall,
     nativeAgentPluginAccess: row.nativeAgentPluginAccess || null,
   };
 }
@@ -273,6 +313,33 @@ function confirmInstallPlan(plugin: MarketplacePlugin): boolean {
   }
 
   return window.confirm(`Review this install plan before continuing:\n\n${planLines.join('\n')}\n\nThe connected server owner must approve this mutation.`);
+}
+
+function confirmSkillsUninstall(plugin: MarketplacePlugin): boolean {
+  const install = plugin.packageInstall;
+  if (!install || install.state === 'not-installed') return false;
+  const deleteLines = install.present.length
+    ? install.present.map(name => `- shared user skills/${name}/`).join('\n')
+    : '- none; all recorded directories are already missing';
+  const missingLines = install.missing.length
+    ? install.missing.map(name => `- ${name}/`).join('\n')
+    : '- none';
+  const invalidLines = (install.invalid || []).length
+    ? `\nInvalid record entries will fail closed and will not be used as paths:\n${install.invalid!.map(name => `- ${name}`).join('\n')}`
+    : '';
+  return window.confirm([
+    `Uninstall marketplace skills package ${sourceQualifiedId(plugin)}?`,
+    '',
+    'These shared user-skill directories will be permanently deleted, including later edits:',
+    deleteLines,
+    '',
+    'Already-missing recorded directories:',
+    missingLines,
+    invalidLines,
+    '',
+    'Native/community plugin directories and Allow Agent plugin dev tools directories, slots, and records are unaffected.',
+    'This package-level action is separate from Manage in Skills.',
+  ].filter(line => line !== '').join('\n'));
 }
 
 export function PluginMarketplaceTab() {
@@ -572,6 +639,50 @@ export function PluginMarketplaceTab() {
     }
   };
 
+  const uninstallSkillsPackage = async (plugin: MarketplacePlugin) => {
+    if (!plugin.marketplaceId || !plugin.packageInstall || plugin.packageInstall.state === 'not-installed') return;
+    if (!confirmSkillsUninstall(plugin)) return;
+    setInstallingPluginId(rowKey(plugin));
+    try {
+      const res = await hanaFetch(`/api/plugins/marketplace/${encodeURIComponent(plugin.id)}/skills`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          marketplaceId: plugin.marketplaceId,
+          ...(typeof marketplace?.registry?.revision === 'number'
+            ? { expectedRevision: marketplace.registry.revision }
+            : {}),
+          ...(marketplace?.registry?.digest ? { expectedDigest: marketplace.registry.digest } : {}),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data.error) throw new Error(data.error);
+      if (data.ok === false || (Array.isArray(data.failed) && data.failed.length > 0)) {
+        const details = [
+          ...(Array.isArray(data.failed)
+            ? data.failed.map((item: any) => `${item.name}: ${item.error}`)
+            : []),
+          ...(Array.isArray(data.referenceCleanup?.failedAgents)
+            ? data.referenceCleanup.failedAgents.map((item: any) => `Agent ${item.agentId}: ${item.error}`)
+            : []),
+          data.activationCleanupError ? `activation cleanup: ${data.activationCleanupError}` : '',
+          data.bundleCleanupError ? `bundle cleanup: ${data.bundleCleanupError}` : '',
+          data.reloadError ? `skill reload: ${data.reloadError}` : '',
+        ].filter(Boolean);
+        const failures = details.join('; ') || 'Some cleanup steps remain unresolved.';
+        showToast(`Marketplace skills uninstall is partial: ${failures}`, 'error');
+      } else {
+        const removedCount = (data.deleted?.length || 0) + (data.alreadyMissing?.length || 0);
+        showToast(`Removed ${removedCount} recorded skill${removedCount === 1 ? '' : 's'} from ${sourceQualifiedId(plugin)}`, 'success');
+      }
+      await loadMarketplace();
+    } catch (err: unknown) {
+      showToast(`Marketplace skills uninstall failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
+    } finally {
+      setInstallingPluginId(null);
+    }
+  };
+
   const toggleNativeAgentAccess = async (plugin: MarketplacePlugin) => {
     if (!selectedAgentId || !plugin.marketplaceId || plugin.installTarget !== 'native-plugin') return;
     const identity = sourceQualifiedId(plugin);
@@ -786,7 +897,11 @@ export function PluginMarketplaceTab() {
                             )}
                             {(plugin.installed || plugin.active) && (
                               <span className={marketplaceBadgeClassName}>
-                                {t('settings.plugins.marketInstalled')}
+                                {plugin.packageInstall?.state === 'partial'
+                                  ? 'partial'
+                                  : plugin.packageInstall?.state === 'stale-record'
+                                    ? 'stale record'
+                                    : t('settings.plugins.marketInstalled')}
                               </span>
                             )}
                             {plugin.retained && !plugin.active && (
@@ -833,15 +948,26 @@ export function PluginMarketplaceTab() {
                               <button
                                 type="button"
                                 className={styles['settings-save-btn-sm']}
-                                disabled={!selectedPlugin.canInstall || installingPluginId === rowKey(selectedPlugin)}
+                                disabled={
+                                  installingPluginId === rowKey(selectedPlugin)
+                                  || (
+                                    selectedPlugin.packageInstall?.state === 'not-installed'
+                                      ? !selectedPlugin.canInstall
+                                      : marketplace?.access?.isStudioOwner === false
+                                  )
+                                }
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  installPlugin(selectedPlugin);
+                                  if (selectedPlugin.packageInstall && selectedPlugin.packageInstall.state !== 'not-installed') {
+                                    void uninstallSkillsPackage(selectedPlugin);
+                                  } else {
+                                    void installPlugin(selectedPlugin);
+                                  }
                                 }}
                               >
                                 {marketInstallLabel(selectedPlugin)}
                               </button>
-                              {(selectedPlugin.installTarget === 'hana-skills' || selectedPlugin.installTarget === 'skills') && (
+                              {isSkillsTarget(selectedPlugin.installTarget) && (
                                 <button
                                   type="button"
                                   className={styles['settings-save-btn-sm']}
@@ -938,7 +1064,16 @@ export function PluginMarketplaceTab() {
                                 </strong>
                               </div>
                             )}
-                            {(selectedPlugin.installTarget === 'hana-skills' || selectedPlugin.installTarget === 'skills') && (
+                            {isSkillsTarget(selectedPlugin.installTarget) && (
+                              <div className={styles['plugin-marketplace-plan']}>
+                                <span>Package state</span>
+                                <strong>
+                                  {selectedPlugin.packageInstall?.state || 'not-installed'}
+                                  {selectedPlugin.available === false ? ' · source removed / uninstall only' : ''}
+                                </strong>
+                              </div>
+                            )}
+                            {isSkillsTarget(selectedPlugin.installTarget) && (
                               <div className={styles['plugin-marketplace-plan']}>
                                 <span>Activation route</span>
                                 <strong>Skills Settings / Agent Skill Toggles (not Native Plugins)</strong>

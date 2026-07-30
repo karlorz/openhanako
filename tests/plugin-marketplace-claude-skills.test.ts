@@ -7,6 +7,8 @@ import {
   installClaudeSkillsFromPackage,
   inspectClaudePackageWarnings,
   readClaudeSkillsInstallRecord,
+  reconcileClaudeSkillsInstallRecord,
+  uninstallClaudeSkillsInstallRecord,
   writeClaudeSkillsInstallRecord,
 } from "../lib/plugin-marketplace-claude-skills.ts";
 import { PluginMarketplaceService } from "../lib/plugin-marketplace-service.ts";
@@ -146,6 +148,103 @@ describe("installClaudeSkillsFromPackage", () => {
   });
 });
 
+describe("marketplace Claude skills lifecycle", () => {
+  function writeRecord(home: string, skills: string[]) {
+    writeClaudeSkillsInstallRecord(home, {
+      kind: "claude-skills",
+      marketplaceId: "llm-wiki",
+      pluginId: "skillwiki",
+      packagePath: "packages/skills",
+      resolvedRevision: "abc",
+      skills,
+      installedAt: "2026-07-31T00:00:00.000Z",
+    });
+  }
+
+  it("reconciles absent, installed, partial, and stale records", () => {
+    const home = makeTemp("lifecycle-home-");
+    const skillsDir = path.join(home, "skills");
+    expect(reconcileClaudeSkillsInstallRecord(home, "llm-wiki", "skillwiki", skillsDir).state)
+      .toBe("not-installed");
+
+    writeRecord(home, ["wiki-query", "wiki-sync"]);
+    writeSkill(path.join(skillsDir, "wiki-query"), "wiki-query");
+    writeSkill(path.join(skillsDir, "wiki-sync"), "wiki-sync");
+    expect(reconcileClaudeSkillsInstallRecord(home, "llm-wiki", "skillwiki", skillsDir)).toMatchObject({
+      state: "installed",
+      present: ["wiki-query", "wiki-sync"],
+      missing: [],
+    });
+
+    fs.rmSync(path.join(skillsDir, "wiki-sync"), { recursive: true, force: true });
+    expect(reconcileClaudeSkillsInstallRecord(home, "llm-wiki", "skillwiki", skillsDir)).toMatchObject({
+      state: "partial",
+      present: ["wiki-query"],
+      missing: ["wiki-sync"],
+    });
+
+    fs.rmSync(path.join(skillsDir, "wiki-query"), { recursive: true, force: true });
+    expect(reconcileClaudeSkillsInstallRecord(home, "llm-wiki", "skillwiki", skillsDir).state)
+      .toBe("stale-record");
+  });
+
+  it("deletes all recorded directories including modified skills and clears a stale record", () => {
+    const home = makeTemp("uninstall-home-");
+    const skillsDir = path.join(home, "skills");
+    writeRecord(home, ["wiki-query", "wiki-sync"]);
+    writeSkill(path.join(skillsDir, "wiki-query"), "wiki-query", "modified after install");
+
+    const result = uninstallClaudeSkillsInstallRecord({
+      hanakoHome: home,
+      marketplaceId: "llm-wiki",
+      pluginId: "skillwiki",
+      userSkillsDir: skillsDir,
+    });
+
+    expect(result).toMatchObject({
+      complete: true,
+      deleted: ["wiki-query"],
+      alreadyMissing: ["wiki-sync"],
+      failed: [],
+    });
+    expect(fs.existsSync(path.join(skillsDir, "wiki-query"))).toBe(false);
+    expect(readClaudeSkillsInstallRecord(home, "llm-wiki", "skillwiki")).toBeNull();
+  });
+
+  it("fails closed on invalid names and rewrites a partial record to unresolved skills", () => {
+    const home = makeTemp("uninstall-partial-home-");
+    const skillsDir = path.join(home, "skills");
+    writeRecord(home, ["wiki-query", "wiki-sync", "../outside"]);
+    writeSkill(path.join(skillsDir, "wiki-query"), "wiki-query");
+    writeSkill(path.join(skillsDir, "wiki-sync"), "wiki-sync");
+    const outside = path.join(home, "outside");
+    writeSkill(outside, "outside");
+
+    const result = uninstallClaudeSkillsInstallRecord({
+      hanakoHome: home,
+      marketplaceId: "llm-wiki",
+      pluginId: "skillwiki",
+      userSkillsDir: skillsDir,
+      removeDir(dir) {
+        if (dir.endsWith("wiki-sync")) throw new Error("busy");
+        fs.rmSync(dir, { recursive: true, force: true });
+      },
+    });
+
+    expect(result).toMatchObject({
+      complete: false,
+      deleted: ["wiki-query"],
+      failed: [
+        { name: "wiki-sync", error: "busy" },
+        { name: "../outside", error: "invalid recorded skill name" },
+      ],
+    });
+    expect(fs.existsSync(outside)).toBe(true);
+    expect(readClaudeSkillsInstallRecord(home, "llm-wiki", "skillwiki")?.skills)
+      .toEqual(["wiki-sync", "../outside"]);
+  });
+});
+
 describe("PluginMarketplaceService.installClaudePluginSkills", () => {
   it("materializes relative package via mocked git and installs skills", async () => {
     const home = makeTemp("svc-home-");
@@ -282,5 +381,92 @@ describe("PluginMarketplaceService.installClaudePluginSkills", () => {
         isStudioOwner: false,
       }),
     ).rejects.toMatchObject({ code: "PLUGIN_MARKETPLACE_SOURCE_FORBIDDEN" });
+  });
+
+  it("uninstalls exact recorded skills, cleans activations, and leaves plugin directories untouched", () => {
+    const home = makeTemp("svc-uninstall-home-");
+    const skillsDir = path.join(home, "skills");
+    writeSkill(path.join(skillsDir, "wiki-query"), "wiki-query", "modified");
+    writeClaudeSkillsInstallRecord(home, {
+      kind: "claude-skills",
+      marketplaceId: "llm-wiki",
+      pluginId: "skillwiki",
+      packagePath: "packages/skills",
+      resolvedRevision: "abc",
+      skills: ["wiki-query", "wiki-sync"],
+      installedAt: "2026-07-31T00:00:00.000Z",
+    });
+    const nativeDir = path.join(home, "plugins", "skillwiki");
+    const devDir = path.join(home, "plugin-dev", "skillwiki");
+    fs.mkdirSync(nativeDir, { recursive: true });
+    fs.mkdirSync(devDir, { recursive: true });
+    fs.writeFileSync(path.join(nativeDir, "keep.txt"), "native", "utf8");
+    fs.writeFileSync(path.join(devDir, "keep.txt"), "dev", "utf8");
+
+    const svc = new PluginMarketplaceService({ hanakoHome: home, env: {} });
+    svc.registry.addSource({
+      id: "llm-wiki",
+      name: "llm-wiki",
+      kind: "url",
+      url: "https://example.com/llm-wiki.json",
+    });
+    svc.registry.addSource({
+      id: "team",
+      name: "team",
+      kind: "url",
+      url: "https://example.com/team.json",
+    });
+    svc.registry.setControlPlaneActivations({
+      marketplaceSkills: {
+        "wiki-query@llm-wiki/skillwiki": { enabled: true },
+        "other@team/pack": { enabled: true },
+      },
+      agentSkillOverrides: {
+        "agent-a": {
+          "wiki-query@llm-wiki/skillwiki": { enabled: false },
+          "other@team/pack": { enabled: false },
+        },
+      },
+    });
+    expect(svc.installedMarketplaceSkillRefs()).toEqual(["wiki-query@llm-wiki/skillwiki"]);
+
+    const result = svc.uninstallClaudePluginSkills("skillwiki", "llm-wiki", {
+      userSkillsDir: skillsDir,
+      isStudioOwner: true,
+    });
+
+    expect(result).toMatchObject({
+      complete: true,
+      deleted: ["wiki-query"],
+      alreadyMissing: ["wiki-sync"],
+    });
+    expect(svc.registry.getControlPlaneActivations()).toEqual({
+      marketplaceSkills: { "other@team/pack": { enabled: true } },
+      agentSkillOverrides: { "agent-a": { "other@team/pack": { enabled: false } } },
+    });
+    expect(fs.readFileSync(path.join(nativeDir, "keep.txt"), "utf8")).toBe("native");
+    expect(fs.readFileSync(path.join(devDir, "keep.txt"), "utf8")).toBe("dev");
+  });
+
+  it("rejects marketplace skills uninstall without studio.owner before deletion", () => {
+    const home = makeTemp("svc-uninstall-deny-");
+    const skillsDir = path.join(home, "skills");
+    writeSkill(path.join(skillsDir, "wiki-query"), "wiki-query");
+    writeClaudeSkillsInstallRecord(home, {
+      kind: "claude-skills",
+      marketplaceId: "llm-wiki",
+      pluginId: "skillwiki",
+      packagePath: "packages/skills",
+      resolvedRevision: "abc",
+      skills: ["wiki-query"],
+      installedAt: "2026-07-31T00:00:00.000Z",
+    });
+    const svc = new PluginMarketplaceService({ hanakoHome: home, env: {} });
+
+    expect(() => svc.uninstallClaudePluginSkills("skillwiki", "llm-wiki", {
+      userSkillsDir: skillsDir,
+      isStudioOwner: false,
+    })).toThrow(/studio\.owner/i);
+    expect(fs.existsSync(path.join(skillsDir, "wiki-query"))).toBe(true);
   });
 });

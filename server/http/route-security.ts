@@ -565,6 +565,7 @@ function isPluginSettingsWriteRoute(verb, routePath) {
     ))
     || (verb === "DELETE" && (
       /^\/api\/plugins\/marketplace\/sources\/[^/]+$/.test(routePath)
+      || /^\/api\/plugins\/marketplace\/[^/]+\/skills$/.test(routePath)
       || /^\/api\/plugins\/[^/]+$/.test(routePath)
     ));
 }

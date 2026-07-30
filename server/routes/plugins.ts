@@ -45,6 +45,9 @@ import { PluginSourceSwitchCoordinator } from "../../lib/plugin-source-switch.ts
 import { PluginInstallRecords } from "../../lib/plugin-install-records.ts";
 import { PluginArtifactStore } from "../../lib/plugin-artifact-store.ts";
 import { inspectMarketplacePackage } from "../../lib/plugin-marketplace-inspector.ts";
+import { emitAppEvent } from "../app-events.ts";
+import { removeAgentSkillReferences } from "../../lib/skills/remove-skill-references.ts";
+import { removeSkillsFromBundles } from "../../lib/skill-bundles/store.ts";
 
 const log = createModuleLogger("plugin-install");
 
@@ -1344,6 +1347,17 @@ export function createPluginsRoute(engine: any) {
       if (engine.hanakoHome) {
         try {
           const svc = getMarketplaceService();
+          if (marketplaceId) {
+            const removedPackage = svc.getRemovedMarketplaceSkillsPackage(pluginId, marketplaceId);
+            if (removedPackage) {
+              return c.json({
+                pluginId,
+                marketplaceId,
+                markdown: removedPackage.description,
+                sourceRemoved: true,
+              });
+            }
+          }
           const resolved = svc.resolveInstall(pluginId, marketplaceId);
           if (resolved.ok === true) {
             const row = svc.getCatalogPlugin(pluginId, resolved.row.marketplaceId);
@@ -1675,6 +1689,67 @@ export function createPluginsRoute(engine: any) {
         return c.json({ error: err.message, code: err.code, fields: err.errors || [] }, 400);
       }
       return c.json({ error: err.message }, 404);
+    }
+  });
+
+  route.delete("/plugins/marketplace/:id/skills", async (c) => {
+    const pluginId = c.req.param("id");
+    const body = await c.req.json().catch(() => ({}));
+    const marketplaceId = typeof body.marketplaceId === "string" ? body.marketplaceId : "";
+    if (!marketplaceId) {
+      return c.json({
+        error: "marketplaceId required for exact marketplace skills uninstall",
+        code: "PLUGIN_MARKETPLACE_SOURCE_INVALID",
+      }, 400);
+    }
+    if (!engine.userSkillsDir) {
+      return c.json({ error: "User skills directory not available" }, 500);
+    }
+
+    try {
+      const flags = principalFlags(c);
+      const svc = getMarketplaceService();
+      const result = svc.uninstallClaudePluginSkills(pluginId, marketplaceId, {
+        userSkillsDir: engine.userSkillsDir,
+        isStudioOwner: flags.isStudioOwner,
+        ...expectedRegistryPreconditionsFromBody(body),
+      });
+      const handled = [...result.deleted, ...result.alreadyMissing];
+      const referenceCleanup = engine.agentsDir
+        ? removeAgentSkillReferences(engine.agentsDir, handled)
+        : { updatedAgents: [], failedAgents: [] };
+      let bundleCleanupError: string | null = null;
+      if (engine.hanakoHome && handled.length > 0) {
+        try {
+          removeSkillsFromBundles(engine, handled);
+        } catch (err: any) {
+          bundleCleanupError = err?.message || String(err);
+        }
+      }
+      let reloadError: string | null = null;
+      try {
+        await engine.reloadSkills?.();
+      } catch (err: any) {
+        reloadError = err?.message || String(err);
+      }
+      emitAppEvent(engine, "skills-changed", { agentId: null });
+      const ok = result.complete
+        && !result.activationCleanupError
+        && referenceCleanup.failedAgents.length === 0
+        && !bundleCleanupError
+        && !reloadError;
+      return c.json({
+        ok,
+        ...result,
+        referenceCleanup,
+        bundleCleanupError,
+        reloadError,
+      }, ok ? 200 : 207);
+    } catch (err: any) {
+      return c.json({
+        error: err?.message || String(err),
+        code: err?.code || "PLUGIN_MARKETPLACE_SKILLS_UNINSTALL_FAILED",
+      }, err?.status || 400);
     }
   });
 
