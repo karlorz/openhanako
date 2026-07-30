@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { createHash } from "crypto";
 import {
   assertMarketplaceId,
   buildSourceFingerprint,
@@ -11,6 +12,7 @@ export const OFFICIAL_MARKETPLACE_ID = "oh-plugins-official";
 export const OFFICIAL_MARKETPLACE_NAME = "OH Plugins Official";
 export const MARKETPLACE_SOURCES_FILENAME = "plugin-marketplaces.json";
 export const MARKETPLACE_SOURCES_SCHEMA_VERSION = 1 as const;
+export const MARKETPLACE_CONTROL_PLANE_SCHEMA_VERSION = 2 as const;
 export const LEGACY_MARKETPLACE_ID = "legacy-override";
 
 export type MarketplaceSourceKind = "url" | "local" | "git";
@@ -29,9 +31,17 @@ export type EffectiveMarketplaceSource = MarketplaceSourceDescriptor & {
 };
 
 export interface MarketplaceSourcesFile {
-  schemaVersion: 1;
+  schemaVersion: 1 | 2;
   revision: number;
   sources: MarketplaceSourceDescriptor[];
+  activations?: MarketplaceControlPlaneActivations;
+  claudeCompatibility?: { bindings?: unknown[] };
+}
+
+export interface MarketplaceControlPlaneActivations {
+  runtimePlugins?: Record<string, unknown>;
+  marketplaceSkills?: Record<string, unknown>;
+  agentSkillOverrides?: Record<string, Record<string, unknown>>;
 }
 
 export interface LegacyMarketplaceOverlay {
@@ -58,6 +68,7 @@ export type SourceInUseCallback = (marketplaceId: string) => boolean;
 
 export interface MutationOptions {
   expectedRevision?: number;
+  expectedDigest?: string;
   isSourceInUse?: SourceInUseCallback;
 }
 
@@ -67,8 +78,19 @@ export interface MutationResult {
 }
 
 type DurableLoadResult =
-  | { ok: true; file: MarketplaceSourcesFile }
-  | { ok: false; degraded: true; error: string };
+  | { ok: true; file: MarketplaceSourcesFile; digest: string | null }
+  | { ok: false; degraded: true; error: string; file?: MarketplaceSourcesFile; digest?: string | null };
+
+export interface MarketplaceSourceRegistryStatus {
+  schemaVersion: 1 | 2;
+  effectiveSchemaVersion: 2;
+  revision: number;
+  digest: string;
+  path: string;
+  degraded: boolean;
+  diagnostic: string | null;
+  lastKnownGood: boolean;
+}
 
 function defaultFsOps(): MarketplaceSourceFsOps {
   return {
@@ -218,6 +240,70 @@ function validateDescriptor(raw: unknown): MarketplaceSourceDescriptor {
   throw new Error(`Unsupported marketplace source kind: ${String(kind)}`);
 }
 
+function validateActivationKey(key: string, kind: "runtimePlugins" | "marketplaceSkills") {
+  if (kind === "runtimePlugins") {
+    if (!/^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+$/.test(key)) {
+      throw new Error(`Malformed marketplace source registry: runtime plugin activation key must be source-qualified: ${key}`);
+    }
+    return;
+  }
+  if (!/^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+\/[A-Za-z0-9._/-]+$/.test(key)) {
+    throw new Error(`Malformed marketplace source registry: marketplace skill activation key must be source-qualified: ${key}`);
+  }
+}
+
+function validateActivationRecord(value: unknown, label: string): Record<string, unknown> | undefined {
+  if (value === undefined) return undefined;
+  if (!isPlainObject(value)) {
+    throw new Error(`Malformed marketplace source registry: ${label} must be an object`);
+  }
+  return { ...value };
+}
+
+function validateActivations(raw: unknown): MarketplaceControlPlaneActivations | undefined {
+  if (raw === undefined) return undefined;
+  if (!isPlainObject(raw)) {
+    throw new Error("Malformed marketplace source registry: activations must be an object");
+  }
+  const out: MarketplaceControlPlaneActivations = {};
+  const runtimePlugins = validateActivationRecord(raw.runtimePlugins, "activations.runtimePlugins");
+  if (runtimePlugins) {
+    for (const key of Object.keys(runtimePlugins)) validateActivationKey(key, "runtimePlugins");
+    out.runtimePlugins = runtimePlugins;
+  }
+  const marketplaceSkills = validateActivationRecord(raw.marketplaceSkills, "activations.marketplaceSkills");
+  if (marketplaceSkills) {
+    for (const key of Object.keys(marketplaceSkills)) validateActivationKey(key, "marketplaceSkills");
+    out.marketplaceSkills = marketplaceSkills;
+  }
+  const agentSkillOverrides = validateActivationRecord(raw.agentSkillOverrides, "activations.agentSkillOverrides");
+  if (agentSkillOverrides) {
+    const normalized: Record<string, Record<string, unknown>> = {};
+    for (const [agentId, entries] of Object.entries(agentSkillOverrides)) {
+      if (!isPlainObject(entries)) {
+        throw new Error(`Malformed marketplace source registry: agentSkillOverrides.${agentId} must be an object`);
+      }
+      for (const key of Object.keys(entries)) validateActivationKey(key, "marketplaceSkills");
+      normalized[agentId] = { ...entries };
+    }
+    out.agentSkillOverrides = normalized;
+  }
+  return out;
+}
+
+function validateClaudeCompatibility(raw: unknown): { bindings?: unknown[] } | undefined {
+  if (raw === undefined) return undefined;
+  if (!isPlainObject(raw)) {
+    throw new Error("Malformed marketplace source registry: claudeCompatibility must be an object");
+  }
+  if (raw.bindings !== undefined && !Array.isArray(raw.bindings)) {
+    throw new Error("Malformed marketplace source registry: claudeCompatibility.bindings must be an array");
+  }
+  return {
+    ...(Array.isArray(raw.bindings) ? { bindings: raw.bindings.slice() } : {}),
+  };
+}
+
 function fingerprintForDescriptor(descriptor: MarketplaceSourceDescriptor): string {
   const input: MarketplaceSourceFingerprintInput = descriptor.kind === "url"
     ? { kind: "url", id: descriptor.id, url: descriptor.url }
@@ -252,7 +338,10 @@ function parseDurableFile(rawText: string): MarketplaceSourcesFile {
   if (!isPlainObject(parsed)) {
     throw new Error("Malformed marketplace source registry: root must be an object");
   }
-  if (parsed.schemaVersion !== MARKETPLACE_SOURCES_SCHEMA_VERSION) {
+  if (
+    parsed.schemaVersion !== MARKETPLACE_SOURCES_SCHEMA_VERSION
+    && parsed.schemaVersion !== MARKETPLACE_CONTROL_PLANE_SCHEMA_VERSION
+  ) {
     throw new Error(`Malformed marketplace source registry: unsupported schemaVersion ${String(parsed.schemaVersion)}`);
   }
   if (typeof parsed.revision !== "number" || !Number.isInteger(parsed.revision) || parsed.revision < 0) {
@@ -273,11 +362,32 @@ function parseDurableFile(rawText: string): MarketplaceSourcesFile {
     sources.push(descriptor);
   }
 
+  const activations = parsed.schemaVersion === MARKETPLACE_CONTROL_PLANE_SCHEMA_VERSION
+    ? validateActivations(parsed.activations)
+    : undefined;
+  const claudeCompatibility = parsed.schemaVersion === MARKETPLACE_CONTROL_PLANE_SCHEMA_VERSION
+    ? validateClaudeCompatibility(parsed.claudeCompatibility)
+    : undefined;
+
   return {
-    schemaVersion: MARKETPLACE_SOURCES_SCHEMA_VERSION,
+    schemaVersion: parsed.schemaVersion,
     revision: parsed.revision,
     sources,
+    ...(parsed.schemaVersion === MARKETPLACE_CONTROL_PLANE_SCHEMA_VERSION
+      ? {
+          ...(activations ? { activations } : {}),
+          ...(claudeCompatibility ? { claudeCompatibility } : {}),
+        }
+      : {}),
   };
+}
+
+function digestForText(text: string): string {
+  return createHash("sha256").update(text).digest("hex");
+}
+
+function digestForFile(file: MarketplaceSourcesFile): string {
+  return digestForText(`${JSON.stringify(file, null, 2)}\n`);
 }
 
 function sanitizeForRemote(source: EffectiveMarketplaceSource): EffectiveMarketplaceSource {
@@ -301,6 +411,7 @@ export class PluginMarketplaceSourceRegistry {
   declare _degraded: boolean;
   declare _degradedError: string | null;
   declare _cachedFile: MarketplaceSourcesFile | null;
+  declare _cachedDigest: string | null;
   declare _lockHeld: boolean;
 
   constructor(options: {
@@ -319,6 +430,7 @@ export class PluginMarketplaceSourceRegistry {
     this._degraded = false;
     this._degradedError = null;
     this._cachedFile = null;
+    this._cachedDigest = null;
     this._lockHeld = false;
   }
 
@@ -332,8 +444,37 @@ export class PluginMarketplaceSourceRegistry {
 
   getRevision(): number {
     const loaded = this._loadDurable();
-    if (!loaded.ok) return 0;
+    if (!loaded.ok && !loaded.file) return 0;
     return loaded.file.revision;
+  }
+
+  getStatus(): MarketplaceSourceRegistryStatus {
+    const loaded = this._loadDurable();
+    if ("error" in loaded) {
+      const file = loaded.file || emptyFile();
+      return {
+        schemaVersion: file.schemaVersion,
+        effectiveSchemaVersion: MARKETPLACE_CONTROL_PLANE_SCHEMA_VERSION,
+        revision: file.revision,
+        digest: loaded.digest || digestForFile(file),
+        path: this._path,
+        degraded: true,
+        diagnostic: loaded.error,
+        lastKnownGood: !!loaded.file,
+      };
+    }
+    const file = loaded.file;
+    const digest = loaded.digest || digestForFile(file);
+    return {
+      schemaVersion: file.schemaVersion,
+      effectiveSchemaVersion: MARKETPLACE_CONTROL_PLANE_SCHEMA_VERSION,
+      revision: file.revision,
+      digest,
+      path: this._path,
+      degraded: false,
+      diagnostic: null,
+      lastKnownGood: false,
+    };
   }
 
   loadEffectiveSources(): {
@@ -344,7 +485,7 @@ export class PluginMarketplaceSourceRegistry {
     const loaded = this._loadDurable();
     if (!loaded.ok) {
       return {
-        sources: this._composeEffective([]),
+        sources: this._composeEffective(loaded.file?.sources || []),
         degraded: true,
         error: ("error" in loaded ? loaded.error : null) || "malformed registry",
       };
@@ -372,6 +513,7 @@ export class PluginMarketplaceSourceRegistry {
         throw new Error(`Invalid registry (degraded): ${"error" in loaded ? loaded.error : "malformed registry"}`);
       }
       this._assertExpectedRevision(loaded.file.revision, options.expectedRevision);
+      this._assertExpectedDigest(loaded.digest, options.expectedDigest);
       if (loaded.file.sources.some((s) => s.id === descriptor.id)) {
         throw new Error(`Marketplace source id already exists and is immutable in v1: ${descriptor.id}`);
       }
@@ -403,6 +545,7 @@ export class PluginMarketplaceSourceRegistry {
         throw new Error(`Invalid registry (degraded): ${"error" in loaded ? loaded.error : "malformed registry"}`);
       }
       this._assertExpectedRevision(loaded.file.revision, options.expectedRevision);
+      this._assertExpectedDigest(loaded.digest, options.expectedDigest);
       const index = loaded.file.sources.findIndex((s) => s.id === id);
       if (index < 0) {
         throw new Error(`Marketplace source not found: ${id}`);
@@ -434,6 +577,8 @@ export class PluginMarketplaceSourceRegistry {
 
   _assertMutable() {
     if (this._degraded) {
+      const loaded = this._loadDurable();
+      if (loaded.ok) return;
       throw new Error(
         `Invalid registry (degraded mode; mutations disabled): ${this._degradedError || "malformed registry"}`,
       );
@@ -447,28 +592,44 @@ export class PluginMarketplaceSourceRegistry {
     }
   }
 
-  _loadDurable(): DurableLoadResult {
-    if (this._degraded) {
-      return { ok: false, degraded: true, error: this._degradedError || "malformed registry" };
+  _assertExpectedDigest(current: string | null, expected?: string) {
+    if (expected === undefined) return;
+    if (!current || expected !== current) {
+      throw new Error(`Marketplace registry digest conflict: expected ${expected}, current ${current || "unknown"}`);
     }
+  }
+
+  _loadDurable(): DurableLoadResult {
     if (this._cachedFile) {
-      return { ok: true, file: structuredClone(this._cachedFile) };
+      // Direct operator edits are expected; always re-read below when the file exists.
     }
     if (!this._fs.existsSync(this._path)) {
       const empty = emptyFile();
       this._cachedFile = empty;
-      return { ok: true, file: structuredClone(empty) };
+      this._cachedDigest = digestForFile(empty);
+      this._degraded = false;
+      this._degradedError = null;
+      return { ok: true, file: structuredClone(empty), digest: this._cachedDigest };
     }
     try {
       const text = this._fs.readFileSync(this._path, "utf8");
       const file = parseDurableFile(text);
+      const digest = digestForText(text);
       this._cachedFile = file;
-      return { ok: true, file: structuredClone(file) };
+      this._cachedDigest = digest;
+      this._degraded = false;
+      this._degradedError = null;
+      return { ok: true, file: structuredClone(file), digest };
     } catch (err: any) {
       this._degraded = true;
       this._degradedError = err?.message || String(err);
-      this._cachedFile = null;
-      return { ok: false, degraded: true, error: this._degradedError };
+      return {
+        ok: false,
+        degraded: true,
+        error: this._degradedError,
+        ...(this._cachedFile ? { file: structuredClone(this._cachedFile) } : {}),
+        ...(this._cachedDigest ? { digest: this._cachedDigest } : {}),
+      };
     }
   }
 
@@ -484,6 +645,7 @@ export class PluginMarketplaceSourceRegistry {
       this._bestEffortFsync(this._path);
       this._bestEffortFsyncDir(dir);
       this._cachedFile = structuredClone(file);
+      this._cachedDigest = digestForText(payload);
       this._degraded = false;
       this._degradedError = null;
     } catch (err) {

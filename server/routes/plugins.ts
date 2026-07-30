@@ -44,6 +44,7 @@ import { PluginMarketplaceService } from "../../lib/plugin-marketplace-service.t
 import { PluginSourceSwitchCoordinator } from "../../lib/plugin-source-switch.ts";
 import { PluginInstallRecords } from "../../lib/plugin-install-records.ts";
 import { PluginArtifactStore } from "../../lib/plugin-artifact-store.ts";
+import { inspectMarketplacePackage } from "../../lib/plugin-marketplace-inspector.ts";
 
 const log = createModuleLogger("plugin-install");
 
@@ -1004,14 +1005,53 @@ export function createPluginsRoute(engine: any) {
     return { isLocalOwner, isStudioOwner, principal };
   }
 
+  function expectedRegistryPreconditionsFromBody(body: any) {
+    return {
+      expectedRevision: typeof body?.expectedRevision === "number" ? body.expectedRevision : undefined,
+      expectedDigest: typeof body?.expectedDigest === "string" ? body.expectedDigest : undefined,
+    };
+  }
+
+  function expectedRegistryPreconditionsFromQuery(c: any) {
+    const rawRevision = c.req.query("expectedRevision");
+    const parsedRevision = rawRevision !== undefined ? Number(rawRevision) : undefined;
+    return {
+      expectedRevision: Number.isInteger(parsedRevision) ? parsedRevision : undefined,
+      expectedDigest: c.req.query("expectedDigest") || undefined,
+    };
+  }
+
   // ── Multi-source marketplace registry (Approach 1) ──
+  route.get("/plugins/marketplace/capabilities", (c) => {
+    try {
+      const svc = getMarketplaceService();
+      return c.json({
+        ...svc.getCapabilityContract(),
+        registry: svc.getRegistryStatus(),
+      });
+    } catch (err: any) {
+      return c.json({
+        schemaVersion: 1,
+        supported: false,
+        version: "plugin-marketplace-capabilities.v1",
+        code: "PLUGIN_MARKETPLACE_UNSUPPORTED_SERVER",
+        message: err?.message || "Plugin marketplace service is unavailable on this server",
+        upgradeGuidance: "Upgrade the connected Hana server to a build with plugin-marketplace-capabilities.v1.",
+      }, 501);
+    }
+  });
+
   route.get("/plugins/marketplace/sources", async (c) => {
     const { principal } = principalFlags(c);
     const forRemote = !isLocalOwnerPrincipal(principal);
     const svc = getMarketplaceService();
     // Seed official snapshot before listing so local Settings is not empty/error on first open.
     await svc.ensureOfficialSnapshotSeededAsync();
-    return c.json({ sources: svc.listSources({ forRemote }) });
+    return c.json({
+      capabilities: svc.getCapabilityContract(),
+      registry: svc.getRegistryStatus(),
+      sources: svc.listSources({ forRemote }),
+    });
   });
 
   route.post("/plugins/marketplace/sources", async (c) => {
@@ -1022,6 +1062,7 @@ export function createPluginsRoute(engine: any) {
       const result = await svc.addSource(body, {
         isStudioOwner: flags.isStudioOwner,
         isLocalOwner: flags.isLocalOwner,
+        ...expectedRegistryPreconditionsFromBody(body),
       });
       return c.json(result, 201);
     } catch (err: any) {
@@ -1038,6 +1079,7 @@ export function createPluginsRoute(engine: any) {
       const svc = getMarketplaceService();
       const result = svc.removeSource(c.req.param("marketplaceId"), {
         isStudioOwner: flags.isStudioOwner,
+        ...expectedRegistryPreconditionsFromQuery(c),
       });
       return c.json(result);
     } catch (err: any) {
@@ -1069,7 +1111,11 @@ export function createPluginsRoute(engine: any) {
     const forRemote = !flags.isLocalOwner;
     const svc = getMarketplaceService();
     await svc.ensureOfficialSnapshotSeededAsync();
-    return c.json(svc.listCatalogRows({ forRemote }));
+    return c.json({
+      capabilities: svc.getCapabilityContract(),
+      registry: svc.getRegistryStatus(),
+      ...svc.listCatalogRows({ forRemote }),
+    });
   });
 
   route.post("/plugins/:pluginId/source-switch", async (c) => {
@@ -1218,6 +1264,7 @@ export function createPluginsRoute(engine: any) {
       let sourceFingerprint: string | null = null;
       let svc: PluginMarketplaceService | null = null;
       let resolution: ReturnType<PluginMarketplaceService["resolveInstall"]> | null = null;
+      let pluginFromMultiSource = false;
 
       // Multi-source resolve first when durable home exists (official-wins / qualified / ambiguous).
       if (engine.hanakoHome) {
@@ -1226,6 +1273,7 @@ export function createPluginsRoute(engine: any) {
         if (resolution.ok === true) {
           sourceMarketplaceId = resolution.row.marketplaceId;
           plugin = svc.getCatalogPlugin(pluginId, sourceMarketplaceId);
+          pluginFromMultiSource = !!plugin;
           const status = svc.snapshots.getStatus(sourceMarketplaceId);
           if (status.state === "ok" || status.state === "stale" || status.state === "refreshing") {
             catalogSha256 = status.current?.catalogSha256 || null;
@@ -1329,6 +1377,15 @@ export function createPluginsRoute(engine: any) {
             ...(Array.isArray(err?.warnings) ? { warnings: err.warnings } : {}),
           }, status);
         }
+      }
+
+      const marketplaceInspection = inspectMarketplacePackage(plugin);
+      if (svc && sourceMarketplaceId && pluginFromMultiSource && marketplaceInspection.destination === "native-plugin") {
+        throw createPluginRouteError(
+          "Native marketplace install is preview-only until the PluginManager contract audit and Agent Plugin Access routing are complete.",
+          409,
+          "PLUGIN_MARKETPLACE_NATIVE_INSTALL_PREVIEW_ONLY",
+        );
       }
 
       const installCandidate = marketplacePluginForVersion(plugin, versionState);

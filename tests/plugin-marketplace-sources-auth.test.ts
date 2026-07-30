@@ -124,4 +124,118 @@ describe("marketplace sources auth principal", () => {
     expect(res.status).toBe(201);
     expect(body.error).toBeUndefined();
   });
+
+  it("advertises marketplace capabilities and registry revision/digest", async () => {
+    const home = makeHome();
+    const app = createAppWithPrincipal(createEngine(home), localOwner);
+    const res = await app.request("/api/plugins/marketplace/capabilities");
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body).toMatchObject({
+      supported: true,
+      version: "plugin-marketplace-capabilities.v1",
+      features: {
+        multiSourceBrowse: true,
+        sourceConfigDigest: true,
+        nativeMarketplaceInstall: false,
+      },
+      registry: {
+        revision: 0,
+        degraded: false,
+        digest: expect.stringMatching(/^[a-f0-9]{64}$/),
+      },
+    });
+  });
+
+  it("rejects stale registry digest before acquiring a source", async () => {
+    const home = makeHome();
+    const engine = createEngine(home);
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ schemaVersion: 1, plugins: [] }), { status: 200 }));
+    const { PluginMarketplaceService } = await import("../lib/plugin-marketplace-service.ts");
+    engine.pluginMarketplaceService = new PluginMarketplaceService({
+      hanakoHome: home,
+      env: {},
+      fetchOptions: {
+        fetchImpl,
+        lookup: async () => [{ address: "93.184.216.34", family: 4 }],
+      },
+    });
+    const app = createAppWithPrincipal(engine, localOwner);
+
+    const res = await app.request("/api/plugins/marketplace/sources", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: "team-plugins",
+        name: "Team",
+        kind: "url",
+        url: "https://example.com/marketplace.json",
+        expectedDigest: "0".repeat(64),
+      }),
+    });
+    const body = await res.json();
+    expect(res.status).toBe(409);
+    expect(body.code).toBe("PLUGIN_MARKETPLACE_REGISTRY_STALE");
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("blocks multi-source native marketplace install as preview-only", async () => {
+    const home = makeHome();
+    const engine = createEngine(home);
+    const installPlugin = vi.fn();
+    engine.pluginManager = {
+      listPlugins: () => [],
+      getRouteApp: () => null,
+      getUserPluginsDir: () => path.join(home, "plugins"),
+      installPlugin,
+    };
+    const { PluginMarketplaceService } = await import("../lib/plugin-marketplace-service.ts");
+    const { MarketplaceSnapshotStore } = await import("../lib/plugin-marketplace-snapshots.ts");
+    const { parseMarketplaceCatalogStrict } = await import("../lib/plugin-marketplace-schema.ts");
+    engine.pluginMarketplaceService = new PluginMarketplaceService({ hanakoHome: home, env: {} });
+    const parsed = parseMarketplaceCatalogStrict({
+      schemaVersion: 1,
+      plugins: [{
+        schemaVersion: 1,
+        id: "native-page",
+        name: "Native Page",
+        publisher: "Hana",
+        version: "1.0.0",
+        description: "Native",
+        repository: "https://example.com/native",
+        compatibility: {},
+        trust: "restricted",
+        permissions: [],
+        contributions: ["tools"],
+        distribution: {
+          kind: "release",
+          packageUrl: "https://example.com/native.zip",
+          sha256: "a".repeat(64),
+        },
+      }],
+    }, {
+      marketplaceId: "oh-plugins-official",
+      sourceKind: "url",
+    });
+    new MarketplaceSnapshotStore({ hanakoHome: home }).publish("oh-plugins-official", {
+      sourceId: "oh-plugins-official",
+      sourceFingerprint: "1".repeat(64),
+      catalogSha256: parsed.catalogSha256,
+      fetchedAt: new Date().toISOString(),
+      plugins: parsed.plugins,
+    });
+    const app = createAppWithPrincipal(engine, localOwner);
+
+    const res = await app.request("/api/plugins/marketplace/native-page/install", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ marketplaceId: "oh-plugins-official" }),
+    });
+    const body = await res.json();
+    expect(res.status).toBe(409);
+    expect(body).toMatchObject({
+      code: "PLUGIN_MARKETPLACE_NATIVE_INSTALL_PREVIEW_ONLY",
+    });
+    expect(installPlugin).not.toHaveBeenCalled();
+  });
 });

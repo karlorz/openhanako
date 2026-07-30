@@ -201,6 +201,133 @@ describe("PluginMarketplaceSourceRegistry", () => {
     ).toThrow(/revision/i);
   });
 
+  it("enforces expectedDigest optimistic concurrency", () => {
+    const home = makeHome();
+    const registry = new PluginMarketplaceSourceRegistry({ hanakoHome: home });
+    const digest = registry.getStatus().digest;
+    registry.addSource(
+      {
+        id: "team-plugins",
+        name: "Team",
+        kind: "url",
+        url: "https://example.com/marketplace.json",
+      },
+      { expectedDigest: digest },
+    );
+    expect(() =>
+      registry.addSource(
+        {
+          id: "other",
+          name: "Other",
+          kind: "url",
+          url: "https://example.com/other.json",
+        },
+        { expectedDigest: digest },
+      ),
+    ).toThrow(/digest conflict/i);
+  });
+
+  it("keeps last-known-good effective sources during malformed direct edits and recovers after repair", () => {
+    const home = makeHome();
+    const registry = new PluginMarketplaceSourceRegistry({ hanakoHome: home });
+    registry.addSource({
+      id: "team-plugins",
+      name: "Team",
+      kind: "url",
+      url: "https://example.com/marketplace.json",
+    });
+    const before = registry.getStatus();
+    expect(before.degraded).toBe(false);
+
+    fs.writeFileSync(registryPath(home), "{ not json", "utf8");
+    const degraded = registry.loadEffectiveSources();
+    expect(degraded.degraded).toBe(true);
+    expect(degraded.sources.map((s) => s.id)).toContain("team-plugins");
+    expect(registry.getStatus()).toMatchObject({
+      degraded: true,
+      lastKnownGood: true,
+      revision: 1,
+      digest: before.digest,
+    });
+    expect(() =>
+      registry.addSource({
+        id: "blocked",
+        name: "Blocked",
+        kind: "url",
+        url: "https://example.com/blocked.json",
+      }),
+    ).toThrow(/degraded|malformed/i);
+
+    writeRegistry(home, {
+      schemaVersion: 1,
+      revision: 2,
+      sources: [{
+        id: "fixed",
+        name: "Fixed",
+        kind: "url",
+        url: "https://example.com/fixed.json",
+      }],
+    });
+    expect(registry.loadEffectiveSources()).toMatchObject({
+      degraded: false,
+      sources: expect.arrayContaining([expect.objectContaining({ id: "fixed" })]),
+    });
+    expect(registry.getStatus()).toMatchObject({
+      degraded: false,
+      lastKnownGood: false,
+      revision: 2,
+    });
+  });
+
+  it("loads schemaVersion 2 control-plane records without rewriting and rejects bare activation keys", () => {
+    const home = makeHome();
+    writeRegistry(home, {
+      schemaVersion: 2,
+      revision: 7,
+      sources: [{
+        id: "team-plugins",
+        name: "Team",
+        kind: "git",
+        gitUrl: "https://github.com/example/team-plugins.git",
+      }],
+      activations: {
+        runtimePlugins: {
+          "demo@team-plugins": { enabled: false },
+        },
+        marketplaceSkills: {
+          "review@team-plugins/review-pack": { enabled: true },
+        },
+      },
+      claudeCompatibility: {
+        bindings: [],
+      },
+    });
+    const registry = new PluginMarketplaceSourceRegistry({ hanakoHome: home });
+    expect(registry.getStatus()).toMatchObject({
+      schemaVersion: 2,
+      effectiveSchemaVersion: 2,
+      revision: 7,
+      degraded: false,
+    });
+    expect(registry.listSources().map((s) => s.id)).toContain("team-plugins");
+    expect(JSON.parse(fs.readFileSync(registryPath(home), "utf8")).schemaVersion).toBe(2);
+
+    const invalidHome = makeHome();
+    writeRegistry(invalidHome, {
+      schemaVersion: 2,
+      revision: 1,
+      sources: [],
+      activations: {
+        runtimePlugins: {
+          demo: { enabled: true },
+        },
+      },
+    });
+    const invalid = new PluginMarketplaceSourceRegistry({ hanakoHome: invalidHome });
+    expect(invalid.loadEffectiveSources().degraded).toBe(true);
+    expect(invalid.getStatus().diagnostic).toMatch(/source-qualified/i);
+  });
+
   it("blocks remove while source-in-use callback reports references", () => {
     const home = makeHome();
     const registry = new PluginMarketplaceSourceRegistry({ hanakoHome: home });

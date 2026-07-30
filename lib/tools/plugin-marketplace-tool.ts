@@ -59,6 +59,17 @@ function getMarketplaceService(engine: any) {
   });
 }
 
+function serviceCapabilityPayload(svc: PluginMarketplaceService) {
+  return {
+    capabilities: typeof (svc as any).getCapabilityContract === "function"
+      ? (svc as any).getCapabilityContract()
+      : null,
+    registry: typeof (svc as any).getRegistryStatus === "function"
+      ? (svc as any).getRegistryStatus()
+      : null,
+  };
+}
+
 async function catalogRows(svc: PluginMarketplaceService, options: { seedOfficial?: boolean } = {}) {
   if (options.seedOfficial !== false) {
     await svc.ensureOfficialSnapshotSeededAsync();
@@ -205,12 +216,22 @@ export function createPluginMarketplaceTool(deps: {
         if (action === "list_sources") {
           await svc.ensureOfficialSnapshotSeededAsync();
           const sources = svc.listSources();
-          return toolOk(safeJson({ sources }), { ok: true, sources });
+          const details = {
+            ok: true,
+            ...serviceCapabilityPayload(svc),
+            sources,
+          };
+          return toolOk(safeJson(details), details);
         }
 
         if (action === "list_catalog") {
           const catalog = await catalogRows(svc);
-          return toolOk(safeJson(catalog), { ok: true, ...catalog });
+          const details = {
+            ok: true,
+            ...serviceCapabilityPayload(svc),
+            ...catalog,
+          };
+          return toolOk(safeJson(details), details);
         }
 
         if (action === "inspect_package" || action === "plan_install") {
@@ -242,17 +263,17 @@ export function createPluginMarketplaceTool(deps: {
               receivedPlanToken: planToken,
             });
           }
+          if (payload.installTarget === "native-plugin") {
+            return toolError("Agent marketplace install currently supports Hana skill packages only. Use Settings for native plugin installs until the PluginManager contract audit is complete.", {
+              ok: false,
+              code: "PLUGIN_MARKETPLACE_NATIVE_INSTALL_NOT_AGENT_ENABLED",
+              ...payload,
+            });
+          }
           if (!payload.installable || payload.installTarget === "unsupported") {
             return toolError("Marketplace package is not installable in Hana.", {
               ok: false,
               code: "PLUGIN_MARKETPLACE_UNSUPPORTED",
-              ...payload,
-            });
-          }
-          if (payload.installTarget !== "hana-skills") {
-            return toolError("Agent marketplace install currently supports Hana skill packages only. Use Settings for native plugin installs until the PluginManager contract audit is complete.", {
-              ok: false,
-              code: "PLUGIN_MARKETPLACE_NATIVE_INSTALL_NOT_AGENT_ENABLED",
               ...payload,
             });
           }

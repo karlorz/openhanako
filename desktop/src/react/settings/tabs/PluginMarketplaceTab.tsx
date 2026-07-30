@@ -64,6 +64,20 @@ interface MarketplaceResponse {
   plugins: MarketplacePlugin[];
   warnings?: string[];
   sources?: MarketplaceSourceRow[];
+  capabilities?: {
+    supported?: boolean;
+    code?: string;
+    message?: string;
+    upgradeGuidance?: string | null;
+    features?: Record<string, boolean>;
+  } | null;
+  registry?: {
+    revision?: number;
+    digest?: string;
+    degraded?: boolean;
+    diagnostic?: string | null;
+    lastKnownGood?: boolean;
+  } | null;
 }
 
 function marketVersion(plugin: MarketplacePlugin): string {
@@ -279,6 +293,53 @@ export function PluginMarketplaceTab() {
       let source: MarketplaceResponse['source'] = {};
       let warnings: string[] = [];
       let multiOk = false;
+      let capabilities: MarketplaceResponse['capabilities'] = null;
+      let registry: MarketplaceResponse['registry'] = null;
+
+      try {
+        const capabilityRes = await hanaFetch('/api/plugins/marketplace/capabilities', { timeout: 15_000 });
+        const capabilityData = await capabilityRes.json().catch(() => ({}));
+        capabilities = capabilityData || null;
+        if (capabilityData?.registry) registry = capabilityData.registry;
+        const capabilityError = String(capabilityData?.error || capabilityData?.message || '');
+        if (
+          capabilityData?.supported === false
+          || capabilityData?.code === 'PLUGIN_MARKETPLACE_UNSUPPORTED_SERVER'
+          || capabilityRes.status === 404
+          || capabilityRes.status === 405
+          || /not found/i.test(capabilityError)
+        ) {
+          const guidance = capabilityData.upgradeGuidance || capabilityData.message || 'Upgrade the connected Hana server to use marketplace sources.';
+          if (gen !== loadGenRef.current) return;
+          setMarketplace({
+            source: {},
+            sources: [],
+            plugins: [],
+            warnings: [guidance],
+            capabilities,
+            registry,
+          });
+          return;
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (/404|405|not found/i.test(msg)) {
+          if (gen !== loadGenRef.current) return;
+          setMarketplace({
+            source: {},
+            sources: [],
+            plugins: [],
+            warnings: ['The connected Hana server does not advertise plugin marketplace capabilities. Upgrade the server before managing marketplace sources.'],
+            capabilities: {
+              supported: false,
+              code: 'PLUGIN_MARKETPLACE_UNSUPPORTED_SERVER',
+              upgradeGuidance: 'Upgrade the connected Hana server to a build with plugin-marketplace-capabilities.v1.',
+            },
+            registry: null,
+          });
+          return;
+        }
+      }
 
       try {
         const catalogRes = await hanaFetch('/api/plugins/marketplace/catalog', { timeout: 45_000 });
@@ -291,6 +352,8 @@ export function PluginMarketplaceTab() {
           sources = data.sources;
         }
         if (Array.isArray(data.warnings)) warnings = data.warnings;
+        if (data.capabilities) capabilities = data.capabilities;
+        if (data.registry) registry = data.registry;
       } catch {
         // fall through to legacy
       }
@@ -300,6 +363,8 @@ export function PluginMarketplaceTab() {
           const sourcesRes = await hanaFetch('/api/plugins/marketplace/sources', { timeout: 45_000 });
           const srcData = await sourcesRes.json();
           if (Array.isArray(srcData.sources)) sources = srcData.sources;
+          if (srcData.capabilities) capabilities = srcData.capabilities;
+          if (srcData.registry) registry = srcData.registry;
         } catch {
           // keep empty; multi catalog may still have plugins
         }
@@ -322,7 +387,14 @@ export function PluginMarketplaceTab() {
         source: source || {},
         sources,
         plugins,
-        warnings,
+        warnings: [
+          ...warnings,
+          ...(registry?.degraded && registry.diagnostic
+            ? [`Marketplace registry is using the last-known-good state: ${registry.diagnostic}`]
+            : []),
+        ],
+        capabilities,
+        registry,
       };
       setMarketplace(next);
 
