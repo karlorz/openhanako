@@ -13,11 +13,16 @@ export const ARTIFACT_DIGEST_HEX_LENGTH = 64;
 export const DEFAULT_MARKETPLACE_INDEX_PATH = "marketplace.json";
 
 const ID_PATTERN = /^[a-zA-Z0-9](?:[a-zA-Z0-9_-]{0,62}[a-zA-Z0-9])?$/;
+const SKILL_NAME_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,126}[A-Za-z0-9])?$/;
 const ARTIFACT_DIGEST_PATTERN = /^[a-f0-9]{64}$/;
 
 export interface MarketplacePluginId {
   marketplaceId: string;
   pluginId: string;
+}
+
+export interface MarketplaceSkillId extends MarketplacePluginId {
+  skillName: string;
 }
 
 export interface PluginArtifactId extends MarketplacePluginId {
@@ -81,6 +86,25 @@ export function assertPluginId(value: unknown): string {
   return value;
 }
 
+export function isMarketplaceSkillName(value: unknown): value is string {
+  return isPlainNonEmptyString(value)
+    && value.length <= 128
+    && !value.includes("@")
+    && !value.includes("/")
+    && !value.includes("\\")
+    && !/\s/.test(value)
+    && value !== "."
+    && value !== ".."
+    && SKILL_NAME_PATTERN.test(value);
+}
+
+export function assertMarketplaceSkillName(value: unknown): string {
+  if (!isMarketplaceSkillName(value)) {
+    throw new Error(`Invalid marketplace skill name: ${summarize(value)}`);
+  }
+  return value;
+}
+
 export function assertArtifactDigest(value: unknown): string {
   if (typeof value !== "string" || !ARTIFACT_DIGEST_PATTERN.test(value)) {
     throw new Error(`Invalid artifact digest: ${summarize(value)}`);
@@ -119,6 +143,37 @@ export function buildPluginMarketplaceRef(value: MarketplacePluginId): string {
   const marketplaceId = assertMarketplaceId(value?.marketplaceId);
   const pluginId = assertPluginId(value?.pluginId);
   return `${pluginId}@${marketplaceId}`;
+}
+
+/**
+ * Parse control-plane form `skillName@marketplaceId/pluginId`.
+ * The skill name is intentionally distinct from the package id so duplicate
+ * skills from different marketplace packages never collapse onto a bare name.
+ */
+export function parseMarketplaceSkillRef(value: string): MarketplaceSkillId {
+  if (typeof value !== "string" || value.length === 0) {
+    throw new Error("Marketplace skill ref requires source-qualified form (skillName@marketplaceId/pluginId)");
+  }
+  const atCount = value.split("@").length - 1;
+  if (atCount !== 1) {
+    throw new Error("Marketplace skill ref requires exactly one '@' separator (skillName@marketplaceId/pluginId)");
+  }
+  const separator = value.indexOf("@");
+  const skillName = value.slice(0, separator);
+  const rest = value.slice(separator + 1);
+  const slash = rest.indexOf("/");
+  if (slash <= 0 || slash === rest.length - 1 || rest.indexOf("/", slash + 1) !== -1) {
+    throw new Error("Marketplace skill ref requires marketplaceId/pluginId after '@'");
+  }
+  return {
+    skillName: assertMarketplaceSkillName(skillName),
+    marketplaceId: assertMarketplaceId(rest.slice(0, slash)),
+    pluginId: assertPluginId(rest.slice(slash + 1)),
+  };
+}
+
+export function buildMarketplaceSkillRef(value: MarketplaceSkillId): string {
+  return `${assertMarketplaceSkillName(value?.skillName)}@${assertMarketplaceId(value?.marketplaceId)}/${assertPluginId(value?.pluginId)}`;
 }
 
 /** Internal composite key: marketplaceId:pluginId (runtime pluginKey for marketplace plugins). */

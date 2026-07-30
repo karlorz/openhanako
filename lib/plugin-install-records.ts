@@ -159,6 +159,19 @@ export class PluginInstallRecords {
     return structuredClone(this._v1ToV2View(record));
   }
 
+  list(): PluginInstallRecordV2[] {
+    const records = this._read();
+    return Object.values(records.plugins)
+      .map((record: any) => {
+        if (!record) return null;
+        if (record.schemaVersion === 2 || records.version === INSTALL_RECORDS_VERSION_V2) {
+          return structuredClone(compatFields(record as PluginInstallRecordV2));
+        }
+        return structuredClone(this._v1ToV2View(record));
+      })
+      .filter(Boolean) as PluginInstallRecordV2[];
+  }
+
   /**
    * Legacy v1 API used by existing install routes.
    */

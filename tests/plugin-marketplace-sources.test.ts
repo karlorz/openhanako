@@ -297,6 +297,11 @@ describe("PluginMarketplaceSourceRegistry", () => {
         marketplaceSkills: {
           "review@team-plugins/review-pack": { enabled: true },
         },
+        agentPluginAccess: {
+          agentA: {
+            "demo@team-plugins": { enabled: true, contributions: ["tools"] },
+          },
+        },
       },
       claudeCompatibility: {
         bindings: [],
@@ -310,6 +315,13 @@ describe("PluginMarketplaceSourceRegistry", () => {
       degraded: false,
     });
     expect(registry.listSources().map((s) => s.id)).toContain("team-plugins");
+    expect(registry.getControlPlaneActivations()).toMatchObject({
+      agentPluginAccess: {
+        agentA: {
+          "demo@team-plugins": { enabled: true },
+        },
+      },
+    });
     expect(JSON.parse(fs.readFileSync(registryPath(home), "utf8")).schemaVersion).toBe(2);
 
     const invalidHome = makeHome();
@@ -326,6 +338,58 @@ describe("PluginMarketplaceSourceRegistry", () => {
     const invalid = new PluginMarketplaceSourceRegistry({ hanakoHome: invalidHome });
     expect(invalid.loadEffectiveSources().degraded).toBe(true);
     expect(invalid.getStatus().diagnostic).toMatch(/source-qualified/i);
+  });
+
+  it("preserves v2 activation records while disabling and adding sources", () => {
+    const home = makeHome();
+    writeRegistry(home, {
+      schemaVersion: 2,
+      revision: 4,
+      sources: [{
+        id: "team-plugins",
+        name: "Team",
+        kind: "url",
+        url: "https://example.com/team.json",
+      }],
+      activations: {
+        runtimePlugins: {
+          "demo@team-plugins": { enabled: true },
+        },
+        agentPluginAccess: {
+          agentA: {
+            "demo@team-plugins": { enabled: true, contributions: ["tools"] },
+          },
+        },
+      },
+    });
+    const registry = new PluginMarketplaceSourceRegistry({ hanakoHome: home });
+    registry.setSourceEnabled("team-plugins", false);
+    registry.addSource({
+      id: "other",
+      name: "Other",
+      kind: "url",
+      url: "https://example.com/other.json",
+    });
+
+    const raw = JSON.parse(fs.readFileSync(registryPath(home), "utf8"));
+    expect(raw).toMatchObject({
+      schemaVersion: 2,
+      sources: [
+        { id: "team-plugins", enabled: false },
+        { id: "other" },
+      ],
+      activations: {
+        runtimePlugins: {
+          "demo@team-plugins": { enabled: true },
+        },
+        agentPluginAccess: {
+          agentA: {
+            "demo@team-plugins": { enabled: true },
+          },
+        },
+      },
+    });
+    expect(registry.listSources().find((source) => source.id === "team-plugins")?.enabled).toBe(false);
   });
 
   it("blocks remove while source-in-use callback reports references", () => {
