@@ -38,6 +38,25 @@ interface MarketplacePlugin {
   retained?: boolean;
   catalogFormat?: string | null;
   installTarget?: string | null;
+  installAdapter?: string | null;
+  installable?: boolean;
+  confirmationLevel?: 'inline' | 'capability-review' | 'typed-exact' | string | null;
+  capabilityInventory?: {
+    skills?: string[];
+    nativePluginContributions?: string[];
+    agentFacing?: string[];
+    serverImpact?: string[];
+    unsupportedClaudeComponents?: string[];
+  } | null;
+  warnings?: string[];
+  installPlan?: {
+    action?: string;
+    destination?: string;
+    installAdapter?: string;
+    confirmationLevel?: string;
+    warnings?: string[];
+    installable?: boolean;
+  } | null;
 }
 
 interface MarketplaceResponse {
@@ -52,6 +71,7 @@ function marketVersion(plugin: MarketplacePlugin): string {
 }
 
 function marketInstallLabel(plugin: MarketplacePlugin): string {
+  if (plugin.installTarget === 'unsupported' || plugin.installable === false) return 'Inspect only';
   if (plugin.compatible === false || plugin.installAction === 'incompatible') return t('settings.plugins.marketIncompatible');
   if (plugin.installAction === 'downgrade') return t('settings.plugins.marketDowngrade');
   if (plugin.installAction === 'reinstall') return t('settings.plugins.marketReinstall');
@@ -63,7 +83,50 @@ function marketInstallLabel(plugin: MarketplacePlugin): string {
   return t('settings.plugins.marketInstall');
 }
 
+function marketTargetLabel(target?: string | null): string {
+  if (target === 'hana-skills' || target === 'skills') return 'Hana skills';
+  if (target === 'native-plugin') return 'Native plugin';
+  if (target === 'unsupported') return 'Unsupported';
+  return target || 'Unknown';
+}
+
+function marketAdapterLabel(adapter?: string | null): string {
+  if (adapter === 'skill-manager') return 'Skill manager';
+  if (adapter === 'plugin-manager') return 'Plugin manager';
+  if (adapter === 'none') return 'None';
+  return adapter || 'Unknown';
+}
+
+function marketConfirmationLabel(level?: string | null): string {
+  if (level === 'typed-exact') return 'Typed exact';
+  if (level === 'capability-review') return 'Capability review';
+  if (level === 'inline') return 'Inline';
+  return level || 'Unknown';
+}
+
+function sourceQualifiedId(plugin: MarketplacePlugin): string {
+  return plugin.marketplaceId ? `${plugin.id}@${plugin.marketplaceId}` : plugin.id;
+}
+
+function warningMessages(plugin: MarketplacePlugin): string[] {
+  const fromPlugin = Array.isArray(plugin.warnings) ? plugin.warnings : [];
+  const fromPlan = Array.isArray(plugin.installPlan?.warnings) ? plugin.installPlan!.warnings! : [];
+  return [...new Set([...fromPlugin, ...fromPlan].filter(Boolean))];
+}
+
+function inventoryGroups(plugin: MarketplacePlugin): Array<{ key: string; label: string; values: string[] }> {
+  const inv = plugin.capabilityInventory || {};
+  return [
+    { key: 'skills', label: 'Skills', values: inv.skills || [] },
+    { key: 'agentFacing', label: 'Agent-facing', values: inv.agentFacing || [] },
+    { key: 'serverImpact', label: 'Server impact', values: inv.serverImpact || [] },
+    { key: 'nativePluginContributions', label: 'Native contributions', values: inv.nativePluginContributions || [] },
+    { key: 'unsupportedClaudeComponents', label: 'Unsupported Claude components', values: inv.unsupportedClaudeComponents || [] },
+  ].filter(group => group.values.length > 0);
+}
+
 function marketVersionStatus(plugin: MarketplacePlugin): string | null {
+  if (plugin.installTarget === 'unsupported' || plugin.installable === false) return 'Unsupported package';
   if (plugin.compatible === false || plugin.installAction === 'incompatible') return t('settings.plugins.marketIncompatible');
   if (plugin.installAction === 'downgrade') {
     return t('settings.plugins.marketDowngradeTo', { version: marketVersion(plugin) });
@@ -91,6 +154,7 @@ function mapCatalogRow(row: any): MarketplacePlugin {
   // Prefer inspector-backed server canInstall; fall back only for older payloads.
   const serverCanInstall = row.canInstall === true
     || (row.canInstall == null && installMeta.canInstall === true);
+  const installable = row.installable ?? installMeta.installable;
   return {
     id,
     name: row.name,
@@ -106,12 +170,42 @@ function mapCatalogRow(row: any): MarketplacePlugin {
     active,
     retained: row.retained,
     installed: active,
-    canInstall: serverCanInstall && !active,
-    installAction: active ? 'reinstall' : 'install',
-    compatible: true,
+    canInstall: serverCanInstall && installable !== false && !active,
+    installAction: installable === false ? 'incompatible' : (active ? 'reinstall' : 'install'),
+    compatible: installable === false ? false : true,
     catalogFormat,
     installTarget: row.installTarget || installMeta.installTarget || null,
+    installAdapter: row.installAdapter || installMeta.installAdapter || null,
+    installable: installable == null ? serverCanInstall : !!installable,
+    confirmationLevel: row.confirmationLevel || installMeta.confirmationLevel || null,
+    capabilityInventory: row.capabilityInventory || installMeta.capabilityInventory || null,
+    warnings: Array.isArray(row.warnings) ? row.warnings : [],
+    installPlan: row.installPlan || null,
   };
+}
+
+function confirmInstallPlan(plugin: MarketplacePlugin): boolean {
+  const warnings = warningMessages(plugin);
+  const level = plugin.confirmationLevel || plugin.installPlan?.confirmationLevel || 'inline';
+  if (level === 'inline') return true;
+
+  const planLines = [
+    `${sourceQualifiedId(plugin)}`,
+    `Target: ${marketTargetLabel(plugin.installTarget || plugin.installPlan?.destination)}`,
+    `Adapter: ${marketAdapterLabel(plugin.installAdapter || plugin.installPlan?.installAdapter)}`,
+    `Confirmation: ${marketConfirmationLabel(level)}`,
+    warnings.length ? `Warnings:\n${warnings.map(w => `- ${w}`).join('\n')}` : '',
+  ].filter(Boolean);
+
+  if (level === 'typed-exact') {
+    const expected = sourceQualifiedId(plugin);
+    const typed = window.prompt(
+      `Review this install plan before continuing:\n\n${planLines.join('\n')}\n\nType ${expected} to install.`,
+    );
+    return typed === expected;
+  }
+
+  return window.confirm(`Review this install plan before continuing:\n\n${planLines.join('\n')}`);
 }
 
 export function PluginMarketplaceTab() {
@@ -269,6 +363,7 @@ export function PluginMarketplaceTab() {
   }, [loadMarketplace]);
 
   const installPlugin = async (plugin: MarketplacePlugin) => {
+    if (!plugin.canInstall || plugin.installable === false || plugin.installTarget === 'unsupported') return;
     const allowDowngrade = plugin.installAction === 'downgrade'
       ? window.confirm(t('settings.plugins.marketDowngradeConfirm', {
           from: plugin.installedVersion || '',
@@ -276,6 +371,7 @@ export function PluginMarketplaceTab() {
         }))
       : false;
     if (plugin.installAction === 'downgrade' && !allowDowngrade) return;
+    if (!confirmInstallPlan(plugin)) return;
 
     setInstallingPluginId(rowKey(plugin));
     try {
@@ -304,6 +400,8 @@ export function PluginMarketplaceTab() {
   const statusText = pluginCount > 0 || sourceCount > 0 || marketplace?.source?.configured
     ? t('settings.plugins.marketplaceCount', { count: String(pluginCount) })
     : t('settings.plugins.marketplaceNoSource');
+  const selectedWarnings = selectedPlugin ? warningMessages(selectedPlugin) : [];
+  const selectedInventoryGroups = selectedPlugin ? inventoryGroups(selectedPlugin) : [];
 
   return (
     <div className={`${styles['settings-tab-content']} ${styles['active']}`} data-tab="plugin-marketplace">
@@ -372,46 +470,64 @@ export function PluginMarketplaceTab() {
             ) : (
               <div className={styles['plugin-marketplace-grid']}>
                 <div className={styles['skills-list-block']}>
-                  {marketplace.plugins.map(plugin => (
-                    <div
-                      key={rowKey(plugin)}
-                      className={styles['skills-list-item']}
-                      onClick={() => loadReadme(plugin)}
-                      style={selectedPlugin && rowKey(selectedPlugin) === rowKey(plugin) ? { background: 'var(--bg-hover)' } : undefined}
-                    >
-                      <div className={styles['skills-list-info']}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                          <span className={styles['skills-list-name']}>{plugin.name}</span>
-                          <span className={styles['skills-list-name-hint']}>v{marketVersion(plugin)}</span>
-                          {plugin.marketplaceId && (
-                            <span className={styles['skills-source-badge']} style={{ marginRight: 0 }}>
-                              {plugin.sourceAuthority || plugin.marketplaceId}
-                            </span>
-                          )}
-                          {(plugin.installed || plugin.active) && (
-                            <span className={styles['skills-source-badge']} style={{ marginRight: 0 }}>
-                              {t('settings.plugins.marketInstalled')}
-                            </span>
-                          )}
-                          {plugin.retained && !plugin.active && (
-                            <span className={styles['skills-source-badge']} style={{ marginRight: 0 }}>
-                              retained
-                            </span>
-                          )}
-                          {plugin.updateAvailable && (
-                            <span className={styles['skills-source-badge']} style={{ marginRight: 0 }}>
-                              {t('settings.plugins.marketUpdateAvailable')}
-                            </span>
-                          )}
+                  {marketplace.plugins.map(plugin => {
+                    const warnings = warningMessages(plugin);
+                    return (
+                      <div
+                        key={rowKey(plugin)}
+                        className={styles['skills-list-item']}
+                        onClick={() => loadReadme(plugin)}
+                        style={selectedPlugin && rowKey(selectedPlugin) === rowKey(plugin) ? { background: 'var(--bg-hover)' } : undefined}
+                      >
+                        <div className={styles['skills-list-info']}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                            <span className={styles['skills-list-name']}>{plugin.name}</span>
+                            <span className={styles['skills-list-name-hint']}>v{marketVersion(plugin)}</span>
+                            {plugin.marketplaceId && (
+                              <span className={styles['skills-source-badge']} style={{ marginRight: 0 }}>
+                                {sourceQualifiedId(plugin)}
+                              </span>
+                            )}
+                            {plugin.installTarget && (
+                              <span className={styles['skills-source-badge']} style={{ marginRight: 0 }}>
+                                {marketTargetLabel(plugin.installTarget)}
+                              </span>
+                            )}
+                            {plugin.confirmationLevel && plugin.confirmationLevel !== 'inline' && (
+                              <span className={styles['plugin-marketplace-risk-badge']}>
+                                {marketConfirmationLabel(plugin.confirmationLevel)}
+                              </span>
+                            )}
+                            {warnings.length > 0 && (
+                              <span className={styles['plugin-marketplace-warning-badge']}>
+                                {warnings.length} warning{warnings.length === 1 ? '' : 's'}
+                              </span>
+                            )}
+                            {(plugin.installed || plugin.active) && (
+                              <span className={styles['skills-source-badge']} style={{ marginRight: 0 }}>
+                                {t('settings.plugins.marketInstalled')}
+                              </span>
+                            )}
+                            {plugin.retained && !plugin.active && (
+                              <span className={styles['skills-source-badge']} style={{ marginRight: 0 }}>
+                                retained
+                              </span>
+                            )}
+                            {plugin.updateAvailable && (
+                              <span className={styles['skills-source-badge']} style={{ marginRight: 0 }}>
+                                {t('settings.plugins.marketUpdateAvailable')}
+                              </span>
+                            )}
+                          </div>
+                          {plugin.description && <span className={styles['skills-list-desc']}>{plugin.description}</span>}
+                          <span className={styles['skills-list-desc']}>
+                            {(plugin.publisher || 'unknown') + ' · ' + (plugin.trust || 'restricted')}
+                            {plugin.installAdapter ? ` · ${marketAdapterLabel(plugin.installAdapter)}` : ''}
+                          </span>
                         </div>
-                        {plugin.description && <span className={styles['skills-list-desc']}>{plugin.description}</span>}
-                        <span className={styles['skills-list-desc']}>
-                          {(plugin.publisher || 'unknown') + ' · ' + (plugin.trust || 'restricted')}
-                          {plugin.marketplaceId ? ` · ${plugin.marketplaceId}` : ''}
-                        </span>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 <div className={styles['skills-list-block']}>
@@ -424,7 +540,7 @@ export function PluginMarketplaceTab() {
                               <div className={styles['skills-list-name']}>{selectedPlugin.name}</div>
                               <div className={styles['skills-list-desc']}>
                                 {(selectedPlugin.publisher || 'unknown') + ' · v' + marketVersion(selectedPlugin)}
-                                {selectedPlugin.marketplaceId ? ` · ${selectedPlugin.marketplaceId}` : ''}
+                                {selectedPlugin.marketplaceId ? ` · ${sourceQualifiedId(selectedPlugin)}` : ''}
                               </div>
                               {marketVersionStatus(selectedPlugin) && (
                                 <div className={styles['skills-list-desc']}>
@@ -474,6 +590,74 @@ export function PluginMarketplaceTab() {
                                 </button>
                               )}
                             </div>
+                          </div>
+                          <div className={styles['plugin-marketplace-inspector']}>
+                            <div className={styles['plugin-marketplace-property-row']}>
+                              <span>Identity</span>
+                              <code translate="no">{sourceQualifiedId(selectedPlugin)}</code>
+                            </div>
+                            <div className={styles['plugin-marketplace-property-row']}>
+                              <span>Install Target</span>
+                              <strong>{marketTargetLabel(selectedPlugin.installTarget || selectedPlugin.installPlan?.destination)}</strong>
+                            </div>
+                            <div className={styles['plugin-marketplace-property-row']}>
+                              <span>Install Adapter</span>
+                              <strong>{marketAdapterLabel(selectedPlugin.installAdapter || selectedPlugin.installPlan?.installAdapter)}</strong>
+                            </div>
+                            <div className={styles['plugin-marketplace-property-row']}>
+                              <span>Confirmation</span>
+                              <strong>{marketConfirmationLabel(selectedPlugin.confirmationLevel || selectedPlugin.installPlan?.confirmationLevel)}</strong>
+                            </div>
+                            <div className={styles['plugin-marketplace-property-row']}>
+                              <span>Installable</span>
+                              <strong>{selectedPlugin.installable === false || selectedPlugin.installTarget === 'unsupported' ? 'No' : 'Yes'}</strong>
+                            </div>
+                            {(selectedPlugin.catalogFormat || selectedPlugin.sourceStatus) && (
+                              <div className={styles['plugin-marketplace-property-row']}>
+                                <span>Source</span>
+                                <strong>
+                                  {[selectedPlugin.catalogFormat, selectedPlugin.sourceAuthority, selectedPlugin.sourceStatus]
+                                    .filter(Boolean)
+                                    .join(' · ')}
+                                </strong>
+                              </div>
+                            )}
+                            {selectedPlugin.installPlan && (
+                              <div className={styles['plugin-marketplace-plan']}>
+                                <span>Install Plan</span>
+                                <strong>
+                                  {[
+                                    selectedPlugin.installPlan.action || 'install',
+                                    marketTargetLabel(selectedPlugin.installPlan.destination || selectedPlugin.installTarget),
+                                    marketAdapterLabel(selectedPlugin.installPlan.installAdapter || selectedPlugin.installAdapter),
+                                  ].join(' · ')}
+                                </strong>
+                              </div>
+                            )}
+                            {selectedInventoryGroups.length > 0 && (
+                              <div className={styles['plugin-marketplace-inventory']}>
+                                {selectedInventoryGroups.map(group => (
+                                  <div key={group.key} className={styles['plugin-marketplace-inventory-group']}>
+                                    <span>{group.label}</span>
+                                    <div>
+                                      {group.values.map(value => (
+                                        <code key={value} translate="no">{value}</code>
+                                      ))}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            {selectedWarnings.length > 0 && (
+                              <div className={styles['plugin-marketplace-warnings']} role="status">
+                                <span>Warnings</span>
+                                <ul>
+                                  {selectedWarnings.map(warning => (
+                                    <li key={warning}>{warning}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
                           </div>
                           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                             {(selectedPlugin.contributions || []).map(item => (
