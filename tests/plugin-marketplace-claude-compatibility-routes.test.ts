@@ -112,12 +112,14 @@ describe("Claude compatibility marketplace routes", () => {
     const remoteConfig = await appFor(engine, remoteOwner).request("/api/plugins/marketplace/config");
     const remoteConfigBody = await remoteConfig.json() as any;
     expect(remoteConfigBody.registry.path).toBe("[server-local path redacted]");
+    expect(remoteConfigBody.configDiagnostics.path).toBe("[server-local path redacted]");
     expect(remoteConfigBody.configDiagnostics.file.claudeCompatibility.bindings[0].inputs[0].path)
       .toBe("[server-local path redacted]");
 
     const localConfig = await ownerApp.request("/api/plugins/marketplace/config");
     const localConfigBody = await localConfig.json() as any;
     expect(localConfigBody.registry.path).toBe(path.join(home, "plugin-marketplaces.json"));
+    expect(localConfigBody.configDiagnostics.path).toBe(path.join(home, "plugin-marketplaces.json"));
     expect(localConfigBody.configDiagnostics.file.claudeCompatibility.bindings[0].inputs[0].path)
       .toBe(settingsPath);
   });

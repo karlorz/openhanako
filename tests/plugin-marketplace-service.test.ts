@@ -114,6 +114,7 @@ describe("PluginMarketplaceService", () => {
       digest: expect.stringMatching(/^[a-f0-9]{64}$/),
     });
     expect(svc.getRegistryStatus({ forRemote: true }).path).toBe("[server-local path redacted]");
+    expect(svc.getControlPlaneDiagnostics({ forRemote: true }).path).toBe("[server-local path redacted]");
   });
 
   it("runs one singleton-safe bounded digest poll loop for live compatibility bindings", async () => {
