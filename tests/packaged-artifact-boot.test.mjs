@@ -102,6 +102,21 @@ describe("planPackagedArtifactBoot (real helper)", () => {
   });
 });
 
+describe("shouldRefreshSameVersionSeed", () => {
+  const { shouldRefreshSameVersionSeed } = require(helperPath);
+
+  it("enables refresh only for normalized local build metadata", () => {
+    expect(shouldRefreshSameVersionSeed({ channel: "local" })).toBe(true);
+    expect(shouldRefreshSameVersionSeed({ channel: "release" })).toBe(false);
+    expect(shouldRefreshSameVersionSeed({ channel: "dev" })).toBe(false);
+    expect(shouldRefreshSameVersionSeed(null)).toBe(false);
+    expect(shouldRefreshSameVersionSeed()).toBe(false);
+    expect(shouldRefreshSameVersionSeed({ channel: "LOCAL" })).toBe(false);
+    expect(shouldRefreshSameVersionSeed({ channel: "unknown" })).toBe(false);
+    expect(shouldRefreshSameVersionSeed({ channel: 42 })).toBe(false);
+  });
+});
+
 describe("buildSignedPackagedBootResult (real helper)", () => {
   it("maps prepareArtifactBoot output into boot context and renderer state", () => {
     const { buildSignedPackagedBootResult } = require(helperPath);
@@ -151,6 +166,7 @@ describe("desktop main uses packaged-artifact-boot helper", () => {
     expect(main).toContain('require("./src/shared/packaged-artifact-boot.cjs")');
     expect(main).toContain("planPackagedArtifactBoot");
     expect(main).toContain("buildSignedPackagedBootResult");
+    expect(main).toContain("shouldRefreshSameVersionSeed");
     expect(main).toContain("createConnectProbeHandler");
     expect(main).toContain('wrapIpcHandler("connect:probe"');
     // Probe policy stays out of packaging helper
