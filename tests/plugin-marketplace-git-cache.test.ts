@@ -7,6 +7,7 @@ import {
   assertPublicGitHttpsUrl,
   assertStrictGitRef,
   hashGitSourceIdentity,
+  materializeGitMarketplacePackage,
   runGit,
 } from "../lib/plugin-marketplace-git-cache.ts";
 import { MarketplaceSnapshotStore } from "../lib/plugin-marketplace-snapshots.ts";
@@ -156,5 +157,71 @@ describe("git marketplace policy", () => {
       indexPath: "marketplace.json",
     });
     expect(a).toBe(b);
+  });
+
+  it("materializes packages into a stable bounded cache and cleans failed staging", async () => {
+    const home = makeHome();
+    const source = {
+      id: "team-plugins",
+      kind: "git" as const,
+      gitUrl: "https://github.com/example/team-plugins.git",
+      gitRef: "refs/heads/main",
+    };
+    let cloneCalls = 0;
+    const execGit = vi.fn(async (_bin: string, args: string[]) => {
+      if (args[0] === "clone") {
+        cloneCalls += 1;
+        const dest = args[args.length - 1];
+        fs.mkdirSync(path.join(dest, "packages", "skills", "demo"), { recursive: true });
+        fs.writeFileSync(path.join(dest, "packages", "skills", "demo", "SKILL.md"), "---\nname: demo\n---\n", "utf8");
+        return "";
+      }
+      if (args.includes("sparse-checkout")) return "";
+      if (args.includes("rev-parse")) return `${String(cloneCalls).repeat(40).slice(0, 40)}\n`;
+      if (args.includes("checkout")) return "";
+      throw new Error(`unexpected git args: ${args.join(" ")}`);
+    });
+
+    const first = await materializeGitMarketplacePackage(source, {
+      hanakoHome: home,
+      packagePath: "packages/skills",
+      execGit: execGit as any,
+    });
+    const second = await materializeGitMarketplacePackage(source, {
+      hanakoHome: home,
+      packagePath: "packages/skills",
+      execGit: execGit as any,
+    });
+
+    expect(first.repoRoot).toBe(second.repoRoot);
+    expect(first.resolvedRevision).toBe(second.resolvedRevision);
+    expect(cloneCalls).toBe(1);
+    expect(fs.existsSync(path.join(second.packageRoot, "demo", "SKILL.md"))).toBe(true);
+    const cacheRoot = path.join(home, "plugin-marketplace-git", "team-plugins", "packages");
+    const cacheEntries = fs.readdirSync(cacheRoot).filter((name) => !name.startsWith("."));
+    expect(cacheEntries).toHaveLength(1);
+
+    const failingGit = vi.fn(async (_bin: string, args: string[]) => {
+      if (args[0] === "clone") {
+        const dest = args[args.length - 1];
+        fs.mkdirSync(dest, { recursive: true });
+        throw new Error("clone failed");
+      }
+      return "";
+    });
+    await expect(
+      materializeGitMarketplacePackage({
+        ...source,
+        id: "other-team",
+      }, {
+        hanakoHome: home,
+        packagePath: "packages/skills",
+        execGit: failingGit as any,
+      }),
+    ).rejects.toThrow(/clone failed/i);
+    const failedRoot = path.join(home, "plugin-marketplace-git", "other-team", "packages");
+    expect(fs.existsSync(failedRoot)
+      ? fs.readdirSync(failedRoot).filter((name) => name.startsWith(".stage-"))
+      : []).toEqual([]);
   });
 });

@@ -259,7 +259,7 @@ function parseClaudeMarketplaceCatalog(
       versions: [{ version, compatibility: {}, distribution: null }],
       install: {
         catalogFormat: "claude",
-        installTarget: "skills",
+        installTarget: sourceMeta.canInstall ? "hana-skills" : "unsupported",
         sourceKind: sourceMeta.sourceKind,
         canInstall: sourceMeta.canInstall,
         ...(sourceMeta.source ? { source: sourceMeta.source } : {}),

@@ -144,6 +144,7 @@ export function installSkillPackageFromDirectory({
   owner = "user",
   subpath = "",
   defaultEnabled,
+  conflictPolicy = "replace",
 }: any = {}) {
   if (!sourceDir || !installDir) {
     throw new SkillInstallError("sourceDir and installDir are required", {
@@ -176,6 +177,12 @@ export function installSkillPackageFromDirectory({
   fs.mkdirSync(installDir, { recursive: true });
   const dstDir = path.join(installDir, safeName);
   assertInstallTargetInsideRoot(dstDir, installDir);
+  if (fs.existsSync(dstDir) && conflictPolicy !== "replace") {
+    throw new SkillInstallError(`skill already exists: ${safeName}`, {
+      code: "SKILL_ALREADY_EXISTS",
+      status: 409,
+    });
+  }
   safeCopyDir(skillDir, dstDir);
 
   const skillFilePath = path.join(dstDir, "SKILL.md");
