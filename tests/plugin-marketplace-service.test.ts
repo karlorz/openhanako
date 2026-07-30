@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { PluginMarketplaceService } from "../lib/plugin-marketplace-service.ts";
 import { MarketplaceSnapshotStore } from "../lib/plugin-marketplace-snapshots.ts";
 import { parseMarketplaceCatalogStrict } from "../lib/plugin-marketplace-schema.ts";
+import { parseMarketplaceCatalogAuto } from "../lib/plugin-marketplace-detect.ts";
+import { writeClaudeSkillsInstallRecord } from "../lib/plugin-marketplace-claude-skills.ts";
 
 const tempDirs: string[] = [];
 function makeHome() {
@@ -50,6 +52,25 @@ function seedOfficial(home: string) {
   store.publish("oh-plugins-official", {
     sourceId: "oh-plugins-official",
     sourceFingerprint: "1".repeat(64),
+    catalogSha256: parsed.catalogSha256,
+    fetchedAt: new Date().toISOString(),
+    plugins: parsed.plugins,
+  });
+}
+
+function seedClaudeSource(home: string, marketplaceId = "llm-wiki") {
+  const store = new MarketplaceSnapshotStore({ hanakoHome: home });
+  const parsed = parseMarketplaceCatalogAuto(JSON.stringify({
+    name: marketplaceId,
+    owner: { name: "Team" },
+    plugins: [
+      { name: "skillwiki", version: "1.0.0", source: "./packages/skillwiki" },
+      { name: "vault-sync", version: "1.0.0", source: "./packages/vault-sync" },
+    ],
+  }), { marketplaceId, sourceKind: "git" });
+  store.publish(marketplaceId, {
+    sourceId: marketplaceId,
+    sourceFingerprint: "2".repeat(64),
     catalogSha256: parsed.catalogSha256,
     fetchedAt: new Date().toISOString(),
     plugins: parsed.plugins,
@@ -198,6 +219,76 @@ describe("PluginMarketplaceService", () => {
         { isStudioOwner: false },
       ),
     ).rejects.toMatchObject({ code: "PLUGIN_MARKETPLACE_SOURCE_FORBIDDEN" });
+  });
+
+  it("hides removed-source cache rows except exact packages with skills install records", () => {
+    const home = makeHome();
+    seedClaudeSource(home);
+    const svc = new PluginMarketplaceService({ hanakoHome: home, env: {} });
+    svc.registry.addSource({
+      id: "llm-wiki",
+      name: "llm-wiki",
+      kind: "git",
+      gitUrl: "https://example.com/llm-wiki.git",
+    });
+    writeClaudeSkillsInstallRecord(home, {
+      kind: "claude-skills",
+      marketplaceId: "llm-wiki",
+      pluginId: "skillwiki",
+      packagePath: "packages/skillwiki",
+      resolvedRevision: "abc",
+      skills: ["wiki-query"],
+      installedAt: "2026-07-31T00:00:00.000Z",
+    });
+
+    expect(svc.listCatalogRows().plugins.map((row) => row.pluginId).sort())
+      .toEqual(["skillwiki", "vault-sync"]);
+    svc.removeSource("llm-wiki", { isStudioOwner: true });
+
+    const rows = svc.listCatalogRows().plugins;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      pluginId: "skillwiki",
+      marketplaceId: "llm-wiki",
+      sourceAuthority: "removed",
+      sourceStatus: "removed",
+      sourceEnabled: false,
+      available: false,
+      canInstall: false,
+      installTarget: "hana-skills",
+      packageInstall: {
+        state: "stale-record",
+        recorded: ["wiki-query"],
+        present: [],
+        missing: ["wiki-query"],
+      },
+    });
+    expect(svc.uninstallClaudePluginSkills("skillwiki", "llm-wiki", {
+      isStudioOwner: true,
+    })).toMatchObject({ complete: true, alreadyMissing: ["wiki-query"] });
+    expect(svc.listCatalogRows().plugins).toEqual([]);
+  });
+
+  it("synthesizes an uninstall-only row when the removed-source snapshot is unavailable", () => {
+    const home = makeHome();
+    writeClaudeSkillsInstallRecord(home, {
+      kind: "claude-skills",
+      marketplaceId: "llm-wiki",
+      pluginId: "skillwiki",
+      packagePath: "packages/skillwiki",
+      resolvedRevision: "abc",
+      skills: ["wiki-query"],
+      installedAt: "2026-07-31T00:00:00.000Z",
+    });
+    const svc = new PluginMarketplaceService({ hanakoHome: home, env: {} });
+    expect(svc.listCatalogRows().plugins[0]).toMatchObject({
+      pluginId: "skillwiki",
+      marketplaceId: "llm-wiki",
+      name: "skillwiki",
+      installTarget: "hana-skills",
+      sourceStatus: "removed",
+      packageInstall: { state: "stale-record" },
+    });
   });
 
   it("pins install resolution to marketplaceId and returns catalog plugin", async () => {

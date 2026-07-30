@@ -407,6 +407,127 @@ describe('PluginMarketplaceTab inspector rendering', () => {
     expect(second).toHaveAttribute('aria-pressed', 'true');
   });
 
+  it('uninstalls an installed skills package with exact destructive confirmation and qualified identity', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const installed = catalogPlugin({
+      canInstall: false,
+      packageInstall: {
+        state: 'installed',
+        recorded: ['wiki-query', 'wiki-sync'],
+        present: ['wiki-query', 'wiki-sync'],
+        missing: [],
+        invalid: [],
+      },
+    });
+    mockHanaFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url.startsWith('/api/plugins/marketplace/catalog')) {
+        return jsonResponse({
+          plugins: [installed],
+          sources: [],
+          capabilities: { supported: true, features: {} },
+          access: { isStudioOwner: true },
+          registry: { revision: 7, digest: 'a'.repeat(64) },
+        });
+      }
+      if (url === '/api/plugins/marketplace/sources') return jsonResponse({ sources: [] });
+      if (url.includes('/readme')) return jsonResponse({ markdown: '' });
+      if (url === '/api/plugins/marketplace/skillwiki/skills') {
+        expect(init?.method).toBe('DELETE');
+        expect(JSON.parse(String(init?.body))).toEqual({
+          marketplaceId: 'llm-wiki',
+          expectedRevision: 7,
+          expectedDigest: 'a'.repeat(64),
+        });
+        return jsonResponse({ ok: true, deleted: ['wiki-query', 'wiki-sync'], alreadyMissing: [], failed: [] });
+      }
+      return jsonResponse({});
+    });
+    render(<PluginMarketplaceTab />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Uninstall skills' }));
+
+    expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('skillwiki@llm-wiki'));
+    expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('shared user skills/wiki-query/'));
+    expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('shared user skills/wiki-sync/'));
+    expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('Allow Agent plugin dev tools'));
+    await waitFor(() => expect(mockShowToast).toHaveBeenCalledWith(
+      'Removed 2 recorded skills from skillwiki@llm-wiki',
+      'success',
+    ));
+  });
+
+  it('renders partial and stale package actions independently of native-plugin active state', async () => {
+    mockCatalog([
+      catalogPlugin({
+        active: false,
+        canInstall: false,
+        packageInstall: {
+          state: 'partial',
+          recorded: ['wiki-query', 'wiki-sync'],
+          present: ['wiki-query'],
+          missing: ['wiki-sync'],
+          invalid: [],
+        },
+      }),
+      catalogPlugin({
+        pluginId: 'stale-pack',
+        id: 'stale-pack',
+        name: 'stale-pack',
+        compositeKey: 'stale-pack@llm-wiki',
+        sourceAuthority: 'removed',
+        sourceStatus: 'removed',
+        sourceEnabled: false,
+        available: false,
+        installable: false,
+        canInstall: false,
+        active: false,
+        packageInstall: {
+          state: 'stale-record',
+          recorded: ['old-skill'],
+          present: [],
+          missing: ['old-skill'],
+          invalid: [],
+        },
+      }),
+    ]);
+    render(<PluginMarketplaceTab />);
+
+    expect(await screen.findByRole('button', { name: 'Uninstall remaining skills' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect stale-pack@llm-wiki' }));
+    expect(screen.getByRole('button', { name: 'Clear stale installation' })).toBeEnabled();
+    expect(screen.getByText('stale-record · source removed / uninstall only')).toBeInTheDocument();
+  });
+
+  it('reports a partial package uninstall without a success toast', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const partial = catalogPlugin({
+      canInstall: false,
+      packageInstall: {
+        state: 'partial',
+        recorded: ['wiki-query', 'wiki-sync'],
+        present: ['wiki-query'],
+        missing: ['wiki-sync'],
+        invalid: [],
+      },
+    });
+    mockHanaFetch.mockImplementation(async (url: string) => {
+      if (url.startsWith('/api/plugins/marketplace/catalog')) return jsonResponse({ plugins: [partial], sources: [], capabilities: { supported: true }, access: { isStudioOwner: true }, registry: { revision: 7, digest: 'a'.repeat(64) } });
+      if (url === '/api/plugins/marketplace/sources') return jsonResponse({ sources: [] });
+      if (url.includes('/readme')) return jsonResponse({ markdown: '' });
+      if (url === '/api/plugins/marketplace/skillwiki/skills') return jsonResponse({ ok: false, deleted: [], alreadyMissing: ['wiki-sync'], failed: [{ name: 'wiki-query', error: 'busy' }] }, 207);
+      return jsonResponse({});
+    });
+    render(<PluginMarketplaceTab />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Uninstall remaining skills' }));
+
+    await waitFor(() => expect(mockShowToast).toHaveBeenCalledWith(
+      'Marketplace skills uninstall is partial: wiki-query: busy',
+      'error',
+    ));
+    expect(mockShowToast).not.toHaveBeenCalledWith(expect.any(String), 'success');
+  });
+
   it('surfaces owner or install-permission denial without reporting success', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     mockHanaFetch.mockImplementation(async (url: string) => {

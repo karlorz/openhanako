@@ -33,7 +33,12 @@ import {
   computeNativeAgentPluginAccess,
   computeRuntimePluginActivation,
 } from "./plugin-marketplace-activation.ts";
-import { listClaudeSkillsInstallRecords } from "./plugin-marketplace-claude-skills.ts";
+import {
+  listClaudeSkillsInstallRecords,
+  readClaudeSkillsInstallRecord,
+  reconcileClaudeSkillsInstall,
+  uninstallClaudeSkillsInstallRecord,
+} from "./plugin-marketplace-claude-skills.ts";
 import {
   ClaudeCompatibilityBindingService,
   type ClaudeCompatibilityBinding,
@@ -62,6 +67,7 @@ export interface MarketplaceCapabilityContract {
     lastKnownGoodRegistry: boolean;
     claudeCatalogClassification: boolean;
     marketplaceSkillInstall: boolean;
+    marketplaceSkillUninstall: boolean;
     agentMarketplaceManagement: boolean;
     claudeCompatibilityBindings: boolean;
     nativeMarketplaceInstall: boolean;
@@ -126,6 +132,7 @@ export class PluginMarketplaceService {
         lastKnownGoodRegistry: true,
         claudeCatalogClassification: true,
         marketplaceSkillInstall: true,
+        marketplaceSkillUninstall: true,
         agentMarketplaceManagement: true,
         claudeCompatibilityBindings: true,
         nativeMarketplaceInstall: false,
@@ -450,22 +457,108 @@ export class PluginMarketplaceService {
   }
 
   listCatalogRows(options: { forRemote?: boolean; agentId?: string | null } = {}) {
-    const plugins = this.snapshots.listCurrentPlugins();
+    const snapshotPlugins = this.snapshots.listCurrentPlugins();
     const listed = this.registry.listSources({ forRemote: options.forRemote });
-    const sources = this._listSourcesWithCatalogCounts(listed, plugins, { forRemote: options.forRemote });
+    const sources = this._listSourcesWithCatalogCounts(listed, snapshotPlugins, { forRemote: options.forRemote });
     const sourceById = new Map(sources.map((s) => [s.id, s]));
+    const records = listClaudeSkillsInstallRecords(this._hanakoHome);
+    const userSkillsDir = path.join(this._hanakoHome, "skills");
+    const packageInstallByKey = new Map(records.map((record) => [
+      buildPluginMarketplaceRef({ pluginId: record.pluginId, marketplaceId: record.marketplaceId }),
+      reconcileClaudeSkillsInstall(record, userSkillsDir),
+    ]));
+    const snapshotKeys = new Set(snapshotPlugins.map((plugin) => buildPluginMarketplaceRef({
+      pluginId: plugin.id,
+      marketplaceId: plugin.marketplaceId,
+    })));
+    const orphanPlugins = records
+      .filter((record) => !snapshotKeys.has(buildPluginMarketplaceRef({
+        pluginId: record.pluginId,
+        marketplaceId: record.marketplaceId,
+      })))
+      .map((record): TaggedMarketplacePlugin => ({
+        schemaVersion: 1,
+        id: record.pluginId,
+        marketplaceId: record.marketplaceId,
+        name: record.pluginId,
+        publisher: record.marketplaceId,
+        version: "unknown",
+        description: "Marketplace source removed; installed skill record remains available for cleanup.",
+        license: null,
+        categories: [],
+        keywords: [],
+        homepage: null,
+        repository: null,
+        compatibility: {},
+        trust: "restricted",
+        permissions: [],
+        contributions: [],
+        distribution: null,
+        versions: [],
+        install: {
+          catalogFormat: "claude",
+          sourceKind: "relative",
+          source: record.packagePath,
+          canInstall: false,
+        },
+        screenshots: [],
+        readme: null,
+        readmePath: null,
+        readmeUrl: null,
+      }));
+    const plugins = [
+      ...snapshotPlugins.filter((plugin) =>
+        sourceById.has(plugin.marketplaceId)
+        || packageInstallByKey.has(buildPluginMarketplaceRef({
+          pluginId: plugin.id,
+          marketplaceId: plugin.marketplaceId,
+        }))),
+      ...orphanPlugins,
+    ];
     const activations = this.registry.getControlPlaneActivations();
     const installedRuntimePluginRefs = this.installedRuntimePluginRefs();
-    const installedMarketplaceSkillRefs = this.installedMarketplaceSkillRefs();
+    const installedMarketplaceSkillRefs = records.flatMap((record) => {
+      const packageInstall = packageInstallByKey.get(buildPluginMarketplaceRef({
+        pluginId: record.pluginId,
+        marketplaceId: record.marketplaceId,
+      }));
+      return (packageInstall?.present || []).map((skillName) => buildMarketplaceSkillRef({
+        skillName,
+        marketplaceId: record.marketplaceId,
+        pluginId: record.pluginId,
+      }));
+    }).sort();
     const rows = plugins.map((plugin) => {
       const source = sourceById.get(plugin.marketplaceId);
+      const sourceAvailable = Boolean(source && source.enabled !== false);
+      const sourceRemoved = !source;
+      const packageInstall = packageInstallByKey.get(buildPluginMarketplaceRef({
+        pluginId: plugin.id,
+        marketplaceId: plugin.marketplaceId,
+      })) || reconcileClaudeSkillsInstall(null, userSkillsDir);
       const install = this.records.get(plugin.id);
       const active = install?.activeMarketplaceId === plugin.marketplaceId;
       const retained = Boolean(install?.retained?.[plugin.marketplaceId]);
       const installMeta = plugin.install && typeof plugin.install === "object"
         ? plugin.install as Record<string, unknown>
         : {};
-      const inspection = inspectMarketplacePackage(plugin);
+      const inspected = inspectMarketplacePackage(plugin);
+      const uninstallOnly = packageInstall.state !== "not-installed"
+        && (sourceRemoved || inspected.destination !== "hana-skills");
+      const inspection = uninstallOnly
+        ? {
+            ...inspected,
+            destination: "hana-skills" as const,
+            installAdapter: "skill-manager" as const,
+            installable: false,
+            warnings: [
+              ...inspected.warnings,
+              sourceRemoved
+                ? "marketplace source was removed; reinstall is unavailable until the source is added again"
+                : "marketplace snapshot is unavailable; only installed-skill cleanup is available",
+            ],
+          }
+        : inspected;
       const installPlan = createMarketplaceInstallPlan(inspection);
       const catalogFormat = typeof installMeta.catalogFormat === "string" ? installMeta.catalogFormat : null;
       const runtimeIdentity = buildPluginMarketplaceRef({
@@ -519,14 +612,18 @@ export class PluginMarketplaceService {
         installPlan,
         runtimeActivation,
         marketplaceSkillActivations,
+        packageInstall,
         nativeAgentPluginAccess,
-        canInstall: inspection.installable,
-        sourceAuthority: source?.authority || "custom",
-        sourceStatus: source?.status || "error",
-        sourceEnabled: source?.enabled !== false,
+        canInstall: inspection.installable
+          && packageInstall.state === "not-installed"
+          && !sourceRemoved
+          && sourceAvailable,
+        sourceAuthority: source?.authority || "removed",
+        sourceStatus: source?.status || "removed",
+        sourceEnabled: sourceAvailable,
         active,
         retained,
-        available: source?.enabled !== false,
+        available: sourceAvailable,
       };
     });
     return { sources, plugins: rows };
@@ -549,7 +646,8 @@ export class PluginMarketplaceService {
   installedMarketplaceSkillRefs(): string[] {
     const refs: string[] = [];
     for (const record of listClaudeSkillsInstallRecords(this._hanakoHome)) {
-      for (const skillName of record.skills || []) {
+      const reconciled = reconcileClaudeSkillsInstall(record, path.join(this._hanakoHome, "skills"));
+      for (const skillName of reconciled.present) {
         refs.push(buildMarketplaceSkillRef({
           skillName,
           marketplaceId: record.marketplaceId,
@@ -558,6 +656,87 @@ export class PluginMarketplaceService {
       }
     }
     return refs.sort();
+  }
+
+  getRemovedMarketplaceSkillsPackage(pluginId: string, marketplaceId: string) {
+    if (this.registry.listSources().some((source) => source.id === marketplaceId)) return null;
+    const record = readClaudeSkillsInstallRecord(this._hanakoHome, marketplaceId, pluginId);
+    if (!record) return null;
+    const snapshot = this.getCatalogPlugin(pluginId, marketplaceId);
+    return {
+      description: snapshot?.description
+        || "Marketplace source removed; installed skill record remains available for cleanup.",
+      packageInstall: reconcileClaudeSkillsInstall(record, path.join(this._hanakoHome, "skills")),
+    };
+  }
+
+  uninstallClaudePluginSkills(
+    pluginId: string,
+    marketplaceId: string,
+    options: {
+      userSkillsDir?: string;
+      isStudioOwner?: boolean;
+      expectedRevision?: number;
+      expectedDigest?: string;
+      removeDir?: (dir: string) => void;
+    } = {},
+  ) {
+    if (!options.isStudioOwner) {
+      const err = new Error("studio.owner required to uninstall marketplace skills") as Error & {
+        code: string;
+        status: number;
+      };
+      err.code = "PLUGIN_MARKETPLACE_SOURCE_FORBIDDEN";
+      err.status = 403;
+      throw err;
+    }
+    this.assertRegistryWritePrecondition({
+      expectedRevision: options.expectedRevision,
+      expectedDigest: options.expectedDigest,
+    });
+    const result = uninstallClaudeSkillsInstallRecord({
+      hanakoHome: this._hanakoHome,
+      marketplaceId,
+      pluginId,
+      userSkillsDir: options.userSkillsDir,
+      removeDir: options.removeDir,
+    });
+    if (!result) {
+      const err = new Error(`Marketplace skills install record not found: ${pluginId}@${marketplaceId}`) as Error & {
+        code: string;
+        status: number;
+      };
+      err.code = "PLUGIN_MARKETPLACE_SKILLS_NOT_INSTALLED";
+      err.status = 404;
+      throw err;
+    }
+
+    const handled = new Set([...result.deleted, ...result.alreadyMissing]);
+    const current = this.registry.getControlPlaneActivations();
+    const activations: MarketplaceControlPlaneActivations = structuredClone(current || {});
+    let changed = false;
+    for (const skillName of handled) {
+      const identity = buildMarketplaceSkillRef({ skillName, marketplaceId, pluginId });
+      if (activations.marketplaceSkills && identity in activations.marketplaceSkills) {
+        delete activations.marketplaceSkills[identity];
+        changed = true;
+      }
+      for (const entries of Object.values(activations.agentSkillOverrides || {})) {
+        if (entries && identity in entries) {
+          delete entries[identity];
+          changed = true;
+        }
+      }
+    }
+    let activationCleanupError: string | null = null;
+    if (changed) {
+      try {
+        this.registry.setControlPlaneActivations(activations);
+      } catch (err: any) {
+        activationCleanupError = err?.message || String(err);
+      }
+    }
+    return { ...result, activationCleanupError };
   }
 
   getRuntimePluginActivation(pluginId: string, marketplaceId: string) {
