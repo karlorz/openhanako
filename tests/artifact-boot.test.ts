@@ -4,7 +4,7 @@ import fsp from "fs/promises";
 import os from "os";
 import path from "path";
 import { createRequire } from "module";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 const require = createRequire(import.meta.url);
 
@@ -213,6 +213,53 @@ describe("artifact-boot: decideBootAction (pure)", () => {
     expect(decideBootAction({ resolved, seedEntry, crashFallback: false })).toBe("boot");
   });
 
+  it.each([
+    {
+      name: "activates an equal-version packaged seed with a different digest",
+      pointer: { sha256: "b".repeat(64), train: 0, version: "2.0.0" },
+      crashFallback: false,
+      expected: "activate-seed",
+    },
+    {
+      name: "boots an equal-version pointer with a matching digest",
+      pointer: { sha256: "a".repeat(64), train: 0, version: "2.0.0" },
+      crashFallback: false,
+      expected: "boot",
+    },
+    {
+      name: "never downgrades to an older packaged seed",
+      pointer: { sha256: "b".repeat(64), train: 0, version: "2.0.1" },
+      crashFallback: false,
+      expected: "boot",
+    },
+    {
+      name: "still activates a newer packaged seed",
+      pointer: { sha256: "b".repeat(64), train: 7, version: "1.9.9" },
+      crashFallback: false,
+      expected: "activate-seed",
+    },
+    {
+      name: "lets crash fallback win over local same-version refresh",
+      pointer: { sha256: "b".repeat(64), train: 0, version: "2.0.0" },
+      crashFallback: true,
+      expected: "boot",
+    },
+    {
+      name: "activates an equal-version packaged seed over a different OTA digest",
+      pointer: { sha256: "b".repeat(64), train: 7, version: "2.0.0" },
+      crashFallback: false,
+      expected: "activate-seed",
+    },
+  ])("$name when local refresh is enabled", ({ pointer, crashFallback, expected }) => {
+    const resolved = { slot: "current", pointer };
+    expect(decideBootAction({
+      resolved,
+      seedEntry,
+      crashFallback,
+      refreshSameVersionSeed: true,
+    })).toBe(expected);
+  });
+
   it("never downgrades a current pointer that is newer than the packaged seed", () => {
     const resolved = { slot: "current", pointer: { sha256: "b".repeat(64), train: 0, version: "2.0.1" } };
     expect(decideBootAction({ resolved, seedEntry, crashFallback: false })).toBe("boot");
@@ -220,12 +267,22 @@ describe("artifact-boot: decideBootAction (pure)", () => {
 
   it("preserves the legacy train-0 sha mismatch rule when versions cannot be compared", () => {
     const resolved = { slot: "current", pointer: { sha256: "b".repeat(64), train: 0, version: "legacy" } };
-    expect(decideBootAction({ resolved, seedEntry, crashFallback: false })).toBe("activate-seed");
+    expect(decideBootAction({
+      resolved,
+      seedEntry,
+      crashFallback: false,
+      refreshSameVersionSeed: true,
+    })).toBe("activate-seed");
   });
 
   it("preserves the legacy OTA-train priority when versions cannot be compared", () => {
     const resolved = { slot: "current", pointer: { sha256: "b".repeat(64), train: 7, version: "legacy" } };
-    expect(decideBootAction({ resolved, seedEntry, crashFallback: false })).toBe("boot");
+    expect(decideBootAction({
+      resolved,
+      seedEntry,
+      crashFallback: false,
+      refreshSameVersionSeed: true,
+    })).toBe("boot");
   });
 
   it("never forces the seed over a crash-fallback target", () => {
@@ -694,6 +751,226 @@ describe("artifact-boot: prepareArtifactBoot dual-kind orchestrator", () => {
     expect(result.renderer).toMatchObject({ activatedSeed: true, train: 0, version: "2.0.0" });
     expect(fs.readFileSync(path.join(result.server.versionDir, "bundle", "index.js"), "utf8")).toContain("new-seed");
     expect(fs.readFileSync(path.join(result.renderer.versionDir, "index.html"), "utf8")).toContain("new-seed");
+  });
+
+  it("refreshes equal-version server and renderer artifacts only when the explicit local policy is enabled", async () => {
+    const root = makeTempDir("hana-boot-dual-local-refresh-");
+    const keys = makeKeys();
+    const originalSeed = await makeDualKindSeedResources(root, keys, {
+      version: "1.0.0",
+      marker: "original-local-build",
+    });
+    const replacementSeed = await makeDualKindSeedResources(root, keys, {
+      version: "1.0.0",
+      marker: "replacement-local-build",
+    });
+    const homeDir = path.join(root, "home");
+
+    const first = await prepareArtifactBoot({
+      homeDir,
+      resourcesPath: originalSeed.resourcesPath,
+      platformArch: PLATFORM_ARCH,
+      keyset: keys.keyset,
+      log: () => {},
+    });
+    const originalServerPointer = await pointerStore.readPointer(homeDir, SEED_CHANNEL, "current");
+    const originalRendererPointer = await pointerStore.readPointer(
+      homeDir,
+      rendererPointerChannel(SEED_CHANNEL),
+      "current",
+    );
+    const originalServerReceipt = fs.readFileSync(
+      path.join(first.server.versionDir, ".verified"),
+      "utf8",
+    );
+    const originalRendererReceipt = fs.readFileSync(
+      path.join(first.renderer.versionDir, ".verified"),
+      "utf8",
+    );
+
+    const defaultBoot = await prepareArtifactBoot({
+      homeDir,
+      resourcesPath: replacementSeed.resourcesPath,
+      platformArch: PLATFORM_ARCH,
+      keyset: keys.keyset,
+      log: () => {},
+    });
+    expect(defaultBoot.server.activatedSeed).toBe(false);
+    expect(defaultBoot.renderer.activatedSeed).toBe(false);
+    expect(await pointerStore.readPointer(homeDir, SEED_CHANNEL, "current")).toEqual(originalServerPointer);
+    expect(await pointerStore.readPointer(
+      homeDir,
+      rendererPointerChannel(SEED_CHANNEL),
+      "current",
+    )).toEqual(originalRendererPointer);
+    expect(fs.readFileSync(path.join(first.server.versionDir, "bundle", "index.js"), "utf8"))
+      .toContain("original-local-build");
+    expect(fs.readFileSync(path.join(first.renderer.versionDir, "index.html"), "utf8"))
+      .toContain("original-local-build");
+    expect(fs.readFileSync(path.join(first.server.versionDir, ".verified"), "utf8"))
+      .toBe(originalServerReceipt);
+    expect(fs.readFileSync(path.join(first.renderer.versionDir, ".verified"), "utf8"))
+      .toBe(originalRendererReceipt);
+
+    const logs: string[] = [];
+    const refreshed = await prepareArtifactBoot({
+      homeDir,
+      resourcesPath: replacementSeed.resourcesPath,
+      platformArch: PLATFORM_ARCH,
+      keyset: keys.keyset,
+      refreshSameVersionSeed: true,
+      log: (message: string) => logs.push(message),
+    });
+    expect(refreshed.server.activatedSeed).toBe(true);
+    expect(refreshed.renderer.activatedSeed).toBe(true);
+    expect((await pointerStore.readPointer(homeDir, SEED_CHANNEL, "current")).sha256)
+      .toBe(replacementSeed.serverSha256);
+    expect((await pointerStore.readPointer(
+      homeDir,
+      rendererPointerChannel(SEED_CHANNEL),
+      "current",
+    )).sha256).toBe(replacementSeed.rendererSha256);
+    expect(fs.readFileSync(path.join(refreshed.server.versionDir, "bundle", "index.js"), "utf8"))
+      .toContain("replacement-local-build");
+    expect(fs.readFileSync(path.join(refreshed.renderer.versionDir, "index.html"), "utf8"))
+      .toContain("replacement-local-build");
+    expect(JSON.parse(fs.readFileSync(path.join(refreshed.server.versionDir, ".verified"), "utf8")).sha256)
+      .toBe(replacementSeed.serverSha256);
+    expect(JSON.parse(fs.readFileSync(path.join(refreshed.renderer.versionDir, ".verified"), "utf8")).sha256)
+      .toBe(replacementSeed.rendererSha256);
+    expect(logs.filter((message) => message.includes("local same-version seed digest differs")))
+      .toHaveLength(2);
+    expect(logs).toContain(
+      "[artifact-boot] local same-version seed digest differs for server "
+        + "(1.0.0); refreshing through verified activation",
+    );
+    expect(logs).toContain(
+      "[artifact-boot] local same-version seed digest differs for renderer "
+        + "(1.0.0); refreshing through verified activation",
+    );
+
+    const idempotent = await prepareArtifactBoot({
+      homeDir,
+      resourcesPath: replacementSeed.resourcesPath,
+      platformArch: PLATFORM_ARCH,
+      keyset: keys.keyset,
+      refreshSameVersionSeed: true,
+      log: () => {},
+    });
+    expect(idempotent.server.activatedSeed).toBe(false);
+    expect(idempotent.renderer.activatedSeed).toBe(false);
+  });
+
+  it("does not promote a new pointer when equal-version local replacement activation fails", async () => {
+    const root = makeTempDir("hana-boot-local-refresh-failure-");
+    const keys = makeKeys();
+    const originalSeed = await makeDualKindSeedResources(root, keys, {
+      version: "1.0.0",
+      marker: "recoverable-original",
+    });
+    const replacementSeed = await makeDualKindSeedResources(root, keys, {
+      version: "1.0.0",
+      marker: "failed-replacement",
+    });
+    const homeDir = path.join(root, "home");
+
+    const original = await prepareArtifactBoot({
+      homeDir,
+      resourcesPath: originalSeed.resourcesPath,
+      platformArch: PLATFORM_ARCH,
+      keyset: keys.keyset,
+      log: () => {},
+    });
+    const originalPointer = await pointerStore.readPointer(homeDir, SEED_CHANNEL, "current");
+    const activateSpy = vi.spyOn(activation, "activateFromArchive")
+      .mockRejectedValueOnce(new Error("injected local replacement failure"));
+
+    try {
+      await expect(prepareArtifactBoot({
+        homeDir,
+        resourcesPath: replacementSeed.resourcesPath,
+        platformArch: PLATFORM_ARCH,
+        keyset: keys.keyset,
+        refreshSameVersionSeed: true,
+        log: () => {},
+      })).rejects.toThrow(/injected local replacement failure/);
+
+      expect(await pointerStore.readPointer(homeDir, SEED_CHANNEL, "current")).toEqual(originalPointer);
+      expect(fs.readFileSync(path.join(original.server.versionDir, "bundle", "index.js"), "utf8"))
+        .toContain("recoverable-original");
+    } finally {
+      activateSpy.mockRestore();
+    }
+  });
+
+  it("retries only the unresolved renderer after a partial equal-version refresh failure", async () => {
+    const root = makeTempDir("hana-boot-local-refresh-partial-");
+    const keys = makeKeys();
+    const originalSeed = await makeDualKindSeedResources(root, keys, {
+      version: "1.0.0",
+      marker: "partial-original",
+    });
+    const replacementSeed = await makeDualKindSeedResources(root, keys, {
+      version: "1.0.0",
+      marker: "partial-replacement",
+    });
+    const homeDir = path.join(root, "home");
+
+    await prepareArtifactBoot({
+      homeDir,
+      resourcesPath: originalSeed.resourcesPath,
+      platformArch: PLATFORM_ARCH,
+      keyset: keys.keyset,
+      log: () => {},
+    });
+
+    const originalActivate = activation.activateFromArchive;
+    let activationCalls = 0;
+    const activateSpy = vi.spyOn(activation, "activateFromArchive")
+      .mockImplementation(async (...args: Parameters<typeof activation.activateFromArchive>) => {
+        activationCalls += 1;
+        if (activationCalls === 2) {
+          throw new Error("injected renderer replacement failure");
+        }
+        return originalActivate(...args);
+      });
+
+    try {
+      await expect(prepareArtifactBoot({
+        homeDir,
+        resourcesPath: replacementSeed.resourcesPath,
+        platformArch: PLATFORM_ARCH,
+        keyset: keys.keyset,
+        refreshSameVersionSeed: true,
+        log: () => {},
+      })).rejects.toThrow(/injected renderer replacement failure/);
+
+      expect((await pointerStore.readPointer(homeDir, SEED_CHANNEL, "current")).sha256)
+        .toBe(replacementSeed.serverSha256);
+      expect((await pointerStore.readPointer(
+        homeDir,
+        rendererPointerChannel(SEED_CHANNEL),
+        "current",
+      )).sha256).toBe(originalSeed.rendererSha256);
+
+      const recovered = await prepareArtifactBoot({
+        homeDir,
+        resourcesPath: replacementSeed.resourcesPath,
+        platformArch: PLATFORM_ARCH,
+        keyset: keys.keyset,
+        refreshSameVersionSeed: true,
+        log: () => {},
+      });
+      expect(recovered.server.activatedSeed).toBe(false);
+      expect(recovered.renderer.activatedSeed).toBe(true);
+      expect((await pointerStore.readPointer(
+        homeDir,
+        rendererPointerChannel(SEED_CHANNEL),
+        "current",
+      )).sha256).toBe(replacementSeed.rendererSha256);
+    } finally {
+      activateSpy.mockRestore();
+    }
   });
 
   // Mutation-check target: a manifest missing the
