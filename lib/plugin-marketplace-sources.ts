@@ -6,6 +6,7 @@ import {
   parseMarketplaceSkillRef,
   parsePluginMarketplaceRef,
   buildSourceFingerprint,
+  DEFAULT_MARKETPLACE_INDEX_PATH,
   type MarketplaceSourceFingerprintInput,
 } from "./plugin-marketplace-identity.ts";
 import { DEFAULT_OFFICIAL_PLUGIN_MARKETPLACE_URL } from "./plugin-marketplace.ts";
@@ -94,6 +95,36 @@ export interface MarketplaceSourceRegistryStatus {
   degraded: boolean;
   diagnostic: string | null;
   lastKnownGood: boolean;
+}
+
+export type MarketplaceControlPlaneDiagnosticSeverity = "error" | "warning" | "info";
+
+export interface MarketplaceControlPlaneDiagnostic {
+  severity: MarketplaceControlPlaneDiagnosticSeverity;
+  code: string;
+  path: string;
+  message: string;
+}
+
+export interface MarketplaceControlPlaneDiagnosticReport {
+  ok: boolean;
+  degraded: boolean;
+  path: string;
+  digest: string | null;
+  file: MarketplaceSourcesFile | null;
+  diagnostics: MarketplaceControlPlaneDiagnostic[];
+  summary: {
+    schemaVersion: 1 | 2 | null;
+    effectiveSchemaVersion: 2;
+    revision: number | null;
+    sourceCount: number;
+    enabledSources: string[];
+    disabledSources: string[];
+    runtimePluginActivations: number;
+    marketplaceSkillActivations: number;
+    agentSkillOverrides: number;
+    agentPluginAccessRecords: number;
+  };
 }
 
 function defaultFsOps(): MarketplaceSourceFsOps {
@@ -264,6 +295,26 @@ function validateActivationKey(key: string, kind: "runtimePlugins" | "marketplac
   }
 }
 
+function validateActivationEntry(value: unknown, label: string) {
+  if (typeof value === "boolean") return;
+  if (!isPlainObject(value)) {
+    throw new Error(`Malformed marketplace source registry: ${label} must be a boolean or object`);
+  }
+  if (value.enabled !== undefined && typeof value.enabled !== "boolean") {
+    throw new Error(`Malformed marketplace source registry: ${label}.enabled must be a boolean`);
+  }
+}
+
+function validateAgentPluginAccessEntry(value: unknown, label: string) {
+  validateActivationEntry(value, label);
+  if (!isPlainObject(value)) return;
+  if (value.contributions !== undefined) {
+    if (!Array.isArray(value.contributions) || value.contributions.some((item) => typeof item !== "string" || !item.trim())) {
+      throw new Error(`Malformed marketplace source registry: ${label}.contributions must be an array of strings`);
+    }
+  }
+}
+
 function validateActivationRecord(value: unknown, label: string): Record<string, unknown> | undefined {
   if (value === undefined) return undefined;
   if (!isPlainObject(value)) {
@@ -280,12 +331,18 @@ function validateActivations(raw: unknown): MarketplaceControlPlaneActivations |
   const out: MarketplaceControlPlaneActivations = {};
   const runtimePlugins = validateActivationRecord(raw.runtimePlugins, "activations.runtimePlugins");
   if (runtimePlugins) {
-    for (const key of Object.keys(runtimePlugins)) validateActivationKey(key, "runtimePlugins");
+    for (const [key, value] of Object.entries(runtimePlugins)) {
+      validateActivationKey(key, "runtimePlugins");
+      validateActivationEntry(value, `activations.runtimePlugins.${key}`);
+    }
     out.runtimePlugins = runtimePlugins;
   }
   const marketplaceSkills = validateActivationRecord(raw.marketplaceSkills, "activations.marketplaceSkills");
   if (marketplaceSkills) {
-    for (const key of Object.keys(marketplaceSkills)) validateActivationKey(key, "marketplaceSkills");
+    for (const [key, value] of Object.entries(marketplaceSkills)) {
+      validateActivationKey(key, "marketplaceSkills");
+      validateActivationEntry(value, `activations.marketplaceSkills.${key}`);
+    }
     out.marketplaceSkills = marketplaceSkills;
   }
   const agentSkillOverrides = validateActivationRecord(raw.agentSkillOverrides, "activations.agentSkillOverrides");
@@ -295,7 +352,10 @@ function validateActivations(raw: unknown): MarketplaceControlPlaneActivations |
       if (!isPlainObject(entries)) {
         throw new Error(`Malformed marketplace source registry: agentSkillOverrides.${agentId} must be an object`);
       }
-      for (const key of Object.keys(entries)) validateActivationKey(key, "marketplaceSkills");
+      for (const [key, value] of Object.entries(entries)) {
+        validateActivationKey(key, "marketplaceSkills");
+        validateActivationEntry(value, `activations.agentSkillOverrides.${agentId}.${key}`);
+      }
       normalized[agentId] = { ...entries };
     }
     out.agentSkillOverrides = normalized;
@@ -307,7 +367,10 @@ function validateActivations(raw: unknown): MarketplaceControlPlaneActivations |
       if (!isPlainObject(entries)) {
         throw new Error(`Malformed marketplace source registry: agentPluginAccess.${agentId} must be an object`);
       }
-      for (const key of Object.keys(entries)) validateActivationKey(key, "runtimePlugins");
+      for (const [key, value] of Object.entries(entries)) {
+        validateActivationKey(key, "runtimePlugins");
+        validateAgentPluginAccessEntry(value, `activations.agentPluginAccess.${agentId}.${key}`);
+      }
       normalized[agentId] = { ...entries };
     }
     out.agentPluginAccess = normalized;
@@ -353,6 +416,247 @@ function toEffectiveCustom(descriptor: MarketplaceSourceDescriptor): EffectiveMa
   };
 }
 
+const ROOT_FIELDS_BY_SCHEMA: Record<1 | 2, Set<string>> = {
+  1: new Set(["schemaVersion", "revision", "sources"]),
+  2: new Set(["schemaVersion", "revision", "sources", "activations", "claudeCompatibility"]),
+};
+
+const ACTIVATION_ROOT_FIELDS = new Set([
+  "runtimePlugins",
+  "marketplaceSkills",
+  "agentSkillOverrides",
+  "agentPluginAccess",
+]);
+
+function pushDiagnostic(
+  diagnostics: MarketplaceControlPlaneDiagnostic[],
+  severity: MarketplaceControlPlaneDiagnosticSeverity,
+  code: string,
+  diagnosticPath: string,
+  message: string,
+) {
+  diagnostics.push({ severity, code, path: diagnosticPath, message });
+}
+
+function describeRecordCount(record: unknown): number {
+  return isPlainObject(record) ? Object.keys(record).length : 0;
+}
+
+function activationSourceIds(activations: MarketplaceControlPlaneActivations | undefined): string[] {
+  const ids = new Set<string>();
+  for (const key of Object.keys(activations?.runtimePlugins || {})) {
+    try {
+      ids.add(parsePluginMarketplaceRef(key).marketplaceId);
+    } catch {
+      /* strict validation records the malformed key */
+    }
+  }
+  for (const key of Object.keys(activations?.marketplaceSkills || {})) {
+    try {
+      ids.add(parseMarketplaceSkillRef(key).marketplaceId);
+    } catch {
+      /* strict validation records the malformed key */
+    }
+  }
+  for (const entries of Object.values(activations?.agentSkillOverrides || {})) {
+    for (const key of Object.keys(entries || {})) {
+      try {
+        ids.add(parseMarketplaceSkillRef(key).marketplaceId);
+      } catch {
+        /* strict validation records the malformed key */
+      }
+    }
+  }
+  for (const entries of Object.values(activations?.agentPluginAccess || {})) {
+    for (const key of Object.keys(entries || {})) {
+      try {
+        ids.add(parsePluginMarketplaceRef(key).marketplaceId);
+      } catch {
+        /* strict validation records the malformed key */
+      }
+    }
+  }
+  return [...ids].sort();
+}
+
+function summarizeFile(file: MarketplaceSourcesFile | null): MarketplaceControlPlaneDiagnosticReport["summary"] {
+  const sources = file?.sources || [];
+  const activations = file?.activations;
+  return {
+    schemaVersion: file?.schemaVersion || null,
+    effectiveSchemaVersion: MARKETPLACE_CONTROL_PLANE_SCHEMA_VERSION,
+    revision: typeof file?.revision === "number" ? file.revision : null,
+    sourceCount: sources.length,
+    enabledSources: sources.filter((source) => source.enabled !== false).map((source) => source.id),
+    disabledSources: sources.filter((source) => source.enabled === false).map((source) => source.id),
+    runtimePluginActivations: describeRecordCount(activations?.runtimePlugins),
+    marketplaceSkillActivations: describeRecordCount(activations?.marketplaceSkills),
+    agentSkillOverrides: describeRecordCount(activations?.agentSkillOverrides),
+    agentPluginAccessRecords: Object.values(activations?.agentPluginAccess || {})
+      .reduce((sum, entries) => sum + describeRecordCount(entries), 0),
+  };
+}
+
+export function diagnoseMarketplaceSourcesText(
+  rawText: string,
+  options: { path?: string } = {},
+): MarketplaceControlPlaneDiagnosticReport {
+  const diagnostics: MarketplaceControlPlaneDiagnostic[] = [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawText);
+  } catch {
+    pushDiagnostic(
+      diagnostics,
+      "error",
+      "PLUGIN_MARKETPLACE_CONFIG_JSON_INVALID",
+      "$",
+      "Marketplace source registry JSON is invalid.",
+    );
+    return {
+      ok: false,
+      degraded: true,
+      path: options.path || MARKETPLACE_SOURCES_FILENAME,
+      digest: digestForText(rawText),
+      file: null,
+      diagnostics,
+      summary: summarizeFile(null),
+    };
+  }
+
+  if (!isPlainObject(parsed)) {
+    pushDiagnostic(
+      diagnostics,
+      "error",
+      "PLUGIN_MARKETPLACE_CONFIG_ROOT_INVALID",
+      "$",
+      "Marketplace source registry root must be an object.",
+    );
+    return {
+      ok: false,
+      degraded: true,
+      path: options.path || MARKETPLACE_SOURCES_FILENAME,
+      digest: digestForText(rawText),
+      file: null,
+      diagnostics,
+      summary: summarizeFile(null),
+    };
+  }
+
+  const schemaVersion = parsed.schemaVersion;
+  if (
+    schemaVersion !== MARKETPLACE_SOURCES_SCHEMA_VERSION
+    && schemaVersion !== MARKETPLACE_CONTROL_PLANE_SCHEMA_VERSION
+  ) {
+    pushDiagnostic(
+      diagnostics,
+      "error",
+      "PLUGIN_MARKETPLACE_CONFIG_SCHEMA_UNSUPPORTED",
+      "$.schemaVersion",
+      `Unsupported marketplace source registry schemaVersion: ${String(schemaVersion)}.`,
+    );
+  } else {
+    const allowed = ROOT_FIELDS_BY_SCHEMA[schemaVersion];
+    for (const key of Object.keys(parsed)) {
+      if (!allowed.has(key)) {
+        pushDiagnostic(
+          diagnostics,
+          "warning",
+          "PLUGIN_MARKETPLACE_CONFIG_FIELD_UNSUPPORTED",
+          `$.${key}`,
+          `Unsupported marketplace source registry field is ignored: ${key}.`,
+        );
+      }
+    }
+  }
+
+  if (isPlainObject(parsed.activations)) {
+    for (const key of Object.keys(parsed.activations)) {
+      if (!ACTIVATION_ROOT_FIELDS.has(key)) {
+        pushDiagnostic(
+          diagnostics,
+          "warning",
+          "PLUGIN_MARKETPLACE_ACTIVATION_FIELD_UNSUPPORTED",
+          `$.activations.${key}`,
+          `Unsupported activation field is ignored: ${key}.`,
+        );
+      }
+    }
+  }
+
+  let file: MarketplaceSourcesFile | null = null;
+  try {
+    file = parseDurableFile(rawText);
+  } catch (err: any) {
+    pushDiagnostic(
+      diagnostics,
+      "error",
+      "PLUGIN_MARKETPLACE_CONFIG_STRICT_INVALID",
+      "$",
+      err?.message || String(err),
+    );
+  }
+
+  if (file) {
+    const seenLocations = new Map<string, string>();
+    for (let index = 0; index < file.sources.length; index += 1) {
+      const source = file.sources[index];
+      const locationKey = source.kind === "url"
+        ? `url:${source.url}`
+        : source.kind === "local"
+          ? `local:${source.path}:${source.indexPath || DEFAULT_MARKETPLACE_INDEX_PATH}`
+          : `git:${source.gitUrl}:${source.gitRef || ""}:${source.indexPath || DEFAULT_MARKETPLACE_INDEX_PATH}`;
+      const previousId = seenLocations.get(locationKey);
+      if (previousId && previousId !== source.id) {
+        pushDiagnostic(
+          diagnostics,
+          "warning",
+          "PLUGIN_MARKETPLACE_SOURCE_LOCATION_CONFLICT",
+          `$.sources[${index}]`,
+          `Marketplace source ${source.id} points at the same location as ${previousId}.`,
+        );
+      }
+      seenLocations.set(locationKey, source.id);
+    }
+
+    const sourceIds = new Set(file.sources.map((source) => source.id));
+    const activationIds = activationSourceIds(file.activations);
+    for (const marketplaceId of activationIds) {
+      if (!sourceIds.has(marketplaceId)) {
+        pushDiagnostic(
+          diagnostics,
+          "error",
+          "PLUGIN_MARKETPLACE_ACTIVATION_SOURCE_MISSING",
+          "$.activations",
+          `Activation/access records reference unregistered marketplace source: ${marketplaceId}.`,
+        );
+      }
+    }
+    for (const source of file.sources) {
+      if (source.enabled === false) {
+        pushDiagnostic(
+          diagnostics,
+          "info",
+          "PLUGIN_MARKETPLACE_SOURCE_DISABLED",
+          `$.sources.${source.id}.enabled`,
+          `Marketplace source is disabled: ${source.id}.`,
+        );
+      }
+    }
+  }
+
+  const hasErrors = diagnostics.some((item) => item.severity === "error");
+  return {
+    ok: !hasErrors,
+    degraded: hasErrors,
+    path: options.path || MARKETPLACE_SOURCES_FILENAME,
+    digest: digestForText(rawText),
+    file: hasErrors ? null : file,
+    diagnostics,
+    summary: summarizeFile(hasErrors ? null : file),
+  };
+}
+
 function parseDurableFile(rawText: string): MarketplaceSourcesFile {
   let parsed: unknown;
   try {
@@ -393,6 +697,17 @@ function parseDurableFile(rawText: string): MarketplaceSourcesFile {
   const claudeCompatibility = parsed.schemaVersion === MARKETPLACE_CONTROL_PLANE_SCHEMA_VERSION
     ? validateClaudeCompatibility(parsed.claudeCompatibility)
     : undefined;
+
+  if (activations) {
+    const registeredSources = new Set(sources.map((source) => source.id));
+    for (const marketplaceId of activationSourceIds(activations)) {
+      if (!registeredSources.has(marketplaceId)) {
+        throw new Error(
+          `Malformed marketplace source registry: activation/access records reference unregistered marketplace source: ${marketplaceId}`,
+        );
+      }
+    }
+  }
 
   return {
     schemaVersion: parsed.schemaVersion,
@@ -533,6 +848,80 @@ export class PluginMarketplaceSourceRegistry {
     const loaded = this._loadDurable();
     if (!loaded.ok) return structuredClone(loaded.file?.activations || {});
     return structuredClone(loaded.file.activations || {});
+  }
+
+  diagnoseControlPlane(): MarketplaceControlPlaneDiagnosticReport {
+    if (!this._fs.existsSync(this._path)) {
+      const empty = emptyFile();
+      return {
+        ok: true,
+        degraded: false,
+        path: this._path,
+        digest: digestForFile(empty),
+        file: structuredClone(empty),
+        diagnostics: [],
+        summary: summarizeFile(empty),
+      };
+    }
+    let text = "";
+    try {
+      text = this._fs.readFileSync(this._path, "utf8");
+    } catch (err: any) {
+      const diagnostics: MarketplaceControlPlaneDiagnostic[] = [];
+      pushDiagnostic(
+        diagnostics,
+        "error",
+        "PLUGIN_MARKETPLACE_CONFIG_READ_FAILED",
+        "$",
+        err?.message || String(err),
+      );
+      return {
+        ok: false,
+        degraded: true,
+        path: this._path,
+        digest: null,
+        file: null,
+        diagnostics,
+        summary: summarizeFile(null),
+      };
+    }
+    return diagnoseMarketplaceSourcesText(text, { path: this._path });
+  }
+
+  setControlPlaneActivations(
+    rawActivations: unknown,
+    options: MutationOptions = {},
+  ): { revision: number; activations: MarketplaceControlPlaneActivations } {
+    return this._withLockSync(() => {
+      this._assertMutable();
+      const loaded = this._loadDurable();
+      if (!loaded.ok) {
+        throw new Error(`Invalid registry (degraded): ${"error" in loaded ? loaded.error : "malformed registry"}`);
+      }
+      this._assertExpectedRevision(loaded.file.revision, options.expectedRevision);
+      this._assertExpectedDigest(loaded.digest, options.expectedDigest);
+      const candidate: MarketplaceSourcesFile = {
+        ...loaded.file,
+        schemaVersion: MARKETPLACE_CONTROL_PLANE_SCHEMA_VERSION,
+        revision: loaded.file.revision + 1,
+        sources: loaded.file.sources,
+        activations: rawActivations === undefined ? {} : rawActivations as MarketplaceControlPlaneActivations,
+      };
+      const payload = `${JSON.stringify(candidate, null, 2)}\n`;
+      const diagnostics = diagnoseMarketplaceSourcesText(payload, { path: this._path });
+      if (!diagnostics.ok || !diagnostics.file) {
+        throw new Error(
+          `Invalid marketplace control-plane activations: ${
+            diagnostics.diagnostics.find((item) => item.severity === "error")?.message || "invalid activation records"
+          }`,
+        );
+      }
+      this._persist(diagnostics.file);
+      return {
+        revision: diagnostics.file.revision,
+        activations: structuredClone(diagnostics.file.activations || {}),
+      };
+    });
   }
 
   setSourceEnabled(marketplaceId: string, enabled: boolean, options: MutationOptions = {}): MutationResult {

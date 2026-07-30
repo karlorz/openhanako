@@ -6,6 +6,8 @@ import {
   type MarketplaceSourceDescriptor,
   type EffectiveMarketplaceSource,
   type MarketplaceSourceRegistryStatus,
+  type MarketplaceControlPlaneActivations,
+  type MarketplaceControlPlaneDiagnosticReport,
 } from "./plugin-marketplace-sources.ts";
 import { MarketplaceSnapshotStore } from "./plugin-marketplace-snapshots.ts";
 import { acquireAndPublishSourceSnapshot } from "./plugin-marketplace-adapters.ts";
@@ -60,6 +62,8 @@ export interface MarketplaceCapabilityContract {
     nativeMarketplaceInstall: boolean;
     exactSourceQualifiedActivation: boolean;
     nativeAgentPluginAccess: boolean;
+    controlPlaneDiagnostics: boolean;
+    controlPlaneActivationWrites: boolean;
   };
   unsupported: Array<{ code: string; message: string }>;
   upgradeGuidance: string | null;
@@ -113,6 +117,8 @@ export class PluginMarketplaceService {
         nativeMarketplaceInstall: false,
         exactSourceQualifiedActivation: true,
         nativeAgentPluginAccess: true,
+        controlPlaneDiagnostics: true,
+        controlPlaneActivationWrites: true,
       },
       unsupported: [
         {
@@ -130,6 +136,10 @@ export class PluginMarketplaceService {
 
   getRegistryStatus(): MarketplaceSourceRegistryStatus {
     return this.registry.getStatus();
+  }
+
+  getControlPlaneDiagnostics(): MarketplaceControlPlaneDiagnosticReport {
+    return this.registry.diagnoseControlPlane();
   }
 
   assertRegistryWritePrecondition(options: { expectedRevision?: number; expectedDigest?: string } = {}) {
@@ -160,6 +170,18 @@ export class PluginMarketplaceService {
       err.status = 409;
       throw err;
     }
+  }
+
+  assertRegistryUsableForAcquisition() {
+    const status = this.getRegistryStatus();
+    if (!status.degraded) return;
+    const err = new Error(`Invalid registry (degraded): ${status.diagnostic || "malformed registry"}`) as Error & {
+      code: string;
+      status: number;
+    };
+    err.code = "PLUGIN_MARKETPLACE_REGISTRY_DEGRADED";
+    err.status = 409;
+    throw err;
   }
 
   listSources(options: { forRemote?: boolean } = {}) {
@@ -264,6 +286,23 @@ export class PluginMarketplaceService {
     });
   }
 
+  setControlPlaneActivations(activations: unknown, options: {
+    isStudioOwner?: boolean;
+    expectedRevision?: number;
+    expectedDigest?: string;
+  } = {}): { revision: number; activations: MarketplaceControlPlaneActivations } {
+    if (!options.isStudioOwner) {
+      const err = new Error("studio.owner required to mutate marketplace control plane") as Error & { code: string; status: number };
+      err.code = "PLUGIN_MARKETPLACE_SOURCE_FORBIDDEN";
+      err.status = 403;
+      throw err;
+    }
+    return this.registry.setControlPlaneActivations(activations, {
+      expectedRevision: options.expectedRevision,
+      expectedDigest: options.expectedDigest,
+    });
+  }
+
   async refreshSource(marketplaceId: string, options: { isStudioOwner?: boolean } = {}) {
     if (!options.isStudioOwner) {
       const err = new Error("studio.owner required") as Error & { code: string; status: number };
@@ -271,6 +310,7 @@ export class PluginMarketplaceService {
       err.status = 403;
       throw err;
     }
+    this.assertRegistryUsableForAcquisition();
     const sources = this.registry.listSources();
     const source = sources.find((s) => s.id === marketplaceId);
     if (!source) {
@@ -504,6 +544,10 @@ export class PluginMarketplaceService {
    * Does not throw; failures leave status as error with a readable message.
    */
   ensureOfficialSnapshotSeeded(options: { url?: string } = {}) {
+    const registryStatus = this.registry.getStatus();
+    if (registryStatus.degraded) {
+      return this.snapshots.getStatus(OFFICIAL_MARKETPLACE_ID);
+    }
     const status = this.snapshots.getStatus(OFFICIAL_MARKETPLACE_ID);
     if (status.state === "ok" || status.state === "stale" || status.state === "refreshing") {
       return status;
@@ -573,6 +617,7 @@ export class PluginMarketplaceService {
       err.status = 403;
       throw err;
     }
+    this.assertRegistryUsableForAcquisition();
 
     const plugin = this.getCatalogPlugin(pluginId, marketplaceId);
     if (!plugin) {
