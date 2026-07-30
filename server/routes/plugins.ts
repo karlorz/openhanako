@@ -1028,6 +1028,7 @@ export function createPluginsRoute(engine: any) {
       return c.json({
         ...svc.getCapabilityContract(),
         registry: svc.getRegistryStatus(),
+        configDiagnostics: svc.getControlPlaneDiagnostics(),
       });
     } catch (err: any) {
       return c.json({
@@ -1039,6 +1040,15 @@ export function createPluginsRoute(engine: any) {
         upgradeGuidance: "Upgrade the connected Hana server to a build with plugin-marketplace-capabilities.v1.",
       }, 501);
     }
+  });
+
+  route.get("/plugins/marketplace/config", (c) => {
+    const svc = getMarketplaceService();
+    return c.json({
+      capabilities: svc.getCapabilityContract(),
+      registry: svc.getRegistryStatus(),
+      configDiagnostics: svc.getControlPlaneDiagnostics(),
+    });
   });
 
   route.get("/plugins/marketplace/sources", async (c) => {
@@ -1104,6 +1114,28 @@ export function createPluginsRoute(engine: any) {
       return c.json({
         error: err.message,
         code: err.code || "PLUGIN_MARKETPLACE_SOURCE_INVALID",
+      }, err.status || 400);
+    }
+  });
+
+  route.put("/plugins/marketplace/config/activations", async (c) => {
+    const flags = principalFlags(c);
+    const body = await c.req.json().catch(() => ({}));
+    try {
+      const svc = getMarketplaceService();
+      const result = svc.setControlPlaneActivations(body.activations, {
+        isStudioOwner: flags.isStudioOwner,
+        ...expectedRegistryPreconditionsFromBody(body),
+      });
+      return c.json({
+        ...result,
+        registry: svc.getRegistryStatus(),
+        configDiagnostics: svc.getControlPlaneDiagnostics(),
+      });
+    } catch (err: any) {
+      return c.json({
+        error: err.message,
+        code: err.code || "PLUGIN_MARKETPLACE_CONTROL_PLANE_INVALID",
       }, err.status || 400);
     }
   });
@@ -1287,6 +1319,7 @@ export function createPluginsRoute(engine: any) {
       // Multi-source resolve first when durable home exists (official-wins / qualified / ambiguous).
       if (engine.hanakoHome) {
         svc = getMarketplaceService();
+        svc.assertRegistryUsableForAcquisition();
         resolution = svc.resolveInstall(pluginId, requestedMarketplaceId);
         if (resolution.ok === true) {
           sourceMarketplaceId = resolution.row.marketplaceId;

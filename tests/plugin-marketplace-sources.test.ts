@@ -6,6 +6,7 @@ import {
   OFFICIAL_MARKETPLACE_ID,
   PluginMarketplaceSourceRegistry,
   createCompiledOfficialMarketplaceSource,
+  diagnoseMarketplaceSourcesText,
 } from "../lib/plugin-marketplace-sources.ts";
 import { buildSourceFingerprint } from "../lib/plugin-marketplace-identity.ts";
 
@@ -338,6 +339,194 @@ describe("PluginMarketplaceSourceRegistry", () => {
     const invalid = new PluginMarketplaceSourceRegistry({ hanakoHome: invalidHome });
     expect(invalid.loadEffectiveSources().degraded).toBe(true);
     expect(invalid.getStatus().diagnostic).toMatch(/source-qualified/i);
+  });
+
+  it("reports structured diagnostics for valid v1 and v2 configs without rewriting", () => {
+    const v1 = diagnoseMarketplaceSourcesText(JSON.stringify({
+      schemaVersion: 1,
+      revision: 2,
+      sources: [{
+        id: "team-plugins",
+        name: "Team",
+        kind: "url",
+        url: "https://example.com/team.json",
+      }],
+    }));
+    expect(v1).toMatchObject({
+      ok: true,
+      summary: {
+        schemaVersion: 1,
+        revision: 2,
+        sourceCount: 1,
+        enabledSources: ["team-plugins"],
+      },
+    });
+    expect(v1.diagnostics.some((item) => item.severity === "error")).toBe(false);
+
+    const v2 = diagnoseMarketplaceSourcesText(JSON.stringify({
+      schemaVersion: 2,
+      revision: 3,
+      sources: [{
+        id: "team-plugins",
+        name: "Team",
+        kind: "url",
+        url: "https://example.com/team.json",
+        enabled: false,
+      }],
+      activations: {
+        runtimePlugins: { "demo@team-plugins": { enabled: true } },
+        marketplaceSkills: { "review@team-plugins/skill-pack": true },
+        agentSkillOverrides: { agentA: { "review@team-plugins/skill-pack": false } },
+        agentPluginAccess: { agentA: { "demo@team-plugins": { enabled: true, contributions: ["tools"] } } },
+      },
+    }));
+    expect(v2).toMatchObject({
+      ok: true,
+      summary: {
+        schemaVersion: 2,
+        revision: 3,
+        sourceCount: 1,
+        disabledSources: ["team-plugins"],
+        runtimePluginActivations: 1,
+        marketplaceSkillActivations: 1,
+        agentSkillOverrides: 1,
+        agentPluginAccessRecords: 1,
+      },
+    });
+    expect(v2.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        severity: "info",
+        code: "PLUGIN_MARKETPLACE_SOURCE_DISABLED",
+      }),
+    ]));
+  });
+
+  it("warns on unknown control-plane fields and duplicate source locations", () => {
+    const report = diagnoseMarketplaceSourcesText(JSON.stringify({
+      schemaVersion: 2,
+      revision: 1,
+      sources: [
+        { id: "team-a", name: "Team A", kind: "url", url: "https://example.com/team.json" },
+        { id: "team-b", name: "Team B", kind: "url", url: "https://example.com/team.json" },
+      ],
+      activations: {
+        runtimePlugins: {},
+        futureField: {},
+      },
+      futureRoot: true,
+    }));
+    expect(report.ok).toBe(true);
+    expect(report.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        severity: "warning",
+        code: "PLUGIN_MARKETPLACE_CONFIG_FIELD_UNSUPPORTED",
+        path: "$.futureRoot",
+      }),
+      expect.objectContaining({
+        severity: "warning",
+        code: "PLUGIN_MARKETPLACE_ACTIVATION_FIELD_UNSUPPORTED",
+        path: "$.activations.futureField",
+      }),
+      expect.objectContaining({
+        severity: "warning",
+        code: "PLUGIN_MARKETPLACE_SOURCE_LOCATION_CONFLICT",
+      }),
+    ]));
+  });
+
+  it("rejects invalid v2 activation/access records and keeps last-known-good state", () => {
+    const home = makeHome();
+    writeRegistry(home, {
+      schemaVersion: 2,
+      revision: 1,
+      sources: [{ id: "team-plugins", name: "Team", kind: "url", url: "https://example.com/team.json" }],
+      activations: {
+        runtimePlugins: { "demo@team-plugins": { enabled: true } },
+      },
+    });
+    const registry = new PluginMarketplaceSourceRegistry({ hanakoHome: home });
+    const before = registry.getStatus();
+    fs.writeFileSync(registryPath(home), JSON.stringify({
+      schemaVersion: 2,
+      revision: 2,
+      sources: [{ id: "team-plugins", name: "Team", kind: "url", url: "https://example.com/team.json" }],
+      activations: {
+        runtimePlugins: { "demo@missing-source": { enabled: true } },
+        agentPluginAccess: { agentA: { "demo@team-plugins": { enabled: true, contributions: [42] } } },
+      },
+    }, null, 2), "utf8");
+
+    const report = registry.diagnoseControlPlane();
+    expect(report.ok).toBe(false);
+    expect(report.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        severity: "error",
+        code: "PLUGIN_MARKETPLACE_CONFIG_STRICT_INVALID",
+      }),
+    ]));
+    expect(registry.loadEffectiveSources()).toMatchObject({
+      degraded: true,
+      sources: expect.arrayContaining([expect.objectContaining({ id: "team-plugins" })]),
+    });
+    expect(registry.getStatus()).toMatchObject({
+      degraded: true,
+      lastKnownGood: true,
+      revision: 1,
+      digest: before.digest,
+    });
+  });
+
+  it("writes activation/access control-plane records with stale revision and digest protection", () => {
+    const home = makeHome();
+    writeRegistry(home, {
+      schemaVersion: 1,
+      revision: 3,
+      sources: [{ id: "team-plugins", name: "Team", kind: "url", url: "https://example.com/team.json" }],
+    });
+    const registry = new PluginMarketplaceSourceRegistry({ hanakoHome: home });
+    const status = registry.getStatus();
+    expect(() =>
+      registry.setControlPlaneActivations({
+        runtimePlugins: { "demo@team-plugins": { enabled: true } },
+      }, {
+        expectedRevision: 2,
+      }),
+    ).toThrow(/revision conflict/i);
+    expect(() =>
+      registry.setControlPlaneActivations({
+        runtimePlugins: { "demo@team-plugins": { enabled: true } },
+      }, {
+        expectedDigest: "0".repeat(64),
+      }),
+    ).toThrow(/digest conflict/i);
+
+    const result = registry.setControlPlaneActivations({
+      runtimePlugins: { "demo@team-plugins": { enabled: true } },
+      marketplaceSkills: { "review@team-plugins/skill-pack": { enabled: false } },
+      agentPluginAccess: {
+        agentA: { "demo@team-plugins": { enabled: true, contributions: ["tools"] } },
+      },
+    }, {
+      expectedRevision: 3,
+      expectedDigest: status.digest,
+    });
+    expect(result).toMatchObject({
+      revision: 4,
+      activations: {
+        runtimePlugins: { "demo@team-plugins": { enabled: true } },
+      },
+    });
+    const raw = JSON.parse(fs.readFileSync(registryPath(home), "utf8"));
+    expect(raw).toMatchObject({
+      schemaVersion: 2,
+      revision: 4,
+      sources: [{ id: "team-plugins" }],
+      activations: {
+        agentPluginAccess: {
+          agentA: { "demo@team-plugins": { enabled: true, contributions: ["tools"] } },
+        },
+      },
+    });
   });
 
   it("preserves v2 activation records while disabling and adding sources", () => {

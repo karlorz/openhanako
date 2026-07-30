@@ -80,6 +80,26 @@ function makeMarketplaceService(plugin: any = claudeSkillPlugin()) {
       warnings: [],
       resolvedRevision: "abc123",
     }),
+    getRegistryStatus: vi.fn().mockReturnValue({
+      revision: 1,
+      digest: "a".repeat(64),
+      degraded: false,
+    }),
+    getControlPlaneDiagnostics: vi.fn().mockReturnValue({
+      ok: true,
+      degraded: false,
+      diagnostics: [],
+      summary: {
+        schemaVersion: 2,
+        revision: 1,
+      },
+    }),
+    setControlPlaneActivations: vi.fn().mockReturnValue({
+      revision: 2,
+      activations: {
+        runtimePlugins: { [`skillwiki@${MARKETPLACE_ID}`]: { enabled: true } },
+      },
+    }),
   };
 }
 
@@ -159,6 +179,18 @@ describe("plugin_marketplace Agent tool", () => {
       pluginId: "skillwiki",
       marketplaceId: MARKETPLACE_ID,
     })).toBeNull();
+    expect(tool.sessionPermission.resolveInvocation({
+      action: "set_activations",
+      expectedRevision: 1,
+    })).toMatchObject({
+      action: "update",
+      kind: "review",
+      capability: "plugin_marketplace.configure",
+      target: {
+        type: "setting",
+        id: "plugin-marketplace:control-plane",
+      },
+    });
     expect(tool.sessionPermission.resolveInvocation({ action: "remove_source" })).toBeNull();
   });
 
@@ -172,6 +204,58 @@ describe("plugin_marketplace Agent tool", () => {
     expect(result.details).toMatchObject({
       ok: true,
       plugins: [{ pluginId: "skillwiki", marketplaceId: MARKETPLACE_ID }],
+    });
+  });
+
+  it("diagnoses config without seeding catalog snapshots", async () => {
+    const { tool, marketplaceService } = makeTool();
+
+    const result = await tool.execute("call-1", { action: "diagnose_config" });
+
+    expect(result.isError).toBeUndefined();
+    expect(marketplaceService.ensureOfficialSnapshotSeededAsync).not.toHaveBeenCalled();
+    expect(marketplaceService.getControlPlaneDiagnostics).toHaveBeenCalledTimes(1);
+    expect(result.details).toMatchObject({
+      ok: true,
+      configDiagnostics: {
+        ok: true,
+        summary: {
+          schemaVersion: 2,
+          revision: 1,
+        },
+      },
+    });
+  });
+
+  it("updates activation control-plane records with optimistic preconditions", async () => {
+    const { tool, marketplaceService } = makeTool();
+
+    const result = await tool.execute("call-1", {
+      action: "set_activations",
+      activations: {
+        runtimePlugins: { [`skillwiki@${MARKETPLACE_ID}`]: { enabled: true } },
+      },
+      expectedRevision: 1,
+      expectedDigest: "a".repeat(64),
+    });
+
+    expect(result.isError).toBeUndefined();
+    expect(marketplaceService.setControlPlaneActivations).toHaveBeenCalledWith(
+      {
+        runtimePlugins: { [`skillwiki@${MARKETPLACE_ID}`]: { enabled: true } },
+      },
+      {
+        isStudioOwner: true,
+        expectedRevision: 1,
+        expectedDigest: "a".repeat(64),
+      },
+    );
+    expect(result.details).toMatchObject({
+      ok: true,
+      revision: 2,
+      activations: {
+        runtimePlugins: { [`skillwiki@${MARKETPLACE_ID}`]: { enabled: true } },
+      },
     });
   });
 
