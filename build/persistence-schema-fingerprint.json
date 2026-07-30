@@ -668,7 +668,7 @@
     ],
     "version": 3
   },
-  "payloadFingerprint": "sha256:e7f48be9ad4eca42dda99d80b0b4305ac358c1dcfbd18b998928e8240656a04d",
+  "payloadFingerprint": "sha256:8617f2a2231e528ad1da73e28f5d6271afbbc718d36443bd23081ebe01198f6e",
   "registry": [
     {
       "affectedByEpochMigration": true,
@@ -1628,9 +1628,10 @@
       "firstPossibleWritePhase": "runtime_ready",
       "format": "mixed-directory",
       "id": "installed-plugins",
-      "identityContract": "pluginId from manifest is identity; versions and directories are locators/generations.",
+      "identityContract": "Bare pluginId remains the active runtime projection identity; retained artifacts, trust, backups, Claude skill provenance, and compatibility state remain source-, package-, binding-, or digest-qualified.",
       "migrationEntry": [
-        "plugin installation compatibility checks"
+        "plugin installation compatibility checks",
+        "PluginInstallRecords.migrateToV2"
       ],
       "openEntry": [
         "PluginManager.loadPlugins"
@@ -1643,7 +1644,15 @@
         "plugins/{pluginId}",
         "plugin-installs.json",
         "plugin-backups/{pluginId}",
-        "plugin-marketplace/marketplace.json"
+        "plugin-backups/{marketplaceId}/{pluginId}",
+        "plugin-artifacts/{marketplaceId}/{pluginId}/{artifactDigest}",
+        "plugin-marketplace/marketplace.json",
+        "plugin-marketplaces.json",
+        "plugin-marketplace-cache/{sourceId}",
+        "plugin-marketplace-git/{sourceId}",
+        "plugin-marketplace-claude-skills/{marketplaceId}/{pluginId}.json",
+        "claude-compatibility/{mode}/{bindingId}.json",
+        "plugin-trust.json"
       ],
       "preCoordinatorReadProjection": null,
       "protocolModules": [],
@@ -1654,7 +1663,7 @@
         "source": "core/plugin-manager.ts"
       },
       "schemaSource": {
-        "contract": "installed manifest, install receipt, backup, and source-package directory protocols",
+        "contract": "installed manifest, install receipt, backup, multi-source artifacts, marketplace registry, Claude skill provenance, and compatibility-state protocols",
         "kind": "directory-contract",
         "module": "core/plugin-manager.ts"
       }
@@ -2033,7 +2042,7 @@
     {
       "affectedByEpochMigration": true,
       "bootstrapSafety": null,
-      "checkpointPolicy": "Checkpoint by pluginId and declared migrationVersion; never infer one schema for plugin-data/**.",
+      "checkpointPolicy": "Checkpoint by marketplace-qualified plugin identity and declared migrationVersion; never infer one schema for plugin-data/**.",
       "epochPolicy": "epoch-managed",
       "exemption": {
         "expiresOn": "2026-12-31",
@@ -2043,7 +2052,7 @@
       "firstPossibleWritePhase": "runtime_ready",
       "format": "mixed-directory",
       "id": "plugin-runtime-data",
-      "identityContract": "pluginId from the active manifest owns exactly its plugin-data subtree.",
+      "identityContract": "Marketplace plugins own plugin-data/{marketplaceId}/{pluginId}; bare pluginId paths remain legacy/unqualified until migrated. Active runtime projection is bare plugins/{pluginId}.",
       "migrationEntry": [
         "plugin manifest/migrationVersion hook; no host-wide implicit migration"
       ],
@@ -2059,11 +2068,13 @@
       "pathKind": "tree",
       "pathPattern": "plugin-data/{pluginId}",
       "pathPatterns": [
-        "plugin-data/{pluginId}"
+        "plugin-data/{pluginId}",
+        "plugin-data/{marketplaceId}/{pluginId}",
+        "plugin-secrets/{marketplaceId}/{pluginId}"
       ],
       "preCoordinatorReadProjection": null,
       "protocolModules": [],
-      "restorePolicy": "Restore only when the same pluginId and a compatible manifest/migrationVersion are available.",
+      "restorePolicy": "Restore only when the same marketplaceId+pluginId and a compatible manifest/migrationVersion are available. Incomplete switch journals recover to the last committed active pointer.",
       "schemaContract": {
         "compatibility": "No strict reader contract is claimed by this inventory.",
         "expiresOn": "2026-12-31",
@@ -3121,8 +3132,8 @@
   ],
   "review": {
     "classification": "compatible",
-    "compatibilityReason": "Stable fork-sync receipt alignment: preserves the fork’s registered session-file staging write sites and optional-model preference handling while incorporating upstream additive migration, explicit-agent identity, session-compaction, workspace, and persistence source/line/hash changes; no persistent store schema, file layout, site kind, protocol module, or DATA_EPOCH changed.",
-    "payloadFingerprint": "sha256:e7f48be9ad4eca42dda99d80b0b4305ac358c1dcfbd18b998928e8240656a04d"
+    "compatibilityReason": "Adds marketplace-qualified Claude skill provenance and derived compatibility-state paths; absent directories remain valid and existing store bytes keep their prior interpretation.",
+    "payloadFingerprint": "sha256:8617f2a2231e528ad1da73e28f5d6271afbbc718d36443bd23081ebe01198f6e"
   },
   "schemas": [
     {
@@ -3379,7 +3390,7 @@
       "storeId": "file-history-sqlite"
     },
     {
-      "contract": "installed manifest, install receipt, backup, and source-package directory protocols",
+      "contract": "installed manifest, install receipt, backup, multi-source artifacts, marketplace registry, Claude skill provenance, and compatibility-state protocols",
       "kind": "directory-contract",
       "module": "core/plugin-manager.ts",
       "sourceHash": "sha256:78098ac67519299dd169da7eab6abef5f960141551fb63a5266c3d36210d9497",
@@ -3452,7 +3463,7 @@
       "contract": "verified plugin release ZIP naming by pluginId/version and expected sha256",
       "kind": "directory-contract",
       "module": "server/routes/plugins.ts",
-      "sourceHash": "sha256:c7d30d5bca0f14a2074fb2b66fc3b0a29f3dddfbbb6133491a87c8ef74d186d9",
+      "sourceHash": "sha256:21160f39314409cecd5d98b4203e66dcaadec81b796c7aeaac4932a62d2e492c",
       "storeId": "plugin-download-cache"
     },
     {
@@ -3655,7 +3666,7 @@
       "contract": "SKILL.md package, bundle registry, and export staging protocols",
       "kind": "directory-contract",
       "module": "lib/skills/skill-package-installer.ts",
-      "sourceHash": "sha256:5a2271d372236897663e9f9c1da68b5d886bdfa720f3edfea78277c6e26e754e",
+      "sourceHash": "sha256:3fefbedf8f0e3e7d22edca491e9a1e9c4cd2afb2327062a8b1a253c1b10d043c",
       "storeId": "skill-state"
     },
     {
@@ -6868,6 +6879,22 @@
     },
     {
       "exemptionId": null,
+      "kind": "mkdir",
+      "ordinal": 0,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/claude-compatibility.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "write-file",
+      "ordinal": 0,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/claude-compatibility.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
       "kind": "copy-file",
       "ordinal": 0,
       "reason": "Reads, repairs, removes, or edits agent/user profile material.",
@@ -7822,7 +7849,71 @@
       "exemptionId": null,
       "kind": "copy-file",
       "ordinal": 0,
-      "reason": "Backs up or records an installed plugin package.",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-artifact-store.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "mkdir",
+      "ordinal": 0,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-artifact-store.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "ordinal": 0,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-artifact-store.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "ordinal": 0,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-artifact-store.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "ordinal": 1,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-artifact-store.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "rename",
+      "ordinal": 0,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-artifact-store.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "write-file",
+      "ordinal": 0,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-artifact-store.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "write-file",
+      "ordinal": 0,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-artifact-store.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "copy-file",
+      "ordinal": 0,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
       "sourceFile": "lib/plugin-install-backups.ts",
       "storeId": "installed-plugins"
     },
@@ -7830,7 +7921,7 @@
       "exemptionId": null,
       "kind": "copy-file",
       "ordinal": 0,
-      "reason": "Backs up or records an installed plugin package.",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
       "sourceFile": "lib/plugin-install-backups.ts",
       "storeId": "installed-plugins"
     },
@@ -7838,7 +7929,7 @@
       "exemptionId": null,
       "kind": "mkdir",
       "ordinal": 0,
-      "reason": "Backs up or records an installed plugin package.",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
       "sourceFile": "lib/plugin-install-backups.ts",
       "storeId": "installed-plugins"
     },
@@ -7846,7 +7937,7 @@
       "exemptionId": null,
       "kind": "mkdir",
       "ordinal": 0,
-      "reason": "Backs up or records an installed plugin package.",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
       "sourceFile": "lib/plugin-install-backups.ts",
       "storeId": "installed-plugins"
     },
@@ -7854,7 +7945,7 @@
       "exemptionId": null,
       "kind": "remove-path",
       "ordinal": 0,
-      "reason": "Backs up or records an installed plugin package.",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
       "sourceFile": "lib/plugin-install-backups.ts",
       "storeId": "installed-plugins"
     },
@@ -7862,7 +7953,7 @@
       "exemptionId": null,
       "kind": "remove-path",
       "ordinal": 0,
-      "reason": "Backs up or records an installed plugin package.",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
       "sourceFile": "lib/plugin-install-backups.ts",
       "storeId": "installed-plugins"
     },
@@ -7870,7 +7961,7 @@
       "exemptionId": null,
       "kind": "remove-path",
       "ordinal": 0,
-      "reason": "Backs up or records an installed plugin package.",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
       "sourceFile": "lib/plugin-install-backups.ts",
       "storeId": "installed-plugins"
     },
@@ -7878,7 +7969,7 @@
       "exemptionId": null,
       "kind": "rename",
       "ordinal": 0,
-      "reason": "Backs up or records an installed plugin package.",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
       "sourceFile": "lib/plugin-install-backups.ts",
       "storeId": "installed-plugins"
     },
@@ -7886,7 +7977,7 @@
       "exemptionId": null,
       "kind": "atomic-write",
       "ordinal": 0,
-      "reason": "Backs up or records an installed plugin package.",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
       "sourceFile": "lib/plugin-install-records.ts",
       "storeId": "installed-plugins"
     },
@@ -7894,15 +7985,15 @@
       "exemptionId": null,
       "kind": "atomic-write",
       "ordinal": 0,
-      "reason": "Backs up or records an installed plugin package.",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
       "sourceFile": "lib/plugin-install-records.ts",
       "storeId": "installed-plugins"
     },
     {
       "exemptionId": null,
-      "kind": "atomic-write",
-      "ordinal": 1,
-      "reason": "Backs up or records an installed plugin package.",
+      "kind": "copy-file",
+      "ordinal": 0,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
       "sourceFile": "lib/plugin-install-records.ts",
       "storeId": "installed-plugins"
     },
@@ -7910,8 +8001,264 @@
       "exemptionId": null,
       "kind": "mkdir",
       "ordinal": 0,
-      "reason": "Backs up or records an installed plugin package.",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
       "sourceFile": "lib/plugin-install-records.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "mkdir",
+      "ordinal": 0,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-marketplace-claude-skills.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "write-file",
+      "ordinal": 0,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-marketplace-claude-skills.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "mkdir",
+      "ordinal": 0,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-marketplace-git-cache.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "mkdir",
+      "ordinal": 1,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-marketplace-git-cache.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "ordinal": 0,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-marketplace-git-cache.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "ordinal": 0,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-marketplace-git-cache.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "ordinal": 0,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-marketplace-git-cache.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "ordinal": 1,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-marketplace-git-cache.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "ordinal": 1,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-marketplace-git-cache.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "ordinal": 2,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-marketplace-git-cache.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "ordinal": 3,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-marketplace-git-cache.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "ordinal": 4,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-marketplace-git-cache.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "rename",
+      "ordinal": 0,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-marketplace-git-cache.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "rename",
+      "ordinal": 0,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-marketplace-git-cache.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "rename",
+      "ordinal": 0,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-marketplace-git-cache.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "write-file",
+      "ordinal": 0,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-marketplace-git-cache.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "atomic-write",
+      "ordinal": 0,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-marketplace-snapshots.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "atomic-write",
+      "ordinal": 0,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-marketplace-snapshots.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "mkdir",
+      "ordinal": 0,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-marketplace-snapshots.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "mkdir",
+      "ordinal": 0,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-marketplace-snapshots.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "mkdir",
+      "ordinal": 0,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-marketplace-snapshots.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "mkdir",
+      "ordinal": 0,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-marketplace-sources.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "write-file",
+      "ordinal": 0,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-marketplace-sources.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "copy-file",
+      "ordinal": 0,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-source-switch.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "mkdir",
+      "ordinal": 0,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-source-switch.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "ordinal": 0,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-source-switch.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "ordinal": 0,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-source-switch.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "ordinal": 0,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-source-switch.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "ordinal": 1,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-source-switch.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "rename",
+      "ordinal": 0,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-source-switch.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "atomic-write",
+      "ordinal": 0,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-trust-store.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "mkdir",
+      "ordinal": 0,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-trust-store.ts",
       "storeId": "installed-plugins"
     },
     {
@@ -9118,7 +9465,7 @@
       "exemptionId": null,
       "kind": "copy-file",
       "ordinal": 0,
-      "reason": "Creates, promotes, rolls back, or removes an installed plugin directory.",
+      "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
       "sourceFile": "server/routes/plugins.ts",
       "storeId": "installed-plugins"
     },
@@ -9134,7 +9481,7 @@
       "exemptionId": null,
       "kind": "mkdir",
       "ordinal": 0,
-      "reason": "Creates, promotes, rolls back, or removes an installed plugin directory.",
+      "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
       "sourceFile": "server/routes/plugins.ts",
       "storeId": "installed-plugins"
     },
@@ -9150,7 +9497,7 @@
       "exemptionId": null,
       "kind": "remove-path",
       "ordinal": 0,
-      "reason": "Creates, promotes, rolls back, or removes an installed plugin directory.",
+      "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
       "sourceFile": "server/routes/plugins.ts",
       "storeId": "installed-plugins"
     },
@@ -9158,7 +9505,7 @@
       "exemptionId": null,
       "kind": "remove-path",
       "ordinal": 0,
-      "reason": "Creates, promotes, rolls back, or removes an installed plugin directory.",
+      "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
       "sourceFile": "server/routes/plugins.ts",
       "storeId": "installed-plugins"
     },
@@ -9174,7 +9521,7 @@
       "exemptionId": null,
       "kind": "remove-path",
       "ordinal": 1,
-      "reason": "Creates, promotes, rolls back, or removes an installed plugin directory.",
+      "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
       "sourceFile": "server/routes/plugins.ts",
       "storeId": "installed-plugins"
     },
@@ -9182,7 +9529,7 @@
       "exemptionId": null,
       "kind": "rename",
       "ordinal": 0,
-      "reason": "Creates, promotes, rolls back, or removes an installed plugin directory.",
+      "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
       "sourceFile": "server/routes/plugins.ts",
       "storeId": "installed-plugins"
     },

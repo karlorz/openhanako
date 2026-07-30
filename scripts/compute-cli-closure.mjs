@@ -258,6 +258,16 @@ export const DYNAMIC_CALL_ALLOWLIST = Object.freeze([
       + "already covered by the two declared roots above.",
   },
   {
+    file: "lib/plugin-marketplace-git-cache.ts",
+    callee: "spawn",
+    argText: "gitBin",
+    reason:
+      "Marketplace Git acquisition runs the explicitly supplied test binary or the literal "
+      + "default \"git\" executable with shell:false, an isolated non-interactive environment, "
+      + "bounded output, and a timeout. The spawned program is an external Git runtime, not a "
+      + "repository source entrypoint that the CLI closure can trace statically.",
+  },
+  {
     file: "lib/pi-sdk/search-tools.ts",
     callee: "spawn",
     argText: "command",
