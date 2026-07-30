@@ -40,6 +40,7 @@ const {
 const {
   planPackagedArtifactBoot,
   buildSignedPackagedBootResult,
+  shouldRefreshSameVersionSeed,
 } = require("./src/shared/packaged-artifact-boot.cjs");
 const { compareExpectedRuntimeBuild } = require("./src/shared/server-reuse-policy.cjs");
 const {
@@ -421,6 +422,13 @@ let _rendererBootTrain = null;
 // 同一个指针命名空间，用户中途切换偏好不能让同一条崩溃链的哨兵计数被
 // 撕成两半。dev 模式（无 seed）永远维持 null。
 let _artifactBootChannel = null;
+
+// 本次 artifact boot 会话是否启用“同产品版本、不同签名 digest 时刷新 seed”。
+// 只由随包且已经规范化的 build-info channel === "local" 选择一次，默认 false；
+// 冷启动双 kind 决议与运行时 renderer 崩溃重试复用同一个值，不在恢复路径
+// 重新读取 build-info、环境变量或偏好。每个 HANA_HOME 的指针独立比对 digest，
+// 所以同一 local 包在各自 profile 首次启动时各刷新一次，随后自然幂等 boot。
+let _refreshSameVersionSeed = false;
 
 // 一切面向用户的版本显示的单一源："已激活内容"的产品版本（renderer/server
 // 归档在启动时实际解析出的 version），不是壳（Electron/package.json）版本——
@@ -1359,6 +1367,7 @@ async function startServer() {
  */
 async function resolvePackagedArtifactBoot() {
   const resourcesPath = process.resourcesPath || "";
+  _refreshSameVersionSeed = false;
   // The fallback keeps the source-extracted channel-consistency contract tests
   // usable outside Electron. In the real bundle both helpers are always loaded.
   if (typeof resolvePackagedLayout === "function" && typeof readBuildInfo === "function") {
@@ -1386,6 +1395,7 @@ async function resolvePackagedArtifactBoot() {
       console.log(`[desktop] legacy-raw server resolved: ${plan.context.serverRoot}`);
       return plan.context;
     }
+    _refreshSameVersionSeed = shouldRefreshSameVersionSeed(buildInfo);
     // signed: fall through to artifact-boot prepare below
   } else if (!artifactBoot.hasSeed(resourcesPath)) {
     // Compatibility path for source-level VM tests and older development
@@ -1412,6 +1422,7 @@ async function resolvePackagedArtifactBoot() {
     // 产物暂存进选中通道的指针命名空间，boot 端的 promote/resolve 也必须
     // 读同一个命名空间，否则切到 beta 后台会一直"已暂存"却永远激活不了。
     channel: bootChannel,
+    refreshSameVersionSeed: _refreshSameVersionSeed,
     onProgress: () => {
       // 首启解压进度：splash 专属 preparing 模式（固定"正在准备新家"文案，
       // 关闭轮播，不带版本号——这是新装场景，不是壳更新）。两只箱子
@@ -1582,6 +1593,7 @@ async function handleRendererArtifactLoadFailure({ win, pageName, opts, label, r
       // 崩溃重试时，会用 stable 指针命名空间重新决议，跟本次会话
       // `resolvePackagedArtifactBoot` 决议出的 beta 命名空间脱节。
       channel: _artifactBootChannel,
+      refreshSameVersionSeed: _refreshSameVersionSeed,
       log: (msg) => console.log(redactMainLogText(msg)),
     });
   } catch (err) {

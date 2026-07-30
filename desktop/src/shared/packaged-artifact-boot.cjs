@@ -19,6 +19,20 @@ const {
 const { resolvePackagedLayout } = require("./release-runtime-policy.cjs");
 
 /**
+ * Selects the one-shot equal-version digest refresh policy from normalized
+ * packaged build metadata. Only `install:local` writes the exact `local`
+ * channel; release, dev, absent, and unrecognized channels stay default-off.
+ *
+ * @param {{channel?: unknown} | null | undefined} buildInfo
+ * @returns {boolean}
+ */
+function shouldRefreshSameVersionSeed(buildInfo) {
+  return Boolean(buildInfo)
+    && typeof buildInfo === "object"
+    && buildInfo.channel === "local";
+}
+
+/**
  * @typedef {{
  *   distRenderer: string | null,
  *   rendererBootChannel: string | null,
@@ -165,6 +179,7 @@ function buildSignedPackagedBootResult({
 }
 
 module.exports = {
+  shouldRefreshSameVersionSeed,
   planPackagedArtifactBoot,
   planPackagedArtifactBootFromResources,
   buildSignedPackagedBootResult,
