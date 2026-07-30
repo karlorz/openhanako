@@ -96,17 +96,20 @@ function inspectNativePackage(plugin: any): MarketplacePackageInspection {
   const contributions = uniqueStrings(plugin?.contributions);
   const serverImpact = contributions.filter((item) => SERVER_IMPACTING_CONTRIBUTIONS.has(item));
   const agentFacing = contributions.filter((item) => AGENT_FACING_CONTRIBUTIONS.has(item));
-  const warnings: string[] = [];
+  const warnings: string[] = [
+    "native marketplace install is preview-only until the PluginManager contract audit is complete",
+  ];
   if (plugin?.trust === "full-access") {
     warnings.push("native plugin requests full-access review");
   }
   if (serverImpact.length > 0) {
     warnings.push(`native plugin has server-impacting contributions: ${serverImpact.join(", ")}`);
   }
+  const highImpact = plugin?.trust === "full-access" || serverImpact.length > 0;
   return inspectionFor("native-plugin", {
-    installable: true,
+    installable: false,
     warnings,
-    confirmationLevel: warnings.length > 0 ? "typed-exact" : "capability-review",
+    confirmationLevel: highImpact ? "typed-exact" : "capability-review",
     capabilityInventory: emptyCapabilityInventory({
       nativePluginContributions: contributions,
       agentFacing,
