@@ -13,6 +13,8 @@ const ACTIONS = [
   "inspect_package",
   "plan_install",
   "install",
+  "diagnose_config",
+  "set_activations",
 ] as const;
 
 function sourceQualifiedId(pluginId: string, marketplaceId?: string | null) {
@@ -168,6 +170,23 @@ function resolveInvocation(input: any = {}) {
       },
     };
   }
+  if (action === "set_activations") {
+    return {
+      action: "update",
+      kind: "review",
+      capability: "plugin_marketplace.configure",
+      target: {
+        type: "setting",
+        id: "plugin-marketplace:control-plane",
+        label: "Marketplace control-plane activations",
+      },
+      sideEffect: {
+        summary: "Updates marketplace activation/access records in plugin-marketplaces.json.",
+        expectedRevision: typeof input.expectedRevision === "number" ? input.expectedRevision : null,
+        expectedDigest: typeof input.expectedDigest === "string" ? input.expectedDigest : null,
+      },
+    };
+  }
   if (ACTIONS.includes(action as any)) {
     return {
       action: "read",
@@ -189,7 +208,7 @@ export function createPluginMarketplaceTool(deps: {
   return {
     name: "plugin_marketplace",
     label: "Plugin Marketplace",
-    description: "Inspect, plan, and install supported Hana marketplace packages. Use plan_install before install; install mutations require session approval.",
+    description: "Inspect, plan, diagnose, and configure supported Hana marketplace packages. Use plan_install before install; install and activation mutations require session approval.",
     sessionPermission: { resolveInvocation },
     parameters: Type.Object({
       action: StringEnum(ACTIONS as unknown as string[], {
@@ -203,6 +222,15 @@ export function createPluginMarketplaceTool(deps: {
       })),
       planToken: Type.Optional(Type.String({
         description: "Exact plan token returned by plan_install. Required for install to prevent stale package installs.",
+      })),
+      activations: Type.Optional(Type.Any({
+        description: "Full marketplace control-plane activations object for set_activations.",
+      })),
+      expectedRevision: Type.Optional(Type.Number({
+        description: "Expected plugin-marketplaces.json revision. Used by set_activations to reject stale writes.",
+      })),
+      expectedDigest: Type.Optional(Type.String({
+        description: "Expected plugin-marketplaces.json digest. Used by set_activations to reject stale writes.",
       })),
     }),
     execute: async (_toolCallId: string, params: any = {}) => {
@@ -220,6 +248,17 @@ export function createPluginMarketplaceTool(deps: {
             ok: true,
             ...serviceCapabilityPayload(svc),
             sources,
+          };
+          return toolOk(safeJson(details), details);
+        }
+
+        if (action === "diagnose_config") {
+          const details = {
+            ok: true,
+            ...serviceCapabilityPayload(svc),
+            configDiagnostics: typeof (svc as any).getControlPlaneDiagnostics === "function"
+              ? (svc as any).getControlPlaneDiagnostics()
+              : null,
           };
           return toolOk(safeJson(details), details);
         }
@@ -303,6 +342,27 @@ export function createPluginMarketplaceTool(deps: {
             skipped: result.skipped,
             warnings: result.warnings,
             resolvedRevision: result.resolvedRevision,
+          };
+          return toolOk(safeJson(details), details);
+        }
+
+        if (action === "set_activations") {
+          if (!params || !Object.prototype.hasOwnProperty.call(params, "activations")) {
+            return toolError("activations is required for set_activations", {
+              ok: false,
+              code: "PLUGIN_MARKETPLACE_ACTIVATIONS_REQUIRED",
+            });
+          }
+          const result = svc.setControlPlaneActivations(params.activations, {
+            isStudioOwner: true,
+            expectedRevision: typeof params.expectedRevision === "number" ? params.expectedRevision : undefined,
+            expectedDigest: typeof params.expectedDigest === "string" ? params.expectedDigest : undefined,
+          });
+          const details = {
+            ok: true,
+            ...result,
+            ...serviceCapabilityPayload(svc),
+            configDiagnostics: svc.getControlPlaneDiagnostics(),
           };
           return toolOk(safeJson(details), details);
         }

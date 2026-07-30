@@ -147,6 +147,176 @@ describe("marketplace sources auth principal", () => {
     });
   });
 
+  it("returns config diagnostics without seeding or fetching marketplace content", async () => {
+    const home = makeHome();
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ schemaVersion: 1, plugins: [] }), { status: 200 }));
+    const engine = createEngine(home);
+    const { PluginMarketplaceService } = await import("../lib/plugin-marketplace-service.ts");
+    engine.pluginMarketplaceService = new PluginMarketplaceService({
+      hanakoHome: home,
+      env: {},
+      fetchOptions: {
+        fetchImpl,
+        lookup: async () => [{ address: "93.184.216.34", family: 4 }],
+      },
+    });
+    fs.writeFileSync(path.join(home, "plugin-marketplaces.json"), JSON.stringify({
+      schemaVersion: 2,
+      revision: 1,
+      sources: [{
+        id: "team-plugins",
+        name: "Team",
+        kind: "url",
+        url: "https://example.com/marketplace.json",
+        enabled: false,
+      }],
+      activations: {
+        runtimePlugins: { "demo@team-plugins": { enabled: true } },
+      },
+      futureRoot: true,
+    }, null, 2), "utf8");
+    const app = createAppWithPrincipal(engine, localOwner);
+
+    const res = await app.request("/api/plugins/marketplace/config");
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.configDiagnostics).toMatchObject({
+      ok: true,
+      summary: {
+        schemaVersion: 2,
+        revision: 1,
+        disabledSources: ["team-plugins"],
+        runtimePluginActivations: 1,
+      },
+    });
+    expect(body.configDiagnostics.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "PLUGIN_MARKETPLACE_CONFIG_FIELD_UNSUPPORTED" }),
+      expect.objectContaining({ code: "PLUGIN_MARKETPLACE_SOURCE_DISABLED" }),
+    ]));
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("does not soft-seed marketplace content while config JSON is invalid", async () => {
+    const home = makeHome();
+    fs.writeFileSync(path.join(home, "plugin-marketplaces.json"), "{ not json", "utf8");
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ schemaVersion: 1, plugins: [] }), { status: 200 }));
+    const engine = createEngine(home);
+    const { PluginMarketplaceService } = await import("../lib/plugin-marketplace-service.ts");
+    engine.pluginMarketplaceService = new PluginMarketplaceService({
+      hanakoHome: home,
+      env: {},
+      fetchOptions: {
+        fetchImpl,
+        lookup: async () => [{ address: "93.184.216.34", family: 4 }],
+      },
+    });
+    const app = createAppWithPrincipal(engine, localOwner);
+
+    const res = await app.request("/api/plugins/marketplace/catalog");
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.registry).toMatchObject({
+      degraded: true,
+      lastKnownGood: false,
+    });
+    expect(body.plugins).toEqual([]);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("does not install or fetch marketplace packages while config JSON is invalid", async () => {
+    const home = makeHome();
+    fs.writeFileSync(path.join(home, "plugin-marketplaces.json"), "{ not json", "utf8");
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ schemaVersion: 1, plugins: [] }), { status: 200 }));
+    const engine = createEngine(home);
+    engine.pluginManager = {
+      listPlugins: () => [],
+      getRouteApp: () => null,
+      getUserPluginsDir: () => path.join(home, "plugins"),
+      installPlugin: vi.fn(),
+    };
+    const { PluginMarketplaceService } = await import("../lib/plugin-marketplace-service.ts");
+    engine.pluginMarketplaceService = new PluginMarketplaceService({
+      hanakoHome: home,
+      env: {},
+      fetchOptions: {
+        fetchImpl,
+        lookup: async () => [{ address: "93.184.216.34", family: 4 }],
+      },
+    });
+    const app = createAppWithPrincipal(engine, localOwner);
+
+    const res = await app.request("/api/plugins/marketplace/demo/install", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ marketplaceId: "oh-plugins-official" }),
+    });
+    const body = await res.json();
+    expect(res.status).toBe(409);
+    expect(body.code).toBe("PLUGIN_MARKETPLACE_REGISTRY_DEGRADED");
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(engine.pluginManager.installPlugin).not.toHaveBeenCalled();
+  });
+
+  it("owner-gates activation control-plane writes and rejects invalid records", async () => {
+    const home = makeHome();
+    fs.writeFileSync(path.join(home, "plugin-marketplaces.json"), JSON.stringify({
+      schemaVersion: 2,
+      revision: 1,
+      sources: [{ id: "team-plugins", name: "Team", kind: "url", url: "https://example.com/marketplace.json" }],
+    }, null, 2), "utf8");
+    const engine = createEngine(home);
+    const appNoPrincipal = createAppWithPrincipal(engine, null);
+
+    const forbidden = await appNoPrincipal.request("/api/plugins/marketplace/config/activations", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        activations: { runtimePlugins: { "demo@team-plugins": { enabled: true } } },
+        expectedRevision: 1,
+      }),
+    });
+    expect(forbidden.status).toBe(403);
+
+    const app = createAppWithPrincipal(engine, localOwner);
+    const invalid = await app.request("/api/plugins/marketplace/config/activations", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        activations: {
+          runtimePlugins: { "demo@missing-source": { enabled: true } },
+        },
+        expectedRevision: 1,
+      }),
+    });
+    const invalidBody = await invalid.json();
+    expect(invalid.status).toBe(400);
+    expect(invalidBody.code).toBe("PLUGIN_MARKETPLACE_CONTROL_PLANE_INVALID");
+
+    const ok = await app.request("/api/plugins/marketplace/config/activations", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        activations: {
+          runtimePlugins: { "demo@team-plugins": { enabled: true } },
+          agentPluginAccess: { agentA: { "demo@team-plugins": { enabled: true, contributions: ["tools"] } } },
+        },
+        expectedRevision: 1,
+      }),
+    });
+    const okBody = await ok.json();
+    expect(ok.status).toBe(200);
+    expect(okBody).toMatchObject({
+      revision: 2,
+      registry: {
+        revision: 2,
+        degraded: false,
+      },
+      activations: {
+        runtimePlugins: { "demo@team-plugins": { enabled: true } },
+      },
+    });
+  });
+
   it("rejects stale registry digest before acquiring a source", async () => {
     const home = makeHome();
     const engine = createEngine(home);
