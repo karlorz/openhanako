@@ -3,6 +3,8 @@ import path from "path";
 import { createHash } from "crypto";
 import {
   assertMarketplaceId,
+  parseMarketplaceSkillRef,
+  parsePluginMarketplaceRef,
   buildSourceFingerprint,
   type MarketplaceSourceFingerprintInput,
 } from "./plugin-marketplace-identity.ts";
@@ -18,15 +20,16 @@ export const LEGACY_MARKETPLACE_ID = "legacy-override";
 export type MarketplaceSourceKind = "url" | "local" | "git";
 
 export type MarketplaceSourceDescriptor =
-  | { id: string; name: string; kind: "url"; url: string }
-  | { id: string; name: string; kind: "local"; path: string; indexPath?: string }
-  | { id: string; name: string; kind: "git"; gitUrl: string; gitRef?: string; indexPath?: string };
+  | { id: string; name: string; kind: "url"; url: string; enabled?: boolean }
+  | { id: string; name: string; kind: "local"; path: string; indexPath?: string; enabled?: boolean }
+  | { id: string; name: string; kind: "git"; gitUrl: string; gitRef?: string; indexPath?: string; enabled?: boolean };
 
 export type MarketplaceSourceAuthority = "official" | "custom" | "legacy";
 
 export type EffectiveMarketplaceSource = MarketplaceSourceDescriptor & {
   authority: MarketplaceSourceAuthority;
   mutable: boolean;
+  enabled: boolean;
   sourceFingerprint: string;
 };
 
@@ -42,6 +45,7 @@ export interface MarketplaceControlPlaneActivations {
   runtimePlugins?: Record<string, unknown>;
   marketplaceSkills?: Record<string, unknown>;
   agentSkillOverrides?: Record<string, Record<string, unknown>>;
+  agentPluginAccess?: Record<string, Record<string, unknown>>;
 }
 
 export interface LegacyMarketplaceOverlay {
@@ -124,6 +128,7 @@ export function createCompiledOfficialMarketplaceSource(options: { url?: string 
     ...descriptor,
     authority: "official",
     mutable: false,
+    enabled: descriptor.enabled !== false,
     sourceFingerprint: buildSourceFingerprint({
       kind: "url",
       id: OFFICIAL_MARKETPLACE_ID,
@@ -154,6 +159,7 @@ function createLegacySource(overlay: LegacyMarketplaceOverlay): EffectiveMarketp
       ...descriptor,
       authority: "legacy",
       mutable: false,
+      enabled: descriptor.enabled !== false,
       sourceFingerprint: buildSourceFingerprint({
         kind: "local",
         id,
@@ -175,6 +181,7 @@ function createLegacySource(overlay: LegacyMarketplaceOverlay): EffectiveMarketp
     ...descriptor,
     authority: "legacy",
     mutable: false,
+    enabled: descriptor.enabled !== false,
     sourceFingerprint: buildSourceFingerprint({
       kind: "url",
       id,
@@ -213,15 +220,15 @@ function validateDescriptor(raw: unknown): MarketplaceSourceDescriptor {
   if (kind === "url") {
     const url = normalizeOptionalText(raw.url);
     if (!url) throw new Error("URL marketplace source requires url");
-    return { id, name, kind: "url", url };
+    return { id, name, kind: "url", url, ...(raw.enabled === false ? { enabled: false } : {}) };
   }
   if (kind === "local") {
     const localPath = normalizeOptionalText(raw.path);
     if (!localPath) throw new Error("Local marketplace source requires path");
     const indexPath = normalizeOptionalText(raw.indexPath) || undefined;
     return indexPath
-      ? { id, name, kind: "local", path: localPath, indexPath }
-      : { id, name, kind: "local", path: localPath };
+      ? { id, name, kind: "local", path: localPath, indexPath, ...(raw.enabled === false ? { enabled: false } : {}) }
+      : { id, name, kind: "local", path: localPath, ...(raw.enabled === false ? { enabled: false } : {}) };
   }
   if (kind === "git") {
     const gitUrl = normalizeOptionalText(raw.gitUrl);
@@ -235,6 +242,7 @@ function validateDescriptor(raw: unknown): MarketplaceSourceDescriptor {
       gitUrl,
       ...(gitRef ? { gitRef } : {}),
       ...(indexPath ? { indexPath } : {}),
+      ...(raw.enabled === false ? { enabled: false } : {}),
     };
   }
   throw new Error(`Unsupported marketplace source kind: ${String(kind)}`);
@@ -242,12 +250,16 @@ function validateDescriptor(raw: unknown): MarketplaceSourceDescriptor {
 
 function validateActivationKey(key: string, kind: "runtimePlugins" | "marketplaceSkills") {
   if (kind === "runtimePlugins") {
-    if (!/^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+$/.test(key)) {
+    try {
+      parsePluginMarketplaceRef(key);
+    } catch {
       throw new Error(`Malformed marketplace source registry: runtime plugin activation key must be source-qualified: ${key}`);
     }
     return;
   }
-  if (!/^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+\/[A-Za-z0-9._/-]+$/.test(key)) {
+  try {
+    parseMarketplaceSkillRef(key);
+  } catch {
     throw new Error(`Malformed marketplace source registry: marketplace skill activation key must be source-qualified: ${key}`);
   }
 }
@@ -288,6 +300,18 @@ function validateActivations(raw: unknown): MarketplaceControlPlaneActivations |
     }
     out.agentSkillOverrides = normalized;
   }
+  const agentPluginAccess = validateActivationRecord(raw.agentPluginAccess, "activations.agentPluginAccess");
+  if (agentPluginAccess) {
+    const normalized: Record<string, Record<string, unknown>> = {};
+    for (const [agentId, entries] of Object.entries(agentPluginAccess)) {
+      if (!isPlainObject(entries)) {
+        throw new Error(`Malformed marketplace source registry: agentPluginAccess.${agentId} must be an object`);
+      }
+      for (const key of Object.keys(entries)) validateActivationKey(key, "runtimePlugins");
+      normalized[agentId] = { ...entries };
+    }
+    out.agentPluginAccess = normalized;
+  }
   return out;
 }
 
@@ -324,6 +348,7 @@ function toEffectiveCustom(descriptor: MarketplaceSourceDescriptor): EffectiveMa
     ...descriptor,
     authority: "custom",
     mutable: true,
+    enabled: descriptor.enabled !== false,
     sourceFingerprint: fingerprintForDescriptor(descriptor),
   };
 }
@@ -504,6 +529,50 @@ export class PluginMarketplaceSourceRegistry {
     return sources.map((s) => ({ ...s }));
   }
 
+  getControlPlaneActivations(): MarketplaceControlPlaneActivations {
+    const loaded = this._loadDurable();
+    if (!loaded.ok) return structuredClone(loaded.file?.activations || {});
+    return structuredClone(loaded.file.activations || {});
+  }
+
+  setSourceEnabled(marketplaceId: string, enabled: boolean, options: MutationOptions = {}): MutationResult {
+    return this._withLockSync(() => {
+      this._assertMutable();
+      const id = assertMarketplaceId(marketplaceId);
+      if (id === OFFICIAL_MARKETPLACE_ID) {
+        throw new Error("Cannot disable the compiled official marketplace source");
+      }
+      if (this._legacy && id === this._legacy.id) {
+        throw new Error("Cannot mutate the legacy marketplace overlay via registry API");
+      }
+      const loaded = this._loadDurable();
+      if (!loaded.ok) {
+        throw new Error(`Invalid registry (degraded): ${"error" in loaded ? loaded.error : "malformed registry"}`);
+      }
+      this._assertExpectedRevision(loaded.file.revision, options.expectedRevision);
+      this._assertExpectedDigest(loaded.digest, options.expectedDigest);
+      const sources = loaded.file.sources.map((source) => (
+        source.id === id
+          ? { ...source, ...(enabled ? { enabled: undefined } : { enabled: false }) } as MarketplaceSourceDescriptor
+          : source
+      ));
+      if (!loaded.file.sources.some((source) => source.id === id)) {
+        throw new Error(`Marketplace source not found: ${id}`);
+      }
+      const next: MarketplaceSourcesFile = {
+        ...loaded.file,
+        schemaVersion: MARKETPLACE_CONTROL_PLANE_SCHEMA_VERSION,
+        revision: loaded.file.revision + 1,
+        sources,
+      };
+      this._persist(next);
+      return {
+        revision: next.revision,
+        source: toEffectiveCustom(sources.find((source) => source.id === id)!),
+      };
+    });
+  }
+
   addSource(rawDescriptor: unknown, options: MutationOptions = {}): MutationResult {
     return this._withLockSync(() => {
       this._assertMutable();
@@ -518,7 +587,8 @@ export class PluginMarketplaceSourceRegistry {
         throw new Error(`Marketplace source id already exists and is immutable in v1: ${descriptor.id}`);
       }
       const next: MarketplaceSourcesFile = {
-        schemaVersion: MARKETPLACE_SOURCES_SCHEMA_VERSION,
+        ...loaded.file,
+        schemaVersion: loaded.file.schemaVersion,
         revision: loaded.file.revision + 1,
         sources: [...loaded.file.sources, descriptor],
       };
@@ -555,7 +625,8 @@ export class PluginMarketplaceSourceRegistry {
       }
       const nextSources = loaded.file.sources.filter((s) => s.id !== id);
       const next: MarketplaceSourcesFile = {
-        schemaVersion: MARKETPLACE_SOURCES_SCHEMA_VERSION,
+        ...loaded.file,
+        schemaVersion: loaded.file.schemaVersion,
         revision: loaded.file.revision + 1,
         sources: nextSources,
       };

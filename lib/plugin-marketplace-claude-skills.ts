@@ -252,3 +252,22 @@ export function readClaudeSkillsInstallRecord(
     return null;
   }
 }
+
+export function listClaudeSkillsInstallRecords(hanakoHome: string): ClaudeSkillsInstallRecord[] {
+  const root = path.join(hanakoHome, CLAUDE_SKILLS_INSTALL_DIR);
+  if (!fs.existsSync(root)) return [];
+  const out: ClaudeSkillsInstallRecord[] = [];
+  for (const source of fs.readdirSync(root, { withFileTypes: true })) {
+    if (!source.isDirectory()) continue;
+    for (const file of fs.readdirSync(path.join(root, source.name), { withFileTypes: true })) {
+      if (!file.isFile() || !file.name.endsWith(".json")) continue;
+      const pluginId = file.name.slice(0, -".json".length);
+      const record = readClaudeSkillsInstallRecord(hanakoHome, source.name, pluginId);
+      if (record) out.push(record);
+    }
+  }
+  return out.sort((a, b) =>
+    a.marketplaceId.localeCompare(b.marketplaceId)
+    || a.pluginId.localeCompare(b.pluginId)
+  );
+}
