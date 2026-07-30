@@ -779,6 +779,11 @@
       "done": "📥 Installed",
       "failed": "📥 Installation failed"
     },
+    "plugin_marketplace": {
+      "running": "🧩 {name} is checking the marketplace",
+      "done": "🧩 Marketplace action complete",
+      "failed": "🧩 Marketplace action failed"
+    },
     "update_settings": {
       "running": "⚙️ {name} is updating settings",
       "done": "⚙️ Settings updated",
@@ -1248,6 +1253,10 @@
           "install_skill": {
             "label": "Install Skill",
             "summary": "Install new skills from GitHub or the skill library"
+          },
+          "plugin_marketplace": {
+            "label": "Plugin Marketplace",
+            "summary": "Inspect marketplace packages and install supported Hana skills with confirmation"
           },
           "office": {
             "label": "Office",

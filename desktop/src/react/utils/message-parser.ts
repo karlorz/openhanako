@@ -304,6 +304,13 @@ export function extractToolDetail(name: string, args: Record<string, unknown> | 
         : '';
       return { text: truncateHead((args.skill_name || args.github_url || args.local_path || args.fileId || sourceType || '') as string, 40) };
     }
+    case 'plugin_marketplace': {
+      const action = typeof args.action === 'string' ? args.action : '';
+      const pluginId = typeof args.pluginId === 'string' ? args.pluginId : '';
+      const marketplaceId = typeof args.marketplaceId === 'string' ? args.marketplaceId : '';
+      const identity = pluginId && marketplaceId ? `${pluginId}@${marketplaceId}` : pluginId;
+      return { text: truncateHead([action, identity].filter(Boolean).join(' '), 40) };
+    }
     case 'update_settings':
       return { text: (args.key || args.setting || '') as string };
     default: {

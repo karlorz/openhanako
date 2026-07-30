@@ -779,6 +779,11 @@
       "done": "📥 설치 완료",
       "failed": "📥 설치 못 했어요"
     },
+    "plugin_marketplace": {
+      "running": "🧩 {name}이(가) 마켓플레이스를 확인하는 중",
+      "done": "🧩 마켓플레이스 작업 완료",
+      "failed": "🧩 마켓플레이스 작업 실패"
+    },
     "update_settings": {
       "running": "⚙️ {name}이(가) 설정을 바꾸고 있어요",
       "done": "⚙️ 변경 완료",
@@ -1208,6 +1213,10 @@
           "install_skill": {
             "label": "스킬 설치",
             "summary": "GitHub 또는 스킬 라이브러리에서 새 스킬 설치"
+          },
+          "plugin_marketplace": {
+            "label": "플러그인 마켓플레이스",
+            "summary": "마켓플레이스 패키지를 검사하고 지원되는 Hana 스킬을 확인 후 설치"
           },
           "update_settings": {
             "label": "설정 변경",
