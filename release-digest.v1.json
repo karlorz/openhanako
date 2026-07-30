@@ -1,16 +1,16 @@
 {
   "schemaVersion": 1,
-  "tag": "v0.421.24-karlorz.2",
+  "tag": "v0.421.24-karlorz.3",
   "version": "0.421.24",
-  "previousTag": "v0.421.24-karlorz.1",
-  "generatedAt": "2026-07-28T11:33:58.000Z",
+  "previousTag": "v0.421.24-karlorz.2",
+  "generatedAt": "2026-07-30T15:42:00.000Z",
   "noUserFacingChanges": false,
   "summary": {
-    "zh": "修复 Windows 独立服务器归档的校验和 sidecar，并在发布前逐一核对所有服务器归档与 SHA-256，避免无效校验值进入正式 Release。",
-    "en": "Fixes the Windows standalone-server checksum sidecar and verifies every server archive against its SHA-256 before publication, preventing invalid checksum values from reaching a Release."
+    "zh": "支持 Claude 插件市场浏览与技能 Lane 安装，优化多 Sources 界面与路由隔离。",
+    "en": "Adds Claude marketplace browse and skills-lane installation, improving multi-source UI and route security."
   },
   "counts": {
-    "feature": 0,
+    "feature": 1,
     "fix": 1,
     "improvement": 0,
     "migration": 0
@@ -18,36 +18,37 @@
   "source": {
     "owner": "karlorz",
     "repo": "openhanako",
-    "commitRange": "v0.421.24-karlorz.1..HEAD",
-    "releaseUrl": "https://github.com/karlorz/openhanako/releases/tag/v0.421.24-karlorz.2",
+    "commitRange": "v0.421.24-karlorz.2..HEAD",
+    "releaseUrl": "https://github.com/karlorz/openhanako/releases/tag/v0.421.24-karlorz.3",
     "releaseNotes": ""
   },
   "items": [
     {
-      "id": "windows-server-checksum-sidecar",
-      "kind": "fix",
+      "id": "claude-marketplace-skills-lane",
+      "kind": "feature",
       "importance": "high",
       "title": {
-        "zh": "Windows 服务器校验和恢复为标准 64 字符 SHA-256",
-        "en": "Windows server checksums return to standard 64-character SHA-256"
+        "zh": "支持 Claude 插件市场浏览与技能 Lane 安装",
+        "en": "Support Claude marketplace browse and skills-lane installation"
       },
       "summary": {
-        "zh": "Windows 打包路径会让 GNU sha256sum 在输出行前添加转义标记，旧逻辑误把该标记写进 .sha256 文件，导致消费者读到的校验值不是 64 字符十六进制。现在打包器会剥离标记，并拒绝任何格式不合法的摘要。",
-        "en": "Windows packaging paths make GNU sha256sum prefix escaped output with a marker. The old parser copied that marker into the .sha256 file, so consumers did not receive a 64-character hexadecimal checksum. The packer now removes the marker and rejects malformed digest output."
+        "zh": "增加 Claude 插件市场源的解析与浏览支持，实现技能 Package Inspector 与按 Lane 安装/卸载隔离。",
+        "en": "Adds parsing and browse support for Claude plugin marketplace sources, providing package inspector and isolated lane installation/uninstallation."
       },
       "details": [
         {
-          "zh": "Release 工作流会在上传前重新计算五个平台服务器归档的 SHA-256，并同时检查 sidecar 的首个字段格式与归档字节是否匹配。",
-          "en": "Before upload, the Release workflow now recomputes SHA-256 for all five platform server archives and verifies both the sidecar token format and its match to the archive bytes."
+          "zh": "提供多 Marketplace Sources 管理面板，并在端点与 UI 层面做安全路径校验。",
+          "en": "Provides multi-marketplace sources management panel with path and security validation on server endpoints and UI."
         }
       ],
       "sources": [
         {
           "type": "commit",
-          "ref": "d22386121",
-          "title": "fix(release): normalize server checksum sidecars"
+          "ref": "5e193d713",
+          "title": "fix(plugins): harden Claude marketplace install and package inspector"
         }
       ]
     }
   ]
 }
+
