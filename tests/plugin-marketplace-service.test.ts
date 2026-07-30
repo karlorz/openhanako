@@ -64,7 +64,8 @@ describe("PluginMarketplaceService", () => {
     const sources = svc.listSources();
     expect(sources[0].id).toBe("oh-plugins-official");
     expect(sources[0].authority).toBe("official");
-    const catalog = svc.listCatalogRows();
+    expect(sources[0].catalogCount).toBe(1);
+    const catalog = svc.listCatalogRows({ agentId: "agent-a" });
     expect(catalog.plugins[0]).toMatchObject({
       pluginId: "demo",
       marketplaceId: "oh-plugins-official",
@@ -78,6 +79,12 @@ describe("PluginMarketplaceService", () => {
         destination: "native-plugin",
         installAdapter: "plugin-manager",
         installable: false,
+      },
+      nativeAgentPluginAccess: {
+        identity: "demo@oh-plugins-official",
+        agentId: "agent-a",
+        enabled: false,
+        state: "disabled",
       },
     });
   });
@@ -97,6 +104,8 @@ describe("PluginMarketplaceService", () => {
         agentMarketplaceManagement: true,
         claudeCompatibilityBindings: true,
         nativeMarketplaceInstall: false,
+        claudeCompatibilityBridgeValidation: true,
+        desktopClaudeCompatibilityBridgeTransport: false,
       },
     });
     expect(svc.getRegistryStatus()).toMatchObject({
@@ -104,6 +113,7 @@ describe("PluginMarketplaceService", () => {
       degraded: false,
       digest: expect.stringMatching(/^[a-f0-9]{64}$/),
     });
+    expect(svc.getRegistryStatus({ forRemote: true }).path).toBe("[server-local path redacted]");
   });
 
   it("runs one singleton-safe bounded digest poll loop for live compatibility bindings", async () => {

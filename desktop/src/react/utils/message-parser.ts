@@ -309,7 +309,31 @@ export function extractToolDetail(name: string, args: Record<string, unknown> | 
       const pluginId = typeof args.pluginId === 'string' ? args.pluginId : '';
       const marketplaceId = typeof args.marketplaceId === 'string' ? args.marketplaceId : '';
       const identity = pluginId && marketplaceId ? `${pluginId}@${marketplaceId}` : pluginId;
-      return { text: truncateHead([action, identity].filter(Boolean).join(' '), 40) };
+      const compatAction = typeof args.compatAction === 'string' ? args.compatAction : '';
+      const bindingId = typeof args.bindingId === 'string' ? args.bindingId : '';
+      const revision = typeof args.expectedRevision === 'number' ? `rev ${args.expectedRevision}` : '';
+      const planToken = typeof args.planToken === 'string' && args.planToken
+        ? `plan ${args.planToken.slice(0, 8)}`
+        : '';
+      const actionLabels: Record<string, string> = {
+        list_sources: 'inspect sources',
+        list_catalog: 'inspect catalog',
+        inspect_package: 'inspect package',
+        plan_install: 'preview install',
+        install: 'confirm install',
+        diagnose_config: 'diagnose JSON config',
+        set_activations: 'confirm activation change',
+        list_compat_bindings: 'inspect Claude bindings',
+        plan_compat_mutation: `preview Claude ${compatAction || 'change'}`,
+        execute_compat_mutation: `confirm Claude ${compatAction || 'change'}`,
+        validate_compat_bridge: 'validate sanitized bridge',
+      };
+      return {
+        text: truncateHead(
+          [actionLabels[action] || action, identity || bindingId, revision, planToken].filter(Boolean).join(' · '),
+          72,
+        ),
+      };
     }
     case 'update_settings':
       return { text: (args.key || args.setting || '') as string };

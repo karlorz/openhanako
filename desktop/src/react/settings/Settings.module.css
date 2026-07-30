@@ -2780,6 +2780,93 @@
     align-items: start;
 }
 
+.plugin-marketplace-catalog-item {
+    width: 100%;
+    border: 0;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+}
+
+.plugin-marketplace-catalog-item:focus-visible {
+    position: relative;
+    z-index: 1;
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+}
+
+.plugin-marketplace-scope-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-12);
+    margin-bottom: var(--space-16);
+}
+
+.plugin-marketplace-scope-card,
+.plugin-marketplace-binding-card {
+    min-width: 0;
+    padding: var(--space-12);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card, 8px);
+    background: color-mix(in srgb, var(--bg-card) 88%, transparent);
+}
+
+.plugin-marketplace-scope-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-12);
+}
+
+.plugin-marketplace-scope-heading h3,
+.plugin-marketplace-scope-heading h4 {
+    margin: 0;
+    color: var(--text);
+    font-size: var(--fs-body);
+    font-weight: 600;
+}
+
+.plugin-marketplace-scope-heading p {
+    margin: 4px 0 0;
+    color: var(--text-muted);
+    font-size: var(--fs-caption);
+    line-height: 1.5;
+}
+
+.plugin-marketplace-scope-facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: var(--space-8);
+}
+
+.plugin-marketplace-scope-facts span {
+    padding: 2px 6px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-input, 6px);
+    color: var(--text-muted);
+    background: var(--bg-hover);
+    font-size: var(--fs-hint);
+}
+
+.plugin-marketplace-agent-select {
+    display: grid;
+    gap: 3px;
+    min-width: 130px;
+    color: var(--text-muted);
+    font-size: var(--fs-hint);
+}
+
+.plugin-marketplace-agent-select select {
+    min-width: 0;
+    padding: 5px 8px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-input, 6px);
+    color: var(--text);
+    background: var(--bg-card);
+    font: inherit;
+}
+
 .plugin-marketplace-toolbar {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
@@ -2914,7 +3001,80 @@
     line-height: 1.5;
 }
 
+.plugin-marketplace-advanced {
+    margin-top: var(--space-16);
+    border-top: 1px solid var(--border);
+    padding-top: var(--space-12);
+}
+
+.plugin-marketplace-advanced > summary {
+    cursor: pointer;
+    color: var(--text);
+    font-size: var(--fs-caption);
+    font-weight: 600;
+}
+
+.plugin-marketplace-advanced > summary:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+    border-radius: 3px;
+}
+
+.plugin-marketplace-advanced-body {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-16);
+    margin-top: var(--space-12);
+}
+
+.plugin-marketplace-advanced-body h3 {
+    margin: 0 0 4px;
+    color: var(--text);
+    font-size: var(--fs-body);
+}
+
+.plugin-marketplace-binding-list {
+    display: grid;
+    gap: var(--space-8);
+    margin-top: var(--space-8);
+}
+
+.plugin-marketplace-binding-card {
+    display: grid;
+    gap: var(--space-8);
+}
+
+.plugin-marketplace-bridge-status {
+    display: grid;
+    gap: 4px;
+    margin-top: var(--space-10);
+    padding: var(--space-10);
+    border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
+    border-radius: var(--radius-card, 8px);
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+    color: var(--text-muted);
+    font-size: var(--fs-caption);
+    line-height: 1.5;
+}
+
+.plugin-marketplace-bridge-status strong {
+    color: var(--text);
+}
+
 @media (max-width: 760px) {
+    .plugin-marketplace-scope-grid,
+    .plugin-marketplace-advanced-body {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .plugin-marketplace-scope-heading {
+        flex-direction: column;
+    }
+
+    .plugin-marketplace-agent-select {
+        width: 100%;
+    }
+
     .plugin-marketplace-grid {
         grid-template-columns: minmax(0, 1fr);
     }

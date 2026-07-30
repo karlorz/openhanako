@@ -2277,7 +2277,7 @@
       "marketSourceLocalPath": "Server-relative path",
       "marketSourceLocalPathHint": "Resolved under the Hana server allowed local root. Requires loopback owner access.",
       "marketSourceUrlHint": "Public HTTPS marketplace.json without credentials.",
-      "marketSourceGitHint": "Public HTTPS Git only (no SSH/private). Paste a repo URL like https://github.com/karlorz/llm-wiki — Claude .claude-plugin/marketplace.json is auto-detected when root marketplace.json is missing.",
+      "marketSourceGitHint": "Public HTTPS Git only (no SSH/private). Paste a repo URL like https://github.com/example-org/hana-marketplace — Claude .claude-plugin/marketplace.json is auto-detected when root marketplace.json is missing.",
       "marketSourceIdRequired": "Source id is required",
       "marketSourceUrlRequired": "Catalog URL is required",
       "marketSourcePathRequired": "Local path is required",

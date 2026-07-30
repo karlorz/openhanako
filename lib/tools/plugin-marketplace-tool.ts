@@ -174,10 +174,11 @@ function resolveInvocation(input: any = {}) {
         label: `Marketplace install: ${targetId}`,
       },
       sideEffect: {
-        summary: "Installs a marketplace package into Hana.",
+        summary: `Installs exact source-qualified package ${targetId} on the connected Hana server after validating the current plan token. Server owner access and the normal install permission are required.`,
         pluginId,
         marketplaceId: marketplaceId || null,
         planToken,
+        ownerRequired: true,
       },
     };
   }
@@ -192,9 +193,10 @@ function resolveInvocation(input: any = {}) {
         label: "Marketplace control-plane activations",
       },
       sideEffect: {
-        summary: "Updates marketplace activation/access records in plugin-marketplaces.json.",
+        summary: "Updates exact source-qualified marketplace activation/access records in server-owned plugin-marketplaces.json after revision/digest validation.",
         expectedRevision: typeof input.expectedRevision === "number" ? input.expectedRevision : null,
         expectedDigest: typeof input.expectedDigest === "string" ? input.expectedDigest : null,
+        ownerRequired: true,
       },
     };
   }
@@ -210,11 +212,12 @@ function resolveInvocation(input: any = {}) {
         label: `Claude compatibility ${asText(input.compatAction)}`,
       },
       sideEffect: {
-        summary: "Updates a server-owned Claude compatibility binding after stale-protected preview.",
+        summary: "Updates a server-owned Claude compatibility binding after stale-protected preview. Unsupported components and secrets remain excluded; promotion/install/activation still use their normal owner-confirmed mutations.",
         compatAction: asText(input.compatAction),
         bindingId: asText(input.bindingId) || null,
         virtualSourceId: asText(input.virtualSourceId) || null,
         planToken,
+        ownerRequired: true,
       },
     };
   }
