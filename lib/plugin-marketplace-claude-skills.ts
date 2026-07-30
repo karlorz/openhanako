@@ -5,6 +5,20 @@ import { installSkillPackageFromDirectory } from "./skills/skill-package-install
 
 export const CLAUDE_SKILLS_INSTALL_DIR = "plugin-marketplace-claude-skills";
 
+/** Claude plugin.json fields Hana does not install in the skills-lane v1. */
+export const CLAUDE_UNSUPPORTED_COMPONENT_FIELDS = [
+  "agents",
+  "commands",
+  "hooks",
+  "mcpServers",
+  "mcp",
+  "lsp",
+  "monitors",
+  "workflows",
+  "outputStyles",
+  "settings",
+] as const;
+
 export interface ClaudeSkillsInstallRecord {
   kind: "claude-skills";
   marketplaceId: string;
@@ -12,6 +26,7 @@ export interface ClaudeSkillsInstallRecord {
   packagePath: string;
   resolvedRevision: string | null;
   skills: string[];
+  warnings?: string[];
   installedAt: string;
 }
 
@@ -104,21 +119,26 @@ export function installClaudeSkillsFromPackage(options: {
   packageRoot: string;
   installDir: string;
   owner?: string;
+  conflictPolicy?: "preserve" | "replace";
 }): {
   installed: Array<{ name: string; dir: string }>;
   skipped: Array<{ path: string; reason: string }>;
+  warnings: string[];
 } {
   const packageRoot = path.resolve(options.packageRoot);
   const installDir = path.resolve(options.installDir);
   const owner = options.owner || "user";
+  const conflictPolicy = options.conflictPolicy || "preserve";
   const skillDirs = discoverClaudeSkillDirs(packageRoot);
   const installed: Array<{ name: string; dir: string }> = [];
   const skipped: Array<{ path: string; reason: string }> = [];
+  const warnings = inspectClaudePackageWarnings(packageRoot);
 
   if (skillDirs.length === 0) {
     return {
       installed,
       skipped: [{ path: packageRoot, reason: "no SKILL.md packages found" }],
+      warnings,
     };
   }
 
@@ -128,6 +148,7 @@ export function installClaudeSkillsFromPackage(options: {
         sourceDir: skillDir,
         installDir,
         owner,
+        conflictPolicy,
       });
       installed.push({ name: result.name, dir: result.dir });
     } catch (err: any) {
@@ -137,7 +158,54 @@ export function installClaudeSkillsFromPackage(options: {
       });
     }
   }
-  return { installed, skipped };
+  return { installed, skipped, warnings };
+}
+
+function readJsonFile(filePath: string): any | null {
+  if (!fs.existsSync(filePath)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(filePath, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function hasValue(value: unknown): boolean {
+  if (Array.isArray(value)) return value.length > 0;
+  if (value && typeof value === "object") return Object.keys(value as Record<string, unknown>).length > 0;
+  return Boolean(value);
+}
+
+export function inspectClaudePackageWarnings(packageRoot: string): string[] {
+  const warnings: string[] = [];
+  const pluginJson = readJsonFile(path.join(packageRoot, ".claude-plugin", "plugin.json"))
+    || readJsonFile(path.join(packageRoot, "plugin.json"));
+  if (pluginJson && typeof pluginJson === "object") {
+    for (const field of CLAUDE_UNSUPPORTED_COMPONENT_FIELDS) {
+      if (hasValue(pluginJson[field])) {
+        warnings.push(`unsupported Claude component not installed: ${field}`);
+      }
+    }
+  }
+
+  const packageJson = readJsonFile(path.join(packageRoot, "package.json"));
+  if (packageJson && typeof packageJson === "object") {
+    if (hasValue(packageJson.bin)) {
+      warnings.push("package declares external CLI binaries; Hana does not install or execute them");
+    }
+    if (hasValue(packageJson.scripts)) {
+      warnings.push("package declares npm scripts; Hana does not run package lifecycle or helper scripts");
+    }
+    if (hasValue(packageJson.dependencies) || hasValue(packageJson.devDependencies)) {
+      warnings.push("package declares npm dependencies; Hana imports skills without running package installation");
+    }
+  }
+
+  if (fs.existsSync(path.join(packageRoot, "scripts"))) {
+    warnings.push("package contains scripts/ resources outside imported skills; Hana does not execute them");
+  }
+
+  return [...new Set(warnings)];
 }
 
 export function claudeSkillsRecordPath(
@@ -163,6 +231,7 @@ export function writeClaudeSkillsInstallRecord(
     packagePath: record.packagePath,
     resolvedRevision: record.resolvedRevision,
     skills: [...record.skills],
+    ...(Array.isArray(record.warnings) && record.warnings.length > 0 ? { warnings: [...record.warnings] } : {}),
     installedAt: record.installedAt || new Date().toISOString(),
   };
   fs.writeFileSync(filePath, JSON.stringify(payload, null, 2) + "\n", "utf8");

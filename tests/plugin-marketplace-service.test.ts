@@ -68,6 +68,14 @@ describe("PluginMarketplaceService", () => {
       pluginId: "demo",
       marketplaceId: "oh-plugins-official",
       compositeKey: "demo@oh-plugins-official",
+      installTarget: "native-plugin",
+      installAdapter: "plugin-manager",
+      confirmationLevel: "capability-review",
+      installPlan: {
+        action: "install",
+        destination: "native-plugin",
+        installAdapter: "plugin-manager",
+      },
     });
   });
 

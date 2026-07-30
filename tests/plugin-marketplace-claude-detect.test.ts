@@ -165,7 +165,7 @@ describe("Claude marketplace catalog parse", () => {
       catalogFormat: "claude",
       source: "packages/skills",
       sourceKind: "relative",
-      installTarget: "skills",
+      installTarget: "hana-skills",
       canInstall: true,
     });
   });
@@ -192,7 +192,7 @@ describe("Claude marketplace catalog parse", () => {
       catalogFormat: "claude",
       sourceKind: "git-subdir",
       canInstall: false,
-      installTarget: "skills",
+      installTarget: "unsupported",
     });
   });
 

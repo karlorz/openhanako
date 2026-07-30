@@ -36,6 +36,8 @@ interface MarketplacePlugin {
   sourceStatus?: string;
   active?: boolean;
   retained?: boolean;
+  catalogFormat?: string | null;
+  installTarget?: string | null;
 }
 
 interface MarketplaceResponse {
@@ -54,7 +56,8 @@ function marketInstallLabel(plugin: MarketplacePlugin): string {
   if (plugin.installAction === 'downgrade') return t('settings.plugins.marketDowngrade');
   if (plugin.installAction === 'reinstall') return t('settings.plugins.marketReinstall');
   if (plugin.installAction === 'update' || plugin.updateAvailable) return t('settings.plugins.marketUpdate');
-  if ((plugin as any).installTarget === 'skills' || (plugin as any).catalogFormat === 'claude') {
+  // Trust server installTarget; keep legacy "skills" for older catalog rows mid-upgrade.
+  if (plugin.installTarget === 'hana-skills' || plugin.installTarget === 'skills') {
     return t('settings.plugins.marketInstallSkills') || 'Install skills';
   }
   return t('settings.plugins.marketInstall');
@@ -85,10 +88,9 @@ function mapCatalogRow(row: any): MarketplacePlugin {
   const active = !!row.active;
   const installMeta = row.install && typeof row.install === 'object' ? row.install : {};
   const catalogFormat = row.catalogFormat || installMeta.catalogFormat || null;
-  // Prefer server canInstall; Claude skills-lane uses install.canInstall; Hana plugins use active/release.
+  // Prefer inspector-backed server canInstall; fall back only for older payloads.
   const serverCanInstall = row.canInstall === true
-    || installMeta.canInstall === true
-    || (catalogFormat !== 'claude' && !active && row.distribution?.kind === 'release');
+    || (row.canInstall == null && installMeta.canInstall === true);
   return {
     id,
     name: row.name,
@@ -107,9 +109,8 @@ function mapCatalogRow(row: any): MarketplacePlugin {
     canInstall: serverCanInstall && !active,
     installAction: active ? 'reinstall' : 'install',
     compatible: true,
-    // surface for install button copy
-    ...(catalogFormat ? { catalogFormat } as any : {}),
-    ...(installMeta.installTarget ? { installTarget: installMeta.installTarget } as any : {}),
+    catalogFormat,
+    installTarget: row.installTarget || installMeta.installTarget || null,
   };
 }
 
@@ -329,7 +330,7 @@ export function PluginMarketplaceTab() {
             type="button"
             className={styles['settings-icon-btn']}
             title={t('settings.plugins.openMarketplace')}
-            onClick={loadMarketplace}
+            onClick={() => { void loadMarketplace(); }}
             disabled={marketplaceLoading}
           >
             <svg
