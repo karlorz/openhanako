@@ -771,6 +771,11 @@
       "done": "📥 {name} 把技能裝上了",
       "failed": "📥 技能沒裝上"
     },
+    "plugin_marketplace": {
+      "running": "🧩 {name} 正在檢查外掛市場",
+      "done": "🧩 外掛市場操作完成",
+      "failed": "🧩 外掛市場操作失敗"
+    },
     "update_settings": {
       "running": "⚙️ {name} 正在改設定",
       "done": "⚙️ {name} 改好設定了",
@@ -1309,6 +1314,10 @@
           "install_skill": {
             "label": "安裝技能",
             "summary": "從 GitHub 或技能庫安裝新技能"
+          },
+          "plugin_marketplace": {
+            "label": "外掛市場",
+            "summary": "檢查市場套件，並在確認後安裝支援的 Hana 技能"
           },
           "update_settings": {
             "label": "修改設定",

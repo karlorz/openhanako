@@ -45,11 +45,11 @@ describe("AgentToolsSection", () => {
   it("renders registered optional toggles while ignoring global tools", () => {
     const { container } = render(
       <AgentToolsSection
-        availableTools={["automation", "beautify", "browser", "computer", "cron", "dm", "install_skill", "office", "update_settings", "workflow", "read"]}
+        availableTools={["automation", "beautify", "browser", "computer", "cron", "dm", "install_skill", "office", "plugin_marketplace", "update_settings", "workflow", "read"]}
         disabled={[]}
       />
     );
-    expect(container.querySelectorAll("[data-tool-name]")).toHaveLength(7);
+    expect(container.querySelectorAll("[data-tool-name]")).toHaveLength(8);
     expect(getRow(container, "automation")).toBeTruthy();
     expect(getRow(container, "beautify")).toBeTruthy();
     expect(getRow(container, "browser")).toBeTruthy();
@@ -58,6 +58,7 @@ describe("AgentToolsSection", () => {
     expect(getRow(container, "dm")).toBeNull();
     expect(getRow(container, "install_skill")).toBeTruthy();
     expect(getRow(container, "office")).toBeTruthy();
+    expect(getRow(container, "plugin_marketplace")).toBeTruthy();
     expect(getRow(container, "update_settings")).toBeTruthy();
     expect(getRow(container, "workflow")).toBeTruthy();
     expect(getRow(container, "computer")).toBeNull();
@@ -70,12 +71,13 @@ describe("AgentToolsSection", () => {
         disabled={["update_settings", "dm"]}
       />
     );
-    expect(container.querySelectorAll("[data-tool-name]")).toHaveLength(8);
+    expect(container.querySelectorAll("[data-tool-name]")).toHaveLength(9);
     expect(getRow(container, "automation")).toBeTruthy();
     expect(getRow(container, "beautify")).toBeTruthy();
     expect(getRow(container, "browser")).toBeTruthy();
     expect(getRow(container, "computer")).toBeNull();
     expect(getRow(container, "office")).toBeTruthy();
+    expect(getRow(container, "plugin_marketplace")).toBeTruthy();
     expect(getRow(container, "session")).toBeTruthy();
     expect(getRow(container, "workflow")).toBeTruthy();
   });

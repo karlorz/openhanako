@@ -64,6 +64,7 @@ export const OPTIONAL_TOOL_NAMES = [
   "browser",
   "install_skill",
   "office",
+  "plugin_marketplace",
   "session",
   "update_settings",
   "workflow",
