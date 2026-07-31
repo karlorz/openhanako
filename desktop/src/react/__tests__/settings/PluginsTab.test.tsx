@@ -123,6 +123,9 @@ function mockInventory(options: {
       const agentId = new URLSearchParams(path.split('?')[1]).get('agentId') || '';
       return jsonResponse({ skills: options.skills?.[agentId] || [] });
     }
+    if (typeof path === 'string' && path.startsWith('/api/plugins/') && path.endsWith('/config') && !init?.method) {
+      return jsonResponse({ schema: { properties: {} }, values: {} });
+    }
     if (typeof path === 'string' && path.startsWith('/api/agents/') && init?.method === 'PATCH') {
       const body = JSON.parse(String(init.body || '{}'));
       options.onPatch?.(path, body);
@@ -206,6 +209,8 @@ describe('PluginsTab skill package inventory', () => {
         'settings.plugins.reload': 'Reload',
         'settings.plugins.showDiagnostics': 'Show diagnostics',
         'settings.plugins.openMarketplace': 'Open plugin marketplace',
+        'settings.plugins.configure': `Configure ${params?.name || ''}`.trim(),
+        'settings.plugins.deleteConfirm': `Remove plugin "${params?.name || ''}"? Plugin data will be preserved.`,
         'settings.plugins.marketplaceTitle': 'Plugin Marketplace',
         'settings.plugins.marketplaceHint': 'Browse plugins',
         'settings.plugins.marketSourcesSection': 'Marketplace sources',
@@ -257,7 +262,83 @@ describe('PluginsTab skill package inventory', () => {
     expect(screen.getByText('enabled')).toBeInTheDocument();
     expect(screen.queryByText('loaded')).not.toBeInTheDocument();
     expect(screen.queryByText('No plugins installed')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Open skills for SkillWiki' })).toBeInTheDocument();
+    const openSkills = screen.getByRole('button', { name: 'Open skills for SkillWiki' });
+    expect(openSkills).toBeInTheDocument();
+    expect(openSkills).toHaveAttribute('title', 'Open skills for SkillWiki');
+    expect(openSkills.className).toMatch(/settings-icon-btn/);
+    expect(openSkills.className).toMatch(/plugin-action-icon/);
+    expect(openSkills.className).not.toMatch(/skill-card-delete/);
+  });
+
+  it('makes the marketplace teaser row navigate from its body and keeps a bare browse affordance', async () => {
+    mockInventory();
+    const { PluginsTab } = await import('../../settings/tabs/PluginsTab');
+    render(<PluginsTab />);
+
+    const browse = await screen.findByRole('button', { name: 'Open plugin marketplace' });
+    expect(browse).toHaveAttribute('type', 'button');
+    expect(browse).toHaveAttribute('title', 'Open plugin marketplace');
+    expect(browse.className).toMatch(/skills-list-item/);
+    expect(browse.className).toMatch(/plugin-marketplace-entry/);
+    expect(browse.className).not.toMatch(/settings-save-btn-sm/);
+    expect(browse.querySelector('svg')).toBeInTheDocument();
+    expect(browse.querySelector('span[aria-hidden="true"]')?.className).toMatch(/settings-icon-btn/);
+    expect(browse.querySelector('span[aria-hidden="true"]')?.className).toMatch(/plugin-action-icon/);
+
+    fireEvent.click(screen.getByText('Browse plugins'));
+    expect(useSettingsStore.getState().activeTab).toBe('plugin-marketplace');
+  });
+
+  it('keeps native configure as a visible bare gear action', async () => {
+    mockInventory({
+      plugins: [{
+        id: 'hyperframes',
+        name: 'HyperFrames',
+        status: 'loaded',
+        source: 'community',
+        trust: 'full-access',
+        contributions: ['configuration'],
+      }],
+    });
+    const { PluginsTab } = await import('../../settings/tabs/PluginsTab');
+    render(<PluginsTab />);
+
+    const configure = await screen.findByRole('button', { name: 'Configure HyperFrames' });
+    expect(configure).toHaveAttribute('title', 'Configure HyperFrames');
+    expect(configure.className).toMatch(/settings-icon-btn/);
+    expect(configure.className).toMatch(/plugin-action-icon/);
+    expect(configure.className).not.toMatch(/skill-card-delete/);
+    fireEvent.click(configure);
+    await waitFor(() => expect(hanaFetch).toHaveBeenCalledWith('/api/plugins/hyperframes/config'));
+  });
+
+  it('keeps native removal confirmation and lifecycle request on a bare danger icon', async () => {
+    const deletes: string[] = [];
+    mockInventory({
+      plugins: [{
+        id: 'hyperframes',
+        name: 'HyperFrames',
+        status: 'loaded',
+        source: 'community',
+        trust: 'full-access',
+      }],
+      onDelete: (path) => deletes.push(path),
+    });
+    const { PluginsTab } = await import('../../settings/tabs/PluginsTab');
+    render(<PluginsTab />);
+
+    const remove = await screen.findByRole('button', {
+      name: 'Remove plugin "HyperFrames"? Plugin data will be preserved.',
+    });
+    expect(remove).toHaveAttribute('title', 'Remove plugin "HyperFrames"? Plugin data will be preserved.');
+    expect(remove.className).toMatch(/settings-icon-btn/);
+    expect(remove.className).toMatch(/plugin-action-icon/);
+    expect(remove.className).toMatch(/plugin-action-danger/);
+    expect(remove.className).not.toMatch(/skill-card-delete/);
+    fireEvent.click(remove);
+
+    await waitFor(() => expect(deletes).toEqual(['/api/plugins/hyperframes']));
+    expect(mockConfirm).toHaveBeenCalledWith('Remove plugin "HyperFrames"? Plugin data will be preserved.');
   });
 
   it('does not claim empty inventory when only skill packages are installed', async () => {
@@ -382,6 +463,14 @@ describe('PluginsTab skill package inventory', () => {
     expect(await screen.findByText('Package availability')).toBeInTheDocument();
     expect(screen.getByText('wiki-query')).toBeInTheDocument();
     expect(screen.queryByText('local-only')).not.toBeInTheDocument();
+
+    const openMarketplace = screen.getByRole('button', { name: 'Open marketplace' });
+    expect(openMarketplace).toHaveAttribute('title', 'Open marketplace');
+    expect(openMarketplace.className).toMatch(/settings-icon-btn/);
+    expect(openMarketplace.className).toMatch(/plugin-action-icon/);
+    expect(openMarketplace.className).not.toMatch(/settings-save-btn-sm/);
+    fireEvent.click(openMarketplace);
+    expect(useSettingsStore.getState().activeTab).toBe('plugin-marketplace');
 
     fireEvent.click(screen.getByRole('button', { name: 'Manage Plugins' }));
     expect(await screen.findByRole('button', { name: 'Open skills for SkillWiki' })).toBeInTheDocument();

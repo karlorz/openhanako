@@ -35,8 +35,8 @@ describe('MarketplaceSourcesPanel product states', () => {
         'settings.plugins.marketSourceAdd': 'Add source',
         'settings.plugins.marketSourceCancel': 'Cancel',
         'settings.plugins.marketSourceRefreshAll': 'Reload source list',
-        'settings.plugins.marketSourceRefresh': 'Refresh',
-        'settings.plugins.marketSourceRemove': 'Remove',
+        'settings.plugins.marketSourceRefreshNamed': `Refresh ${params?.id || ''}`.trim(),
+        'settings.plugins.marketSourceRemoveNamed': `Remove marketplace source ${params?.id || ''}`.trim(),
         'settings.plugins.marketSourceStatusOk': 'OK',
         'settings.plugins.marketSourceStatusError': 'Error',
         'settings.plugins.marketSourceStatusStale': 'Stale',
@@ -97,6 +97,111 @@ describe('MarketplaceSourcesPanel product states', () => {
     expect(screen.getByText('Disabled')).toBeInTheDocument();
     expect(screen.getByText('[server-local path redacted]')).toBeInTheDocument();
     expect(screen.getByText('Catalog validation failed')).toBeInTheDocument();
+  });
+
+  it('uses the existing bare icon language for mutable source actions', async () => {
+    mockHanaFetch.mockResolvedValue(response({
+      access: { isStudioOwner: true },
+      registry: { revision: 9, digest: 'a'.repeat(64), degraded: false },
+      sources: [{
+        id: 'team-git',
+        name: 'Team Git',
+        kind: 'git',
+        authority: 'custom',
+        enabled: true,
+        status: 'ok',
+        catalogCount: 3,
+        mutable: true,
+      }],
+    }));
+
+    render(<MarketplaceSourcesPanel />);
+
+    const addButton = await screen.findByRole('button', { name: 'Add source' });
+    expect(addButton.textContent).toContain('＋');
+    expect(addButton.className).toMatch(/plugin-add-source-btn/);
+
+    const refreshAll = screen.getByRole('button', { name: 'Reload source list' });
+    expect(refreshAll.className).toMatch(/settings-icon-btn/);
+
+    const refresh = screen.getByRole('button', { name: 'Refresh team-git' });
+    expect(refresh).toHaveAttribute('title', 'Refresh team-git');
+    expect(refresh.className).toMatch(/settings-icon-btn/);
+    expect(refresh.className).toMatch(/plugin-action-icon/);
+    expect(refresh.className).not.toMatch(/skill-card-delete/);
+    expect(refresh.parentElement?.className).toMatch(/marketplace-source-actions/);
+
+    const remove = screen.getByRole('button', { name: 'Remove marketplace source team-git' });
+    expect(remove).toHaveAttribute('title', 'Remove marketplace source team-git');
+    expect(remove.className).toMatch(/settings-icon-btn/);
+    expect(remove.className).toMatch(/plugin-action-icon/);
+    expect(remove.className).toMatch(/plugin-action-danger/);
+    expect(remove.className).not.toMatch(/skill-card-delete/);
+
+    const toggle = screen.getByRole('button', { name: 'Disable team-git' });
+    expect(toggle).toHaveTextContent('Disable');
+    expect(toggle.className).toMatch(/pv-add-form-btn/);
+  });
+
+  it('keeps source refresh/remove callbacks and revision/digest behavior unchanged', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    let loadCount = 0;
+    const calls: Array<{ url: string; method?: string }> = [];
+    mockHanaFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      calls.push({ url, method: init?.method });
+      if (url === '/api/plugins/marketplace/sources' && !init?.method) {
+        loadCount += 1;
+        return response({
+          access: { isStudioOwner: true },
+          registry: { revision: 9, digest: 'a'.repeat(64), degraded: false },
+          sources: [{ id: 'team-git', name: 'Team Git', authority: 'custom', enabled: true, mutable: true }],
+        });
+      }
+      if (url === '/api/plugins/marketplace/sources/team-git/refresh') {
+        expect(init?.method).toBe('POST');
+        return response({ ok: true });
+      }
+      if (url === '/api/plugins/marketplace/sources/team-git?expectedRevision=9&expectedDigest=' + 'a'.repeat(64)) {
+        expect(init?.method).toBe('DELETE');
+        return response({ ok: true });
+      }
+      return response({});
+    });
+
+    render(<MarketplaceSourcesPanel />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Refresh team-git' }));
+    await waitFor(() => expect(mockShowToast).toHaveBeenCalledWith('settings.plugins.marketSourceRefreshed', 'success'));
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove marketplace source team-git' }));
+    await waitFor(() => expect(mockShowToast).toHaveBeenCalledWith('settings.plugins.marketSourceRemoved', 'success'));
+    expect(loadCount).toBeGreaterThanOrEqual(3);
+    expect(calls).toContainEqual({
+      url: '/api/plugins/marketplace/sources/team-git/refresh',
+      method: 'POST',
+    });
+    expect(calls).toContainEqual({
+      url: '/api/plugins/marketplace/sources/team-git?expectedRevision=9&expectedDigest=' + 'a'.repeat(64),
+      method: 'DELETE',
+    });
+  });
+
+  it('does not expose source mutation icons for immutable rows', async () => {
+    mockHanaFetch.mockResolvedValue(response({
+      access: { isStudioOwner: true },
+      registry: { revision: 1, digest: 'b'.repeat(64), degraded: false },
+      sources: [
+        { id: 'official', name: 'Official', authority: 'official', mutable: false, enabled: true },
+        { id: 'legacy', name: 'Legacy', authority: 'legacy', mutable: true, enabled: true },
+      ],
+    }));
+
+    render(<MarketplaceSourcesPanel />);
+
+    expect(await screen.findByText('Official')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Refresh official' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Remove marketplace source official' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Refresh legacy' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Remove marketplace source legacy' })).not.toBeInTheDocument();
   });
 
   it('blocks mutation controls for non-owners while preserving read-only browsing', async () => {
