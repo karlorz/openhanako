@@ -2415,7 +2415,7 @@
     },
     {
       "sourceFile": "core/agent-manager.ts",
-      "line": 957,
+      "line": 960,
       "kind": "write-file",
       "excerpt": "fsp.writeFile( this._deletedAgentTombstonePath(agentId), JSON.stringify(tombstone, null, 2), \"utf-8\", )",
       "reason": "Creates, rolls back, or edits agent profile material.",
@@ -2802,7 +2802,7 @@
     },
     {
       "sourceFile": "core/engine.ts",
-      "line": 312,
+      "line": 320,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(this.channelsDir, { recursive: true })",
       "reason": "Creates the channel root.",
@@ -2811,7 +2811,7 @@
     },
     {
       "sourceFile": "core/engine.ts",
-      "line": 358,
+      "line": 366,
       "kind": "persistent-store-constructor",
       "excerpt": "new PreferencesManager({ userDir: this.userDir, agentsDir: this.agentsDir })",
       "reason": "Constructs the preferences owner.",
@@ -2820,7 +2820,7 @@
     },
     {
       "sourceFile": "core/engine.ts",
-      "line": 359,
+      "line": 367,
       "kind": "persistent-store-constructor",
       "excerpt": "new InputDraftsStore({ hanakoHome: this.hanakoHome })",
       "reason": "Constructs draft/project stores.",
@@ -2829,7 +2829,7 @@
     },
     {
       "sourceFile": "core/engine.ts",
-      "line": 377,
+      "line": 385,
       "kind": "persistent-store-constructor",
       "excerpt": "new SessionProjectCatalogStore({ userDir: this.userDir })",
       "reason": "Constructs draft/project stores.",
@@ -2838,7 +2838,7 @@
     },
     {
       "sourceFile": "core/engine.ts",
-      "line": 610,
+      "line": 618,
       "kind": "persistent-store-constructor",
       "excerpt": "new TaskRegistry({ persistencePath: path.join(this.hanakoHome, \".ephemeral\", \"plugin-tasks.json\"), getSessionIdForPath: (sessionPath) => this.getSessionIdForPath(sessionPath), })",
       "reason": "Constructs the plugin task registry.",
@@ -2847,7 +2847,7 @@
     },
     {
       "sourceFile": "core/engine.ts",
-      "line": 1233,
+      "line": 1241,
       "kind": "persistent-store-constructor",
       "excerpt": "new SessionManifestStore({ dbPath })",
       "reason": "Constructs the manifest store during engine construction.",
@@ -2856,7 +2856,7 @@
     },
     {
       "sourceFile": "core/engine.ts",
-      "line": 1254,
+      "line": 1262,
       "kind": "persistent-store-constructor",
       "excerpt": "new SessionManifestStore({ dbPath })",
       "reason": "Constructs the manifest store during engine construction.",
@@ -2865,7 +2865,7 @@
     },
     {
       "sourceFile": "core/engine.ts",
-      "line": 2235,
+      "line": 2321,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(skillsDir, { recursive: true })",
       "reason": "Creates the user skill root.",
@@ -2874,7 +2874,7 @@
     },
     {
       "sourceFile": "core/engine.ts",
-      "line": 2417,
+      "line": 2507,
       "kind": "remove-path",
       "excerpt": "fs.unlinkSync(filePath)",
       "reason": "Deletes an expired legacy ephemeral session JSONL locator.",
@@ -2883,7 +2883,7 @@
     },
     {
       "sourceFile": "core/engine.ts",
-      "line": 2471,
+      "line": 2561,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(pluginDevSourcesDir, { recursive: true })",
       "reason": "Creates the plugin development source root.",
@@ -5169,7 +5169,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 1263,
+      "line": 1271,
       "kind": "remove-path",
       "excerpt": "fs.unlinkSync(serverInfoPath)",
       "reason": "Deletes stale desktop server discovery state before or after a server lifecycle.",
@@ -5178,7 +5178,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 1267,
+      "line": 1275,
       "kind": "remove-path",
       "excerpt": "fs.unlinkSync(serverInfoPath)",
       "reason": "Deletes stale desktop server discovery state before or after a server lifecycle.",
@@ -5187,7 +5187,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 1823,
+      "line": 1835,
       "kind": "remove-path",
       "excerpt": "fs.unlinkSync(serverInfoPath)",
       "reason": "Deletes stale desktop server discovery state before or after a server lifecycle.",
@@ -5196,7 +5196,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 2314,
+      "line": 2326,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(hanakoHome, { recursive: true })",
       "reason": "Writes desktop crash or browser-command diagnostics.",
@@ -5205,7 +5205,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 2315,
+      "line": 2327,
       "kind": "write-file",
       "excerpt": "fs.writeFileSync(crashLogPath, content, \"utf-8\")",
       "reason": "Writes desktop crash or browser-command diagnostics.",
@@ -5214,7 +5214,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 2376,
+      "line": 2388,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(path.dirname(lastSeenVersionPath), { recursive: true })",
       "reason": "Writes desktop window bounds or the release-announcement version bookmark.",
@@ -5223,7 +5223,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 2377,
+      "line": 2389,
       "kind": "write-file",
       "excerpt": "fs.writeFileSync(lastSeenVersionPath, JSON.stringify({ version }))",
       "reason": "Writes desktop window bounds or the release-announcement version bookmark.",
@@ -5232,7 +5232,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 2445,
+      "line": 2457,
       "kind": "write-file",
       "excerpt": "fs.promises.writeFile(windowStatePath, JSON.stringify(state, null, 2) + \"\\n\")",
       "reason": "Writes desktop window bounds or the release-announcement version bookmark.",
@@ -5241,7 +5241,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 2544,
+      "line": 2556,
       "kind": "mkdir",
       "excerpt": "fs.promises.mkdir(path.dirname(quickChatWindowStatePath), { recursive: true })",
       "reason": "Writes desktop window bounds or the release-announcement version bookmark.",
@@ -5250,7 +5250,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 2545,
+      "line": 2557,
       "kind": "write-file",
       "excerpt": "fs.promises.writeFile(quickChatWindowStatePath, JSON.stringify(state, null, 2) + \"\\n\")",
       "reason": "Writes desktop window bounds or the release-announcement version bookmark.",
@@ -5259,7 +5259,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 4297,
+      "line": 4309,
       "kind": "append-file",
       "excerpt": "require(\"fs\").appendFileSync(require(\"path\").join(hanakoHome, \"browser-cmd.log\"), `${new Date().toISOString()} ${redactMainLogText(line)}\\n`)",
       "reason": "Writes desktop crash or browser-command diagnostics.",
@@ -5268,7 +5268,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 4864,
+      "line": 4876,
       "kind": "write-file",
       "excerpt": "fs.writeFileSync(tmpHtml, htmlContent, \"utf-8\")",
       "reason": "Writes and removes one request-scoped screenshot HTML file under the operating-system temporary directory.",
@@ -5277,7 +5277,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 4918,
+      "line": 4930,
       "kind": "remove-path",
       "excerpt": "fs.unlinkSync(tmpHtml)",
       "reason": "Writes and removes one request-scoped screenshot HTML file under the operating-system temporary directory.",
@@ -5286,7 +5286,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 5513,
+      "line": 5525,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(tmpDir, { recursive: true })",
       "reason": "Creates a request-scoped skill preview directory under Electron's operating-system temp path.",
@@ -5295,7 +5295,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 5659,
+      "line": 5671,
       "kind": "write-file",
       "excerpt": "fs.writeFileSync(filePath, content, \"utf-8\")",
       "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
@@ -5304,7 +5304,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 5681,
+      "line": 5693,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(path.dirname(resolved), { recursive: true })",
       "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
@@ -5313,7 +5313,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 5682,
+      "line": 5694,
       "kind": "write-file",
       "excerpt": "fs.writeFileSync(resolved, Buffer.from(base64Data, \"base64\"))",
       "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
@@ -5322,7 +5322,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 5693,
+      "line": 5705,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(path.dirname(destinationPath), { recursive: true })",
       "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
@@ -5331,7 +5331,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 5694,
+      "line": 5706,
       "kind": "copy-file",
       "excerpt": "fs.copyFileSync(sourcePath, destinationPath)",
       "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
@@ -5340,7 +5340,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 5727,
+      "line": 5739,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(dir, { recursive: true })",
       "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
@@ -5349,7 +5349,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 5728,
+      "line": 5740,
       "kind": "write-file",
       "excerpt": "fs.writeFileSync(filePath, pngBuffer)",
       "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
@@ -5358,7 +5358,7 @@
     },
     {
       "sourceFile": "desktop/main.cjs",
-      "line": 6266,
+      "line": 6278,
       "kind": "remove-path",
       "excerpt": "fs.unlinkSync(path.join(hanakoHome, \"server-info.json\"))",
       "reason": "Deletes stale desktop server discovery state before or after a server lifecycle.",
@@ -6978,7 +6978,7 @@
     },
     {
       "sourceFile": "lib/plugin-marketplace-claude-skills.ts",
-      "line": 226,
+      "line": 253,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(path.dirname(filePath), { recursive: true })",
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
@@ -6987,9 +6987,36 @@
     },
     {
       "sourceFile": "lib/plugin-marketplace-claude-skills.ts",
-      "line": 237,
+      "line": 264,
       "kind": "write-file",
       "excerpt": "fs.writeFileSync(filePath, JSON.stringify(payload, null, 2) + \"\\n\", \"utf8\")",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/plugin-marketplace-claude-skills.ts",
+      "line": 413,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(filePath, { force: true })",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/plugin-marketplace-claude-skills.ts",
+      "line": 416,
+      "kind": "remove-path",
+      "excerpt": "fs.rmdirSync(sourceDir)",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/plugin-marketplace-claude-skills.ts",
+      "line": 441,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(dir, { recursive: true, force: true })",
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
       "storeId": "installed-plugins",
       "exemptionId": null
@@ -7167,7 +7194,7 @@
     },
     {
       "sourceFile": "lib/plugin-marketplace-sources.ts",
-      "line": 138,
+      "line": 141,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(p, o)",
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
@@ -7176,7 +7203,7 @@
     },
     {
       "sourceFile": "lib/plugin-marketplace-sources.ts",
-      "line": 142,
+      "line": 145,
       "kind": "write-file",
       "excerpt": "fs.writeFileSync(p, data, encoding)",
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
@@ -8616,7 +8643,7 @@
     },
     {
       "sourceFile": "server/routes/plugins.ts",
-      "line": 403,
+      "line": 406,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(userPluginsDir, { recursive: true })",
       "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
@@ -8625,7 +8652,7 @@
     },
     {
       "sourceFile": "server/routes/plugins.ts",
-      "line": 427,
+      "line": 430,
       "kind": "copy-file",
       "excerpt": "fs.cpSync(pluginSrc, tmpTarget, { recursive: true })",
       "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
@@ -8634,7 +8661,7 @@
     },
     {
       "sourceFile": "server/routes/plugins.ts",
-      "line": 434,
+      "line": 437,
       "kind": "remove-path",
       "excerpt": "fs.rmSync(cleanupPath, { recursive: true, force: true })",
       "reason": "One bounded cleanup list contains both HANA_HOME .installing staging and operating-system extraction temp; flow-sensitive attribution must replace this exact conditional site.",
@@ -8643,7 +8670,7 @@
     },
     {
       "sourceFile": "server/routes/plugins.ts",
-      "line": 479,
+      "line": 482,
       "kind": "remove-path",
       "excerpt": "fs.rmSync(targetDir, { recursive: true, force: true })",
       "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
@@ -8652,7 +8679,7 @@
     },
     {
       "sourceFile": "server/routes/plugins.ts",
-      "line": 541,
+      "line": 544,
       "kind": "remove-path",
       "excerpt": "fs.rmSync(targetDir, { recursive: true, force: true })",
       "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
@@ -8661,7 +8688,7 @@
     },
     {
       "sourceFile": "server/routes/plugins.ts",
-      "line": 542,
+      "line": 545,
       "kind": "rename",
       "excerpt": "fs.renameSync(stagedDir, targetDir)",
       "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
@@ -8670,7 +8697,7 @@
     },
     {
       "sourceFile": "server/routes/plugins.ts",
-      "line": 568,
+      "line": 571,
       "kind": "remove-path",
       "excerpt": "fs.rmSync(cleanupPath, { recursive: true, force: true })",
       "reason": "One bounded cleanup list contains both HANA_HOME .installing staging and operating-system extraction temp; flow-sensitive attribution must replace this exact conditional site.",
@@ -8679,7 +8706,7 @@
     },
     {
       "sourceFile": "server/routes/plugins.ts",
-      "line": 674,
+      "line": 677,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(downloadsDir, { recursive: true })",
       "reason": "Caches a sha256-verified plugin release package.",
@@ -8688,7 +8715,7 @@
     },
     {
       "sourceFile": "server/routes/plugins.ts",
-      "line": 676,
+      "line": 679,
       "kind": "write-file",
       "excerpt": "fs.writeFileSync(packagePath, body)",
       "reason": "Caches a sha256-verified plugin release package.",
@@ -8697,7 +8724,7 @@
     },
     {
       "sourceFile": "server/routes/plugins.ts",
-      "line": 1708,
+      "line": 1827,
       "kind": "remove-path",
       "excerpt": "fs.rmSync(pluginDir, { recursive: true, force: true })",
       "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
@@ -8832,7 +8859,7 @@
     },
     {
       "sourceFile": "server/routes/skills.ts",
-      "line": 52,
+      "line": 54,
       "kind": "remove-path",
       "excerpt": "fs.rmSync(dir, { recursive: true, force: true })",
       "reason": "Removes an installed user skill through the skill owner route.",

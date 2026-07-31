@@ -11,6 +11,20 @@ function truncateDesc(raw: string): string {
   return desc;
 }
 
+function marketplaceInactiveHint(skill: SkillInfo): string | null {
+  if (!skill.marketplacePackage || skill.active !== false) return null;
+  switch (skill.inactiveReason) {
+    case 'agent-skill-disabled':
+      return t('settings.skills.marketplaceInactiveAgent');
+    case 'marketplace-source-blocked':
+      return t('settings.skills.marketplaceInactiveSource');
+    case 'marketplace-package-disabled':
+      return t('settings.skills.marketplaceInactivePackage');
+    default:
+      return skill.inactiveReason || null;
+  }
+}
+
 interface SkillRowProps {
   skill: SkillInfo;
   nameHint?: string;
@@ -43,6 +57,8 @@ export function SkillRow({
   onDrop,
 }: SkillRowProps) {
   const displayDesc = truncateDesc(skill.description || '');
+  const marketplaceHint = marketplaceInactiveHint(skill);
+  const marketplacePackage = skill.marketplacePackage;
 
   return (
     <div
@@ -67,7 +83,27 @@ export function SkillRow({
         <span className={styles['skills-list-name']}>
           {skill.name}
           {nameHint && <span className={styles['skills-list-name-hint']}>{nameHint}</span>}
+          {marketplacePackage && (
+            <span
+              className={styles['skills-source-badge']}
+              title={t('settings.skills.marketplacePackageSource', { identity: marketplacePackage.identity })}
+              data-marketplace-package={marketplacePackage.identity}
+              translate="no"
+            >
+              {t('settings.skills.marketplacePackageBadge')}
+            </span>
+          )}
         </span>
+        {marketplacePackage && (
+          <span className={styles['skills-list-desc']} translate="no">
+            {t('settings.skills.marketplacePackageSource', { identity: marketplacePackage.identity })}
+          </span>
+        )}
+        {marketplaceHint && (
+          <span className={styles['skills-list-desc']} data-inactive-reason={skill.inactiveReason || undefined}>
+            {marketplaceHint}
+          </span>
+        )}
         <span className={styles['skills-list-desc']}>{displayDesc}</span>
       </div>
       <div className={styles['skills-list-actions']}>

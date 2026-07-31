@@ -1939,6 +1939,11 @@
       "toggleDisable": "Skill を無効化",
       "toggleEnableNamed": "{name} を有効化",
       "toggleDisableNamed": "{name} を無効化",
+      "marketplacePackageBadge": "Hana スキル",
+      "marketplacePackageSource": "パッケージ: {identity}",
+      "marketplaceInactivePackage": "パッケージはプラグイン管理で無効です。このエージェントの設定は保持されます。",
+      "marketplaceInactiveAgent": "このエージェントでは無効です。設定は保持されます。",
+      "marketplaceInactiveSource": "マーケットソースを利用できません。設定は保持されます。",
       "bundleDialog": {
         "createTitle": "Bundle を作成",
         "renameTitle": "Bundle の名前を変更",
@@ -2086,7 +2091,8 @@
       "skillPackageStatusStale": "レコード失効",
       "skillPackageUninstallConfirm": "スキルパッケージ \"{identity}\" をアンインストールしますか？記録されたスキル {skillCount} 件を完全に削除します。ネイティブプラグインと Agent 開発ツールは影響しません。",
       "skillPackageToggle": "スキルパッケージ {identity} を切り替え",
-      "skillPackageManageInSkills": "Skills で管理"
+      "skillPackageManageInSkills": "Skills で管理",
+      "skillPackageDefaultOn": "インストール済みのスキルパッケージはすべてのエージェントで既定で有効です。個別の無効化は Skills で設定できます。"
     },
     "mcp": {
       "masterTitle": "Master Switch",

@@ -1939,6 +1939,11 @@
       "toggleDisable": "Skill 비활성화",
       "toggleEnableNamed": "{name} 활성화",
       "toggleDisableNamed": "{name} 비활성화",
+      "marketplacePackageBadge": "Hana 스킬",
+      "marketplacePackageSource": "패키지: {identity}",
+      "marketplaceInactivePackage": "플러그인 관리에서 패키지가 비활성화되어 있어요. 이 Agent의 설정은 보존돼요.",
+      "marketplaceInactiveAgent": "이 Agent에서 비활성화했어요. 설정은 보존돼요.",
+      "marketplaceInactiveSource": "마켓 소스를 사용할 수 없어요. 설정은 보존돼요.",
       "bundleDialog": {
         "createTitle": "Bundle 만들기",
         "renameTitle": "Bundle 이름 변경",
@@ -2086,7 +2091,8 @@
       "skillPackageStatusStale": "기록 만료",
       "skillPackageUninstallConfirm": "스킬 패키지 \"{identity}\"을(를) 제거하시겠습니까? 기록된 스킬 {skillCount}개가 영구 삭제됩니다. 네이티브 플러그인과 Agent 개발 도구는 영향받지 않습니다.",
       "skillPackageToggle": "스킬 패키지 {identity} 전환",
-      "skillPackageManageInSkills": "Skills에서 관리"
+      "skillPackageManageInSkills": "Skills에서 관리",
+      "skillPackageDefaultOn": "설치된 스킬 패키지는 모든 Agent에서 기본으로 활성화돼요. Skills에서 Agent별로 끌 수 있어요."
     },
     "mcp": {
       "masterTitle": "Master Switch",

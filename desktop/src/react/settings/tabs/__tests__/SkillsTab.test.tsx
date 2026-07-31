@@ -69,7 +69,7 @@ vi.mock('../bridge/AgentSelect', () => ({
 // unconditional render would produce duplicate testids.
 vi.mock('../skills/SkillRow', () => ({
   SkillRow: ({
-    skill,
+  skill,
     draggable,
     extraActions,
     onToggle,
@@ -78,7 +78,13 @@ vi.mock('../skills/SkillRow', () => ({
     onDragOver,
     onDrop,
   }: {
-    skill: { name: string; enabled: boolean };
+    skill: {
+      name: string;
+      enabled: boolean;
+      active?: boolean;
+      inactiveReason?: string | null;
+      marketplacePackage?: { identity: string } | null;
+    };
     draggable?: boolean;
     extraActions?: React.ReactNode;
     onToggle?: (name: string, enabled: boolean) => void;
@@ -91,6 +97,9 @@ vi.mock('../skills/SkillRow', () => ({
       data-testid={`skill-row-${skill.name}`}
       data-skill-name={skill.name}
       data-enabled={String(skill.enabled)}
+      data-active={skill.active == null ? undefined : String(skill.active)}
+      data-marketplace-package={skill.marketplacePackage?.identity}
+      data-inactive-reason={skill.inactiveReason || undefined}
       draggable={draggable}
       onDragStart={(event) => onDragStart?.(event, skill.name)}
       onDragOver={onDragOver}
@@ -247,6 +256,41 @@ describe('SkillsTab — sticky skillsViewAgentId & toggleSkill race guard', () =
     expect(skillsCalls.length).toBeGreaterThanOrEqual(1);
     expect(skillsCalls[0][0]).toContain('agentId=agent-a');
     expect(skillsCalls[0][0]).toContain('runtime=1');
+  });
+
+  it('shows an installed marketplace skill enabled by preference even when it is runtime-inactive', async () => {
+    seedStore({ currentAgentId: 'agent-a' });
+    fetchMock.mockImplementation((url: string) => {
+      if (url.includes('/api/skills/external-paths')) {
+        return Promise.resolve(jsonResponse({ configured: [], discovered: [] }));
+      }
+      if (url.includes('/api/skills/bundles')) {
+        return Promise.resolve(jsonResponse({ bundles: [] }));
+      }
+      if (url.includes('/api/skills?agentId=agent-a')) {
+        return Promise.resolve(jsonResponse({ skills: [{
+          name: 'wiki-query',
+          description: 'Query the wiki',
+          enabled: true,
+          active: false,
+          inactiveReason: 'marketplace-package-disabled',
+          marketplacePackage: {
+            identity: 'skillwiki@llm-wiki',
+            skillName: 'wiki-query',
+            explicitlyDisabled: false,
+          },
+        }] }));
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+
+    render(<SkillsTab />);
+    await waitFor(() => expect(screen.getAllByTestId('skill-row-wiki-query')).toHaveLength(2));
+    const agentRow = screen.getAllByTestId('skill-row-wiki-query')[1];
+    expect(agentRow.getAttribute('data-enabled')).toBe('true');
+    expect(agentRow.getAttribute('data-active')).toBe('false');
+    expect(agentRow.getAttribute('data-marketplace-package')).toBe('skillwiki@llm-wiki');
+    expect(agentRow.getAttribute('data-inactive-reason')).toBe('marketplace-package-disabled');
   });
 
   it('uploads a selected skill package when no local path picker is available', async () => {

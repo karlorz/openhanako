@@ -92,4 +92,35 @@ describe('SkillBundleTree', () => {
     fireEvent.click(screen.getByRole('button', { name: 'settings.skills.collapseBundleAriaLabel' }));
     expect(onExpandedStateChange).toHaveBeenCalledWith({ 'writing-bundle': false });
   });
+
+  it('shows package provenance and keeps an inactive package skill configurable', () => {
+    const onToggleSkill = vi.fn();
+    const { container } = render(
+      <SkillBundleTree
+        mode="agent"
+        bundles={[]}
+        skills={[{
+          name: 'wiki-query',
+          description: 'Query the wiki',
+          enabled: true,
+          active: false,
+          inactiveReason: 'marketplace-package-disabled',
+          managedBy: 'marketplace-skill-package',
+          marketplacePackage: {
+            identity: 'skillwiki@llm-wiki',
+            skillName: 'wiki-query',
+            explicitlyDisabled: false,
+          },
+        }]}
+        nameHints={{}}
+        emptyText="No skills"
+        onToggleSkill={onToggleSkill}
+      />,
+    );
+
+    expect(container.querySelector('[data-marketplace-package="skillwiki@llm-wiki"]')).toBeTruthy();
+    expect(container.querySelector('[data-inactive-reason="marketplace-package-disabled"]')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'settings.skills.toggleDisableNamed' }));
+    expect(onToggleSkill).toHaveBeenCalledWith('wiki-query', false);
+  });
 });

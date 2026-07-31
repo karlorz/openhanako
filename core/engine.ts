@@ -168,6 +168,9 @@ import {
 import { buildPresentSkillPackageMembership } from "../lib/plugin-marketplace-claude-skills.ts";
 import { computeMarketplaceSkillPackageActivation } from "../lib/plugin-marketplace-activation.ts";
 import { PluginMarketplaceService } from "../lib/plugin-marketplace-service.ts";
+import {
+  migrateLegacyMarketplaceSkillOverrides,
+} from "../lib/marketplace-skill-preferences.ts";
 import { createUsageLedger } from "../lib/llm/usage-ledger.ts";
 import {
   autoProjectIdForCwd,
@@ -2017,33 +2020,51 @@ export class HanaEngine {
     this._marketplaceSkillMembershipMap = membershipMap;
 
     // Ensure registry is available so package gates enforce after cold start.
-    this._ensurePluginMarketplaceService();
+    const svc = this._ensurePluginMarketplaceService();
+    const legacyByAgent = svc?.registry?.getControlPlaneActivations?.()?.agentSkillOverrides;
+    const migrated = migrateLegacyMarketplaceSkillOverrides({
+      agents: this._agentMgr?.agents?.values?.() || [],
+      legacyByAgent,
+      membership: membershipMap,
+      onDiagnostic: (diagnostic) => moduleLog.warn(
+        `[marketplace] ${diagnostic.path}: ${diagnostic.message}`,
+      ),
+    });
+    if (migrated > 0) moduleLog.log(`[marketplace] migrated ${migrated} agent skill preference record(s)`);
 
     this._skills.setMarketplaceSkillPackageGateResolver((skillName) => {
       const membership = this._marketplaceSkillMembershipMap?.get(skillName);
       if (!membership) return { enabled: true, reason: null };
 
-      const svc = this.pluginMarketplaceService;
-      if (!svc?.registry) {
+      const activeService = this.pluginMarketplaceService;
+      if (!activeService?.registry) {
         // Prefer last-known-good / missing registry: do not disable all packages.
-        return { enabled: true, reason: null };
+        return {
+          identity: membership.identity,
+          skillName,
+          enabled: true,
+          state: "enabled",
+          reason: null,
+        };
       }
 
       const gate = computeMarketplaceSkillPackageActivation({
         identity: membership.identity,
-        activations: svc.registry.getControlPlaneActivations(),
-        sources: svc.registry.listSources(),
+        activations: activeService.registry.getControlPlaneActivations(),
+        sources: activeService.registry.listSources(),
         installedPresent: true,
       });
-      if (!gate.enabled) {
-        return {
-          enabled: false,
-          reason: gate.state === "blocked-by-source"
+      return {
+        identity: gate.identity,
+        skillName,
+        enabled: gate.enabled,
+        state: gate.state,
+        reason: gate.enabled
+          ? null
+          : gate.state === "blocked-by-source"
             ? "marketplace-source-blocked"
             : "marketplace-package-disabled",
-        };
-      }
-      return { enabled: true, reason: null };
+      };
     });
   }
 

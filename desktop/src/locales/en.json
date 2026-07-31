@@ -1974,6 +1974,11 @@
       "toggleDisable": "Disable Skill",
       "toggleEnableNamed": "Enable {name}",
       "toggleDisableNamed": "Disable {name}",
+      "marketplacePackageBadge": "Hana skills",
+      "marketplacePackageSource": "Package: {identity}",
+      "marketplaceInactivePackage": "The package is disabled in Manage Plugins; this preference is preserved.",
+      "marketplaceInactiveAgent": "Disabled for this agent; the preference is preserved.",
+      "marketplaceInactiveSource": "The marketplace source is unavailable; this preference is preserved.",
       "compatTitle": "Compatible Skills",
       "compatDesc": "Auto-discover skills installed by other AI tools",
       "compatNoSkills": "No external skills found",
@@ -2152,7 +2157,8 @@
       "skillPackageStatusStale": "stale",
       "skillPackageUninstallConfirm": "Uninstall skill package \"{identity}\"? This permanently removes {skillCount} recorded skill(s). Native plugins and agent dev-tools dirs are unaffected.",
       "skillPackageToggle": "Toggle skill package {identity}",
-      "skillPackageManageInSkills": "Manage in Skills"
+      "skillPackageManageInSkills": "Manage in Skills",
+      "skillPackageDefaultOn": "Installed package skills are enabled for every agent by default; use Skills to opt out per agent."
     },
     "mcp": {
       "masterTitle": "Master Switch",

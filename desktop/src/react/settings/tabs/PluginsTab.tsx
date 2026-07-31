@@ -820,6 +820,9 @@ export function PluginsTab() {
                         {pkg.skillNames.join(', ')}
                       </span>
                     )}
+                    <span className={styles['skills-list-desc']}>
+                      {t('settings.plugins.skillPackageDefaultOn')}
+                    </span>
                   </div>
 
                   <div className={styles['skills-list-actions']} style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>

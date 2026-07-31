@@ -627,7 +627,7 @@
     ],
     "version": 2
   },
-  "payloadFingerprint": "sha256:2093fbece927a2fb1ae3020c7906cf92bfed61915f7ced82479c107d6c69c93d",
+  "payloadFingerprint": "sha256:0d8fcab51329e8614b591bc14efced3dfbadf242d5b07161b9b9d94a65720bca",
   "registry": [
     {
       "affectedByEpochMigration": true,
@@ -2889,8 +2889,8 @@
   ],
   "review": {
     "classification": "compatible",
-    "compatibilityReason": "Adds marketplace-qualified Claude skill provenance and derived compatibility-state paths; absent directories remain valid and existing store bytes keep their prior interpretation.",
-    "payloadFingerprint": "sha256:2093fbece927a2fb1ae3020c7906cf92bfed61915f7ced82479c107d6c69c93d"
+    "compatibilityReason": "Adds per-agent marketplace skill preferences and source-qualified runtime metadata without changing persisted store schema or existing store-byte interpretation.",
+    "payloadFingerprint": "sha256:0d8fcab51329e8614b591bc14efced3dfbadf242d5b07161b9b9d94a65720bca"
   },
   "schemas": [
     {
@@ -2972,7 +2972,7 @@
       "contract": "agent config and authored Markdown/image profile protocol",
       "kind": "directory-contract",
       "module": "core/agent-manager.ts",
-      "sourceHash": "sha256:1c1e3f0e3b5e36d85365a5c9b211ecb10a46ca61536e4e27348d2a0b6c4f4e0c",
+      "sourceHash": "sha256:da1100f357a8a74f4806baa82eae3015f911cde6c2955f96dba0071b1bba5080",
       "storeId": "agent-profile"
     },
     {
@@ -3073,7 +3073,7 @@
       "contract": "desktop window bounds, release announcement bookmark, and update cache version marker readers",
       "kind": "directory-contract",
       "module": "desktop/main.cjs",
-      "sourceHash": "sha256:d88a6473103fb974fc29829f516eabcfb0c7342157c455d3f5adf84874525d4c",
+      "sourceHash": "sha256:c3061b1fa692bcca089163082da21ddc5c5f28a44a4805ae510ef06739c014d6",
       "storeId": "desktop-window-version-state"
     },
     {
@@ -3150,7 +3150,7 @@
       "contract": "verified plugin release ZIP naming by pluginId/version and expected sha256",
       "kind": "directory-contract",
       "module": "server/routes/plugins.ts",
-      "sourceHash": "sha256:df417a5a5ea78aa805590588efa9fe34670cf858932f230956d56f4a2db59295",
+      "sourceHash": "sha256:a1963cdfdcc032f909f63dd134019bcaebed342489ad41244c0cfc755077179e",
       "storeId": "plugin-download-cache"
     },
     {
@@ -3353,7 +3353,7 @@
       "contract": "SKILL.md package, bundle registry, and export staging protocols",
       "kind": "directory-contract",
       "module": "lib/skills/skill-package-installer.ts",
-      "sourceHash": "sha256:3ecbd3fe7172995c498b318b8e09e618386c3377795cddfd72f7b9a7ed239494",
+      "sourceHash": "sha256:4c0d544644f05c2836a79cb45a512899477cfb0644673760095d7ebb62b42499",
       "storeId": "skill-state"
     },
     {
@@ -3527,7 +3527,7 @@
     {
       "exemptionId": null,
       "kind": "write-file",
-      "line": 957,
+      "line": 960,
       "reason": "Creates, rolls back, or edits agent profile material.",
       "sourceFile": "core/agent-manager.ts",
       "storeId": "agent-profile"
@@ -3871,7 +3871,7 @@
     {
       "exemptionId": null,
       "kind": "mkdir",
-      "line": 312,
+      "line": 320,
       "reason": "Creates the channel root.",
       "sourceFile": "core/engine.ts",
       "storeId": "channels"
@@ -3879,7 +3879,7 @@
     {
       "exemptionId": null,
       "kind": "persistent-store-constructor",
-      "line": 358,
+      "line": 366,
       "reason": "Constructs the preferences owner.",
       "sourceFile": "core/engine.ts",
       "storeId": "user-preferences"
@@ -3887,7 +3887,7 @@
     {
       "exemptionId": null,
       "kind": "persistent-store-constructor",
-      "line": 359,
+      "line": 367,
       "reason": "Constructs draft/project stores.",
       "sourceFile": "core/engine.ts",
       "storeId": "session-drafts-and-projects"
@@ -3895,7 +3895,7 @@
     {
       "exemptionId": null,
       "kind": "persistent-store-constructor",
-      "line": 377,
+      "line": 385,
       "reason": "Constructs draft/project stores.",
       "sourceFile": "core/engine.ts",
       "storeId": "session-drafts-and-projects"
@@ -3903,7 +3903,7 @@
     {
       "exemptionId": null,
       "kind": "persistent-store-constructor",
-      "line": 610,
+      "line": 618,
       "reason": "Constructs the plugin task registry.",
       "sourceFile": "core/engine.ts",
       "storeId": "plugin-task-registry"
@@ -3911,7 +3911,7 @@
     {
       "exemptionId": null,
       "kind": "persistent-store-constructor",
-      "line": 1233,
+      "line": 1241,
       "reason": "Constructs the manifest store during engine construction.",
       "sourceFile": "core/engine.ts",
       "storeId": "session-manifest-sqlite"
@@ -3919,7 +3919,7 @@
     {
       "exemptionId": null,
       "kind": "persistent-store-constructor",
-      "line": 1254,
+      "line": 1262,
       "reason": "Constructs the manifest store during engine construction.",
       "sourceFile": "core/engine.ts",
       "storeId": "session-manifest-sqlite"
@@ -3927,7 +3927,7 @@
     {
       "exemptionId": null,
       "kind": "mkdir",
-      "line": 2235,
+      "line": 2321,
       "reason": "Creates the user skill root.",
       "sourceFile": "core/engine.ts",
       "storeId": "skill-state"
@@ -3935,7 +3935,7 @@
     {
       "exemptionId": null,
       "kind": "remove-path",
-      "line": 2417,
+      "line": 2507,
       "reason": "Deletes an expired legacy ephemeral session JSONL locator.",
       "sourceFile": "core/engine.ts",
       "storeId": "session-jsonl"
@@ -3943,7 +3943,7 @@
     {
       "exemptionId": null,
       "kind": "mkdir",
-      "line": 2471,
+      "line": 2561,
       "reason": "Creates the plugin development source root.",
       "sourceFile": "core/engine.ts",
       "storeId": "plugin-development-state"
@@ -5975,7 +5975,7 @@
     {
       "exemptionId": null,
       "kind": "remove-path",
-      "line": 1263,
+      "line": 1271,
       "reason": "Deletes stale desktop server discovery state before or after a server lifecycle.",
       "sourceFile": "desktop/main.cjs",
       "storeId": "server-runtime-info"
@@ -5983,7 +5983,7 @@
     {
       "exemptionId": null,
       "kind": "remove-path",
-      "line": 1267,
+      "line": 1275,
       "reason": "Deletes stale desktop server discovery state before or after a server lifecycle.",
       "sourceFile": "desktop/main.cjs",
       "storeId": "server-runtime-info"
@@ -5991,7 +5991,7 @@
     {
       "exemptionId": null,
       "kind": "remove-path",
-      "line": 1823,
+      "line": 1835,
       "reason": "Deletes stale desktop server discovery state before or after a server lifecycle.",
       "sourceFile": "desktop/main.cjs",
       "storeId": "server-runtime-info"
@@ -5999,7 +5999,7 @@
     {
       "exemptionId": null,
       "kind": "mkdir",
-      "line": 2314,
+      "line": 2326,
       "reason": "Writes desktop crash or browser-command diagnostics.",
       "sourceFile": "desktop/main.cjs",
       "storeId": "desktop-diagnostics"
@@ -6007,7 +6007,7 @@
     {
       "exemptionId": null,
       "kind": "write-file",
-      "line": 2315,
+      "line": 2327,
       "reason": "Writes desktop crash or browser-command diagnostics.",
       "sourceFile": "desktop/main.cjs",
       "storeId": "desktop-diagnostics"
@@ -6015,7 +6015,7 @@
     {
       "exemptionId": null,
       "kind": "mkdir",
-      "line": 2376,
+      "line": 2388,
       "reason": "Writes desktop window bounds or the release-announcement version bookmark.",
       "sourceFile": "desktop/main.cjs",
       "storeId": "desktop-window-version-state"
@@ -6023,7 +6023,7 @@
     {
       "exemptionId": null,
       "kind": "write-file",
-      "line": 2377,
+      "line": 2389,
       "reason": "Writes desktop window bounds or the release-announcement version bookmark.",
       "sourceFile": "desktop/main.cjs",
       "storeId": "desktop-window-version-state"
@@ -6031,7 +6031,7 @@
     {
       "exemptionId": null,
       "kind": "write-file",
-      "line": 2445,
+      "line": 2457,
       "reason": "Writes desktop window bounds or the release-announcement version bookmark.",
       "sourceFile": "desktop/main.cjs",
       "storeId": "desktop-window-version-state"
@@ -6039,7 +6039,7 @@
     {
       "exemptionId": null,
       "kind": "mkdir",
-      "line": 2544,
+      "line": 2556,
       "reason": "Writes desktop window bounds or the release-announcement version bookmark.",
       "sourceFile": "desktop/main.cjs",
       "storeId": "desktop-window-version-state"
@@ -6047,7 +6047,7 @@
     {
       "exemptionId": null,
       "kind": "write-file",
-      "line": 2545,
+      "line": 2557,
       "reason": "Writes desktop window bounds or the release-announcement version bookmark.",
       "sourceFile": "desktop/main.cjs",
       "storeId": "desktop-window-version-state"
@@ -6055,7 +6055,7 @@
     {
       "exemptionId": null,
       "kind": "append-file",
-      "line": 4297,
+      "line": 4309,
       "reason": "Writes desktop crash or browser-command diagnostics.",
       "sourceFile": "desktop/main.cjs",
       "storeId": "desktop-diagnostics"
@@ -6063,7 +6063,7 @@
     {
       "exemptionId": "desktop-screenshot-html-temp",
       "kind": "write-file",
-      "line": 4864,
+      "line": 4876,
       "reason": "Writes and removes one request-scoped screenshot HTML file under the operating-system temporary directory.",
       "sourceFile": "desktop/main.cjs",
       "storeId": null
@@ -6071,7 +6071,7 @@
     {
       "exemptionId": "desktop-screenshot-html-temp",
       "kind": "remove-path",
-      "line": 4918,
+      "line": 4930,
       "reason": "Writes and removes one request-scoped screenshot HTML file under the operating-system temporary directory.",
       "sourceFile": "desktop/main.cjs",
       "storeId": null
@@ -6079,7 +6079,7 @@
     {
       "exemptionId": "desktop-skill-preview-temp",
       "kind": "mkdir",
-      "line": 5513,
+      "line": 5525,
       "reason": "Creates a request-scoped skill preview directory under Electron's operating-system temp path.",
       "sourceFile": "desktop/main.cjs",
       "storeId": null
@@ -6087,23 +6087,7 @@
     {
       "exemptionId": "desktop-caller-selected-output",
       "kind": "write-file",
-      "line": 5659,
-      "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
-      "sourceFile": "desktop/main.cjs",
-      "storeId": null
-    },
-    {
-      "exemptionId": "desktop-caller-selected-output",
-      "kind": "mkdir",
-      "line": 5681,
-      "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
-      "sourceFile": "desktop/main.cjs",
-      "storeId": null
-    },
-    {
-      "exemptionId": "desktop-caller-selected-output",
-      "kind": "write-file",
-      "line": 5682,
+      "line": 5671,
       "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
       "sourceFile": "desktop/main.cjs",
       "storeId": null
@@ -6118,7 +6102,7 @@
     },
     {
       "exemptionId": "desktop-caller-selected-output",
-      "kind": "copy-file",
+      "kind": "write-file",
       "line": 5694,
       "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
       "sourceFile": "desktop/main.cjs",
@@ -6127,7 +6111,23 @@
     {
       "exemptionId": "desktop-caller-selected-output",
       "kind": "mkdir",
-      "line": 5727,
+      "line": 5705,
+      "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
+      "sourceFile": "desktop/main.cjs",
+      "storeId": null
+    },
+    {
+      "exemptionId": "desktop-caller-selected-output",
+      "kind": "copy-file",
+      "line": 5706,
+      "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
+      "sourceFile": "desktop/main.cjs",
+      "storeId": null
+    },
+    {
+      "exemptionId": "desktop-caller-selected-output",
+      "kind": "mkdir",
+      "line": 5739,
       "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
       "sourceFile": "desktop/main.cjs",
       "storeId": null
@@ -6135,7 +6135,7 @@
     {
       "exemptionId": "desktop-caller-selected-output",
       "kind": "write-file",
-      "line": 5728,
+      "line": 5740,
       "reason": "Writes an absolute path selected by the renderer or a screenshot directory selected by the user; no HANA_HOME store is implied.",
       "sourceFile": "desktop/main.cjs",
       "storeId": null
@@ -6143,7 +6143,7 @@
     {
       "exemptionId": null,
       "kind": "remove-path",
-      "line": 6266,
+      "line": 6278,
       "reason": "Deletes stale desktop server discovery state before or after a server lifecycle.",
       "sourceFile": "desktop/main.cjs",
       "storeId": "server-runtime-info"
@@ -7583,7 +7583,7 @@
     {
       "exemptionId": null,
       "kind": "mkdir",
-      "line": 226,
+      "line": 253,
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
       "sourceFile": "lib/plugin-marketplace-claude-skills.ts",
       "storeId": "installed-plugins"
@@ -7591,7 +7591,31 @@
     {
       "exemptionId": null,
       "kind": "write-file",
-      "line": 237,
+      "line": 264,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-marketplace-claude-skills.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 413,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-marketplace-claude-skills.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 416,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-marketplace-claude-skills.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 441,
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
       "sourceFile": "lib/plugin-marketplace-claude-skills.ts",
       "storeId": "installed-plugins"
@@ -7751,7 +7775,7 @@
     {
       "exemptionId": null,
       "kind": "mkdir",
-      "line": 138,
+      "line": 141,
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
       "sourceFile": "lib/plugin-marketplace-sources.ts",
       "storeId": "installed-plugins"
@@ -7759,7 +7783,7 @@
     {
       "exemptionId": null,
       "kind": "write-file",
-      "line": 142,
+      "line": 145,
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
       "sourceFile": "lib/plugin-marketplace-sources.ts",
       "storeId": "installed-plugins"
@@ -9039,7 +9063,7 @@
     {
       "exemptionId": null,
       "kind": "mkdir",
-      "line": 403,
+      "line": 406,
       "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
       "sourceFile": "server/routes/plugins.ts",
       "storeId": "installed-plugins"
@@ -9047,7 +9071,7 @@
     {
       "exemptionId": null,
       "kind": "copy-file",
-      "line": 427,
+      "line": 430,
       "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
       "sourceFile": "server/routes/plugins.ts",
       "storeId": "installed-plugins"
@@ -9055,7 +9079,7 @@
     {
       "exemptionId": "conditional-plugin-install-cleanup",
       "kind": "remove-path",
-      "line": 434,
+      "line": 437,
       "reason": "One bounded cleanup list contains both HANA_HOME .installing staging and operating-system extraction temp; flow-sensitive attribution must replace this exact conditional site.",
       "sourceFile": "server/routes/plugins.ts",
       "storeId": null
@@ -9063,7 +9087,7 @@
     {
       "exemptionId": null,
       "kind": "remove-path",
-      "line": 479,
+      "line": 482,
       "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
       "sourceFile": "server/routes/plugins.ts",
       "storeId": "installed-plugins"
@@ -9071,7 +9095,7 @@
     {
       "exemptionId": null,
       "kind": "remove-path",
-      "line": 541,
+      "line": 544,
       "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
       "sourceFile": "server/routes/plugins.ts",
       "storeId": "installed-plugins"
@@ -9079,7 +9103,7 @@
     {
       "exemptionId": null,
       "kind": "rename",
-      "line": 542,
+      "line": 545,
       "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
       "sourceFile": "server/routes/plugins.ts",
       "storeId": "installed-plugins"
@@ -9087,7 +9111,7 @@
     {
       "exemptionId": "conditional-plugin-install-cleanup",
       "kind": "remove-path",
-      "line": 568,
+      "line": 571,
       "reason": "One bounded cleanup list contains both HANA_HOME .installing staging and operating-system extraction temp; flow-sensitive attribution must replace this exact conditional site.",
       "sourceFile": "server/routes/plugins.ts",
       "storeId": null
@@ -9095,7 +9119,7 @@
     {
       "exemptionId": null,
       "kind": "mkdir",
-      "line": 674,
+      "line": 677,
       "reason": "Caches a sha256-verified plugin release package.",
       "sourceFile": "server/routes/plugins.ts",
       "storeId": "plugin-download-cache"
@@ -9103,7 +9127,7 @@
     {
       "exemptionId": null,
       "kind": "write-file",
-      "line": 676,
+      "line": 679,
       "reason": "Caches a sha256-verified plugin release package.",
       "sourceFile": "server/routes/plugins.ts",
       "storeId": "plugin-download-cache"
@@ -9111,7 +9135,7 @@
     {
       "exemptionId": null,
       "kind": "remove-path",
-      "line": 1708,
+      "line": 1827,
       "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
       "sourceFile": "server/routes/plugins.ts",
       "storeId": "installed-plugins"
@@ -9231,7 +9255,7 @@
     {
       "exemptionId": null,
       "kind": "remove-path",
-      "line": 52,
+      "line": 54,
       "reason": "Removes an installed user skill through the skill owner route.",
       "sourceFile": "server/routes/skills.ts",
       "storeId": "skill-state"
