@@ -627,7 +627,7 @@
     ],
     "version": 2
   },
-  "payloadFingerprint": "sha256:0d8fcab51329e8614b591bc14efced3dfbadf242d5b07161b9b9d94a65720bca",
+  "payloadFingerprint": "sha256:f7d70ff6fd08dda27e016dc72cedeff32208dbbeed137c0c559f038315b50232",
   "registry": [
     {
       "affectedByEpochMigration": true,
@@ -2889,8 +2889,8 @@
   ],
   "review": {
     "classification": "compatible",
-    "compatibilityReason": "Adds per-agent marketplace skill preferences and source-qualified runtime metadata without changing persisted store schema or existing store-byte interpretation.",
-    "payloadFingerprint": "sha256:0d8fcab51329e8614b591bc14efced3dfbadf242d5b07161b9b9d94a65720bca"
+    "compatibilityReason": "Cleans per-agent marketplace skill-package references during uninstall while preserving the existing config and installed-plugin store schemas and byte interpretation.",
+    "payloadFingerprint": "sha256:f7d70ff6fd08dda27e016dc72cedeff32208dbbeed137c0c559f038315b50232"
   },
   "schemas": [
     {
@@ -3150,7 +3150,7 @@
       "contract": "verified plugin release ZIP naming by pluginId/version and expected sha256",
       "kind": "directory-contract",
       "module": "server/routes/plugins.ts",
-      "sourceHash": "sha256:a1963cdfdcc032f909f63dd134019bcaebed342489ad41244c0cfc755077179e",
+      "sourceHash": "sha256:d94a15413ed4b6cf69ef51101402774e58039a5794385293fbca2766d19adfdd",
       "storeId": "plugin-download-cache"
     },
     {

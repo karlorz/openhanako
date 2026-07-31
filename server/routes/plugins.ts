@@ -1760,7 +1760,7 @@ export function createPluginsRoute(engine: any) {
       });
       const handled = [...result.deleted, ...result.alreadyMissing];
       const referenceCleanup = engine.agentsDir
-        ? removeAgentSkillReferences(engine.agentsDir, handled)
+        ? removeAgentSkillReferences(engine.agentsDir, handled, { marketplacePackageIdentity: `${pluginId}@${marketplaceId}`, marketplacePackageSkillNames: result.complete ? undefined : handled, agents: engine.agents?.values?.() })
         : { updatedAgents: [], failedAgents: [] };
       let bundleCleanupError: string | null = null;
       if (engine.hanakoHome && handled.length > 0) {

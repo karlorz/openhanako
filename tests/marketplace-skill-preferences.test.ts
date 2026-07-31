@@ -4,6 +4,7 @@ import {
   migrateLegacyMarketplaceSkillOverrides,
   normalizeMarketplaceSkillOverrides,
   packagePreferenceRefFromLegacySkillRef,
+  removeMarketplaceSkillPackagePreference,
   setMarketplaceSkillPreference,
 } from "../lib/marketplace-skill-preferences.ts";
 
@@ -41,6 +42,20 @@ describe("marketplace skill preferences", () => {
     expect(disabled).toEqual({
       [other]: { disabled: ["wiki-query"] },
       [wiki]: { disabled: ["wiki-audit", "wiki-distill"] },
+    });
+  });
+
+  it("removes handled skills selectively and the whole package on complete uninstall", () => {
+    const raw = {
+      [wiki]: { disabled: ["wiki-query", "wiki-sync"] },
+      [other]: { disabled: ["wiki-query"] },
+    };
+    expect(removeMarketplaceSkillPackagePreference(raw, wiki, ["wiki-query"])).toEqual({
+      [other]: { disabled: ["wiki-query"] },
+      [wiki]: { disabled: ["wiki-sync"] },
+    });
+    expect(removeMarketplaceSkillPackagePreference(raw, wiki)).toEqual({
+      [other]: { disabled: ["wiki-query"] },
     });
   });
 

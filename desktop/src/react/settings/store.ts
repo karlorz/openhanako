@@ -39,6 +39,8 @@ export interface SkillInfo {
     identity: string;
     skillName: string;
     explicitlyDisabled: boolean;
+    /** Effective global package gate; false means the per-agent toggle is locked. */
+    packageEnabled?: boolean;
   } | null;
   configurable?: boolean;
   deletable?: boolean;
