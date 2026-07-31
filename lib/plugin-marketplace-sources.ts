@@ -14,6 +14,8 @@ import {
   validateClaudeCompatibilityBindings,
   type ClaudeCompatibilityBinding,
 } from "./claude-compatibility.ts";
+import { normalizeGitMarketplaceUrl } from "./plugin-marketplace-detect.ts";
+import { assertPublicHttpsUrl } from "./plugin-marketplace-network-policy.ts";
 
 export const OFFICIAL_MARKETPLACE_ID = "oh-plugins-official";
 export const OFFICIAL_MARKETPLACE_NAME = "OH Plugins Official";
@@ -28,6 +30,79 @@ export type MarketplaceSourceDescriptor =
   | { id: string; name: string; kind: "url"; url: string; enabled?: boolean }
   | { id: string; name: string; kind: "local"; path: string; indexPath?: string; enabled?: boolean }
   | { id: string; name: string; kind: "git"; gitUrl: string; gitRef?: string; indexPath?: string; enabled?: boolean };
+
+function derivedMarketplaceId(value: string, fallback: string): string {
+  const slug = value
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    || fallback;
+  return slug.length <= 64
+    ? slug
+    : `${slug.slice(0, 55).replace(/-+$/g, "")}-${createHash("sha256").update(value).digest("hex").slice(0, 8)}`;
+}
+
+/**
+ * Turn the compact Settings "source" field into the durable descriptor that
+ * the registry owns.  This is intentionally an API-boundary convenience, not
+ * a second persisted source format: the registry continues to store only
+ * explicit, source-qualified descriptors.
+ */
+export function descriptorFromMarketplaceSourceInput(value: unknown): MarketplaceSourceDescriptor {
+  const source = normalizeOptionalText(value);
+  if (!source) throw new Error("Marketplace source is required");
+
+  if (/^(?:git@|ssh:)/i.test(source)) {
+    throw new Error("Marketplace Git sources must use a public HTTPS URL");
+  }
+
+  if (/^https?:\/\//i.test(source)) {
+    const parsed = assertPublicHttpsUrl(source);
+
+    const segments = parsed.pathname.split("/").filter(Boolean);
+    const lastSegment = segments.at(-1) || parsed.hostname;
+    // Catalog locators conventionally name the JSON document. Every other
+    // public HTTPS locator is treated as a Git remote so ordinary repository
+    // URLs (which often omit a `.git` suffix) follow the Git acquisition path.
+    const isGit = !/\.json$/i.test(parsed.pathname);
+    if (isGit) {
+      const normalized = normalizeGitMarketplaceUrl(source);
+      const gitUrl = normalized.gitUrl;
+      const gitUrlParts = new URL(gitUrl);
+      const gitSegments = gitUrlParts.pathname.split("/").filter(Boolean);
+      const gitName = (gitSegments.at(-1) || gitUrlParts.hostname).replace(/\.git$/i, "") || gitUrlParts.hostname;
+      return {
+        id: derivedMarketplaceId(
+          [gitUrlParts.hostname, ...gitSegments.map((segment) => segment.replace(/\.git$/i, ""))].join("-"),
+          "marketplace",
+        ),
+        name: gitName,
+        kind: "git",
+        gitUrl,
+        gitRef: normalized.gitRef || "refs/heads/main",
+        indexPath: normalized.suggestedIndexPath || DEFAULT_MARKETPLACE_INDEX_PATH,
+      };
+    }
+    const readableName = lastSegment.replace(/\.json$/i, "") || parsed.hostname;
+    return {
+      id: derivedMarketplaceId(
+        [parsed.hostname, ...segments.map((segment) => segment.replace(/\.json$/i, ""))].join("-"),
+        "marketplace",
+      ),
+      name: readableName,
+      kind: "url",
+      url: source,
+    };
+  }
+
+  if (/^[~/]|^\.\.?\//.test(source)) {
+    const localName = path.basename(source.replace(/[\\/]+$/, "")) || "local-marketplace";
+    const id = derivedMarketplaceId(source, "local-marketplace");
+    return { id, name: localName, kind: "local", path: source };
+  }
+
+  throw new Error("Marketplace source must be a public HTTPS URL or server-local path");
+}
 
 export type MarketplaceSourceAuthority = "official" | "custom" | "legacy";
 

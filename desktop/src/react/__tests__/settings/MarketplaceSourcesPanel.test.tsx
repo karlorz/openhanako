@@ -30,7 +30,7 @@ describe('MarketplaceSourcesPanel product states', () => {
   beforeEach(() => {
     mockHanaFetch.mockReset();
     mockShowToast.mockReset();
-    window.t = ((key: string) => {
+    window.t = ((key: string, params?: Record<string, string>) => {
       const labels: Record<string, string> = {
         'settings.plugins.marketSourceAdd': 'Add source',
         'settings.plugins.marketSourceCancel': 'Cancel',
@@ -43,9 +43,29 @@ describe('MarketplaceSourcesPanel product states', () => {
         'settings.plugins.marketSourceAuthorityCustom': 'Custom',
         'settings.plugins.marketSourceKindGit': 'Git (public HTTPS)',
         'settings.plugins.marketSourceKindLocal': 'Local (server path)',
-        'settings.plugins.marketSourceId': 'Source ID',
-        'settings.plugins.marketSourceName': 'Source name',
-        'settings.plugins.marketSourceKind': 'Source kind',
+        'settings.plugins.marketSourceDialogTitle': 'Add Marketplace Source',
+        'settings.plugins.marketSourceDialogClose': 'Close add marketplace source dialog',
+        'settings.plugins.marketSourceDialogHelp': 'Paste a marketplace URL, Git repository, or server-local path. Hana detects the source type automatically.',
+        'settings.plugins.marketSourceDialogField': 'Source',
+        'settings.plugins.marketSourceExampleCatalog': 'https://example.com/marketplace.json',
+        'settings.plugins.marketSourceExampleGit': 'https://github.com/org/catalog',
+        'settings.plugins.marketSourceExampleLocal': '/path/to/marketplace',
+        'settings.plugins.marketSourceDetectedCatalog': 'Detected: HTTPS catalog',
+        'settings.plugins.marketSourceDetectedGit': 'Detected: public HTTPS Git repository',
+        'settings.plugins.marketSourceDetectedLocal': 'Detected: server-local path',
+        'settings.plugins.marketSourceDetectedUnknown': 'Detected: enter an HTTPS catalog, public HTTPS Git repository, or server-local path.',
+        'settings.plugins.marketSourceRequired': 'Enter a marketplace source to continue.',
+        'settings.plugins.marketSourceAdding': 'Adding…',
+        'settings.plugins.marketSourceReadOnly': 'Browsing is available. Source mutations need server owner access on this connection.',
+        'settings.plugins.marketSourceDegraded': 'Source changes are blocked while marketplace JSON is invalid. Repair the advanced configuration and reload.',
+        'settings.plugins.marketSourceEnabled': 'Enabled',
+        'settings.plugins.marketSourceDisabled': 'Disabled',
+        'settings.plugins.marketSourcePackages': `${params?.count || '0'} packages`,
+        'settings.plugins.marketSourceEnable': 'Enable',
+        'settings.plugins.marketSourceDisable': 'Disable',
+        'settings.plugins.marketSourceToggleConfirm': `${params?.operation} marketplace source ${params?.id}? Package identities and installed artifacts remain source-qualified.`,
+        'settings.plugins.marketSourceToggleFailed': 'Failed to update marketplace source',
+        'settings.plugins.marketSourceToggleSuccess': `Marketplace source ${params?.id} ${params?.state}`,
       };
       return labels[key] || key;
     }) as typeof window.t;
@@ -91,7 +111,7 @@ describe('MarketplaceSourcesPanel product states', () => {
     expect(screen.queryByRole('button', { name: 'Disable team' })).not.toBeInTheDocument();
   });
 
-  it('labels refresh and source form controls for keyboard and assistive technology', async () => {
+  it('opens an accessible one-textbox source dialog and restores focus after Escape', async () => {
     mockHanaFetch.mockResolvedValue(response({
       access: { isStudioOwner: true },
       registry: { revision: 1, digest: 'f'.repeat(64), degraded: false },
@@ -100,11 +120,21 @@ describe('MarketplaceSourcesPanel product states', () => {
 
     render(<MarketplaceSourcesPanel />);
 
-    expect(await screen.findByRole('button', { name: 'Reload source list' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Add source' }));
-    expect(screen.getByRole('textbox', { name: 'Source ID' })).toHaveAttribute('name', 'marketplaceSourceId');
-    expect(screen.getByRole('textbox', { name: 'Source name' })).toHaveAttribute('name', 'marketplaceSourceName');
-    expect(screen.getByRole('combobox', { name: 'Source kind' })).toHaveAttribute('name', 'marketplaceSourceKind');
+    const refreshButton = await screen.findByRole('button', { name: 'Reload source list' });
+    expect(refreshButton).toBeInTheDocument();
+    const addButton = screen.getByRole('button', { name: 'Add source' });
+    addButton.focus();
+    fireEvent.click(addButton);
+
+    expect(screen.getByRole('dialog', { name: 'Add Marketplace Source' })).toBeInTheDocument();
+    const sourceInput = screen.getByRole('textbox', { name: 'Source' });
+    expect(sourceInput).toHaveAttribute('name', 'marketplaceSource');
+    expect(screen.getAllByRole('textbox')).toHaveLength(1);
+    await waitFor(() => expect(sourceInput).toHaveFocus());
+
+    fireEvent.keyDown(sourceInput, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await waitFor(() => expect(addButton).toHaveFocus());
   });
 
   it('blocks source mutations when JSON is degraded and gives repair guidance', async () => {
@@ -145,6 +175,39 @@ describe('MarketplaceSourcesPanel product states', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Disable team' }));
 
     expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('Disable marketplace source team'));
-    await waitFor(() => expect(mockShowToast).toHaveBeenCalledWith('Marketplace source team disabled', 'success'));
+    await waitFor(() => expect(mockShowToast).toHaveBeenCalledWith('Marketplace source team Disabled', 'success'));
+  });
+
+  it('submits a one-field Git source through the compact server request boundary', async () => {
+    let loads = 0;
+    mockHanaFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === '/api/plugins/marketplace/sources' && !init?.method) {
+        loads += 1;
+        return response({
+          access: { isStudioOwner: true },
+          registry: { revision: loads === 1 ? 7 : 8, digest: (loads === 1 ? 'a' : 'b').repeat(64), degraded: false },
+          sources: [],
+        });
+      }
+      if (url === '/api/plugins/marketplace/sources' && init?.method === 'POST') {
+        expect(JSON.parse(String(init.body))).toEqual({
+          source: 'https://github.com/example-org/hana-market',
+          expectedRevision: 7,
+          expectedDigest: 'a'.repeat(64),
+        });
+        return response({}, 201);
+      }
+      return response({});
+    });
+
+    render(<MarketplaceSourcesPanel />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Add source' }));
+    const sourceInput = screen.getByRole('textbox', { name: 'Source' });
+    fireEvent.change(sourceInput, { target: { value: 'https://github.com/example-org/hana-market' } });
+    expect(screen.getByText('Detected: public HTTPS Git repository')).toBeInTheDocument();
+    fireEvent.submit(sourceInput.closest('form')!);
+
+    await waitFor(() => expect(mockShowToast).toHaveBeenCalledWith('settings.plugins.marketSourceAdded', 'success'));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 });

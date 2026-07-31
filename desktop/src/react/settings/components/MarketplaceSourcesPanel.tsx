@@ -3,6 +3,7 @@ import { hanaFetch } from '../api';
 import { t } from '../helpers';
 import { useSettingsStore } from '../store';
 import styles from '../Settings.module.css';
+import { AddMarketplaceSourceDialog, type MarketplaceSourceInput } from './AddMarketplaceSourceDialog';
 
 export interface MarketplaceSourceRow {
   id: string;
@@ -28,23 +29,12 @@ interface MarketplaceRegistrySnapshot {
 }
 
 export interface MarketplaceSourcesPanelProps {
-  /** When true, expand the add form on first mount. */
+  /** When true, open the add-source dialog on first mount. */
   defaultShowAdd?: boolean;
   /** Compact layout for embedding under Plugins tab. */
   compact?: boolean;
   onSourcesChanged?: (sources: MarketplaceSourceRow[]) => void;
 }
-
-const emptyForm = {
-  id: '',
-  name: '',
-  kind: 'url' as 'url' | 'local' | 'git',
-  url: '',
-  path: '',
-  gitUrl: '',
-  gitRef: 'refs/heads/main',
-  indexPath: 'marketplace.json',
-};
 
 function sourceKindLabel(kind?: string): string {
   if (kind === 'url') return t('settings.plugins.marketSourceKindUrl');
@@ -109,7 +99,6 @@ export function MarketplaceSourcesPanel({
   const [error, setError] = useState<string | null>(null);
   const [registry, setRegistry] = useState<MarketplaceRegistrySnapshot | null>(null);
   const [isStudioOwner, setIsStudioOwner] = useState<boolean | null>(null);
-  const [form, setForm] = useState(emptyForm);
   const showToast = useSettingsStore((s) => s.showToast);
 
   const loadSources = useCallback(async () => {
@@ -148,48 +137,12 @@ export function MarketplaceSourcesPanel({
     if (defaultShowAdd) setShowAdd(true);
   }, [defaultShowAdd]);
 
-  const addSource = async () => {
-    const id = form.id.trim();
-    const name = form.name.trim() || id;
-    if (!id) {
-      showToast(t('settings.plugins.marketSourceIdRequired'), 'error');
-      return;
-    }
-    let body: Record<string, string | number> = {
-      id,
-      name,
-      kind: form.kind,
+  const addSource = async (input: MarketplaceSourceInput) => {
+    const body: Record<string, string | number> = {
+      source: input.source,
       ...(typeof registry?.revision === 'number' ? { expectedRevision: registry.revision } : {}),
       ...(registry?.digest ? { expectedDigest: registry.digest } : {}),
     };
-    if (form.kind === 'url') {
-      if (!form.url.trim()) {
-        showToast(t('settings.plugins.marketSourceUrlRequired'), 'error');
-        return;
-      }
-      body = { ...body, url: form.url.trim() };
-    } else if (form.kind === 'local') {
-      if (!form.path.trim()) {
-        showToast(t('settings.plugins.marketSourcePathRequired'), 'error');
-        return;
-      }
-      body = {
-        ...body,
-        path: form.path.trim(),
-        ...(form.indexPath.trim() ? { indexPath: form.indexPath.trim() } : {}),
-      };
-    } else {
-      if (!form.gitUrl.trim()) {
-        showToast(t('settings.plugins.marketSourceGitUrlRequired'), 'error');
-        return;
-      }
-      body = {
-        ...body,
-        gitUrl: form.gitUrl.trim(),
-        ...(form.gitRef.trim() ? { gitRef: form.gitRef.trim() } : {}),
-        ...(form.indexPath.trim() ? { indexPath: form.indexPath.trim() } : {}),
-      };
-    }
     setBusy(true);
     try {
       const res = await hanaFetch('/api/plugins/marketplace/sources', {
@@ -204,11 +157,7 @@ export function MarketplaceSourcesPanel({
         );
       }
       showToast(t('settings.plugins.marketSourceAdded'), 'success');
-      setShowAdd(false);
-      setForm(emptyForm);
       await loadSources();
-    } catch (err: unknown) {
-      showToast(err instanceof Error ? err.message : String(err), 'error');
     } finally {
       setBusy(false);
     }
@@ -239,8 +188,10 @@ export function MarketplaceSourcesPanel({
   };
 
   const setSourceEnabled = async (source: MarketplaceSourceRow, enabled: boolean) => {
-    const operation = enabled ? 'enable' : 'disable';
-    if (!window.confirm(`${operation[0].toUpperCase()}${operation.slice(1)} marketplace source ${source.id}? Package identities and installed artifacts remain source-qualified.`)) return;
+    const operation = enabled
+      ? t('settings.plugins.marketSourceEnable')
+      : t('settings.plugins.marketSourceDisable');
+    if (!window.confirm(t('settings.plugins.marketSourceToggleConfirm', { operation, id: source.id }))) return;
     setBusy(true);
     try {
       const res = await hanaFetch(`/api/plugins/marketplace/sources/${encodeURIComponent(source.id)}/enabled`, {
@@ -253,8 +204,11 @@ export function MarketplaceSourcesPanel({
         }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || data.error) throw new Error(data.error || `Failed to ${operation} marketplace source`);
-      showToast(`Marketplace source ${source.id} ${enabled ? 'enabled' : 'disabled'}`, 'success');
+      if (!res.ok || data.error) throw new Error(data.error || `${t('settings.plugins.marketSourceToggleFailed')}: ${source.id}`);
+      showToast(t('settings.plugins.marketSourceToggleSuccess', {
+        id: source.id,
+        state: enabled ? t('settings.plugins.marketSourceEnabled') : t('settings.plugins.marketSourceDisabled'),
+      }), 'success');
       await loadSources();
     } catch (err: unknown) {
       showToast(err instanceof Error ? err.message : String(err), 'error');
@@ -289,9 +243,9 @@ export function MarketplaceSourcesPanel({
           type="button"
           className={styles['pv-add-form-btn']}
           disabled={busy || loading || isStudioOwner === false || registry?.degraded === true}
-          onClick={() => setShowAdd((v) => !v)}
+          onClick={() => setShowAdd(true)}
         >
-          {showAdd ? t('settings.plugins.marketSourceCancel') : t('settings.plugins.marketSourceAdd')}
+          {t('settings.plugins.marketSourceAdd')}
         </button>
         <button
           type="button"
@@ -321,13 +275,13 @@ export function MarketplaceSourcesPanel({
 
       {isStudioOwner === false && !error && (
         <div className={styles['settings-form-hint']} role="status" style={{ marginBottom: 8 }}>
-          Browsing is available. Source mutations need server owner access on this connection.
+          {t('settings.plugins.marketSourceReadOnly')}
         </div>
       )}
 
       {registry?.degraded && !error && (
         <div className={styles['settings-form-hint']} role="alert" style={{ color: 'var(--danger, #c55)', marginBottom: 8 }}>
-          Source changes are blocked while marketplace JSON is invalid. Repair the advanced configuration and reload.
+          {t('settings.plugins.marketSourceDegraded')}
         </div>
       )}
 
@@ -359,10 +313,12 @@ export function MarketplaceSourcesPanel({
                       </span>
                     )}
                     <span className={styles['skills-source-badge']} style={{ marginRight: 0 }}>
-                      {src.enabled === false ? 'Disabled' : 'Enabled'}
+                      {src.enabled === false
+                        ? t('settings.plugins.marketSourceDisabled')
+                        : t('settings.plugins.marketSourceEnabled')}
                     </span>
                     <span className={styles['skills-source-badge']} style={{ marginRight: 0 }}>
-                      {src.catalogCount || 0} package{src.catalogCount === 1 ? '' : 's'}
+                      {t('settings.plugins.marketSourcePackages', { count: String(src.catalogCount || 0) })}
                     </span>
                   </div>
                   <span className={styles['skills-list-desc']}>
@@ -395,9 +351,9 @@ export function MarketplaceSourcesPanel({
                       className={styles['pv-add-form-btn']}
                       disabled={busy}
                       onClick={() => setSourceEnabled(src, src.enabled === false)}
-                      aria-label={`${src.enabled === false ? 'Enable' : 'Disable'} ${src.id}`}
+                      aria-label={`${src.enabled === false ? t('settings.plugins.marketSourceEnable') : t('settings.plugins.marketSourceDisable')} ${src.id}`}
                     >
-                      {src.enabled === false ? 'Enable' : 'Disable'}
+                      {src.enabled === false ? t('settings.plugins.marketSourceEnable') : t('settings.plugins.marketSourceDisable')}
                     </button>
                     <button
                       type="button"
@@ -421,183 +377,11 @@ export function MarketplaceSourcesPanel({
         </p>
       )}
 
-      {showAdd && (
-        <div className={styles['pv-add-form']} style={{ marginTop: 12 }}>
-          <div className={styles['settings-form-hint']} style={{ marginBottom: 4 }}>
-            {t('settings.plugins.marketSourceAddHint')}
-          </div>
-
-          <div className={styles['settings-form-grid']}>
-            <div className={`${styles['settings-form-field']} ${styles['settings-form-field-half']}`}>
-              <label className={styles['settings-form-label']} htmlFor="marketplace-source-id">{t('settings.plugins.marketSourceId')}</label>
-              <input
-                id="marketplace-source-id"
-                name="marketplaceSourceId"
-                type="text"
-                className={styles['settings-input']}
-                value={form.id}
-                onChange={(e) => setForm((s) => ({ ...s, id: e.target.value }))}
-                placeholder="team-plugins"
-                autoComplete="off"
-                spellCheck={false}
-              />
-            </div>
-            <div className={`${styles['settings-form-field']} ${styles['settings-form-field-half']}`}>
-              <label className={styles['settings-form-label']} htmlFor="marketplace-source-name">{t('settings.plugins.marketSourceName')}</label>
-              <input
-                id="marketplace-source-name"
-                name="marketplaceSourceName"
-                type="text"
-                className={styles['settings-input']}
-                value={form.name}
-                onChange={(e) => setForm((s) => ({ ...s, name: e.target.value }))}
-                placeholder="Team Plugins"
-              />
-            </div>
-          </div>
-
-          <div className={styles['settings-form-field']}>
-            <label className={styles['settings-form-label']} htmlFor="marketplace-source-kind">{t('settings.plugins.marketSourceKind')}</label>
-            <select
-              id="marketplace-source-kind"
-              name="marketplaceSourceKind"
-              className={styles['settings-input']}
-              value={form.kind}
-              onChange={(e) => setForm((s) => ({
-                ...s,
-                kind: e.target.value as 'url' | 'local' | 'git',
-              }))}
-            >
-              <option value="url">{t('settings.plugins.marketSourceKindUrl')}</option>
-              <option value="local">{t('settings.plugins.marketSourceKindLocal')}</option>
-              <option value="git">{t('settings.plugins.marketSourceKindGit')}</option>
-            </select>
-          </div>
-
-          {form.kind === 'url' && (
-            <div className={styles['settings-form-field']}>
-              <label className={styles['settings-form-label']} htmlFor="marketplace-source-url">URL</label>
-              <input
-                id="marketplace-source-url"
-                name="marketplaceSourceUrl"
-                type="url"
-                className={styles['settings-input']}
-                value={form.url}
-                onChange={(e) => setForm((s) => ({ ...s, url: e.target.value }))}
-                placeholder="https://example.com/marketplace.json"
-                autoComplete="off"
-                spellCheck={false}
-              />
-              <span className={styles['settings-form-hint']}>{t('settings.plugins.marketSourceUrlHint')}</span>
-            </div>
-          )}
-
-          {form.kind === 'local' && (
-            <>
-              <div className={styles['settings-form-field']}>
-                <label className={styles['settings-form-label']} htmlFor="marketplace-source-path">{t('settings.plugins.marketSourceLocalPath')}</label>
-                <input
-                  id="marketplace-source-path"
-                  name="marketplaceSourcePath"
-                  type="text"
-                  className={styles['settings-input']}
-                  value={form.path}
-                  onChange={(e) => setForm((s) => ({ ...s, path: e.target.value }))}
-                  placeholder="my-market"
-                  autoComplete="off"
-                  spellCheck={false}
-                />
-                <span className={styles['settings-form-hint']}>{t('settings.plugins.marketSourceLocalPathHint')}</span>
-              </div>
-              <div className={styles['settings-form-field']}>
-                <label className={styles['settings-form-label']} htmlFor="marketplace-source-local-index-path">indexPath</label>
-                <input
-                  id="marketplace-source-local-index-path"
-                  name="marketplaceSourceLocalIndexPath"
-                  type="text"
-                  className={styles['settings-input']}
-                  value={form.indexPath}
-                  onChange={(e) => setForm((s) => ({ ...s, indexPath: e.target.value }))}
-                  autoComplete="off"
-                  spellCheck={false}
-                />
-              </div>
-            </>
-          )}
-
-          {form.kind === 'git' && (
-            <>
-              <div className={styles['settings-form-field']}>
-                <label className={styles['settings-form-label']} htmlFor="marketplace-source-git-url">gitUrl</label>
-                <input
-                  id="marketplace-source-git-url"
-                  name="marketplaceSourceGitUrl"
-                  type="url"
-                  className={styles['settings-input']}
-                  value={form.gitUrl}
-                  onChange={(e) => setForm((s) => ({ ...s, gitUrl: e.target.value }))}
-                  placeholder="https://github.com/example-org/hana-marketplace"
-                  autoComplete="off"
-                  spellCheck={false}
-                />
-                <span className={styles['settings-form-hint']}>{t('settings.plugins.marketSourceGitHint')}</span>
-              </div>
-              <div className={styles['settings-form-grid']}>
-                <div className={`${styles['settings-form-field']} ${styles['settings-form-field-half']}`}>
-                  <label className={styles['settings-form-label']} htmlFor="marketplace-source-git-ref">gitRef</label>
-                  <input
-                    id="marketplace-source-git-ref"
-                    name="marketplaceSourceGitRef"
-                    type="text"
-                    className={styles['settings-input']}
-                    value={form.gitRef}
-                    onChange={(e) => setForm((s) => ({ ...s, gitRef: e.target.value }))}
-                    placeholder="refs/heads/main"
-                    autoComplete="off"
-                    spellCheck={false}
-                  />
-                </div>
-                <div className={`${styles['settings-form-field']} ${styles['settings-form-field-half']}`}>
-                  <label className={styles['settings-form-label']} htmlFor="marketplace-source-git-index-path">indexPath</label>
-                  <input
-                    id="marketplace-source-git-index-path"
-                    name="marketplaceSourceGitIndexPath"
-                    type="text"
-                    className={styles['settings-input']}
-                    value={form.indexPath}
-                    onChange={(e) => setForm((s) => ({ ...s, indexPath: e.target.value }))}
-                    placeholder="marketplace.json (auto)"
-                    autoComplete="off"
-                    spellCheck={false}
-                  />
-                </div>
-              </div>
-            </>
-          )}
-
-          <div className={styles['pv-add-form-actions']}>
-            <button
-              type="button"
-              className={styles['pv-add-form-btn']}
-              disabled={busy}
-              onClick={() => {
-                setShowAdd(false);
-                setForm(emptyForm);
-              }}
-            >
-              {t('settings.plugins.marketSourceCancel')}
-            </button>
-            <button
-              type="button"
-              className={`${styles['pv-add-form-btn']} ${styles['primary']}`}
-              disabled={busy}
-              onClick={addSource}
-            >
-              {busy ? t('status.loading') : t('settings.plugins.marketSourceSubmit')}
-            </button>
-          </div>
-        </div>
-      )}
+      <AddMarketplaceSourceDialog
+        open={showAdd}
+        onSubmit={addSource}
+        onClose={() => setShowAdd(false)}
+      />
     </div>
   );
 }
