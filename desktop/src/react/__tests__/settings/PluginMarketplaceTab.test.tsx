@@ -115,6 +115,7 @@ describe('PluginMarketplaceTab inspector rendering', () => {
         'settings.plugins.marketBack': 'Back',
         'settings.plugins.marketplaceHint': 'Install marketplace packages',
         'settings.plugins.marketplaceCount': `${params?.count || '0'} package`,
+        'settings.plugins.reload': 'Reload marketplace',
         'settings.plugins.marketLoading': 'Loading...',
         'settings.plugins.marketInstall': 'Install',
         'settings.plugins.marketInstallSkills': 'Install skills',
@@ -149,6 +150,17 @@ describe('PluginMarketplaceTab inspector rendering', () => {
     expect(screen.getByRole('button', { name: 'Install skills' })).toBeEnabled();
     expect(screen.getByText('Agent-facing')).toBeInTheDocument();
     expect(screen.getAllByText('skills').length).toBeGreaterThan(0);
+  });
+
+  it('labels the Marketplace toolbar refresh icon as a reload action', async () => {
+    mockCatalog([catalogPlugin()]);
+
+    render(<PluginMarketplaceTab />);
+
+    const reload = await screen.findByRole('button', { name: 'Reload marketplace' });
+    expect(reload).toHaveAttribute('title', 'Reload marketplace');
+    expect(reload.className).toMatch(/settings-icon-btn/);
+    expect(reload.querySelector('svg')).toBeInTheDocument();
   });
 
   it('shows unsupported packages as inspect only and disables install', async () => {

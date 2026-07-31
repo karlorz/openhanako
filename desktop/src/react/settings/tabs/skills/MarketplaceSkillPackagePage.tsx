@@ -5,6 +5,7 @@ import { hanaFetch } from '../../api';
 import { t } from '../../helpers';
 import { AgentSelect } from '../bridge/AgentSelect';
 import { SettingsSection } from '../../components/SettingsSection';
+import { BrowseIcon } from '../../components/PluginActionIcons';
 import styles from '../../Settings.module.css';
 import {
   isMarketplaceSkillPreferenceWritable,
@@ -352,8 +353,14 @@ export function MarketplaceSkillPackagePage({
           <span className={styles['skill-package-page-identity']} translate="no">{pkg.identity}</span>
           {pkg.description && <p className={styles['skill-package-page-description']}>{pkg.description}</p>}
         </div>
-        <button type="button" className={styles['settings-save-btn-sm']} onClick={onOpenMarketplace}>
-          {t('settings.plugins.skillPackagePageOpenMarketplace')}
+        <button
+          type="button"
+          className={`${styles['settings-icon-btn']} ${styles['plugin-action-icon']}`}
+          aria-label={t('settings.plugins.skillPackagePageOpenMarketplace')}
+          title={t('settings.plugins.skillPackagePageOpenMarketplace')}
+          onClick={onOpenMarketplace}
+        >
+          <BrowseIcon />
         </button>
       </header>
 
