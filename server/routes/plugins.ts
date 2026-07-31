@@ -1148,6 +1148,14 @@ export function createPluginsRoute(engine: any) {
         isStudioOwner: flags.isStudioOwner,
         ...expectedRegistryPreconditionsFromBody(body),
       });
+      // Package/skill activation toggles must re-wire the package gate and re-sync
+      // agent skill injection without waiting for a skills-dir file watch.
+      try {
+        await engine.reloadSkills?.();
+      } catch {
+        // best-effort reload; activation write already committed
+      }
+      emitAppEvent(engine, "skills-changed", { agentId: null });
       return c.json({
         ...result,
         registry: svc.getRegistryStatus({ forRemote: !flags.isLocalOwner }),
@@ -1158,6 +1166,42 @@ export function createPluginsRoute(engine: any) {
         error: err.message,
         code: err.code || "PLUGIN_MARKETPLACE_CONTROL_PLANE_INVALID",
       }, err.status || 400);
+    }
+  });
+
+  // Manage Plugins inventory: installed Claude/marketplace skill packages only.
+  // Read visibility matches catalog (settings.read); mutations stay owner-gated elsewhere.
+  route.get("/plugins/marketplace/installed-skill-packages", (c) => {
+    const flags = principalFlags(c);
+    try {
+      const forRemote = !flags.isLocalOwner;
+      const svc = getMarketplaceService();
+      const packages = svc.listInstalledSkillPackages({
+        userSkillsDir: engine.userSkillsDir || undefined,
+      });
+      const payload: Record<string, unknown> = {
+        packages,
+        access: marketplaceAccessPayload(flags),
+        registry: svc.getRegistryStatus({ forRemote }),
+        capabilities: svc.getCapabilityContract(),
+      };
+      // Owners get the full activations snapshot so client PUT can clone maps
+      // (setControlPlaneActivations replaces the whole activations object).
+      if (flags.isStudioOwner) {
+        payload.activations = svc.registry.getControlPlaneActivations();
+      }
+      return c.json(payload);
+    } catch (err: any) {
+      return c.json({
+        packages: [],
+        access: marketplaceAccessPayload(flags),
+        schemaVersion: 1,
+        supported: false,
+        version: "plugin-marketplace-capabilities.v1",
+        code: "PLUGIN_MARKETPLACE_UNSUPPORTED_SERVER",
+        message: err?.message || "Plugin marketplace service is unavailable on this server",
+        upgradeGuidance: "Upgrade the connected Hana server to a build with plugin-marketplace-capabilities.v1.",
+      }, 501);
     }
   });
 
