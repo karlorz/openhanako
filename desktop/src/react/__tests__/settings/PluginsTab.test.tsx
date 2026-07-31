@@ -249,6 +249,50 @@ describe('PluginsTab skill package inventory', () => {
     });
   });
 
+  it('refuses package gate toggle when inventory has no activations snapshot', async () => {
+    const puts: unknown[] = [];
+    mockInventory({
+      inventory: skillPackageInventory({ activations: null }),
+      onPut: (body) => {
+        puts.push(body);
+      },
+    });
+    const { PluginsTab } = await import('../../settings/tabs/PluginsTab');
+    render(<PluginsTab />);
+
+    const toggle = await screen.findByRole('button', { name: /Toggle package skillwiki@llm-wiki/ });
+    fireEvent.click(toggle);
+
+    await waitFor(() => {
+      expect(useSettingsStore.getState().toastType).toBe('error');
+    });
+    expect(useSettingsStore.getState().toastMessage).toContain('missing activations snapshot');
+    expect(puts.length).toBe(0);
+    expect(
+      hanaFetch.mock.calls.some(
+        ([path, init]) =>
+          path === '/api/plugins/marketplace/config/activations' && init?.method === 'PUT',
+      ),
+    ).toBe(false);
+  });
+
+  it('hides package toggle when row.actions.canToggle is false', async () => {
+    mockInventory({
+      inventory: skillPackageInventory({
+        packages: [{
+          ...skillPackageRow,
+          actions: { ...skillPackageRow.actions, canToggle: false },
+        }],
+      }),
+    });
+    const { PluginsTab } = await import('../../settings/tabs/PluginsTab');
+    render(<PluginsTab />);
+
+    expect(await screen.findByText('SkillWiki')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Toggle package skillwiki@llm-wiki/ })).not.toBeInTheDocument();
+    expect(screen.getByTitle(/Uninstall skillwiki@llm-wiki/)).toBeInTheDocument();
+  });
+
   it('navigates Manage in Skills to the skills settings tab', async () => {
     mockInventory();
     const { PluginsTab } = await import('../../settings/tabs/PluginsTab');
