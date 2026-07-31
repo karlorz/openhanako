@@ -11,6 +11,10 @@ import { BrowseIcon, RefreshIcon, RemoveIcon } from '../components/PluginActionI
 import { SelectWidget, Toggle, type SelectOption } from '@/ui';
 import { MarketplaceSkillPackagePage } from './skills/MarketplaceSkillPackagePage';
 import {
+  writeMarketplaceSkillPackageToggle,
+  type MarketplaceActivationSnapshot,
+} from '../marketplace-registry';
+import {
   marketplaceSkillPackageStatus,
   type ManagePluginsSkillPackageRow,
   type MarketplaceSkillPackageStatus,
@@ -216,8 +220,25 @@ export function PluginsTab() {
   const [diagnostics, setDiagnostics] = useState<PluginDiagnosticsResponse | null>(null);
   const [diagnosticsLoading, setDiagnosticsLoading] = useState(false);
   const [openSkillPackageIdentity, setOpenSkillPackageIdentity] = useState<string | null>(null);
+  const [togglingSkillPackageIdentity, setTogglingSkillPackageIdentity] = useState<string | null>(null);
 
   /* ── data fetchers ── */
+
+  const applySkillPackageSnapshot = useCallback((data: unknown): MarketplaceActivationSnapshot => {
+    const payload = data && typeof data === 'object' ? data as Record<string, unknown> : {};
+    const registry = payload.registry && typeof payload.registry === 'object'
+      ? payload.registry as SkillPackageInventoryMeta['registry']
+      : null;
+    const access = payload.access && typeof payload.access === 'object'
+      ? payload.access as SkillPackageInventoryMeta['access']
+      : null;
+    const activations = payload.activations && typeof payload.activations === 'object'
+      ? payload.activations as Record<string, unknown>
+      : null;
+    setSkillPackages(Array.isArray(payload.packages) ? payload.packages as ManagePluginsSkillPackageRow[] : []);
+    setSkillPackageMeta({ registry, access, activations });
+    return { registry, activations };
+  }, []);
 
   const loadPlugins = useCallback(async () => {
     try {
@@ -236,15 +257,7 @@ export function PluginsTab() {
 
       try {
         const skillData = await skillPkgRes.json();
-        const packages = Array.isArray(skillData?.packages) ? skillData.packages as ManagePluginsSkillPackageRow[] : [];
-        setSkillPackages(packages);
-        setSkillPackageMeta({
-          registry: skillData?.registry && typeof skillData.registry === 'object' ? skillData.registry : null,
-          access: skillData?.access && typeof skillData.access === 'object' ? skillData.access : null,
-          activations: skillData?.activations && typeof skillData.activations === 'object'
-            ? skillData.activations as Record<string, unknown>
-            : null,
-        });
+        applySkillPackageSnapshot(skillData);
       } catch (err) {
         console.error('[plugins] skill package inventory load failed:', err);
         setSkillPackages([]);
@@ -256,7 +269,7 @@ export function PluginsTab() {
       setSkillPackages([]);
       setSkillPackageMeta({ registry: null, access: null, activations: null });
     }
-  }, []);
+  }, [applySkillPackageSnapshot]);
 
   const loadPluginConfig = useCallback(async (plugin: PluginInfo) => {
     try {
@@ -418,6 +431,13 @@ export function PluginsTab() {
 
   const isStudioOwner = skillPackageMeta.access?.isStudioOwner === true;
 
+  const reloadSkillPackageSnapshot = async (): Promise<MarketplaceActivationSnapshot> => {
+    const res = await hanaFetch('/api/plugins/marketplace/installed-skill-packages');
+    const data = await res.json().catch(() => ({}));
+    if (data.error) throw new Error(data.error);
+    return applySkillPackageSnapshot(data);
+  };
+
   const toggleSkillPackage = async (pkg: ManagePluginsSkillPackageRow, enable: boolean) => {
     if (!isStudioOwner) return;
     if (pkg.actions?.canToggle === false) return;
@@ -433,28 +453,21 @@ export function PluginsTab() {
     setSkillPackages(prev => prev.map(row => (
       row.identity === pkg.identity ? { ...row, packageEnabled: enable } : row
     )));
+    setTogglingSkillPackageIdentity(pkg.identity);
     try {
-      const activations = structuredClone(skillPackageMeta.activations) as Record<string, unknown> & {
-        marketplaceSkillPackages?: Record<string, { enabled: boolean }>;
+      const initial: MarketplaceActivationSnapshot = {
+        registry: skillPackageMeta.registry,
+        activations: skillPackageMeta.activations,
       };
-      activations.marketplaceSkillPackages ||= {};
-      activations.marketplaceSkillPackages[pkg.identity] = { enabled: enable };
-
-      const body: Record<string, unknown> = { activations };
-      if (typeof skillPackageMeta.registry?.revision === 'number') {
-        body.expectedRevision = skillPackageMeta.registry.revision;
+      let result = await writeMarketplaceSkillPackageToggle(initial, pkg.identity, enable);
+      if (result === 'stale') {
+        result = await writeMarketplaceSkillPackageToggle(await reloadSkillPackageSnapshot(), pkg.identity, enable);
+        if (result === 'stale') {
+          await loadPlugins();
+          showToast(t('settings.plugins.marketplaceChangedRetry'), 'error');
+          return;
+        }
       }
-      if (skillPackageMeta.registry?.digest) {
-        body.expectedDigest = skillPackageMeta.registry.digest;
-      }
-
-      const res = await hanaFetch('/api/plugins/marketplace/config/activations', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || data.error) throw new Error(data.error || 'Skill package toggle failed');
       showToast(t('settings.autoSaved'), 'success');
       await loadPlugins();
     } catch (err: unknown) {
@@ -462,6 +475,8 @@ export function PluginsTab() {
         row.identity === pkg.identity ? { ...row, packageEnabled: !enable } : row
       )));
       showToast(t('settings.saveFailed') + ': ' + (err instanceof Error ? err.message : String(err)), 'error');
+    } finally {
+      setTogglingSkillPackageIdentity(null);
     }
   };
 
@@ -858,7 +873,8 @@ export function PluginsTab() {
                     {canToggle && (
                       <button
                         type="button"
-                        className={`hana-toggle${pkg.packageEnabled ? ' on' : ''}`}
+                        className={`hana-toggle${pkg.packageEnabled ? ' on' : ''}${togglingSkillPackageIdentity === pkg.identity ? ' loading' : ''}`}
+                        disabled={togglingSkillPackageIdentity === pkg.identity}
                         aria-label={t('settings.plugins.skillPackageToggle', { identity: pkg.identity, name: pkg.name })}
                         onClick={() => void toggleSkillPackage(pkg, !pkg.packageEnabled)}
                       />

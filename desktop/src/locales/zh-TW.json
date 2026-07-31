@@ -2184,6 +2184,7 @@
       "marketplaceEmpty": "暫無可瀏覽插件",
       "marketLoading": "正在讀取插件市場…",
       "marketLoadError": "插件市場載入失敗",
+      "marketplaceChangedRetry": "插件市場設定再次發生變更。請再嘗試切換一次。",
       "marketReadmeLoadError": "README 載入失敗",
       "marketInstalled": "已安裝",
       "marketInstall": "安裝",

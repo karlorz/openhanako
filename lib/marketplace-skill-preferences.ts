@@ -281,7 +281,7 @@ export function migrateLegacyMarketplaceSkillOverrides(options: {
       const membership = options.membership.get(ref.skillName);
       if (!membership || membership.identity !== ref.identity) continue;
       if (!isExplicitlyDisabledLegacyRecord(record)) continue;
-      if (isMarketplaceSkillDisabled(nextOverrides, ref.identity, ref.skillName)) continue;
+      if (marketplaceSkillPreferenceFromNormalized(nextOverrides, ref.identity, ref.skillName).explicitlyDisabled) continue;
       nextOverrides = setMarketplaceSkillPreference(nextOverrides, ref.identity, ref.skillName, false);
       changed = true;
     }

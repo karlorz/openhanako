@@ -2253,6 +2253,7 @@
       "marketplaceEmpty": "暂无可浏览插件",
       "marketLoading": "正在读取插件市场…",
       "marketLoadError": "插件市场加载失败",
+      "marketplaceChangedRetry": "插件市场设置再次发生了变化。请再尝试切换一次。",
       "marketReadmeLoadError": "README 加载失败",
       "marketInstalled": "已安装",
       "marketInstall": "安装",

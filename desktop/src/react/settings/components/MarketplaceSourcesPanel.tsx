@@ -5,6 +5,10 @@ import { useSettingsStore } from '../store';
 import styles from '../Settings.module.css';
 import { AddMarketplaceSourceDialog, type MarketplaceSourceInput } from './AddMarketplaceSourceDialog';
 import { RefreshIcon, RemoveIcon } from './PluginActionIcons';
+import {
+  isMarketplaceRegistryStaleConflict,
+  type MarketplaceRegistryPrecondition,
+} from '../marketplace-registry';
 
 export interface MarketplaceSourceRow {
   id: string;
@@ -23,11 +27,9 @@ export interface MarketplaceSourceRow {
   refreshError?: { message?: string; code?: string } | null;
 }
 
-interface MarketplaceRegistrySnapshot {
-  revision?: number;
-  digest?: string;
+type MarketplaceRegistrySnapshot = MarketplaceRegistryPrecondition & {
   degraded?: boolean;
-}
+};
 
 export interface MarketplaceSourcesPanelProps {
   /** When true, open the add-source dialog on first mount. */
@@ -108,7 +110,7 @@ export function MarketplaceSourcesPanel({
   const [isStudioOwner, setIsStudioOwner] = useState<boolean | null>(null);
   const showToast = useSettingsStore((s) => s.showToast);
 
-  const loadSources = useCallback(async () => {
+  const loadSources = useCallback(async (): Promise<MarketplaceRegistrySnapshot | null> => {
     setLoading(true);
     setError(null);
     try {
@@ -119,9 +121,11 @@ export function MarketplaceSourcesPanel({
       }
       const list = Array.isArray(data.sources) ? data.sources : [];
       setSources(list);
-      setRegistry(data.registry || null);
+      const nextRegistry = data.registry || null;
+      setRegistry(nextRegistry);
       setIsStudioOwner(typeof data.access?.isStudioOwner === 'boolean' ? data.access.isStudioOwner : null);
       onSourcesChanged?.(list);
+      return nextRegistry;
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       // Soft: keep previous list on transient network abort/fetch failures
@@ -131,40 +135,72 @@ export function MarketplaceSourcesPanel({
       } else {
         setError((prev) => prev || mapMarketplaceSourceError(msg));
       }
+      return null;
     } finally {
       setLoading(false);
     }
   }, [onSourcesChanged]);
 
   useEffect(() => {
-    loadSources();
+    void loadSources();
   }, [loadSources]);
 
   useEffect(() => {
     if (defaultShowAdd) setShowAdd(true);
   }, [defaultShowAdd]);
 
+  /**
+   * Source and package gates share one server-owned registry. A package change
+   * can therefore make this panel's earlier source snapshot stale. Refresh and
+   * replay this exact source operation once; never weaken server preconditions.
+   */
+  const withFreshRegistryRetry = async <T,>(
+    operation: (snapshot: MarketplaceRegistrySnapshot | null) => Promise<T>,
+  ): Promise<T> => {
+    try {
+      return await operation(registry);
+    } catch (err) {
+      if (!isMarketplaceRegistryStaleConflict(err)) throw err;
+      const freshRegistry = await loadSources();
+      if (!freshRegistry) throw err;
+      try {
+        return await operation(freshRegistry);
+      } catch (retryErr) {
+        if (isMarketplaceRegistryStaleConflict(retryErr)) {
+          await loadSources();
+          throw new Error(t('settings.plugins.marketplaceChangedRetry'));
+        }
+        throw retryErr;
+      }
+    }
+  };
+
   const addSource = async (input: MarketplaceSourceInput) => {
-    const body: Record<string, string | number> = {
-      source: input.source,
-      ...(typeof registry?.revision === 'number' ? { expectedRevision: registry.revision } : {}),
-      ...(registry?.digest ? { expectedDigest: registry.digest } : {}),
-    };
     setBusy(true);
     try {
-      const res = await hanaFetch('/api/plugins/marketplace/sources', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+      await withFreshRegistryRetry(async (snapshot) => {
+        const body: Record<string, string | number> = {
+          source: input.source,
+          ...(typeof snapshot?.revision === 'number' ? { expectedRevision: snapshot.revision } : {}),
+          ...(snapshot?.digest ? { expectedDigest: snapshot.digest } : {}),
+        };
+        const res = await hanaFetch('/api/plugins/marketplace/sources', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.error) {
+          if (isMarketplaceRegistryStaleConflict(data)) throw data;
+          throw new Error(
+            mapMarketplaceSourceError(data.error || data.detail || t('settings.plugins.marketSourceAddFailed'), res.status),
+          );
+        }
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || data.error) {
-        throw new Error(
-          mapMarketplaceSourceError(data.error || data.detail || t('settings.plugins.marketSourceAddFailed'), res.status),
-        );
-      }
       showToast(t('settings.plugins.marketSourceAdded'), 'success');
       await loadSources();
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : String(err), 'error');
     } finally {
       setBusy(false);
     }
@@ -174,17 +210,20 @@ export function MarketplaceSourcesPanel({
     if (!window.confirm(t('settings.plugins.marketSourceRemoveConfirm', { id: sourceId }))) return;
     setBusy(true);
     try {
-      const query = new URLSearchParams();
-      if (typeof registry?.revision === 'number') query.set('expectedRevision', String(registry.revision));
-      if (registry?.digest) query.set('expectedDigest', registry.digest);
-      const suffix = query.size ? `?${query.toString()}` : '';
-      const res = await hanaFetch(`/api/plugins/marketplace/sources/${encodeURIComponent(sourceId)}${suffix}`, {
-        method: 'DELETE',
+      await withFreshRegistryRetry(async (snapshot) => {
+        const query = new URLSearchParams();
+        if (typeof snapshot?.revision === 'number') query.set('expectedRevision', String(snapshot.revision));
+        if (snapshot?.digest) query.set('expectedDigest', snapshot.digest);
+        const suffix = query.size ? `?${query.toString()}` : '';
+        const res = await hanaFetch(`/api/plugins/marketplace/sources/${encodeURIComponent(sourceId)}${suffix}`, {
+          method: 'DELETE',
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.error) {
+          if (isMarketplaceRegistryStaleConflict(data)) throw data;
+          throw new Error(data.error || data.detail || t('settings.plugins.marketSourceRemoveFailed'));
+        }
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || data.error) {
-        throw new Error(data.error || data.detail || t('settings.plugins.marketSourceRemoveFailed'));
-      }
       showToast(t('settings.plugins.marketSourceRemoved'), 'success');
       await loadSources();
     } catch (err: unknown) {
@@ -201,17 +240,22 @@ export function MarketplaceSourcesPanel({
     if (!window.confirm(t('settings.plugins.marketSourceToggleConfirm', { operation, id: source.id }))) return;
     setBusy(true);
     try {
-      const res = await hanaFetch(`/api/plugins/marketplace/sources/${encodeURIComponent(source.id)}/enabled`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          enabled,
-          ...(typeof registry?.revision === 'number' ? { expectedRevision: registry.revision } : {}),
-          ...(registry?.digest ? { expectedDigest: registry.digest } : {}),
-        }),
+      await withFreshRegistryRetry(async (snapshot) => {
+        const res = await hanaFetch(`/api/plugins/marketplace/sources/${encodeURIComponent(source.id)}/enabled`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            enabled,
+            ...(typeof snapshot?.revision === 'number' ? { expectedRevision: snapshot.revision } : {}),
+            ...(snapshot?.digest ? { expectedDigest: snapshot.digest } : {}),
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.error) {
+          if (isMarketplaceRegistryStaleConflict(data)) throw data;
+          throw new Error(data.error || `${t('settings.plugins.marketSourceToggleFailed')}: ${source.id}`);
+        }
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || data.error) throw new Error(data.error || `${t('settings.plugins.marketSourceToggleFailed')}: ${source.id}`);
       showToast(t('settings.plugins.marketSourceToggleSuccess', {
         id: source.id,
         state: enabled ? t('settings.plugins.marketSourceEnabled') : t('settings.plugins.marketSourceDisabled'),
