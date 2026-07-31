@@ -1,6 +1,10 @@
 import fs from "fs";
 import path from "path";
-import { assertMarketplaceId, assertPluginId } from "./plugin-marketplace-identity.ts";
+import {
+  assertMarketplaceId,
+  assertPluginId,
+  buildPluginMarketplaceRef,
+} from "./plugin-marketplace-identity.ts";
 import {
   assertInstallTargetInsideRoot,
   installSkillPackageFromDirectory,
@@ -358,6 +362,46 @@ export function reconcileClaudeSkillsInstallRecord(
 ): ReconciledClaudeSkillsInstall {
   const record = readClaudeSkillsInstallRecord(hanakoHome, marketplaceId, pluginId);
   return reconcileClaudeSkillsInstall(record, userSkillsDir);
+}
+
+export interface PresentSkillPackageMembership {
+  pluginId: string;
+  marketplaceId: string;
+  identity: string;
+}
+
+/**
+ * Reverse map of skill names present on disk → owning marketplace skill package.
+ *
+ * When two install records claim the same present skill name, the package with the
+ * lexicographically smaller identity wins. Callers (e.g. SkillManager) must not
+ * enable the skill under the losing package.
+ */
+export function buildPresentSkillPackageMembership(
+  hanakoHome: string,
+  userSkillsDir = path.join(hanakoHome, "skills"),
+): Map<string, PresentSkillPackageMembership> {
+  const out = new Map<string, PresentSkillPackageMembership>();
+  for (const record of listClaudeSkillsInstallRecords(hanakoHome)) {
+    const reconciled = reconcileClaudeSkillsInstall(record, userSkillsDir);
+    if (reconciled.state === "not-installed") continue;
+    const identity = buildPluginMarketplaceRef({
+      pluginId: record.pluginId,
+      marketplaceId: record.marketplaceId,
+    });
+    const membership: PresentSkillPackageMembership = {
+      pluginId: record.pluginId,
+      marketplaceId: record.marketplaceId,
+      identity,
+    };
+    for (const skillName of reconciled.present) {
+      const existing = out.get(skillName);
+      if (!existing || identity.localeCompare(existing.identity) < 0) {
+        out.set(skillName, membership);
+      }
+    }
+  }
+  return out;
 }
 
 export function removeClaudeSkillsInstallRecord(
