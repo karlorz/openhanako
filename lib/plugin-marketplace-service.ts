@@ -613,6 +613,12 @@ export class PluginMarketplaceService {
             installedMarketplaceSkillRefs,
           }))
         : [];
+      const packageActivation = computeMarketplaceSkillPackageActivation({
+        identity: runtimeIdentity,
+        activations,
+        sources,
+        installedPresent: packageInstall.state !== "not-installed",
+      });
       const nativeAgentPluginAccess = inspection.destination === "native-plugin" && options.agentId
         ? computeNativeAgentPluginAccess({
             identity: runtimeIdentity,
@@ -644,6 +650,7 @@ export class PluginMarketplaceService {
         installPlan,
         runtimeActivation,
         marketplaceSkillActivations,
+        packageActivation,
         packageInstall,
         nativeAgentPluginAccess,
         canInstall: inspection.installable
@@ -850,6 +857,14 @@ export class PluginMarketplaceService {
           delete entries[identity];
           changed = true;
         }
+      }
+    }
+    // Full uninstall success clears the package-level gate; partial retains it.
+    if (result.complete === true) {
+      const packageIdentity = buildPluginMarketplaceRef({ pluginId, marketplaceId });
+      if (activations.marketplaceSkillPackages?.[packageIdentity] !== undefined) {
+        delete activations.marketplaceSkillPackages[packageIdentity];
+        changed = true;
       }
     }
     let activationCleanupError: string | null = null;
