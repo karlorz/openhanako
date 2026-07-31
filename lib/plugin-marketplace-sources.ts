@@ -49,6 +49,8 @@ export interface MarketplaceSourcesFile {
 export interface MarketplaceControlPlaneActivations {
   runtimePlugins?: Record<string, unknown>;
   marketplaceSkills?: Record<string, unknown>;
+  /** Package-level gates keyed by pluginId@marketplaceId (parsePluginMarketplaceRef). */
+  marketplaceSkillPackages?: Record<string, unknown>;
   agentSkillOverrides?: Record<string, Record<string, unknown>>;
   agentPluginAccess?: Record<string, Record<string, unknown>>;
 }
@@ -126,6 +128,7 @@ export interface MarketplaceControlPlaneDiagnosticReport {
     disabledSources: string[];
     runtimePluginActivations: number;
     marketplaceSkillActivations: number;
+    marketplaceSkillPackageActivations: number;
     agentSkillOverrides: number;
     agentPluginAccessRecords: number;
   };
@@ -283,12 +286,19 @@ function validateDescriptor(raw: unknown): MarketplaceSourceDescriptor {
   throw new Error(`Unsupported marketplace source kind: ${String(kind)}`);
 }
 
-function validateActivationKey(key: string, kind: "runtimePlugins" | "marketplaceSkills") {
-  if (kind === "runtimePlugins") {
+function validateActivationKey(
+  key: string,
+  kind: "runtimePlugins" | "marketplaceSkills" | "marketplaceSkillPackages",
+) {
+  if (kind === "runtimePlugins" || kind === "marketplaceSkillPackages") {
     try {
       parsePluginMarketplaceRef(key);
     } catch {
-      throw new Error(`Malformed marketplace source registry: runtime plugin activation key must be source-qualified: ${key}`);
+      throw new Error(
+        kind === "marketplaceSkillPackages"
+          ? `Malformed marketplace source registry: marketplace skill package activation key must be source-qualified (pluginId@marketplaceId): ${key}`
+          : `Malformed marketplace source registry: runtime plugin activation key must be source-qualified: ${key}`,
+      );
     }
     return;
   }
@@ -348,6 +358,17 @@ function validateActivations(raw: unknown): MarketplaceControlPlaneActivations |
       validateActivationEntry(value, `activations.marketplaceSkills.${key}`);
     }
     out.marketplaceSkills = marketplaceSkills;
+  }
+  const marketplaceSkillPackages = validateActivationRecord(
+    raw.marketplaceSkillPackages,
+    "activations.marketplaceSkillPackages",
+  );
+  if (marketplaceSkillPackages) {
+    for (const [key, value] of Object.entries(marketplaceSkillPackages)) {
+      validateActivationKey(key, "marketplaceSkillPackages");
+      validateActivationEntry(value, `activations.marketplaceSkillPackages.${key}`);
+    }
+    out.marketplaceSkillPackages = marketplaceSkillPackages;
   }
   const agentSkillOverrides = validateActivationRecord(raw.agentSkillOverrides, "activations.agentSkillOverrides");
   if (agentSkillOverrides) {
@@ -433,6 +454,7 @@ const ROOT_FIELDS_BY_SCHEMA: Record<1 | 2, Set<string>> = {
 const ACTIVATION_ROOT_FIELDS = new Set([
   "runtimePlugins",
   "marketplaceSkills",
+  "marketplaceSkillPackages",
   "agentSkillOverrides",
   "agentPluginAccess",
 ]);
@@ -463,6 +485,13 @@ function activationSourceIds(activations: MarketplaceControlPlaneActivations | u
   for (const key of Object.keys(activations?.marketplaceSkills || {})) {
     try {
       ids.add(parseMarketplaceSkillRef(key).marketplaceId);
+    } catch {
+      /* strict validation records the malformed key */
+    }
+  }
+  for (const key of Object.keys(activations?.marketplaceSkillPackages || {})) {
+    try {
+      ids.add(parsePluginMarketplaceRef(key).marketplaceId);
     } catch {
       /* strict validation records the malformed key */
     }
@@ -500,6 +529,7 @@ function summarizeFile(file: MarketplaceSourcesFile | null): MarketplaceControlP
     disabledSources: sources.filter((source) => source.enabled === false).map((source) => source.id),
     runtimePluginActivations: describeRecordCount(activations?.runtimePlugins),
     marketplaceSkillActivations: describeRecordCount(activations?.marketplaceSkills),
+    marketplaceSkillPackageActivations: describeRecordCount(activations?.marketplaceSkillPackages),
     agentSkillOverrides: describeRecordCount(activations?.agentSkillOverrides),
     agentPluginAccessRecords: Object.values(activations?.agentPluginAccess || {})
       .reduce((sum, entries) => sum + describeRecordCount(entries), 0),
