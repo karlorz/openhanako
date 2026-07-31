@@ -900,8 +900,8 @@ export function PluginMarketplaceTab() {
       </div>
 
       <SettingsSection surface="plain">
-        <div className={styles['plugin-marketplace-scope-grid']}>
-          <section className={styles['plugin-marketplace-scope-card']} aria-labelledby="marketplace-server-scope">
+        <section className={styles['plugin-marketplace-summary']} aria-labelledby="marketplace-server-scope">
+          <div className={styles['plugin-marketplace-summary-main']}>
             <div className={styles['plugin-marketplace-scope-heading']}>
               <div>
                 <h3 id="marketplace-server-scope">Server runtime &amp; sources</h3>
@@ -918,40 +918,33 @@ export function PluginMarketplaceTab() {
               <span>{marketplace?.registry?.degraded ? 'degraded / last-known-good' : 'configuration valid'}</span>
               <span>{marketplace?.access?.isStudioOwner === false ? 'needs owner for changes' : 'owner actions available'}</span>
             </div>
-          </section>
-
-          <section className={styles['plugin-marketplace-scope-card']} aria-labelledby="marketplace-agent-scope">
-            <div className={styles['plugin-marketplace-scope-heading']}>
-              <div>
-                <h3 id="marketplace-agent-scope">Selected-Agent Plugin Access</h3>
-                <p>Controls native plugin tools, commands, chat cards, and agent-aware surfaces for one Agent.</p>
-              </div>
-              <label className={styles['plugin-marketplace-agent-select']}>
-                <span>Agent</span>
-                <select
-                  value={selectedAgentId || ''}
-                  onChange={(event) => setSelectedAgentId(event.target.value || null)}
-                  aria-label="Agent for native plugin access"
-                >
-                  {!selectedAgentId && <option value="">Select an Agent</option>}
-                  {agents.map(agent => <option key={agent.id} value={agent.id}>{agent.name || agent.id}</option>)}
-                </select>
-              </label>
-            </div>
+          </div>
+          <div className={styles['plugin-marketplace-summary-agent']} aria-labelledby="marketplace-agent-scope">
+            <label className={styles['plugin-marketplace-agent-select']}>
+              <span id="marketplace-agent-scope">Selected-Agent Plugin Access</span>
+              <select
+                value={selectedAgentId || ''}
+                onChange={(event) => setSelectedAgentId(event.target.value || null)}
+                aria-label="Agent for native plugin access"
+              >
+                {!selectedAgentId && <option value="">Select an Agent</option>}
+                {agents.map(agent => <option key={agent.id} value={agent.id}>{agent.name || agent.id}</option>)}
+              </select>
+            </label>
             <p className={styles['settings-form-hint']}>
               Routes, providers, extensions, lifecycle/background behavior, and full-access policy remain server-global owner-reviewed state. This is not per-Agent sandboxing.
             </p>
-          </section>
-        </div>
+          </div>
+        </section>
 
-        <div style={{ marginBottom: 14 }}>
-          <MarketplaceSourcesPanel
-            // Debounce parent reloads: sources panel already lists sources; only refresh catalog after mutations.
-            onSourcesChanged={() => {
-              window.setTimeout(() => { void loadMarketplace({ silent: true }); }, 100);
-            }}
-          />
-        </div>
+        <MarketplaceSourcesPanel
+          embedded
+          heading={t('settings.plugins.marketSourcesSection')}
+          // Debounce parent reloads: sources panel already lists sources; only refresh catalog after mutations.
+          onSourcesChanged={() => {
+            window.setTimeout(() => { void loadMarketplace({ silent: true }); }, 100);
+          }}
+        />
         {!marketplace ? (
           <p className={`${styles['settings-muted-note']} ${styles['skills-empty']}`}>
             {t('settings.plugins.marketLoading')}

@@ -638,13 +638,12 @@ export function PluginsTab() {
           {marketplaceButton}
         </div>
       </div>
-      {/* First-class multi-source management on Plugins tab (not only inside browse subpage). */}
-      <div style={{ marginTop: 10 }}>
-        <div className={styles['skills-list-desc']} style={{ marginBottom: 6 }}>
-          {t('settings.plugins.marketSourcesSection')}
-        </div>
-        <MarketplaceSourcesPanel compact />
-      </div>
+      {/* First-class multi-source management remains part of this single marketplace surface. */}
+      <MarketplaceSourcesPanel
+        embedded
+        withTopDivider
+        heading={t('settings.plugins.marketSourcesSection')}
+      />
     </div>
   );
 
