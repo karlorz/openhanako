@@ -422,6 +422,10 @@ describe("PluginMarketplaceService.installClaudePluginSkills", () => {
         "wiki-query@llm-wiki/skillwiki": { enabled: true },
         "other@team/pack": { enabled: true },
       },
+      marketplaceSkillPackages: {
+        "skillwiki@llm-wiki": { enabled: false },
+        "other@team": { enabled: true },
+      },
       agentSkillOverrides: {
         "agent-a": {
           "wiki-query@llm-wiki/skillwiki": { enabled: false },
@@ -443,10 +447,70 @@ describe("PluginMarketplaceService.installClaudePluginSkills", () => {
     });
     expect(svc.registry.getControlPlaneActivations()).toEqual({
       marketplaceSkills: { "other@team/pack": { enabled: true } },
+      marketplaceSkillPackages: { "other@team": { enabled: true } },
       agentSkillOverrides: { "agent-a": { "other@team/pack": { enabled: false } } },
     });
     expect(fs.readFileSync(path.join(nativeDir, "keep.txt"), "utf8")).toBe("native");
     expect(fs.readFileSync(path.join(devDir, "keep.txt"), "utf8")).toBe("dev");
+  });
+
+  it("retains package-gate record on partial uninstall while cleaning handled skill activations", () => {
+    const home = makeTemp("svc-uninstall-partial-home-");
+    const skillsDir = path.join(home, "skills");
+    writeSkill(path.join(skillsDir, "wiki-query"), "wiki-query");
+    writeSkill(path.join(skillsDir, "wiki-sync"), "wiki-sync");
+    writeClaudeSkillsInstallRecord(home, {
+      kind: "claude-skills",
+      marketplaceId: "llm-wiki",
+      pluginId: "skillwiki",
+      packagePath: "packages/skills",
+      resolvedRevision: "abc",
+      skills: ["wiki-query", "wiki-sync"],
+      installedAt: "2026-07-31T00:00:00.000Z",
+    });
+
+    const svc = new PluginMarketplaceService({ hanakoHome: home, env: {} });
+    svc.registry.addSource({
+      id: "llm-wiki",
+      name: "llm-wiki",
+      kind: "url",
+      url: "https://example.com/llm-wiki.json",
+    });
+    svc.registry.setControlPlaneActivations({
+      marketplaceSkills: {
+        "wiki-query@llm-wiki/skillwiki": { enabled: true },
+        "wiki-sync@llm-wiki/skillwiki": { enabled: true },
+      },
+      marketplaceSkillPackages: {
+        "skillwiki@llm-wiki": { enabled: false },
+      },
+    });
+
+    const result = svc.uninstallClaudePluginSkills("skillwiki", "llm-wiki", {
+      userSkillsDir: skillsDir,
+      isStudioOwner: true,
+      removeDir(dir) {
+        if (dir.endsWith("wiki-sync")) throw new Error("busy");
+        fs.rmSync(dir, { recursive: true, force: true });
+      },
+    });
+
+    expect(result).toMatchObject({
+      complete: false,
+      deleted: ["wiki-query"],
+      failed: [{ name: "wiki-sync", error: "busy" }],
+    });
+    // Only handled (deleted/alreadyMissing) skill activations are cleaned; package gate retained.
+    expect(svc.registry.getControlPlaneActivations()).toEqual({
+      marketplaceSkills: {
+        "wiki-sync@llm-wiki/skillwiki": { enabled: true },
+      },
+      marketplaceSkillPackages: {
+        "skillwiki@llm-wiki": { enabled: false },
+      },
+    });
+    expect(readClaudeSkillsInstallRecord(home, "llm-wiki", "skillwiki")?.skills)
+      .toEqual(["wiki-sync"]);
   });
 
   it("rejects marketplace skills uninstall without studio.owner before deletion", () => {
