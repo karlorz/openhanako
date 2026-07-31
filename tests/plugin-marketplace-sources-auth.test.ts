@@ -551,7 +551,20 @@ describe("marketplace sources auth principal", () => {
     const agentConfig = path.join(engine.agentsDir, "agent-a", "config.yaml");
     fs.mkdirSync(path.dirname(agentConfig), { recursive: true });
     fs.writeFileSync(agentConfig, "{}\n", "utf8");
-    saveConfig(agentConfig, { skills: { enabled: ["wiki-query", "other"] } });
+    const agent = {
+      id: "agent-a",
+      config: {
+        skills: {
+          enabled: ["wiki-query", "other"],
+          marketplace_overrides: {
+            "skillwiki@llm-wiki": { disabled: ["wiki-query", "wiki-sync"] },
+            "other@source": { disabled: ["other-skill"] },
+          },
+        },
+      },
+    };
+    saveConfig(agentConfig, agent.config);
+    engine.agents = new Map([[agent.id, agent]]);
     writeClaudeSkillsInstallRecord(home, {
       kind: "claude-skills",
       marketplaceId: "llm-wiki",
@@ -582,6 +595,12 @@ describe("marketplace sources auth principal", () => {
     });
     expect(fs.existsSync(skillDir)).toBe(false);
     expect(loadConfig(agentConfig)?.skills?.enabled).toEqual(["other"]);
+    expect(loadConfig(agentConfig)?.skills?.marketplace_overrides).toEqual({
+      "other@source": { disabled: ["other-skill"] },
+    });
+    expect(agent.config.skills.marketplace_overrides).toEqual({
+      "other@source": { disabled: ["other-skill"] },
+    });
     expect(engine.reloadSkills).toHaveBeenCalledOnce();
     expect(engine.emitEvent).toHaveBeenCalledWith(expect.objectContaining({
       type: "app_event",

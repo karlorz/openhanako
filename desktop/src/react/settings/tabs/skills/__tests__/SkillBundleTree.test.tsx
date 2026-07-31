@@ -93,7 +93,7 @@ describe('SkillBundleTree', () => {
     expect(onExpandedStateChange).toHaveBeenCalledWith({ 'writing-bundle': false });
   });
 
-  it('shows package provenance and keeps an inactive package skill configurable', () => {
+  it('shows package provenance and locks an inactive package skill until the package is enabled', () => {
     const onToggleSkill = vi.fn();
     const { container } = render(
       <SkillBundleTree
@@ -110,6 +110,7 @@ describe('SkillBundleTree', () => {
             identity: 'skillwiki@llm-wiki',
             skillName: 'wiki-query',
             explicitlyDisabled: false,
+            packageEnabled: false,
           },
         }]}
         nameHints={{}}
@@ -120,7 +121,44 @@ describe('SkillBundleTree', () => {
 
     expect(container.querySelector('[data-marketplace-package="skillwiki@llm-wiki"]')).toBeTruthy();
     expect(container.querySelector('[data-inactive-reason="marketplace-package-disabled"]')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'settings.skills.toggleDisableNamed' }));
-    expect(onToggleSkill).toHaveBeenCalledWith('wiki-query', false);
+    const toggle = screen.getByRole('button', { name: 'settings.skills.toggleEnableNamed' });
+    expect((toggle as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(toggle);
+    expect(onToggleSkill).not.toHaveBeenCalled();
+  });
+
+  it('locks the bundle toggle when any package skill is globally disabled', () => {
+    const onToggleBundle = vi.fn();
+    render(
+      <SkillBundleTree
+        mode="agent"
+        bundles={[{
+          id: 'wiki-bundle',
+          name: 'Wiki Bundle',
+          skillNames: ['wiki-query'],
+        }]}
+        skills={[{
+          name: 'wiki-query',
+          description: 'Query the wiki',
+          enabled: true,
+          active: false,
+          inactiveReason: 'marketplace-package-disabled',
+          marketplacePackage: {
+            identity: 'skillwiki@llm-wiki',
+            skillName: 'wiki-query',
+            explicitlyDisabled: false,
+            packageEnabled: false,
+          },
+        }]}
+        nameHints={{}}
+        emptyText="No skills"
+        onToggleBundle={onToggleBundle}
+      />,
+    );
+
+    const toggle = screen.getByTestId('skill-bundle-toggle-wiki-bundle') as HTMLButtonElement;
+    expect(toggle.disabled).toBe(true);
+    fireEvent.click(toggle);
+    expect(onToggleBundle).not.toHaveBeenCalled();
   });
 });

@@ -6593,11 +6593,16 @@
         },
         {
           "root": "server-bootstrap",
+          "from": "lib/skills/remove-skill-references.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
           "from": "server/routes/skills.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by core/skill-manager.ts (import-statement); core/engine.ts (import-statement); server/routes/skills.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by core/skill-manager.ts (import-statement); core/engine.ts (import-statement); lib/skills/remove-skill-references.ts (import-statement); +1 more importer(s)."
     },
     {
       "path": "lib/memory/cache-snapshot-observation.ts",

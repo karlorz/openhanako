@@ -183,6 +183,30 @@ export function setMarketplaceSkillPreference(
   ]));
 }
 
+/** Remove all persisted per-agent preferences for an uninstalled package. */
+export function removeMarketplaceSkillPackagePreference(
+  rawOverrides: unknown,
+  identity: string,
+  skillNames?: Iterable<string>,
+): MarketplaceSkillOverrides | null {
+  const canonicalIdentity = buildPluginMarketplaceRef(parsePluginMarketplaceRef(identity));
+  const { overrides } = normalizeMarketplaceSkillOverrides(rawOverrides);
+  const current = overrides[canonicalIdentity];
+  if (!current) return null;
+  const next = structuredClone(overrides);
+  if (skillNames === undefined) {
+    delete next[canonicalIdentity];
+    return next;
+  }
+
+  const names = new Set(skillNames);
+  const remaining = current.disabled.filter((name) => !names.has(name));
+  if (remaining.length === current.disabled.length) return null;
+  if (remaining.length === 0) delete next[canonicalIdentity];
+  else next[canonicalIdentity] = { disabled: remaining };
+  return next;
+}
+
 /** Metadata used by Skills API consumers for a known package-owned skill. */
 export function marketplaceSkillPreference(
   rawOverrides: unknown,

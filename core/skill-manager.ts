@@ -528,11 +528,17 @@ export class SkillManager {
     const marketplaceIdentity = packageGate?.identity || null;
     const isMarketplaceSkill = Boolean(marketplaceIdentity);
     const marketplacePackage = isMarketplaceSkill
-      ? marketplaceSkillPreferenceFromNormalized(
-        marketplaceOverrides,
-        marketplaceIdentity,
-        packageGate?.skillName || skill?.name,
-      )
+      ? {
+        ...marketplaceSkillPreferenceFromNormalized(
+          marketplaceOverrides,
+          marketplaceIdentity,
+          packageGate?.skillName || skill?.name,
+        ),
+        // Keep the per-agent preference separate from the global package gate.
+        // Settings uses this field to lock package-owned skill toggles while
+        // the package is disabled, then restores the preference on re-enable.
+        packageEnabled: packageGate?.enabled !== false,
+      }
       : null;
     const agentPreferenceEnabled = isMarketplaceSkill
       ? !marketplacePackage.explicitlyDisabled
