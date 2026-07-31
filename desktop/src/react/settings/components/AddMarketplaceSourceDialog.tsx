@@ -80,8 +80,13 @@ export function AddMarketplaceSourceDialog({ open = true, onClose, onSubmit }: A
     <Overlay
       open={open}
       onClose={close}
-      scope="window"
+      // Settings dialogs must share the Settings view's stacking context. A
+      // window portal correctly mounted this dialog for assistive technology,
+      // but Electron painted only its backdrop and hid the card content.
+      scope="inline"
       backdrop="blur"
+      zIndex={120}
+      disableContainerAnimation
       closeOnBackdrop={!submitting}
       closeOnEsc={!submitting}
       initialFocusRef={inputRef}
