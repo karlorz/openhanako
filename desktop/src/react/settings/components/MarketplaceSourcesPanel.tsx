@@ -360,14 +360,6 @@ export function MarketplaceSourcesPanel({
                     </button>
                     <button
                       type="button"
-                      className={`hana-toggle${src.enabled === false ? '' : ' on'}`}
-                      disabled={busy}
-                      onClick={() => setSourceEnabled(src, src.enabled === false)}
-                      aria-label={`${src.enabled === false ? t('settings.plugins.marketSourceEnable') : t('settings.plugins.marketSourceDisable')} ${src.id}`}
-                      title={`${src.enabled === false ? t('settings.plugins.marketSourceEnable') : t('settings.plugins.marketSourceDisable')} ${src.id}`}
-                    />
-                    <button
-                      type="button"
                       className={`${styles['settings-icon-btn']} ${styles['plugin-action-icon']} ${styles['plugin-action-danger']}`}
                       disabled={busy}
                       onClick={() => removeSource(src.id)}
@@ -376,6 +368,14 @@ export function MarketplaceSourcesPanel({
                     >
                       <RemoveIcon />
                     </button>
+                    <button
+                      type="button"
+                      className={`hana-toggle${src.enabled === false ? '' : ' on'}`}
+                      disabled={busy}
+                      onClick={() => setSourceEnabled(src, src.enabled === false)}
+                      aria-label={`${src.enabled === false ? t('settings.plugins.marketSourceEnable') : t('settings.plugins.marketSourceDisable')} ${src.id}`}
+                      title={`${src.enabled === false ? t('settings.plugins.marketSourceEnable') : t('settings.plugins.marketSourceDisable')} ${src.id}`}
+                    />
                   </div>
                 )}
               </div>

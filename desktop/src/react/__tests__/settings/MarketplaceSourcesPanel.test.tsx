@@ -143,6 +143,12 @@ describe('MarketplaceSourcesPanel product states', () => {
     expect(toggle.className).toMatch(/hana-toggle/);
     expect(toggle.className).toMatch(/on/);
     expect(toggle.className).not.toMatch(/pv-add-form-btn/);
+
+    expect(Array.from(refresh.parentElement?.children || [])).toEqual([
+      refresh,
+      remove,
+      toggle,
+    ]);
   });
 
   it('keeps source refresh/remove callbacks and revision/digest behavior unchanged', async () => {
