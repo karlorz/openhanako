@@ -2488,6 +2488,45 @@
     margin-bottom: var(--space-16);
 }
 
+/* Marketplace source management borrows row typography from Skills but lives
+   inside its parent surface. Do not give it another card frame. */
+.marketplace-sources-panel {
+    min-width: 0;
+    margin: var(--space-12) 0 var(--space-16);
+}
+
+.marketplace-sources-panel-divided {
+    margin: 0;
+    border-top: 1px solid var(--border);
+}
+
+.marketplace-sources-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-12);
+    min-height: 34px;
+    padding: var(--space-6) var(--space-12) 0;
+}
+
+.marketplace-sources-title {
+    color: var(--text-muted);
+    font-size: var(--fs-caption);
+}
+
+.marketplace-sources-header .pv-add-form-actions {
+    margin-top: 0;
+}
+
+.marketplace-sources-list {
+    display: flex;
+    flex-direction: column;
+}
+
+.marketplace-sources-list .skills-list-item {
+    border-top: 1px solid var(--border);
+}
+
 .skills-list-item {
     display: flex;
     align-items: center;
@@ -2795,20 +2834,35 @@
     outline-offset: -2px;
 }
 
-.plugin-marketplace-scope-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--space-12);
-    margin-bottom: var(--space-16);
-}
-
-.plugin-marketplace-scope-card,
+.plugin-marketplace-summary,
 .plugin-marketplace-binding-card {
     min-width: 0;
     padding: var(--space-12);
     border: 1px solid var(--border);
     border-radius: var(--radius-card, 8px);
     background: color-mix(in srgb, var(--bg-card) 88%, transparent);
+}
+
+.plugin-marketplace-summary {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(200px, 0.5fr);
+    gap: var(--space-16);
+    align-items: start;
+    margin-bottom: var(--space-8);
+}
+
+.plugin-marketplace-summary-main,
+.plugin-marketplace-summary-agent {
+    min-width: 0;
+}
+
+.plugin-marketplace-summary-agent {
+    display: grid;
+    gap: var(--space-6);
+}
+
+.plugin-marketplace-summary-agent .settings-form-hint {
+    margin: 0;
 }
 
 .plugin-marketplace-scope-heading {
@@ -3066,7 +3120,7 @@
 }
 
 @media (max-width: 760px) {
-    .plugin-marketplace-scope-grid,
+    .plugin-marketplace-summary,
     .plugin-marketplace-advanced-body {
         grid-template-columns: minmax(0, 1fr);
     }
