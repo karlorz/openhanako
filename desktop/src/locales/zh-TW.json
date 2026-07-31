@@ -2098,6 +2098,11 @@
       "toggleDisable": "关闭 Skill",
       "toggleEnableNamed": "启用 {name}",
       "toggleDisableNamed": "关闭 {name}",
+      "marketplacePackageBadge": "Hana 技能包",
+      "marketplacePackageSource": "技能包：{identity}",
+      "marketplaceInactivePackage": "技能包已在插件管理中关闭；此助手的偏好仍会保留。",
+      "marketplaceInactiveAgent": "此助手已关闭；该偏好仍会保留。",
+      "marketplaceInactiveSource": "市场来源目前无法使用；此助手的偏好仍会保留。",
       "bundleDialog": {
         "createTitle": "新增 Bundle",
         "renameTitle": "重新命名 Bundle",
@@ -2245,7 +2250,8 @@
       "skillPackageStatusStale": "記錄過期",
       "skillPackageUninstallConfirm": "解除安裝技能包 \"{identity}\"？將永久刪除 {skillCount} 個已記錄技能。原生外掛與 Agent 開發工具目錄不受影響。",
       "skillPackageToggle": "切換技能包 {identity}",
-      "skillPackageManageInSkills": "在 Skills 中管理"
+      "skillPackageManageInSkills": "在 Skills 中管理",
+      "skillPackageDefaultOn": "已安裝技能包預設對所有助手啟用；可在技能設定中按助手關閉單個技能。"
     },
     "mcp": {
       "masterTitle": "總開關",

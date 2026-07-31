@@ -46,6 +46,47 @@ Installed Hana-skill marketplace packages appear under **Settings → Plugins �
 - **Not PluginManager:** Package enable does not load, unload, or reconfigure native plugins. Uninstall uses `DELETE /api/plugins/marketplace/:id/skills`. Install, Uninstall, and **Manage in Skills** remain the skill lifecycle and per-skill activation paths. The native dropzone under Manage Plugins still installs only PluginManager packages.
 - **Plugin Marketplace detail:** When a Hana-skill package is installed (not `not-installed`), the catalog inspector shows the same package enable toggle bound to `packageActivation` / `marketplaceSkillPackages`, while keeping Install / Uninstall / Manage in Skills actions.
 
+### Per-Agent skill defaults and opt-outs
+
+An installed Hana-skill package is enabled for every Hana Agent by default when
+its global package gate is enabled. This applies to Agents using any supported
+model or provider; the package is not delegated to a Claude Code, Grok, or
+other external runtime configuration.
+
+The package gate and the individual Agent preference have different scopes:
+
+- **Manage Plugins** controls the source-qualified global package gate at
+  `activations.marketplaceSkillPackages[pluginId@marketplaceId]`.
+- **Skills → Agent Skill Toggles** controls one Agent's individual skill
+  preference. An absent entry means enabled by default; it does not mean
+  disabled.
+- A package-gated skill reports its preference (`enabled`) separately from
+  runtime availability (`active`). Turning a package off makes the skill
+  inactive for every Agent but does not erase individual preferences.
+
+Hana persists an explicit per-Agent opt-out in that Agent's `config.yaml`:
+
+```yaml
+skills:
+  enabled:
+    - pdf
+  marketplace_overrides:
+    skillwiki@llm-wiki:
+      disabled:
+        - wiki-query
+```
+
+The package key is always `pluginId@marketplaceId`. Disabled names are scoped
+to that package, so the same skill name from a different marketplace does not
+inherit the preference. Preferences remain dormant across package disable,
+complete uninstall, and reinstall of the same source-qualified identity. New
+skills added to an installed package default on unless that Agent already has
+the matching explicit disabled entry.
+
+Marketplace skill package rows are not native PluginManager plugins. Their
+individual toggles use the existing explicit-agent Skills API and do not write
+to the package or to the global marketplace activations file.
+
 ## Server runtime and selected-Agent access
 
 Native Plugins has two distinct scopes:

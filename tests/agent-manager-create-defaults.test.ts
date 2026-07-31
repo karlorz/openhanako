@@ -138,6 +138,7 @@ describe("AgentManager.createAgent default skills.enabled", () => {
       computeDefaultEnabledForNewAgent() {
         return this._allSkills
           .filter((s) => s.source !== "external" && s.defaultEnabled !== false)
+          .filter((s) => !s.marketplacePackage)
           .map((s) => s.name);
       },
       syncAgentSkills: vi.fn(),
@@ -217,6 +218,20 @@ describe("AgentManager.createAgent default skills.enabled", () => {
     // The test seeds the template literally with ["skill-creator"], so that's
     // what should remain when our new fill code doesn't execute.
     expect(cfg.skills.enabled).toEqual(["skill-creator"]);
+  });
+
+  it("syncs a package-only default even when ordinary enabled skills are empty", async () => {
+    skillsMock._allSkills = [{
+      name: "wiki-query",
+      source: "user",
+      marketplacePackage: { identity: "skillwiki@llm-wiki", skillName: "wiki-query" },
+    }];
+
+    const { id: newId } = await mgr.createAgent({ name: "PackageAgent", yuan: "hanako" });
+
+    const cfg = YAML.load(fs.readFileSync(path.join(agentsDir, newId, "config.yaml"), "utf-8"));
+    expect(cfg.skills.enabled).toEqual(["skill-creator"]);
+    expect(skillsMock.syncAgentSkills).toHaveBeenCalledWith(expect.objectContaining({ id: newId }));
   });
 
   it("does not touch existing agents' config.yaml (regression for #419)", async () => {

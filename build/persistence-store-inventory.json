@@ -7315,6 +7315,33 @@
     },
     {
       "sourceFile": "lib/plugin-marketplace-claude-skills.ts",
+      "kind": "remove-path",
+      "excerpt": "fs.rmdirSync(sourceDir)",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null,
+      "ordinal": 0
+    },
+    {
+      "sourceFile": "lib/plugin-marketplace-claude-skills.ts",
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(dir, { recursive: true, force: true })",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null,
+      "ordinal": 0
+    },
+    {
+      "sourceFile": "lib/plugin-marketplace-claude-skills.ts",
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(filePath, { force: true })",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null,
+      "ordinal": 0
+    },
+    {
+      "sourceFile": "lib/plugin-marketplace-claude-skills.ts",
       "kind": "write-file",
       "excerpt": "fs.writeFileSync(filePath, JSON.stringify(payload, null, 2) + \"\\n\", \"utf8\")",
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
