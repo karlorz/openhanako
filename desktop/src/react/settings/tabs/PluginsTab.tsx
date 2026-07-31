@@ -27,6 +27,49 @@ interface PluginInfo {
   error?: string | null;
 }
 
+/** Inventory row for marketplace Claude / Hana skill packages (not native plugins). */
+interface ManagePluginsSkillPackageRow {
+  kind: 'marketplace-skill-package';
+  identity: string;
+  pluginId: string;
+  marketplaceId: string;
+  name: string;
+  version: string | null;
+  description: string | null;
+  packageState: 'installed' | 'partial' | 'stale-record';
+  packageEnabled: boolean;
+  packageGateRecorded: boolean;
+  packageGateState: string;
+  skillNames: string[];
+  skillCount: number;
+  missingSkillNames: string[];
+  invalidSkillNames: string[];
+  sourceStatus: 'ok' | 'disabled' | 'removed';
+  installAdapter: 'skill-manager';
+  installTarget: 'hana-skills';
+  actions: {
+    canToggle: boolean;
+    canUninstall: boolean;
+    canOpenSkills: boolean;
+    canReinstall: boolean;
+  };
+}
+
+type SkillPackageStatus = 'enabled' | 'disabled' | 'partial' | 'stale';
+
+interface SkillPackageInventoryMeta {
+  registry: { revision?: number; digest?: string } | null;
+  access: { isStudioOwner?: boolean; isLocalOwner?: boolean } | null;
+  activations: Record<string, unknown> | null;
+}
+
+function skillPackageStatus(pkg: ManagePluginsSkillPackageRow): SkillPackageStatus {
+  if (!pkg.packageEnabled) return 'disabled';
+  if (pkg.packageState === 'partial') return 'partial';
+  if (pkg.packageState === 'stale-record') return 'stale';
+  return 'enabled';
+}
+
 interface PluginConfigProperty {
   type?: 'string' | 'number' | 'integer' | 'boolean' | 'object' | 'array';
   title?: string;
@@ -101,6 +144,27 @@ function StatusBadge({ status }: { status: PluginInfo['status'] }) {
   );
 }
 
+function SkillPackageStatusBadge({ status }: { status: SkillPackageStatus }) {
+  const labelKey =
+    status === 'enabled' ? 'settings.plugins.skillPackageStatusEnabled' :
+    status === 'partial' ? 'settings.plugins.skillPackageStatusPartial' :
+    status === 'stale' ? 'settings.plugins.skillPackageStatusStale' :
+    'settings.plugins.skillPackageStatusDisabled';
+
+  const style: React.CSSProperties =
+    status === 'enabled'
+      ? { color: 'var(--success, #5a9)', background: 'rgba(90,170,153,0.1)' }
+      : status === 'partial' || status === 'stale'
+      ? { color: 'var(--warning, #c90)', background: 'rgba(204,153,0,0.12)' }
+      : { color: 'var(--text-muted)', background: 'var(--overlay-light, rgba(0,0,0,0.06))' };
+
+  return (
+    <span className={styles['oauth-status-badge']} style={style}>
+      {t(labelKey)}
+    </span>
+  );
+}
+
 /* ── Contribution badges ── */
 
 function ContributionBadges({ contributions }: { contributions?: string[] }) {
@@ -165,6 +229,12 @@ export function PluginsTab() {
   const set = useSettingsStore(s => s.set);
 
   const [plugins, setPlugins] = useState<PluginInfo[]>([]);
+  const [skillPackages, setSkillPackages] = useState<ManagePluginsSkillPackageRow[]>([]);
+  const [skillPackageMeta, setSkillPackageMeta] = useState<SkillPackageInventoryMeta>({
+    registry: null,
+    access: null,
+    activations: null,
+  });
   const [loading, setLoading] = useState(true);
   const [dragOver, setDragOver] = useState(false);
   const [configPlugin, setConfigPlugin] = useState<PluginInfo | null>(null);
@@ -180,12 +250,40 @@ export function PluginsTab() {
 
   const loadPlugins = useCallback(async () => {
     try {
-      const res = await hanaFetch('/api/plugins?source=community');
-      const data = await res.json();
-      setPlugins(Array.isArray(data) ? data : []);
+      const [nativeRes, skillPkgRes] = await Promise.all([
+        hanaFetch('/api/plugins?source=community'),
+        hanaFetch('/api/plugins/marketplace/installed-skill-packages'),
+      ]);
+
+      try {
+        const nativeData = await nativeRes.json();
+        setPlugins(Array.isArray(nativeData) ? nativeData : []);
+      } catch (err) {
+        console.error('[plugins] native load failed:', err);
+        setPlugins([]);
+      }
+
+      try {
+        const skillData = await skillPkgRes.json();
+        const packages = Array.isArray(skillData?.packages) ? skillData.packages as ManagePluginsSkillPackageRow[] : [];
+        setSkillPackages(packages);
+        setSkillPackageMeta({
+          registry: skillData?.registry && typeof skillData.registry === 'object' ? skillData.registry : null,
+          access: skillData?.access && typeof skillData.access === 'object' ? skillData.access : null,
+          activations: skillData?.activations && typeof skillData.activations === 'object'
+            ? skillData.activations as Record<string, unknown>
+            : null,
+        });
+      } catch (err) {
+        console.error('[plugins] skill package inventory load failed:', err);
+        setSkillPackages([]);
+        setSkillPackageMeta({ registry: null, access: null, activations: null });
+      }
     } catch (err) {
       console.error('[plugins] load failed:', err);
       setPlugins([]);
+      setSkillPackages([]);
+      setSkillPackageMeta({ registry: null, access: null, activations: null });
     }
   }, []);
 
@@ -345,6 +443,88 @@ export function PluginsTab() {
     }
   };
 
+  /* ── marketplace skill packages (package gate + uninstall) ── */
+
+  const isStudioOwner = skillPackageMeta.access?.isStudioOwner === true;
+
+  const toggleSkillPackage = async (pkg: ManagePluginsSkillPackageRow, enable: boolean) => {
+    if (!isStudioOwner) return;
+    // Optimistic update
+    setSkillPackages(prev => prev.map(row => (
+      row.identity === pkg.identity ? { ...row, packageEnabled: enable } : row
+    )));
+    try {
+      const existing = skillPackageMeta.activations && typeof skillPackageMeta.activations === 'object'
+        ? skillPackageMeta.activations
+        : {};
+      const activations = structuredClone(existing) as Record<string, unknown> & {
+        marketplaceSkillPackages?: Record<string, { enabled: boolean }>;
+      };
+      activations.marketplaceSkillPackages ||= {};
+      activations.marketplaceSkillPackages[pkg.identity] = { enabled: enable };
+
+      const body: Record<string, unknown> = { activations };
+      if (typeof skillPackageMeta.registry?.revision === 'number') {
+        body.expectedRevision = skillPackageMeta.registry.revision;
+      }
+      if (skillPackageMeta.registry?.digest) {
+        body.expectedDigest = skillPackageMeta.registry.digest;
+      }
+
+      const res = await hanaFetch('/api/plugins/marketplace/config/activations', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.error) throw new Error(data.error || 'Skill package toggle failed');
+      showToast(t('settings.autoSaved'), 'success');
+      await loadPlugins();
+    } catch (err: unknown) {
+      setSkillPackages(prev => prev.map(row => (
+        row.identity === pkg.identity ? { ...row, packageEnabled: !enable } : row
+      )));
+      showToast(t('settings.saveFailed') + ': ' + (err instanceof Error ? err.message : String(err)), 'error');
+    }
+  };
+
+  const uninstallSkillPackage = async (pkg: ManagePluginsSkillPackageRow) => {
+    if (!isStudioOwner) return;
+    const msg = t('settings.plugins.skillPackageUninstallConfirm', {
+      identity: pkg.identity,
+      name: pkg.name,
+      skillCount: String(pkg.skillCount),
+    });
+    if (!confirm(msg)) return;
+    try {
+      const body: Record<string, unknown> = { marketplaceId: pkg.marketplaceId };
+      if (typeof skillPackageMeta.registry?.revision === 'number') {
+        body.expectedRevision = skillPackageMeta.registry.revision;
+      }
+      if (skillPackageMeta.registry?.digest) {
+        body.expectedDigest = skillPackageMeta.registry.digest;
+      }
+      const res = await hanaFetch(
+        `/api/plugins/marketplace/${encodeURIComponent(pkg.pluginId)}/skills`,
+        {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        },
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.error) throw new Error(data.error || 'Skill package uninstall failed');
+      if (data.ok === false || (Array.isArray(data.failed) && data.failed.length > 0)) {
+        showToast(t('settings.saveFailed') + ': partial skill package uninstall', 'error');
+      } else {
+        showToast(t('settings.autoSaved'), 'success');
+      }
+      await loadPlugins();
+    } catch (err: unknown) {
+      showToast(t('settings.saveFailed') + ': ' + (err instanceof Error ? err.message : String(err)), 'error');
+    }
+  };
+
   const updateConfigDraft = (key: string, value: unknown) => {
     setConfigDraft(prev => ({ ...prev, [key]: value }));
     setDirtyConfigKeys(prev => new Set(prev).add(key));
@@ -411,6 +591,7 @@ export function PluginsTab() {
 
   const isEnabled = (p: PluginInfo) => p.status === 'loaded' || p.status === 'failed';
   const isDimmed = (p: PluginInfo) => p.status === 'disabled' || p.status === 'restricted';
+  const inventoryEmpty = plugins.length === 0 && skillPackages.length === 0;
 
   const reloadButton = (
     <button
@@ -511,8 +692,8 @@ export function PluginsTab() {
           <span>{t('settings.plugins.dropzone')}</span>
         </div>
 
-        {/* 已安装列表 */}
-        {!loading && plugins.length === 0 ? (
+        {/* 已安装列表：native community plugins + marketplace skill packages */}
+        {!loading && inventoryEmpty ? (
           <p className={`${styles['settings-muted-note']} ${styles['skills-empty']}`}>
             {t('settings.plugins.empty')}
           </p>
@@ -585,6 +766,86 @@ export function PluginsTab() {
                       disabled={restricted}
                       onClick={() => togglePlugin(plugin.id, !enabled)}
                     />
+                  </div>
+                </div>
+              );
+            })}
+
+            {skillPackages.map(pkg => {
+              const status = skillPackageStatus(pkg);
+              const dimmed = !pkg.packageEnabled;
+              const canAct = isStudioOwner;
+
+              return (
+                <div
+                  key={pkg.identity}
+                  className={styles['skills-list-item']}
+                  style={dimmed ? { opacity: 0.55 } : undefined}
+                  data-kind="marketplace-skill-package"
+                  data-identity={pkg.identity}
+                >
+                  <div className={styles['skills-list-info']}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                      <span className={styles['skills-list-name']}>{pkg.name}</span>
+                      {pkg.version && (
+                        <span className={styles['skills-list-name-hint']}>v{pkg.version}</span>
+                      )}
+                      <span
+                        className={marketplaceBadgeClassName}
+                        style={{
+                          opacity: 1,
+                          background: 'var(--overlay-light, rgba(0,0,0,0.05))',
+                          padding: '1px 6px',
+                          borderRadius: 'var(--radius-sm)',
+                        }}
+                      >
+                        {t('settings.plugins.skillPackageKind')}
+                      </span>
+                      <SkillPackageStatusBadge status={status} />
+                    </div>
+                    <span className={styles['skills-list-desc']}>{pkg.identity}</span>
+                    {pkg.description && (
+                      <span className={styles['skills-list-desc']}>{pkg.description}</span>
+                    )}
+                    {pkg.skillCount > 0 && (
+                      <span className={styles['skills-list-desc']}>
+                        {pkg.skillNames.join(', ')}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className={styles['skills-list-actions']} style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <button
+                      type="button"
+                      className={styles['settings-save-btn-sm']}
+                      onClick={() => set({ activeTab: 'skills' })}
+                    >
+                      {t('settings.plugins.skillPackageManageInSkills')}
+                    </button>
+                    {canAct && (
+                      <button
+                        className={styles['skill-card-delete']}
+                        title={t('settings.plugins.skillPackageUninstallConfirm', {
+                          identity: pkg.identity,
+                          name: pkg.name,
+                          skillCount: String(pkg.skillCount),
+                        })}
+                        onClick={() => void uninstallSkillPackage(pkg)}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                          <line x1="18" y1="6" x2="6" y2="18" />
+                          <line x1="6" y1="6" x2="18" y2="18" />
+                        </svg>
+                      </button>
+                    )}
+                    {canAct && (
+                      <button
+                        type="button"
+                        className={`hana-toggle${pkg.packageEnabled ? ' on' : ''}`}
+                        aria-label={t('settings.plugins.skillPackageToggle', { identity: pkg.identity, name: pkg.name })}
+                        onClick={() => void toggleSkillPackage(pkg, !pkg.packageEnabled)}
+                      />
+                    )}
                   </div>
                 </div>
               );
