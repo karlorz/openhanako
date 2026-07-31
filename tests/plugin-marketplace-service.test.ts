@@ -291,6 +291,69 @@ describe("PluginMarketplaceService", () => {
     });
   });
 
+  it("exposes packageActivation on catalog rows for marketplace skill packages", () => {
+    const home = makeHome();
+    seedClaudeSource(home);
+    const svc = new PluginMarketplaceService({ hanakoHome: home, env: {} });
+    svc.registry.addSource({
+      id: "llm-wiki",
+      name: "llm-wiki",
+      kind: "git",
+      gitUrl: "https://example.com/llm-wiki.git",
+    });
+    const skillsDir = path.join(home, "skills");
+    fs.mkdirSync(path.join(skillsDir, "wiki-query"), { recursive: true });
+    fs.writeFileSync(
+      path.join(skillsDir, "wiki-query", "SKILL.md"),
+      "---\nname: wiki-query\n---\n",
+      "utf8",
+    );
+    writeClaudeSkillsInstallRecord(home, {
+      kind: "claude-skills",
+      marketplaceId: "llm-wiki",
+      pluginId: "skillwiki",
+      packagePath: "packages/skillwiki",
+      resolvedRevision: "abc",
+      skills: ["wiki-query"],
+      installedAt: "2026-07-31T00:00:00.000Z",
+    });
+    svc.registry.setControlPlaneActivations({
+      marketplaceSkillPackages: {
+        "skillwiki@llm-wiki": { enabled: false },
+      },
+    });
+
+    const skillwiki = svc.listCatalogRows().plugins.find((row) => row.pluginId === "skillwiki");
+    expect(skillwiki).toMatchObject({
+      pluginId: "skillwiki",
+      marketplaceId: "llm-wiki",
+      installTarget: "hana-skills",
+      packageInstall: { state: "installed" },
+      packageActivation: {
+        identity: "skillwiki@llm-wiki",
+        kind: "marketplace-skill-package",
+        enabled: false,
+        state: "disabled",
+        recorded: true,
+        requested: false,
+      },
+    });
+
+    // Not installed package: installedPresent false → disabled / no recorded gate.
+    const vault = svc.listCatalogRows().plugins.find((row) => row.pluginId === "vault-sync");
+    expect(vault).toMatchObject({
+      pluginId: "vault-sync",
+      packageInstall: { state: "not-installed" },
+      packageActivation: {
+        identity: "vault-sync@llm-wiki",
+        kind: "marketplace-skill-package",
+        enabled: false,
+        state: "disabled",
+        recorded: false,
+      },
+    });
+  });
+
   it("pins install resolution to marketplaceId and returns catalog plugin", async () => {
     const home = makeHome();
     seedOfficial(home);
