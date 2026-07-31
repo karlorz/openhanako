@@ -29,6 +29,19 @@ This checkout is the `karlorz/openhanako` fork. Work normally happens on branch 
 - Server routes: `server/routes/`
 - Shared auth/resource logic: `core/`, `lib/`
 - Fork sync rules/helper: `docs/fork-sync/rules.yml`, `scripts/sync-upstream.mjs`
+- Marketplace handbook: `docs/plugins/marketplace-handbook.md`
+- Manage Plugins tab: `desktop/src/react/settings/tabs/PluginsTab.tsx`
+- Plugin Marketplace tab: `desktop/src/react/settings/tabs/PluginMarketplaceTab.tsx`
+
+## Marketplace / Manage Plugins (skill packages)
+
+- Claude marketplace packages install as **Hana skills** (skill-manager), never as native PluginManager plugins under `~/.hanako/plugins`.
+- Installed skill packages appear under **Settings → Plugins → Manage Plugins** (Hana skills badge) and in Plugin Marketplace detail when installed.
+- Global package gate: `activations.marketplaceSkillPackages[pluginId@marketplaceId]`; installed-default is enabled when no record exists.
+- Inventory API: `GET /api/plugins/marketplace/installed-skill-packages` — do **not** change `GET /api/plugins` array shape.
+- Activations `PUT` replaces the **full** activations object; UI must clone the owner snapshot (refuse toggle if activations missing).
+- Package uninstall: `DELETE /api/plugins/marketplace/:id/skills` (not `DELETE /api/plugins/:id`).
+- SkillWiki work item: `projects/openhanako/work/2026-07-31-manage-plugins-marketplace-skill-packages/` under vault from `skillwiki path`.
 
 ## Deploy
 
@@ -38,16 +51,34 @@ for server install, upgrade, and status planning. Do not add a dev-loop
 `deploy_script` unless a future attended release explicitly wants automatic
 host deployment.
 
-For local macOS desktop verification, use:
+For local macOS desktop verification (current branch **working tree**, not origin):
 
 ```bash
 SKIP_NOTARIZE=true npm run install:local
 codesign --verify --deep --strict --verbose=2 /Applications/HanaAgent.app
+cat /Applications/HanaAgent.app/Contents/Resources/build-info.json
 ```
+
+Confirm `channel: local` and `gitSha` match the intended commit. `install:local` packs `dist/mac-arm64` and replaces `/Applications/HanaAgent.app`. Local same-version/different-digest artifact refresh applies on first launch per `HANA_HOME` when channel is `local`.
 
 ## Verification
 
 For LAN and remote attachment work, run the focused suite documented in `CONTEXT.md`, plus `npm run typecheck` and `git diff --check`. Live smoke against sg01 must include image paste/upload, send, switch chats, return, and confirm both chat thumbnails and Conversation Files previews still render.
+
+For marketplace skill-package / Manage Plugins work, run:
+
+```bash
+npx vitest run tests/plugin-marketplace-*.test.ts \
+  tests/http-route-security.test.ts \
+  tests/skill-manager.test.ts \
+  tests/skills-route.test.ts \
+  desktop/src/react/__tests__/settings/PluginMarketplaceTab.test.tsx \
+  desktop/src/react/__tests__/settings/PluginsTab.test.tsx
+npm run typecheck
+git diff --check
+```
+
+Then `SKIP_NOTARIZE=true npm run install:local` and manual smoke: install skill package → Manage Plugins row → package toggle off/on → uninstall package; native HyperFrames and dropzone unchanged.
 
 For fork-sync or dashboard work, run:
 

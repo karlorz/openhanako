@@ -40,9 +40,10 @@ Catalog details show the install adapter, installability, confirmation level, ca
 
 Installed Hana-skill marketplace packages appear under **Settings → Plugins → Manage Plugins** alongside native community plugins. They are listed as Hana-skill packages (skill-manager destination), not as PluginManager runtime plugins.
 
-- **Inventory:** Manage Plugins lists installed marketplace skill packages (`pluginId@marketplaceId`) with package state (installed / partial / stale) and package enable status.
-- **Package enable toggle:** Owner-only. Writes `activations.marketplaceSkillPackages[pluginId@marketplaceId] = { enabled }`. This is a **global skill-manager gate**: when disabled, skills from that package are gated off for the whole server skill manager, independent of per-Agent skill toggles.
-- **Not PluginManager:** Package enable does not load, unload, or reconfigure native plugins. Uninstall, Install, and **Manage in Skills** remain the skill lifecycle and per-skill activation paths.
+- **Inventory:** Manage Plugins lists installed marketplace skill packages (`pluginId@marketplaceId`) with package state (installed / partial / stale) and package enable status. Catalog-only (`not-installed`) packages stay on Plugin Marketplace, not Manage Plugins.
+- **API:** `GET /api/plugins/marketplace/installed-skill-packages` returns inventory rows plus registry revision/digest. Server owners also receive an activations snapshot so enable toggles can safely clone and `PUT /api/plugins/marketplace/config/activations` without wiping sibling activation maps (that route replaces the full activations object).
+- **Package enable toggle:** Owner-only. Writes `activations.marketplaceSkillPackages[pluginId@marketplaceId] = { enabled }`. Missing record means **enabled** (installed-default). This is a **global skill-manager gate**: when disabled, skills from that package are gated off for every Agent, independent of per-Agent skill toggles (prefs are kept; runtime is inactive).
+- **Not PluginManager:** Package enable does not load, unload, or reconfigure native plugins. Uninstall uses `DELETE /api/plugins/marketplace/:id/skills`. Install, Uninstall, and **Manage in Skills** remain the skill lifecycle and per-skill activation paths. The native dropzone under Manage Plugins still installs only PluginManager packages.
 - **Plugin Marketplace detail:** When a Hana-skill package is installed (not `not-installed`), the catalog inspector shows the same package enable toggle bound to `packageActivation` / `marketplaceSkillPackages`, while keeping Install / Uninstall / Manage in Skills actions.
 
 ## Server runtime and selected-Agent access
