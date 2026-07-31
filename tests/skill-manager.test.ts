@@ -432,6 +432,28 @@ describe("SkillManager marketplace skill package gate", () => {
     });
   });
 
+  it("exposes the effective package gate separately from the preserved agent preference", () => {
+    sm.setMarketplaceSkillPackageGateResolver((skillName) => ({
+      identity: packageIdentity,
+      skillName,
+      enabled: false,
+      state: "disabled",
+      reason: "marketplace-package-disabled",
+    }));
+
+    const info = sm.getRuntimeSkillInfos(makeAgent("agent-a", []))
+      .find((skill) => skill.name === "wiki-search");
+    expect(info).toMatchObject({
+      enabled: true,
+      active: false,
+      marketplacePackage: {
+        identity: packageIdentity,
+        packageEnabled: false,
+        explicitlyDisabled: false,
+      },
+    });
+  });
+
   it("reports source blocking even when an agent has opted out", () => {
     sm.setMarketplaceSkillPackageGateResolver((skillName) => ({
       identity: packageIdentity,

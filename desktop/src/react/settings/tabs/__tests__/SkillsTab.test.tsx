@@ -69,7 +69,7 @@ vi.mock('../bridge/AgentSelect', () => ({
 // unconditional render would produce duplicate testids.
 vi.mock('../skills/SkillRow', () => ({
   SkillRow: ({
-  skill,
+    skill,
     draggable,
     extraActions,
     onToggle,
@@ -83,7 +83,7 @@ vi.mock('../skills/SkillRow', () => ({
       enabled: boolean;
       active?: boolean;
       inactiveReason?: string | null;
-      marketplacePackage?: { identity: string } | null;
+      marketplacePackage?: { identity: string; packageEnabled?: boolean } | null;
     };
     draggable?: boolean;
     extraActions?: React.ReactNode;
@@ -97,6 +97,7 @@ vi.mock('../skills/SkillRow', () => ({
       data-testid={`skill-row-${skill.name}`}
       data-skill-name={skill.name}
       data-enabled={String(skill.enabled)}
+      data-effective-enabled={String(skill.active ?? skill.enabled)}
       data-active={skill.active == null ? undefined : String(skill.active)}
       data-marketplace-package={skill.marketplacePackage?.identity}
       data-inactive-reason={skill.inactiveReason || undefined}
@@ -109,7 +110,10 @@ vi.mock('../skills/SkillRow', () => ({
       {onToggle && (
         <button
           data-testid={`skill-toggle-${skill.name}`}
-          onClick={() => onToggle(skill.name, !skill.enabled)}
+          disabled={skill.marketplacePackage?.packageEnabled === false
+            || skill.inactiveReason === 'marketplace-package-disabled'
+            || skill.inactiveReason === 'marketplace-source-blocked'}
+          onClick={() => onToggle(skill.name, !(skill.active ?? skill.enabled))}
         >
           toggle
         </button>
@@ -278,6 +282,7 @@ describe('SkillsTab — sticky skillsViewAgentId & toggleSkill race guard', () =
             identity: 'skillwiki@llm-wiki',
             skillName: 'wiki-query',
             explicitlyDisabled: false,
+            packageEnabled: false,
           },
         }] }));
       }
@@ -288,9 +293,11 @@ describe('SkillsTab — sticky skillsViewAgentId & toggleSkill race guard', () =
     await waitFor(() => expect(screen.getAllByTestId('skill-row-wiki-query')).toHaveLength(2));
     const agentRow = screen.getAllByTestId('skill-row-wiki-query')[1];
     expect(agentRow.getAttribute('data-enabled')).toBe('true');
+    expect(agentRow.getAttribute('data-effective-enabled')).toBe('false');
     expect(agentRow.getAttribute('data-active')).toBe('false');
     expect(agentRow.getAttribute('data-marketplace-package')).toBe('skillwiki@llm-wiki');
     expect(agentRow.getAttribute('data-inactive-reason')).toBe('marketplace-package-disabled');
+    expect((screen.getByTestId('skill-toggle-wiki-query') as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('uploads a selected skill package when no local path picker is available', async () => {

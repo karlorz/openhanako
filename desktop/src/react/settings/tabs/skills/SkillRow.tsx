@@ -2,6 +2,7 @@ import React from 'react';
 import type { SkillInfo } from '../../store';
 import { t } from '../../helpers';
 import styles from '../../Settings.module.css';
+import { effectiveSkillEnabled, skillToggleDisabled } from './skill-state';
 
 function truncateDesc(raw: string): string {
   const cnMatch = raw.match(/[\u4e00-\u9fff].*$/s);
@@ -59,6 +60,8 @@ export function SkillRow({
   const displayDesc = truncateDesc(skill.description || '');
   const marketplaceHint = marketplaceInactiveHint(skill);
   const marketplacePackage = skill.marketplacePackage;
+  const effectiveEnabled = effectiveSkillEnabled(skill);
+  const packageDisabled = skillToggleDisabled(skill);
 
   return (
     <div
@@ -123,13 +126,16 @@ export function SkillRow({
         )}
         {onToggle && (
           <button
-            className={`hana-toggle${skill.enabled ? ' on' : ''}`}
+            className={`hana-toggle${effectiveEnabled ? ' on' : ''}${packageDisabled ? ' disabled' : ''}`}
             type="button"
-            title={skill.enabled ? t('settings.skills.toggleDisable') : t('settings.skills.toggleEnable')}
-            aria-label={skill.enabled
+            disabled={packageDisabled}
+            title={packageDisabled
+              ? (marketplaceHint || t('settings.skills.marketplaceInactivePackage'))
+              : effectiveEnabled ? t('settings.skills.toggleDisable') : t('settings.skills.toggleEnable')}
+            aria-label={effectiveEnabled
               ? t('settings.skills.toggleDisableNamed', { name: skill.name })
               : t('settings.skills.toggleEnableNamed', { name: skill.name })}
-            onClick={(e) => { e.stopPropagation(); onToggle(skill.name, !skill.enabled); }}
+            onClick={(e) => { e.stopPropagation(); onToggle(skill.name, !effectiveEnabled); }}
           />
         )}
       </div>
