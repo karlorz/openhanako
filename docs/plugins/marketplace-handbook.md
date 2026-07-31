@@ -29,12 +29,21 @@ Hana classifies every resolved catalog package before it offers an action:
 | Destination | Meaning | Follow-up |
 |---|---|---|
 | Native Hana plugin | A Hana-native package interpreted by the existing PluginManager contract. | Native marketplace installation is currently preview-only. Agent-driven native install is blocked. |
-| Hana-compatible skills | Supported `SKILL.md` content imported through the existing skill manager. | Use **Settings → Skills** and **Agent Skill Toggles** for activation. |
+| Hana-compatible skills | Supported `SKILL.md` content imported through the existing skill manager. | Use **Settings → Skills** and **Agent Skill Toggles** for activation. Package enable is a separate global gate (below). |
 | Unsupported / review required | Unsupported Claude source form or behavior, incomplete package, or package outside the current safety envelope. | Inspect warnings only; no normal install action is shown. |
 
 The destination is a read-only fact for the resolved source revision. There is no “convert to native plugin” selector. Imported marketplace skills are never labeled as native plugins and do not enter PluginManager.
 
 Catalog details show the install adapter, installability, confirmation level, capability inventory, warnings, and install-plan consequences. Dependency declarations, unsupported components, incomplete packages, binaries, and lifecycle scripts are warnings or blockers; Hana does not silently install or execute them.
+
+## Manage Plugins inventory and package enable gate
+
+Installed Hana-skill marketplace packages appear under **Settings → Plugins → Manage Plugins** alongside native community plugins. They are listed as Hana-skill packages (skill-manager destination), not as PluginManager runtime plugins.
+
+- **Inventory:** Manage Plugins lists installed marketplace skill packages (`pluginId@marketplaceId`) with package state (installed / partial / stale) and package enable status.
+- **Package enable toggle:** Owner-only. Writes `activations.marketplaceSkillPackages[pluginId@marketplaceId] = { enabled }`. This is a **global skill-manager gate**: when disabled, skills from that package are gated off for the whole server skill manager, independent of per-Agent skill toggles.
+- **Not PluginManager:** Package enable does not load, unload, or reconfigure native plugins. Uninstall, Install, and **Manage in Skills** remain the skill lifecycle and per-skill activation paths.
+- **Plugin Marketplace detail:** When a Hana-skill package is installed (not `not-installed`), the catalog inspector shows the same package enable toggle bound to `packageActivation` / `marketplaceSkillPackages`, while keeping Install / Uninstall / Manage in Skills actions.
 
 ## Server runtime and selected-Agent access
 

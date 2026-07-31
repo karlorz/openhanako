@@ -70,6 +70,16 @@ interface MarketplacePlugin {
     missing: string[];
     invalid?: string[];
   };
+  /** Package-level skill-manager gate (marketplaceSkillPackages). */
+  packageActivation?: {
+    identity?: string;
+    kind?: string;
+    enabled?: boolean;
+    state?: string;
+    reason?: string | null;
+    recorded?: boolean;
+    requested?: boolean;
+  } | null;
   nativeAgentPluginAccess?: {
     identity?: string;
     agentId?: string;
@@ -289,8 +299,32 @@ function mapCatalogRow(row: any): MarketplacePlugin {
     runtimeActivation: row.runtimeActivation || null,
     marketplaceSkillActivations: Array.isArray(row.marketplaceSkillActivations) ? row.marketplaceSkillActivations : [],
     packageInstall,
+    packageActivation: row.packageActivation || null,
     nativeAgentPluginAccess: row.nativeAgentPluginAccess || null,
   };
+}
+
+/** Effective package enable gate for installed Hana-skill packages. */
+function packageGateEnabled(
+  plugin: MarketplacePlugin,
+  activations?: Record<string, any> | null,
+): boolean {
+  if (plugin.packageActivation && typeof plugin.packageActivation.enabled === 'boolean') {
+    return plugin.packageActivation.enabled === true;
+  }
+  const identity = sourceQualifiedId(plugin);
+  const packages = activations?.marketplaceSkillPackages;
+  if (packages && Object.prototype.hasOwnProperty.call(packages, identity)) {
+    return packages[identity]?.enabled === true;
+  }
+  // Installed-default when no packageActivation / no record.
+  return true;
+}
+
+function isInstalledSkillsPackage(plugin: MarketplacePlugin): boolean {
+  return isSkillsTarget(plugin.installTarget)
+    && !!plugin.packageInstall
+    && plugin.packageInstall.state !== 'not-installed';
 }
 
 function confirmInstallPlan(plugin: MarketplacePlugin): boolean {
@@ -357,6 +391,7 @@ export function PluginMarketplaceTab() {
   const [switchingKey, setSwitchingKey] = useState<string | null>(null);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(settingsAgentId || currentAgentId || null);
   const [updatingAgentAccess, setUpdatingAgentAccess] = useState(false);
+  const [togglingPackageKey, setTogglingPackageKey] = useState<string | null>(null);
   const loadGenRef = React.useRef(0);
   const readmeGenRef = React.useRef(0);
   const readmeKeyRef = React.useRef<string | null>(null);
@@ -736,6 +771,82 @@ export function PluginMarketplaceTab() {
     }
   };
 
+  /**
+   * Package-level enable gate for installed Hana-skill packages.
+   * Same activations PUT clone pattern as PluginsTab (marketplaceSkillPackages).
+   * Owner-only; never PUT a bare {} when the activations snapshot is missing.
+   */
+  const toggleSkillPackageGate = async (plugin: MarketplacePlugin, enable: boolean) => {
+    if (!isInstalledSkillsPackage(plugin)) return;
+    if (marketplace?.access?.isStudioOwner === false) return;
+    const identity = sourceQualifiedId(plugin);
+    const snapshot = marketplace?.configDiagnostics?.file?.activations;
+    if (!snapshot || typeof snapshot !== 'object') {
+      showToast(
+        t('settings.saveFailed') + ': missing activations snapshot',
+        'error',
+      );
+      return;
+    }
+
+    const applyOptimistic = (nextEnabled: boolean) => {
+      const patch = (p: MarketplacePlugin): MarketplacePlugin => {
+        if (rowKey(p) !== rowKey(plugin)) return p;
+        return {
+          ...p,
+          packageActivation: {
+            ...(p.packageActivation || {}),
+            identity,
+            kind: 'marketplace-skill-package',
+            enabled: nextEnabled,
+            state: nextEnabled ? 'enabled' : 'disabled',
+            recorded: true,
+            requested: nextEnabled,
+            reason: nextEnabled ? null : 'marketplace skill package activation is disabled',
+          },
+        };
+      };
+      setMarketplace((prev) => {
+        if (!prev) return prev;
+        return { ...prev, plugins: prev.plugins.map(patch) };
+      });
+      setSelectedPlugin((prev) => (prev && rowKey(prev) === rowKey(plugin) ? patch(prev) : prev));
+    };
+
+    applyOptimistic(enable);
+    setTogglingPackageKey(rowKey(plugin));
+    try {
+      const activations = structuredClone(snapshot) as Record<string, unknown> & {
+        marketplaceSkillPackages?: Record<string, { enabled: boolean }>;
+      };
+      activations.marketplaceSkillPackages ||= {};
+      activations.marketplaceSkillPackages[identity] = { enabled: enable };
+
+      const body: Record<string, unknown> = { activations };
+      if (typeof marketplace?.registry?.revision === 'number') {
+        body.expectedRevision = marketplace.registry.revision;
+      }
+      if (marketplace?.registry?.digest) {
+        body.expectedDigest = marketplace.registry.digest;
+      }
+
+      const res = await hanaFetch('/api/plugins/marketplace/config/activations', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.error) throw new Error(data.error || 'Skill package toggle failed');
+      showToast(t('settings.autoSaved'), 'success');
+      await loadMarketplace({ silent: true });
+    } catch (err: unknown) {
+      applyOptimistic(!enable);
+      showToast(t('settings.saveFailed') + ': ' + (err instanceof Error ? err.message : String(err)), 'error');
+    } finally {
+      setTogglingPackageKey(null);
+    }
+  };
+
   const sourceCount = marketplace?.sources?.length || 0;
   const pluginCount = marketplace?.plugins?.length || 0;
   const statusText = marketplace?.capabilities?.supported !== false
@@ -976,6 +1087,30 @@ export function PluginMarketplaceTab() {
                                   Manage in Skills
                                 </button>
                               )}
+                              {isInstalledSkillsPackage(selectedPlugin)
+                                && marketplace?.access?.isStudioOwner === true && (
+                                <button
+                                  type="button"
+                                  className={`hana-toggle${packageGateEnabled(
+                                    selectedPlugin,
+                                    marketplace?.configDiagnostics?.file?.activations,
+                                  ) ? ' on' : ''}${togglingPackageKey === rowKey(selectedPlugin) ? ' loading' : ''}`}
+                                  disabled={togglingPackageKey === rowKey(selectedPlugin)}
+                                  aria-label={t('settings.plugins.skillPackageToggle', {
+                                    identity: sourceQualifiedId(selectedPlugin),
+                                    name: selectedPlugin.name,
+                                  }) || `Toggle skill package ${sourceQualifiedId(selectedPlugin)}`}
+                                  title="Package enable (global skill-manager gate)"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const next = !packageGateEnabled(
+                                      selectedPlugin,
+                                      marketplace?.configDiagnostics?.file?.activations,
+                                    );
+                                    void toggleSkillPackageGate(selectedPlugin, next);
+                                  }}
+                                />
+                              )}
                               {selectedPlugin.installTarget === 'native-plugin' && selectedAgentId && (
                                 <button
                                   type="button"
@@ -1070,6 +1205,24 @@ export function PluginMarketplaceTab() {
                                 <strong>
                                   {selectedPlugin.packageInstall?.state || 'not-installed'}
                                   {selectedPlugin.available === false ? ' · source removed / uninstall only' : ''}
+                                </strong>
+                              </div>
+                            )}
+                            {isInstalledSkillsPackage(selectedPlugin) && (
+                              <div className={styles['plugin-marketplace-plan']}>
+                                <span>Package gate</span>
+                                <strong>
+                                  {packageGateEnabled(
+                                    selectedPlugin,
+                                    marketplace?.configDiagnostics?.file?.activations,
+                                  ) ? 'enabled' : 'disabled'}
+                                  {selectedPlugin.packageActivation?.state
+                                    ? ` · ${selectedPlugin.packageActivation.state}`
+                                    : ''}
+                                  {selectedPlugin.packageActivation?.reason
+                                    ? ` · ${selectedPlugin.packageActivation.reason}`
+                                    : ''}
+                                  {' · global skill-manager gate (not PluginManager)'}
                                 </strong>
                               </div>
                             )}
