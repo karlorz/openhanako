@@ -121,6 +121,9 @@ describe('PluginMarketplaceTab inspector rendering', () => {
         'settings.plugins.marketIncompatible': 'Incompatible',
         'settings.plugins.marketSelectPlugin': 'Select a package',
         'settings.plugins.marketplaceEmpty': 'No plugins to browse',
+        'settings.plugins.skillPackageToggle': `Toggle skill package ${params?.identity || ''}`.trim(),
+        'settings.autoSaved': 'Saved',
+        'settings.saveFailed': 'Save failed',
       };
       return labels[key] || key;
     }) as typeof window.t;
@@ -544,5 +547,212 @@ describe('PluginMarketplaceTab inspector rendering', () => {
 
     await waitFor(() => expect(mockShowToast).toHaveBeenCalledWith(expect.stringContaining('studio.owner or install permission required'), 'error'));
     expect(mockShowToast).not.toHaveBeenCalledWith(expect.any(String), 'success');
+  });
+
+  it('hides package enable toggle when skills package is not-installed', async () => {
+    mockCatalog([catalogPlugin({
+      packageInstall: { state: 'not-installed', recorded: [], present: [], missing: [], invalid: [] },
+      packageActivation: {
+        identity: 'skillwiki@llm-wiki',
+        kind: 'marketplace-skill-package',
+        enabled: false,
+        state: 'disabled',
+        recorded: false,
+      },
+    })]);
+    render(<PluginMarketplaceTab />);
+
+    expect(await screen.findByRole('button', { name: 'Install skills' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Toggle skill package skillwiki@llm-wiki/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Package gate/)).not.toBeInTheDocument();
+  });
+
+  it('shows package enable toggle for installed skills packages and PUTs marketplaceSkillPackages clone', async () => {
+    const installed = catalogPlugin({
+      canInstall: false,
+      packageInstall: {
+        state: 'installed',
+        recorded: ['wiki-query', 'wiki-sync'],
+        present: ['wiki-query', 'wiki-sync'],
+        missing: [],
+        invalid: [],
+      },
+      packageActivation: {
+        identity: 'skillwiki@llm-wiki',
+        kind: 'marketplace-skill-package',
+        enabled: true,
+        state: 'enabled',
+        recorded: false,
+        requested: false,
+      },
+    });
+    mockHanaFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === '/api/plugins/marketplace/capabilities') {
+        return jsonResponse({
+          supported: true,
+          features: {},
+          access: { isStudioOwner: true },
+          registry: { revision: 7, digest: 'a'.repeat(64) },
+          configDiagnostics: {
+            file: {
+              revision: 7,
+              activations: {
+                marketplaceSkillPackages: { 'other@src': { enabled: true } },
+                marketplaceSkills: { 'wiki-query@llm-wiki/skillwiki': { enabled: true } },
+                runtimePlugins: { 'demo@official': { enabled: true } },
+              },
+            },
+            summary: { revision: 7 },
+          },
+        });
+      }
+      if (url.startsWith('/api/plugins/marketplace/catalog')) {
+        return jsonResponse({
+          plugins: [installed],
+          sources: [],
+          capabilities: { supported: true, features: {} },
+          access: { isStudioOwner: true },
+          registry: { revision: 7, digest: 'a'.repeat(64) },
+          configDiagnostics: {
+            file: {
+              revision: 7,
+              activations: {
+                marketplaceSkillPackages: { 'other@src': { enabled: true } },
+                marketplaceSkills: { 'wiki-query@llm-wiki/skillwiki': { enabled: true } },
+                runtimePlugins: { 'demo@official': { enabled: true } },
+              },
+            },
+            summary: { revision: 7 },
+          },
+        });
+      }
+      if (url === '/api/plugins/marketplace/sources') return jsonResponse({ sources: [] });
+      if (url.includes('/readme')) return jsonResponse({ markdown: '' });
+      if (url === '/api/plugins/marketplace/config/activations') {
+        expect(init?.method).toBe('PUT');
+        const body = JSON.parse(String(init?.body || '{}'));
+        expect(body).toEqual({
+          expectedRevision: 7,
+          expectedDigest: 'a'.repeat(64),
+          activations: {
+            marketplaceSkillPackages: {
+              'other@src': { enabled: true },
+              'skillwiki@llm-wiki': { enabled: false },
+            },
+            marketplaceSkills: { 'wiki-query@llm-wiki/skillwiki': { enabled: true } },
+            runtimePlugins: { 'demo@official': { enabled: true } },
+          },
+        });
+        return jsonResponse({ revision: 8 });
+      }
+      return jsonResponse({});
+    });
+    render(<PluginMarketplaceTab />);
+
+    expect(await screen.findByRole('button', { name: 'Uninstall skills' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Manage in Skills' })).toBeInTheDocument();
+    expect(screen.getByText(/Package gate/)).toBeInTheDocument();
+    expect(screen.getByText(/global skill-manager gate/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Toggle skill package skillwiki@llm-wiki/ }));
+
+    await waitFor(() => expect(mockShowToast).toHaveBeenCalledWith(expect.anything(), 'success'));
+  });
+
+  it('refuses package gate toggle when activations snapshot is missing', async () => {
+    const installed = catalogPlugin({
+      canInstall: false,
+      packageInstall: {
+        state: 'installed',
+        recorded: ['wiki-query'],
+        present: ['wiki-query'],
+        missing: [],
+      },
+      packageActivation: {
+        identity: 'skillwiki@llm-wiki',
+        enabled: true,
+        state: 'enabled',
+      },
+    });
+    mockHanaFetch.mockImplementation(async (url: string) => {
+      if (url === '/api/plugins/marketplace/capabilities') {
+        return jsonResponse({
+          supported: true,
+          features: {},
+          access: { isStudioOwner: true },
+          registry: { revision: 7, digest: 'a'.repeat(64) },
+          configDiagnostics: { file: { revision: 7 }, summary: { revision: 7 } },
+        });
+      }
+      if (url.startsWith('/api/plugins/marketplace/catalog')) {
+        return jsonResponse({
+          plugins: [installed],
+          sources: [],
+          capabilities: { supported: true },
+          access: { isStudioOwner: true },
+          registry: { revision: 7, digest: 'a'.repeat(64) },
+          configDiagnostics: { file: { revision: 7 }, summary: { revision: 7 } },
+        });
+      }
+      if (url === '/api/plugins/marketplace/sources') return jsonResponse({ sources: [] });
+      if (url.includes('/readme')) return jsonResponse({ markdown: '' });
+      return jsonResponse({});
+    });
+    render(<PluginMarketplaceTab />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Toggle skill package skillwiki@llm-wiki/ }));
+
+    await waitFor(() => expect(mockShowToast).toHaveBeenCalledWith(
+      expect.stringContaining('missing activations snapshot'),
+      'error',
+    ));
+    expect(
+      mockHanaFetch.mock.calls.some(
+        ([path, init]) =>
+          path === '/api/plugins/marketplace/config/activations'
+          && (init as RequestInit | undefined)?.method === 'PUT',
+      ),
+    ).toBe(false);
+  });
+
+  it('hides package enable toggle for non-owners while keeping Manage in Skills', async () => {
+    const installed = catalogPlugin({
+      canInstall: false,
+      packageInstall: {
+        state: 'installed',
+        recorded: ['wiki-query'],
+        present: ['wiki-query'],
+        missing: [],
+      },
+      packageActivation: { identity: 'skillwiki@llm-wiki', enabled: true, state: 'enabled' },
+    });
+    mockHanaFetch.mockImplementation(async (url: string) => {
+      if (url === '/api/plugins/marketplace/capabilities') {
+        return jsonResponse({
+          supported: true,
+          features: {},
+          access: { isStudioOwner: false },
+          registry: { revision: 7, digest: 'a'.repeat(64) },
+        });
+      }
+      if (url.startsWith('/api/plugins/marketplace/catalog')) {
+        return jsonResponse({
+          plugins: [installed],
+          sources: [],
+          capabilities: { supported: true },
+          access: { isStudioOwner: false },
+          registry: { revision: 7, digest: 'a'.repeat(64) },
+        });
+      }
+      if (url === '/api/plugins/marketplace/sources') return jsonResponse({ sources: [] });
+      if (url.includes('/readme')) return jsonResponse({ markdown: '' });
+      return jsonResponse({});
+    });
+    render(<PluginMarketplaceTab />);
+
+    expect(await screen.findByRole('button', { name: 'Manage in Skills' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Toggle skill package skillwiki@llm-wiki/ })).not.toBeInTheDocument();
+    // Package gate status still visible for inspection
+    expect(screen.getByText(/Package gate/)).toBeInTheDocument();
   });
 });
