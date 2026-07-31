@@ -2184,6 +2184,7 @@
       "marketplaceEmpty": "둘러볼 플러그인이 없습니다",
       "marketLoading": "플러그인 마켓을 불러오는 중…",
       "marketLoadError": "플러그인 마켓을 불러오지 못했습니다",
+      "marketplaceChangedRetry": "마켓플레이스 설정이 다시 변경되었습니다. 토글을 한 번 더 시도해 주세요.",
       "marketReadmeLoadError": "README를 불러오지 못했습니다",
       "marketInstalled": "설치됨",
       "marketInstall": "설치",

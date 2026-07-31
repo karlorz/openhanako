@@ -213,6 +213,7 @@ describe('PluginsTab skill package inventory', () => {
         'settings.plugins.deleteConfirm': `Remove plugin "${params?.name || ''}"? Plugin data will be preserved.`,
         'settings.plugins.marketplaceTitle': 'Plugin Marketplace',
         'settings.plugins.marketplaceHint': 'Browse plugins',
+        'settings.plugins.marketplaceChangedRetry': 'Marketplace settings changed again. Please try the toggle once more.',
         'settings.plugins.marketSourcesSection': 'Marketplace sources',
         'settings.plugins.dropzone': 'Drop plugins here',
         'settings.plugins.permissionTitle': 'Permissions',
@@ -399,6 +400,112 @@ describe('PluginsTab skill package inventory', () => {
       expectedRevision: 7,
       expectedDigest: 'a'.repeat(64),
     });
+  });
+
+  it('locks a package toggle while its activation write is in flight', async () => {
+    let resolveWrite: ((response: Response) => void) | undefined;
+    let putCount = 0;
+    hanaFetch.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path === '/api/plugins?source=community') return jsonResponse([]);
+      if (path === '/api/plugins/marketplace/installed-skill-packages') return jsonResponse(skillPackageInventory());
+      if (path === '/api/plugins/marketplace/config/activations' && init?.method === 'PUT') {
+        putCount += 1;
+        return new Promise<Response>((resolve) => { resolveWrite = resolve; });
+      }
+      return jsonResponse({});
+    });
+    const { PluginsTab } = await import('../../settings/tabs/PluginsTab');
+    render(<PluginsTab />);
+
+    const toggle = await screen.findByRole('button', { name: /Toggle package skillwiki@llm-wiki/ });
+    fireEvent.click(toggle);
+    await waitFor(() => expect(putCount).toBe(1));
+    expect(toggle).toBeDisabled();
+    fireEvent.click(toggle);
+    expect(putCount).toBe(1);
+
+    resolveWrite?.(jsonResponse({ ok: true }));
+    await waitFor(() => expect(toggle).not.toBeDisabled());
+  });
+
+  it('refreshes the inventory and retries a stale package-gate write once', async () => {
+    const puts: unknown[] = [];
+    let inventoryLoads = 0;
+    const refreshedInventory = skillPackageInventory({
+      registry: { revision: 9, digest: 'b'.repeat(64) },
+      activations: {
+        marketplaceSkillPackages: { 'other@src': { enabled: true } },
+        marketplaceSkills: { 'wiki-query@llm-wiki/skillwiki': { enabled: false } },
+        runtimePlugins: { 'newer@source': { enabled: true } },
+      },
+    });
+    hanaFetch.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path === '/api/plugins?source=community') return jsonResponse([]);
+      if (path === '/api/plugins/marketplace/installed-skill-packages') {
+        inventoryLoads += 1;
+        return jsonResponse(inventoryLoads === 1 ? skillPackageInventory() : refreshedInventory);
+      }
+      if (path === '/api/plugins/marketplace/config/activations' && init?.method === 'PUT') {
+        const body = JSON.parse(String(init.body));
+        puts.push(body);
+        return puts.length === 1
+          ? jsonResponse({
+              error: 'Marketplace registry revision conflict: expected 7, current 9',
+              code: 'PLUGIN_MARKETPLACE_REGISTRY_STALE',
+            }, 409)
+          : jsonResponse({ ok: true });
+      }
+      return jsonResponse({});
+    });
+    const { PluginsTab } = await import('../../settings/tabs/PluginsTab');
+    render(<PluginsTab />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Toggle package skillwiki@llm-wiki/ }));
+
+    await waitFor(() => expect(puts).toHaveLength(2));
+    expect(puts[1]).toEqual({
+      activations: {
+        marketplaceSkillPackages: {
+          'other@src': { enabled: true },
+          'skillwiki@llm-wiki': { enabled: false },
+        },
+        marketplaceSkills: { 'wiki-query@llm-wiki/skillwiki': { enabled: false } },
+        runtimePlugins: { 'newer@source': { enabled: true } },
+      },
+      expectedRevision: 9,
+      expectedDigest: 'b'.repeat(64),
+    });
+    expect(useSettingsStore.getState().toastType).toBe('success');
+  });
+
+  it('stops after a second stale package-gate conflict and asks for one manual retry', async () => {
+    let putCount = 0;
+    let inventoryLoads = 0;
+    hanaFetch.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path === '/api/plugins?source=community') return jsonResponse([]);
+      if (path === '/api/plugins/marketplace/installed-skill-packages') {
+        inventoryLoads += 1;
+        return jsonResponse(skillPackageInventory({
+          registry: { revision: 7 + inventoryLoads, digest: String(inventoryLoads).repeat(64) },
+        }));
+      }
+      if (path === '/api/plugins/marketplace/config/activations' && init?.method === 'PUT') {
+        putCount += 1;
+        return jsonResponse({
+          error: 'Marketplace registry revision conflict',
+          code: 'PLUGIN_MARKETPLACE_REGISTRY_STALE',
+        }, 409);
+      }
+      return jsonResponse({});
+    });
+    const { PluginsTab } = await import('../../settings/tabs/PluginsTab');
+    render(<PluginsTab />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Toggle package skillwiki@llm-wiki/ }));
+
+    await waitFor(() => expect(putCount).toBe(2));
+    expect(useSettingsStore.getState().toastType).toBe('error');
+    expect(useSettingsStore.getState().toastMessage).toBe('Marketplace settings changed again. Please try the toggle once more.');
   });
 
   it('refuses package gate toggle when inventory has no activations snapshot', async () => {

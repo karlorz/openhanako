@@ -412,39 +412,31 @@ function validateActivationRecord(value: unknown, label: string): Record<string,
   return { ...value };
 }
 
+function validateActivationMap(
+  value: unknown,
+  kind: "runtimePlugins" | "marketplaceSkills" | "marketplaceSkillPackages",
+): Record<string, unknown> | undefined {
+  const map = validateActivationRecord(value, `activations.${kind}`);
+  if (!map) return undefined;
+  for (const [key, entry] of Object.entries(map)) {
+    validateActivationKey(key, kind);
+    validateActivationEntry(entry, `activations.${kind}.${key}`);
+  }
+  return map;
+}
+
 function validateActivations(raw: unknown): MarketplaceControlPlaneActivations | undefined {
   if (raw === undefined) return undefined;
   if (!isPlainObject(raw)) {
     throw new Error("Malformed marketplace source registry: activations must be an object");
   }
   const out: MarketplaceControlPlaneActivations = {};
-  const runtimePlugins = validateActivationRecord(raw.runtimePlugins, "activations.runtimePlugins");
-  if (runtimePlugins) {
-    for (const [key, value] of Object.entries(runtimePlugins)) {
-      validateActivationKey(key, "runtimePlugins");
-      validateActivationEntry(value, `activations.runtimePlugins.${key}`);
-    }
-    out.runtimePlugins = runtimePlugins;
-  }
-  const marketplaceSkills = validateActivationRecord(raw.marketplaceSkills, "activations.marketplaceSkills");
-  if (marketplaceSkills) {
-    for (const [key, value] of Object.entries(marketplaceSkills)) {
-      validateActivationKey(key, "marketplaceSkills");
-      validateActivationEntry(value, `activations.marketplaceSkills.${key}`);
-    }
-    out.marketplaceSkills = marketplaceSkills;
-  }
-  const marketplaceSkillPackages = validateActivationRecord(
-    raw.marketplaceSkillPackages,
-    "activations.marketplaceSkillPackages",
-  );
-  if (marketplaceSkillPackages) {
-    for (const [key, value] of Object.entries(marketplaceSkillPackages)) {
-      validateActivationKey(key, "marketplaceSkillPackages");
-      validateActivationEntry(value, `activations.marketplaceSkillPackages.${key}`);
-    }
-    out.marketplaceSkillPackages = marketplaceSkillPackages;
-  }
+  const runtimePlugins = validateActivationMap(raw.runtimePlugins, "runtimePlugins");
+  if (runtimePlugins) out.runtimePlugins = runtimePlugins;
+  const marketplaceSkills = validateActivationMap(raw.marketplaceSkills, "marketplaceSkills");
+  if (marketplaceSkills) out.marketplaceSkills = marketplaceSkills;
+  const marketplaceSkillPackages = validateActivationMap(raw.marketplaceSkillPackages, "marketplaceSkillPackages");
+  if (marketplaceSkillPackages) out.marketplaceSkillPackages = marketplaceSkillPackages;
   const agentSkillOverrides = validateActivationRecord(raw.agentSkillOverrides, "activations.agentSkillOverrides");
   if (agentSkillOverrides) {
     const normalized: Record<string, Record<string, unknown>> = {};

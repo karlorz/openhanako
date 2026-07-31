@@ -526,10 +526,6 @@
     outline-offset: -2px;
 }
 
-.marketplace-source-actions {
-    align-self: flex-end;
-}
-
 .plugin-action-danger:hover,
 .plugin-action-danger:focus-visible {
     color: var(--danger);

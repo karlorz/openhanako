@@ -294,6 +294,43 @@ describe('MarketplaceSourcesPanel product states', () => {
     await waitFor(() => expect(mockShowToast).toHaveBeenCalledWith('Marketplace source team Disabled', 'success'));
   });
 
+  it('refreshes sources and retries a stale source toggle once with the new registry preconditions', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    let loads = 0;
+    const toggleBodies: unknown[] = [];
+    mockHanaFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === '/api/plugins/marketplace/sources' && !init?.method) {
+        loads += 1;
+        const fresh = loads > 1;
+        return response({
+          access: { isStudioOwner: true },
+          registry: { revision: fresh ? 57 : 48, digest: (fresh ? 'f' : 'e').repeat(64), degraded: false },
+          sources: [{ id: 'team', name: 'Team', kind: 'git', authority: 'custom', enabled: true, mutable: true }],
+        });
+      }
+      if (url === '/api/plugins/marketplace/sources/team/enabled') {
+        toggleBodies.push(JSON.parse(String(init?.body)));
+        return toggleBodies.length === 1
+          ? response({
+              error: 'Marketplace registry revision conflict: expected 48, current 57',
+              code: 'PLUGIN_MARKETPLACE_REGISTRY_STALE',
+            }, 409)
+          : response({ revision: 58 });
+      }
+      return response({});
+    });
+
+    render(<MarketplaceSourcesPanel />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Disable team' }));
+
+    await waitFor(() => expect(toggleBodies).toHaveLength(2));
+    expect(toggleBodies).toEqual([
+      { enabled: false, expectedRevision: 48, expectedDigest: 'e'.repeat(64) },
+      { enabled: false, expectedRevision: 57, expectedDigest: 'f'.repeat(64) },
+    ]);
+    expect(mockShowToast).toHaveBeenCalledWith('Marketplace source team Disabled', 'success');
+  });
+
   it('submits a one-field Git source through the compact server request boundary', async () => {
     let loads = 0;
     mockHanaFetch.mockImplementation(async (url: string, init?: RequestInit) => {

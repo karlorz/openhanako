@@ -671,6 +671,76 @@ describe('PluginMarketplaceTab inspector rendering', () => {
     await waitFor(() => expect(mockShowToast).toHaveBeenCalledWith(expect.anything(), 'success'));
   });
 
+  it('refreshes the marketplace config and retries a stale package-gate write once', async () => {
+    const installed = catalogPlugin({
+      canInstall: false,
+      packageInstall: { state: 'installed', recorded: ['wiki-query'], present: ['wiki-query'], missing: [] },
+      packageActivation: { identity: 'skillwiki@llm-wiki', enabled: true, state: 'enabled' },
+    });
+    const initialActivations = {
+      marketplaceSkillPackages: { 'other@src': { enabled: true } },
+      marketplaceSkills: { 'wiki-query@llm-wiki/skillwiki': { enabled: true } },
+    };
+    const freshActivations = {
+      marketplaceSkillPackages: { 'other@src': { enabled: false } },
+      marketplaceSkills: { 'wiki-query@llm-wiki/skillwiki': { enabled: false } },
+      runtimePlugins: { 'newer@source': { enabled: true } },
+    };
+    const puts: unknown[] = [];
+    mockHanaFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === '/api/plugins/marketplace/capabilities') {
+        return jsonResponse({
+          supported: true,
+          features: {},
+          access: { isStudioOwner: true },
+          registry: { revision: 7, digest: 'a'.repeat(64) },
+          configDiagnostics: { file: { revision: 7, activations: initialActivations } },
+        });
+      }
+      if (url.startsWith('/api/plugins/marketplace/catalog')) {
+        return jsonResponse({
+          plugins: [installed], sources: [], capabilities: { supported: true, features: {} },
+          access: { isStudioOwner: true }, registry: { revision: 7, digest: 'a'.repeat(64) },
+          configDiagnostics: { file: { revision: 7, activations: initialActivations } },
+        });
+      }
+      if (url === '/api/plugins/marketplace/sources') return jsonResponse({ sources: [] });
+      if (url.includes('/readme')) return jsonResponse({ markdown: '' });
+      if (url === '/api/plugins/marketplace/config') {
+        return jsonResponse({
+          registry: { revision: 11, digest: 'c'.repeat(64) },
+          configDiagnostics: { file: { revision: 11, activations: freshActivations } },
+        });
+      }
+      if (url === '/api/plugins/marketplace/config/activations' && init?.method === 'PUT') {
+        puts.push(JSON.parse(String(init.body)));
+        if (puts.length === 1) {
+          throw new Error('Marketplace registry digest conflict: expected stale, current fresh');
+        }
+        return jsonResponse({ ok: true });
+      }
+      return jsonResponse({});
+    });
+    render(<PluginMarketplaceTab />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Toggle skill package skillwiki@llm-wiki/ }));
+
+    await waitFor(() => expect(puts).toHaveLength(2));
+    expect(puts[1]).toEqual({
+      activations: {
+        marketplaceSkillPackages: {
+          'other@src': { enabled: false },
+          'skillwiki@llm-wiki': { enabled: false },
+        },
+        marketplaceSkills: { 'wiki-query@llm-wiki/skillwiki': { enabled: false } },
+        runtimePlugins: { 'newer@source': { enabled: true } },
+      },
+      expectedRevision: 11,
+      expectedDigest: 'c'.repeat(64),
+    });
+    expect(mockShowToast).toHaveBeenCalledWith('Saved', 'success');
+  });
+
   it('refuses package gate toggle when activations snapshot is missing', async () => {
     const installed = catalogPlugin({
       canInstall: false,

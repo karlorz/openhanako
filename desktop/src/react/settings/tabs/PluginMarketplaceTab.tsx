@@ -7,6 +7,10 @@ import { MarketplaceSourcesPanel, type MarketplaceSourceRow } from '../component
 import { RefreshIcon } from '../components/PluginActionIcons';
 import { renderMarkdown } from '../../utils/markdown';
 import styles from '../Settings.module.css';
+import {
+  writeMarketplaceSkillPackageToggle,
+  type MarketplaceActivationSnapshot,
+} from '../marketplace-registry';
 
 const marketplaceBadgeClassName = `${styles['skills-source-badge']} ${styles['plugin-marketplace-badge']}`;
 
@@ -740,7 +744,7 @@ export function PluginMarketplaceTab() {
     if (!window.confirm(`${summary}\n\nConfirm this exact source-qualified access change?`)) return;
 
     const existing = marketplace?.configDiagnostics?.file?.activations || {};
-    const activations = JSON.parse(JSON.stringify(existing));
+    const activations = structuredClone(existing);
     activations.agentPluginAccess ||= {};
     activations.agentPluginAccess[selectedAgentId] ||= {};
     activations.agentPluginAccess[selectedAgentId][identity] = {
@@ -816,28 +820,34 @@ export function PluginMarketplaceTab() {
 
     applyOptimistic(enable);
     setTogglingPackageKey(rowKey(plugin));
-    try {
-      const activations = structuredClone(snapshot) as Record<string, unknown> & {
-        marketplaceSkillPackages?: Record<string, { enabled: boolean }>;
-      };
-      activations.marketplaceSkillPackages ||= {};
-      activations.marketplaceSkillPackages[identity] = { enabled: enable };
-
-      const body: Record<string, unknown> = { activations };
-      if (typeof marketplace?.registry?.revision === 'number') {
-        body.expectedRevision = marketplace.registry.revision;
-      }
-      if (marketplace?.registry?.digest) {
-        body.expectedDigest = marketplace.registry.digest;
-      }
-
-      const res = await hanaFetch('/api/plugins/marketplace/config/activations', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
+    const reloadActivationSnapshot = async (): Promise<MarketplaceActivationSnapshot> => {
+      const res = await hanaFetch('/api/plugins/marketplace/config');
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || data.error) throw new Error(data.error || 'Skill package toggle failed');
+      if (!res.ok || data.error) throw new Error(data.error || 'Marketplace config refresh failed');
+      return {
+        registry: data?.registry && typeof data.registry === 'object' ? data.registry : null,
+        activations: data?.configDiagnostics?.file?.activations
+          && typeof data.configDiagnostics.file.activations === 'object'
+          ? data.configDiagnostics.file.activations as Record<string, unknown>
+          : null,
+      };
+    };
+
+    try {
+      const initial: MarketplaceActivationSnapshot = {
+        registry: marketplace?.registry || null,
+        activations: snapshot,
+      };
+      let result = await writeMarketplaceSkillPackageToggle(initial, identity, enable);
+      if (result === 'stale') {
+        result = await writeMarketplaceSkillPackageToggle(await reloadActivationSnapshot(), identity, enable);
+        if (result === 'stale') {
+          await loadMarketplace({ silent: true });
+          applyOptimistic(!enable);
+          showToast(t('settings.plugins.marketplaceChangedRetry'), 'error');
+          return;
+        }
+      }
       showToast(t('settings.autoSaved'), 'success');
       await loadMarketplace({ silent: true });
     } catch (err: unknown) {

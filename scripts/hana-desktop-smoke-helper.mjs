@@ -607,7 +607,7 @@ async function waitForDebugEndpoint(port, timeoutMs) {
   throw new Error(`remote debugging endpoint not available on 127.0.0.1:${port}: ${lastError?.message || lastError}`);
 }
 
-async function selectPageTarget(port, timeoutMs) {
+export async function selectPageTarget(port, timeoutMs) {
   const targets = await fetchJson(`http://127.0.0.1:${port}/json/list`, { timeoutMs });
   const pages = targets.filter((target) => target.type === "page" && target.webSocketDebuggerUrl);
   const main = pages.find((target) => String(target.url || "").startsWith("file://") && !String(target.url || "").includes("settings.html"))
@@ -617,7 +617,7 @@ async function selectPageTarget(port, timeoutMs) {
   return main;
 }
 
-function connectWebSocket(url) {
+export function connectWebSocket(url) {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(url);
     const onOpen = () => {
@@ -664,7 +664,7 @@ export async function cdpCommand(ws, method, params = {}, { timeoutMs = 15000 } 
   });
 }
 
-async function evaluate(ws, expression, { timeoutMs } = {}) {
+export async function evaluate(ws, expression, { timeoutMs } = {}) {
   const result = await cdpCommand(ws, "Runtime.evaluate", {
     expression,
     awaitPromise: true,
