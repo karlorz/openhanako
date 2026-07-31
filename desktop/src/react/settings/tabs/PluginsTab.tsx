@@ -617,25 +617,6 @@ export function PluginsTab() {
     </button>
   );
 
-  const diagnosticsButton = (
-    <button
-      className={styles['settings-icon-btn']}
-      title={t('settings.plugins.showDiagnostics')}
-      onClick={loadDiagnostics}
-      disabled={diagnosticsLoading}
-    >
-      <svg
-        width="14" height="14" viewBox="0 0 24 24" fill="none"
-        stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
-        className={diagnosticsLoading ? styles['spin'] : ''}
-      >
-        <circle cx="12" cy="12" r="9" />
-        <line x1="12" y1="8" x2="12" y2="12" />
-        <line x1="12" y1="16" x2="12.01" y2="16" />
-      </svg>
-    </button>
-  );
-
   const marketplaceButton = (
     <button
       className={styles['settings-save-btn-sm']}
@@ -680,7 +661,7 @@ export function PluginsTab() {
       <SettingsSection
         title={t('settings.plugins.manageTitle')}
         surface="plain"
-        context={<div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>{diagnosticsButton}{reloadButton}</div>}
+        context={reloadButton}
       >
         {/* 安装区：dropzone 自带虚线边框卡 */}
         <div
@@ -689,6 +670,15 @@ export function PluginsTab() {
           onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
           onDragLeave={() => setDragOver(false)}
           onDrop={handleDrop}
+          role="button"
+          tabIndex={0}
+          aria-label={t('settings.plugins.dropzone')}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              void installByPicker();
+            }
+          }}
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -779,7 +769,6 @@ export function PluginsTab() {
 
             {skillPackages.map(pkg => {
               const status = skillPackageStatus(pkg);
-              const dimmed = !pkg.packageEnabled;
               const canAct = isStudioOwner;
               const canToggle = canAct && pkg.actions?.canToggle !== false;
               const canUninstall = canAct && pkg.actions?.canUninstall !== false;
@@ -788,7 +777,6 @@ export function PluginsTab() {
                 <div
                   key={pkg.identity}
                   className={styles['skills-list-item']}
-                  style={dimmed ? { opacity: 0.55 } : undefined}
                   data-kind="marketplace-skill-package"
                   data-identity={pkg.identity}
                 >
@@ -817,11 +805,14 @@ export function PluginsTab() {
                     )}
                     {pkg.skillCount > 0 && (
                       <span className={styles['skills-list-desc']}>
-                        {pkg.skillNames.join(', ')}
+                        {t('settings.plugins.skillPackageSkillsCount', { count: String(pkg.skillCount) })}
+                        {pkg.skillNames.length > 0 ? ` · ${pkg.skillNames.slice(0, 3).join(', ')}` : ''}
                       </span>
                     )}
                     <span className={styles['skills-list-desc']}>
-                      {t('settings.plugins.skillPackageDefaultOn')}
+                      {status === 'disabled'
+                        ? t('settings.plugins.skillPackageDisabledPreservesPreferences')
+                        : t('settings.plugins.skillPackageDefaultOn')}
                     </span>
                   </div>
 
@@ -876,21 +867,29 @@ export function PluginsTab() {
         )}
       </SettingsSection>
 
-      {diagnostics && (
-        <SettingsSection
-          title={t('settings.plugins.diagnosticsTitle')}
-          surface="plain"
-          context={
-            <span className={marketplaceBadgeClassName}>
-              {t('settings.plugins.diagnosticsSummary', {
-                capabilities: String(diagnostics.eventBus.filter(item => item.available).length),
-                total: String(diagnostics.eventBus.length),
-                tasks: String(diagnostics.tasks.length),
-                schedules: String(diagnostics.schedules.length),
-              })}
-            </span>
-          }
+      <SettingsSection title={t('settings.plugins.diagnosticsTitle')} surface="plain">
+        <details
+          onToggle={(event) => {
+            const open = (event.currentTarget as HTMLDetailsElement).open;
+            if (open && !diagnostics && !diagnosticsLoading) void loadDiagnostics();
+          }}
         >
+          <summary className={styles['skills-list-name']} style={{ cursor: 'pointer' }}>
+            {t('settings.plugins.showDiagnostics')}
+          </summary>
+          {diagnosticsLoading && (
+            <p className={styles['settings-muted-note']}>{t('settings.plugins.diagnosticsLoading')}</p>
+          )}
+          {diagnostics && (
+            <>
+              <span className={marketplaceBadgeClassName} style={{ marginTop: 8 }}>
+                {t('settings.plugins.diagnosticsSummary', {
+                  capabilities: String(diagnostics.eventBus.filter(item => item.available).length),
+                  total: String(diagnostics.eventBus.length),
+                  tasks: String(diagnostics.tasks.length),
+                  schedules: String(diagnostics.schedules.length),
+                })}
+              </span>
           {diagnostics.plugins.length === 0 ? (
             <p className={`${styles['settings-muted-note']} ${styles['skills-empty']}`}>
               {t('settings.plugins.noDiagnostics')}
@@ -941,8 +940,10 @@ export function PluginsTab() {
               })}
             </div>
           )}
-        </SettingsSection>
-      )}
+            </>
+          )}
+        </details>
+      </SettingsSection>
 
       {configPlugin && pluginConfig && (
         <SettingsSection
