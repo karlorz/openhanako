@@ -139,8 +139,10 @@ describe('MarketplaceSourcesPanel product states', () => {
     expect(remove.className).not.toMatch(/skill-card-delete/);
 
     const toggle = screen.getByRole('button', { name: 'Disable team-git' });
-    expect(toggle).toHaveTextContent('Disable');
-    expect(toggle.className).toMatch(/pv-add-form-btn/);
+    expect(toggle).toHaveAttribute('title', 'Disable team-git');
+    expect(toggle.className).toMatch(/hana-toggle/);
+    expect(toggle.className).toMatch(/on/);
+    expect(toggle.className).not.toMatch(/pv-add-form-btn/);
   });
 
   it('keeps source refresh/remove callbacks and revision/digest behavior unchanged', async () => {
