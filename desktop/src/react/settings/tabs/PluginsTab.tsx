@@ -449,15 +449,21 @@ export function PluginsTab() {
 
   const toggleSkillPackage = async (pkg: ManagePluginsSkillPackageRow, enable: boolean) => {
     if (!isStudioOwner) return;
+    if (pkg.actions?.canToggle === false) return;
+    // Owner path should always include a full activations snapshot; never PUT a bare {}.
+    if (!skillPackageMeta.activations || typeof skillPackageMeta.activations !== 'object') {
+      showToast(
+        t('settings.saveFailed') + ': missing activations snapshot',
+        'error',
+      );
+      return;
+    }
     // Optimistic update
     setSkillPackages(prev => prev.map(row => (
       row.identity === pkg.identity ? { ...row, packageEnabled: enable } : row
     )));
     try {
-      const existing = skillPackageMeta.activations && typeof skillPackageMeta.activations === 'object'
-        ? skillPackageMeta.activations
-        : {};
-      const activations = structuredClone(existing) as Record<string, unknown> & {
+      const activations = structuredClone(skillPackageMeta.activations) as Record<string, unknown> & {
         marketplaceSkillPackages?: Record<string, { enabled: boolean }>;
       };
       activations.marketplaceSkillPackages ||= {};
@@ -775,6 +781,8 @@ export function PluginsTab() {
               const status = skillPackageStatus(pkg);
               const dimmed = !pkg.packageEnabled;
               const canAct = isStudioOwner;
+              const canToggle = canAct && pkg.actions?.canToggle !== false;
+              const canUninstall = canAct && pkg.actions?.canUninstall !== false;
 
               return (
                 <div
@@ -822,7 +830,7 @@ export function PluginsTab() {
                     >
                       {t('settings.plugins.skillPackageManageInSkills')}
                     </button>
-                    {canAct && (
+                    {canUninstall && (
                       <button
                         className={styles['skill-card-delete']}
                         title={t('settings.plugins.skillPackageUninstallConfirm', {
@@ -838,7 +846,7 @@ export function PluginsTab() {
                         </svg>
                       </button>
                     )}
-                    {canAct && (
+                    {canToggle && (
                       <button
                         type="button"
                         className={`hana-toggle${pkg.packageEnabled ? ' on' : ''}`}
