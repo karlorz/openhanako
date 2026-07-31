@@ -8,6 +8,26 @@ Open **Settings → Plugins → Plugin Marketplace**. A supported server reports
 
 Catalog inspection and status questions are read-only. Adding, removing, enabling, disabling, or refreshing a source; changing activation/access records; installing a package; and changing a Claude compatibility binding require server owner access. Mutations must be confirmed immediately before execution and are rejected when their registry revision, digest, or plan token is stale.
 
+## Desktop Plugins controls
+
+The compact controls under **Settings → Plugins** distinguish navigation,
+source mutation, and package state without adding a second management model:
+
+- The **Plugin Marketplace** teaser is a full-row link to the detailed
+  Marketplace page; its browse glyph is only a visual affordance, so clicking
+  the title or description opens the same destination.
+- **＋ Add source** is the single compact outlined text action. Refresh,
+  browse/open, configuration, and removal controls are bare utility icons;
+  they use color-only hover/focus feedback rather than filled button surfaces.
+- For a mutable custom source, the actions are ordered **refresh → remove × →
+  enable/disable toggle**. The × opens the ordinary removal confirmation.
+  The switch changes only source enablement; it retains the same owner,
+  revision, digest, and confirmation protections as the former Enable/Disable
+  action.
+- Official, legacy, immutable, degraded, and non-owner source rows remain
+  read-only. A visual control never bypasses the server ownership or stale
+  configuration rules described below.
+
 ## Source forms
 
 Hana accepts three server-owned source forms:
