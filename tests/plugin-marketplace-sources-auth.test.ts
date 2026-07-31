@@ -273,6 +273,8 @@ describe("marketplace sources auth principal", () => {
       sources: [{ id: "team-plugins", name: "Team", kind: "url", url: "https://example.com/marketplace.json" }],
     }, null, 2), "utf8");
     const engine = createEngine(home);
+    engine.reloadSkills = vi.fn(async () => {});
+    engine.emitEvent = vi.fn();
     const appNoPrincipal = createAppWithPrincipal(engine, null);
 
     const forbidden = await appNoPrincipal.request("/api/plugins/marketplace/config/activations", {
@@ -284,6 +286,7 @@ describe("marketplace sources auth principal", () => {
       }),
     });
     expect(forbidden.status).toBe(403);
+    expect(engine.reloadSkills).not.toHaveBeenCalled();
 
     const app = createAppWithPrincipal(engine, localOwner);
     const invalid = await app.request("/api/plugins/marketplace/config/activations", {
@@ -299,6 +302,7 @@ describe("marketplace sources auth principal", () => {
     const invalidBody = await invalid.json();
     expect(invalid.status).toBe(400);
     expect(invalidBody.code).toBe("PLUGIN_MARKETPLACE_CONTROL_PLANE_INVALID");
+    expect(engine.reloadSkills).not.toHaveBeenCalled();
 
     const ok = await app.request("/api/plugins/marketplace/config/activations", {
       method: "PUT",
@@ -322,6 +326,116 @@ describe("marketplace sources auth principal", () => {
       activations: {
         runtimePlugins: { "demo@team-plugins": { enabled: true } },
       },
+    });
+    // Package/skill activation toggles must re-sync agent skills without waiting for file watch.
+    expect(engine.reloadSkills).toHaveBeenCalledOnce();
+    expect(engine.emitEvent).toHaveBeenCalledWith(expect.objectContaining({
+      type: "app_event",
+      event: expect.objectContaining({ type: "skills-changed" }),
+    }), null);
+  });
+
+  it("lists installed marketplace skill packages for owners and non-owner readers", async () => {
+    const home = makeHome();
+    fs.mkdirSync(path.join(home, "skills", "wiki-query"), { recursive: true });
+    fs.writeFileSync(path.join(home, "skills", "wiki-query", "SKILL.md"), "---\nname: wiki-query\n---\n", "utf8");
+    writeClaudeSkillsInstallRecord(home, {
+      kind: "claude-skills",
+      marketplaceId: "llm-wiki",
+      pluginId: "skillwiki",
+      packagePath: "packages/skillwiki",
+      resolvedRevision: "abc",
+      skills: ["wiki-query"],
+      installedAt: "2026-07-31T00:00:00.000Z",
+    });
+    fs.writeFileSync(path.join(home, "plugin-marketplaces.json"), JSON.stringify({
+      schemaVersion: 2,
+      revision: 3,
+      sources: [{
+        id: "llm-wiki",
+        name: "llm-wiki",
+        kind: "git",
+        gitUrl: "https://example.com/llm-wiki.git",
+        enabled: true,
+      }],
+      activations: {
+        marketplaceSkillPackages: { "skillwiki@llm-wiki": { enabled: false } },
+        marketplaceSkills: { "wiki-query@llm-wiki/skillwiki": { enabled: true } },
+        runtimePlugins: { "demo@llm-wiki": { enabled: true } },
+      },
+    }, null, 2), "utf8");
+
+    const engine = createEngine(home);
+    const { PluginMarketplaceService } = await import("../lib/plugin-marketplace-service.ts");
+    engine.pluginMarketplaceService = new PluginMarketplaceService({ hanakoHome: home, env: {} });
+
+    const ownerApp = createAppWithPrincipal(engine, localOwner);
+    const ownerRes = await ownerApp.request("/api/plugins/marketplace/installed-skill-packages");
+    const ownerBody = await ownerRes.json();
+    expect(ownerRes.status).toBe(200);
+    expect(ownerBody.packages).toHaveLength(1);
+    expect(ownerBody.packages[0]).toMatchObject({
+      kind: "marketplace-skill-package",
+      identity: "skillwiki@llm-wiki",
+      pluginId: "skillwiki",
+      marketplaceId: "llm-wiki",
+      packageEnabled: false,
+      packageGateRecorded: true,
+      skillNames: ["wiki-query"],
+      installAdapter: "skill-manager",
+      installTarget: "hana-skills",
+    });
+    expect(ownerBody.registry).toMatchObject({
+      revision: 3,
+      digest: expect.stringMatching(/^[a-f0-9]{64}$/),
+    });
+    expect(ownerBody.access).toMatchObject({
+      isStudioOwner: true,
+      isLocalOwner: true,
+    });
+    // Owners get full activations snapshot so PUT can clone without wiping maps.
+    expect(ownerBody.activations).toEqual({
+      marketplaceSkillPackages: { "skillwiki@llm-wiki": { enabled: false } },
+      marketplaceSkills: { "wiki-query@llm-wiki/skillwiki": { enabled: true } },
+      runtimePlugins: { "demo@llm-wiki": { enabled: true } },
+    });
+
+    const nonOwner = Object.freeze({
+      kind: "device",
+      connectionKind: "lan",
+      credentialKind: "device_credential",
+      scopes: ["settings.read"],
+    });
+    const readerApp = createAppWithPrincipal(engine, nonOwner);
+    const readerRes = await readerApp.request("/api/plugins/marketplace/installed-skill-packages");
+    const readerBody = await readerRes.json();
+    expect(readerRes.status).toBe(200);
+    expect(readerBody.packages).toHaveLength(1);
+    expect(readerBody.packages[0].identity).toBe("skillwiki@llm-wiki");
+    expect(readerBody.access).toMatchObject({
+      isStudioOwner: false,
+      isLocalOwner: false,
+    });
+    // Non-owners may read inventory; full activations clone is owner-facing.
+    expect(readerBody.activations).toBeUndefined();
+  });
+
+  it("returns empty installed skill packages when marketplace service is unavailable", async () => {
+    const engine = {
+      // no hanakoHome → getMarketplaceService throws
+      pluginManager: { listPlugins: () => [], getRouteApp: () => null },
+      pluginMarketplace: null,
+      pluginMarketplaceService: null,
+    } as any;
+    const app = createAppWithPrincipal(engine, localOwner);
+    const res = await app.request("/api/plugins/marketplace/installed-skill-packages");
+    const body = await res.json();
+    expect(res.status).toBe(501);
+    expect(body.packages).toEqual([]);
+    expect(body).toMatchObject({
+      supported: false,
+      code: "PLUGIN_MARKETPLACE_UNSUPPORTED_SERVER",
+      version: "plugin-marketplace-capabilities.v1",
     });
   });
 

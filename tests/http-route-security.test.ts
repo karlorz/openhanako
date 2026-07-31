@@ -445,6 +445,8 @@ describe("HTTP route security policy", () => {
       ["POST", "/api/skills/bundles/story-pack/export"],
       ["GET", "/api/plugins?source=community"],
       ["GET", "/api/plugins/marketplace"],
+      ["GET", "/api/plugins/marketplace/catalog"],
+      ["GET", "/api/plugins/marketplace/installed-skill-packages"],
       ["GET", "/api/plugins/marketplace/media-board/readme"],
       ["GET", "/api/plugins/diagnostics"],
       ["GET", "/api/media/image/providers"],
@@ -494,6 +496,7 @@ describe("HTTP route security policy", () => {
       ["PATCH", "/api/agents/hana/skills/imagegen"],
       ["GET", "/api/plugins?source=community"],
       ["GET", "/api/plugins/marketplace"],
+      ["GET", "/api/plugins/marketplace/installed-skill-packages"],
       ["GET", "/api/plugins/diagnostics"],
       ["GET", "/api/media/image/providers"],
       ["PUT", "/api/media/image/config"],
@@ -505,6 +508,28 @@ describe("HTTP route security policy", () => {
       expect(authorizeHttpRoute({ method, path, principal }), `${method} ${path}`)
         .toMatchObject({ allowed: false, status: 403 });
     }
+  });
+
+  it("allows settings.read to inventory installed marketplace skill packages", async () => {
+    const { authorizeHttpRoute, classifyHttpRoute } = await import("../server/http/route-security.ts");
+    const path = "/api/plugins/marketplace/installed-skill-packages";
+    expect(classifyHttpRoute({ method: "GET", path }))
+      .toMatchObject({ kind: "scope", scope: "settings.read" });
+    expect(authorizeHttpRoute({
+      method: "GET",
+      path,
+      principal: devicePrincipal(["settings.read"]),
+    })).toMatchObject({ allowed: true });
+    expect(authorizeHttpRoute({
+      method: "GET",
+      path,
+      principal: devicePrincipal(["chat"]),
+    })).toMatchObject({
+      allowed: false,
+      status: 403,
+      error: "insufficient_scope",
+      requiredScope: "settings.read",
+    });
   });
 
   it("treats media submit routes as chat actions for plugin and client surfaces", async () => {
