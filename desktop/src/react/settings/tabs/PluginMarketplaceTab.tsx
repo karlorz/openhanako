@@ -4,6 +4,7 @@ import { hanaFetch } from '../api';
 import { t } from '../helpers';
 import { SettingsSection } from '../components/SettingsSection';
 import { MarketplaceSourcesPanel, type MarketplaceSourceRow } from '../components/MarketplaceSourcesPanel';
+import { RefreshIcon } from '../components/PluginActionIcons';
 import { renderMarkdown } from '../../utils/markdown';
 import styles from '../Settings.module.css';
 
@@ -881,20 +882,12 @@ export function PluginMarketplaceTab() {
           <button
             type="button"
             className={styles['settings-icon-btn']}
-            aria-label={t('settings.plugins.openMarketplace')}
-            title={t('settings.plugins.openMarketplace')}
+            aria-label={t('settings.plugins.reload')}
+            title={t('settings.plugins.reload')}
             onClick={() => { void loadMarketplace(); }}
             disabled={marketplaceLoading}
           >
-            <svg
-              aria-hidden="true"
-              width="14" height="14" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
-              className={marketplaceLoading ? styles['spin'] : ''}
-            >
-              <polyline points="23 4 23 10 17 10" />
-              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-            </svg>
+            <RefreshIcon spinning={marketplaceLoading} />
           </button>
         </div>
       </div>

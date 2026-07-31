@@ -4,6 +4,7 @@ import { t } from '../helpers';
 import { useSettingsStore } from '../store';
 import styles from '../Settings.module.css';
 import { AddMarketplaceSourceDialog, type MarketplaceSourceInput } from './AddMarketplaceSourceDialog';
+import { RefreshIcon, RemoveIcon } from './PluginActionIcons';
 
 export interface MarketplaceSourceRow {
   id: string;
@@ -252,10 +253,11 @@ export function MarketplaceSourcesPanel({
         <div className={styles['pv-add-form-actions']}>
           <button
             type="button"
-            className={styles['pv-add-form-btn']}
+            className={`${styles['pv-add-form-btn']} ${styles['plugin-add-source-btn']}`}
             disabled={busy || loading || isStudioOwner === false || registry?.degraded === true}
             onClick={() => setShowAdd(true)}
           >
+            <span aria-hidden="true">＋</span>{' '}
             {t('settings.plugins.marketSourceAdd')}
           </button>
           <button
@@ -266,15 +268,7 @@ export function MarketplaceSourcesPanel({
             title={t('settings.plugins.marketSourceRefreshAll')}
             onClick={() => loadSources()}
           >
-            <svg
-              aria-hidden="true"
-              width="14" height="14" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
-              className={loading ? styles['spin'] : ''}
-            >
-              <polyline points="23 4 23 10 17 10" />
-              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-            </svg>
+            <RefreshIcon spinning={loading} />
           </button>
         </div>
       </div>
@@ -353,14 +347,16 @@ export function MarketplaceSourcesPanel({
                   )}
                 </div>
                 {canMutate && (
-                  <div className={styles['skills-list-actions']}>
+                  <div className={`${styles['skills-list-actions']} ${styles['marketplace-source-actions']}`}>
                     <button
                       type="button"
-                      className={styles['pv-add-form-btn']}
+                      className={`${styles['settings-icon-btn']} ${styles['plugin-action-icon']}`}
                       disabled={busy}
                       onClick={() => refreshSource(src.id)}
+                      aria-label={t('settings.plugins.marketSourceRefreshNamed', { id: src.id })}
+                      title={t('settings.plugins.marketSourceRefreshNamed', { id: src.id })}
                     >
-                      {t('settings.plugins.marketSourceRefresh')}
+                      <RefreshIcon />
                     </button>
                     <button
                       type="button"
@@ -373,11 +369,13 @@ export function MarketplaceSourcesPanel({
                     </button>
                     <button
                       type="button"
-                      className={`${styles['pv-add-form-btn']} ${styles['danger'] || ''}`}
+                      className={`${styles['settings-icon-btn']} ${styles['plugin-action-icon']} ${styles['plugin-action-danger']}`}
                       disabled={busy}
                       onClick={() => removeSource(src.id)}
+                      aria-label={t('settings.plugins.marketSourceRemoveNamed', { id: src.id })}
+                      title={t('settings.plugins.marketSourceRemoveNamed', { id: src.id })}
                     >
-                      {t('settings.plugins.marketSourceRemove')}
+                      <RemoveIcon />
                     </button>
                   </div>
                 )}

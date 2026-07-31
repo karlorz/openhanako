@@ -7,6 +7,7 @@ import styles from '../Settings.module.css';
 import { SettingsSection } from '../components/SettingsSection';
 import { SettingsRow } from '../components/SettingsRow';
 import { MarketplaceSourcesPanel } from '../components/MarketplaceSourcesPanel';
+import { BrowseIcon, RefreshIcon, RemoveIcon } from '../components/PluginActionIcons';
 import { SelectWidget, Toggle, type SelectOption } from '@/ui';
 import { MarketplaceSkillPackagePage } from './skills/MarketplaceSkillPackagePage';
 import {
@@ -588,43 +589,39 @@ export function PluginsTab() {
 
   const reloadButton = (
     <button
+      type="button"
       className={styles['settings-icon-btn']}
+      aria-label={t('settings.plugins.reload')}
       title={t('settings.plugins.reload')}
       onClick={reload}
       disabled={loading}
     >
-      <svg
-        width="14" height="14" viewBox="0 0 24 24" fill="none"
-        stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
-        className={loading ? styles['spin'] : ''}
-      >
-        <polyline points="23 4 23 10 17 10" />
-        <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-      </svg>
-    </button>
-  );
-
-  const marketplaceButton = (
-    <button
-      className={styles['settings-save-btn-sm']}
-      title={t('settings.plugins.openMarketplace')}
-      onClick={() => set({ activeTab: 'plugin-marketplace' })}
-    >
-      {t('settings.plugins.openMarketplace')}
+      <RefreshIcon spinning={loading} />
     </button>
   );
 
   const marketplaceBody = (
     <div className={styles['skills-list-block']}>
-      <div className={styles['skills-list-item']} style={{ cursor: 'default' }}>
-        <div className={styles['skills-list-info']}>
+      <button
+        type="button"
+        className={`${styles['skills-list-item']} ${styles['plugin-marketplace-entry']}`}
+        aria-label={t('settings.plugins.openMarketplace')}
+        title={t('settings.plugins.openMarketplace')}
+        onClick={() => set({ activeTab: 'plugin-marketplace' })}
+      >
+        <span className={styles['skills-list-info']}>
           <span className={styles['skills-list-name']}>{t('settings.plugins.marketplaceTitle')}</span>
           <span className={styles['skills-list-desc']}>{t('settings.plugins.marketplaceHint')}</span>
-        </div>
-        <div className={styles['skills-list-actions']} style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {marketplaceButton}
-        </div>
-      </div>
+        </span>
+        <span className={styles['skills-list-actions']}>
+          <span
+            className={`${styles['settings-icon-btn']} ${styles['plugin-action-icon']}`}
+            aria-hidden="true"
+          >
+            <BrowseIcon />
+          </span>
+        </span>
+      </button>
       {/* First-class multi-source management remains part of this single marketplace surface. */}
       <MarketplaceSourcesPanel
         embedded
@@ -733,11 +730,13 @@ export function PluginsTab() {
                   <div className={styles['skills-list-actions']}>
                     {configurable && (
                       <button
-                        className={styles['skill-card-delete']}
+                        type="button"
+                        className={`${styles['settings-icon-btn']} ${styles['plugin-action-icon']}`}
+                        aria-label={t('settings.plugins.configure', { name: plugin.name })}
                         title={t('settings.plugins.configure', { name: plugin.name })}
                         onClick={() => loadPluginConfig(plugin)}
                       >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                        <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                           <circle cx="12" cy="12" r="3" />
                           <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3h.1a1.7 1.7 0 0 0 1-1.6V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.6h.1a1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9v.1a1.7 1.7 0 0 0 1.6 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
                         </svg>
@@ -745,14 +744,13 @@ export function PluginsTab() {
                     )}
                     {/* Delete */}
                     <button
-                      className={styles['skill-card-delete']}
+                      type="button"
+                      className={`${styles['settings-icon-btn']} ${styles['plugin-action-icon']} ${styles['plugin-action-danger']}`}
+                      aria-label={t('settings.plugins.deleteConfirm', { name: plugin.name })}
                       title={t('settings.plugins.deleteConfirm', { name: plugin.name })}
                       onClick={() => deletePlugin(plugin)}
                     >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                        <line x1="18" y1="6" x2="6" y2="18" />
-                        <line x1="6" y1="6" x2="18" y2="18" />
-                      </svg>
+                      <RemoveIcon />
                     </button>
 
                     {/* Enable/disable toggle */}
@@ -830,15 +828,23 @@ export function PluginsTab() {
                   <div className={styles['skills-list-actions']} style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                     <button
                       type="button"
-                      className={styles['settings-save-btn-sm']}
+                      className={`${styles['settings-icon-btn']} ${styles['plugin-action-icon']}`}
                       disabled={pkg.actions?.canOpenSkills === false || pkg.skillCount <= 0}
+                      aria-label={t('settings.plugins.skillPackageOpenSkills', { name: pkg.name })}
+                      title={t('settings.plugins.skillPackageOpenSkills', { name: pkg.name })}
                       onClick={() => openSkillPackage(pkg)}
                     >
-                      {t('settings.plugins.skillPackageOpenSkills', { name: pkg.name })}
+                      <BrowseIcon />
                     </button>
                     {canUninstall && (
                       <button
-                        className={styles['skill-card-delete']}
+                        type="button"
+                        className={`${styles['settings-icon-btn']} ${styles['plugin-action-icon']} ${styles['plugin-action-danger']}`}
+                        aria-label={t('settings.plugins.skillPackageUninstallConfirm', {
+                          identity: pkg.identity,
+                          name: pkg.name,
+                          skillCount: String(pkg.skillCount),
+                        })}
                         title={t('settings.plugins.skillPackageUninstallConfirm', {
                           identity: pkg.identity,
                           name: pkg.name,
@@ -846,10 +852,7 @@ export function PluginsTab() {
                         })}
                         onClick={() => void uninstallSkillPackage(pkg)}
                       >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                          <line x1="18" y1="6" x2="6" y2="18" />
-                          <line x1="6" y1="6" x2="18" y2="18" />
-                        </svg>
+                        <RemoveIcon />
                       </button>
                     )}
                     {canToggle && (
