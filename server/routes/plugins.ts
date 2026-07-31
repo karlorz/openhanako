@@ -41,6 +41,7 @@ import {
 } from "../http/route-security.ts";
 import { isSecureHttpRequest } from "../http/transport-context.ts";
 import { PluginMarketplaceService } from "../../lib/plugin-marketplace-service.ts";
+import { descriptorFromMarketplaceSourceInput } from "../../lib/plugin-marketplace-sources.ts";
 import { PluginSourceSwitchCoordinator } from "../../lib/plugin-source-switch.ts";
 import { PluginInstallRecords } from "../../lib/plugin-install-records.ts";
 import { PluginArtifactStore } from "../../lib/plugin-artifact-store.ts";
@@ -1090,7 +1091,10 @@ export function createPluginsRoute(engine: any) {
     const body = await c.req.json().catch(() => ({}));
     try {
       const svc = getMarketplaceService();
-      const result = await svc.addSource(body, {
+      const descriptor = typeof body?.source === "string"
+        ? descriptorFromMarketplaceSourceInput(body.source)
+        : body;
+      const result = await svc.addSource(descriptor, {
         isStudioOwner: flags.isStudioOwner,
         isLocalOwner: flags.isLocalOwner,
         ...expectedRegistryPreconditionsFromBody(body),

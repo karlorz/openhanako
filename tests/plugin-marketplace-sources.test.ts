@@ -6,6 +6,7 @@ import {
   OFFICIAL_MARKETPLACE_ID,
   PluginMarketplaceSourceRegistry,
   createCompiledOfficialMarketplaceSource,
+  descriptorFromMarketplaceSourceInput,
   diagnoseMarketplaceSourcesText,
 } from "../lib/plugin-marketplace-sources.ts";
 import { buildSourceFingerprint } from "../lib/plugin-marketplace-identity.ts";
@@ -53,6 +54,54 @@ describe("compiled official marketplace source", () => {
         }),
       );
     }
+  });
+});
+
+describe("compact marketplace source input", () => {
+  it("derives a public HTTPS catalog descriptor without storing a second format", () => {
+    expect(descriptorFromMarketplaceSourceInput("https://example.com/catalog/marketplace.json")).toEqual({
+      id: "example-com-catalog-marketplace",
+      name: "marketplace",
+      kind: "url",
+      url: "https://example.com/catalog/marketplace.json",
+    });
+  });
+
+  it("derives a public Git descriptor and rejects credential-bearing URLs", () => {
+    expect(descriptorFromMarketplaceSourceInput("https://github.com/karlorz/llm-wiki.git")).toEqual({
+      id: "github-com-karlorz-llm-wiki",
+      name: "llm-wiki",
+      kind: "git",
+      gitUrl: "https://github.com/karlorz/llm-wiki.git",
+      gitRef: "refs/heads/main",
+      indexPath: "marketplace.json",
+    });
+    expect(() => descriptorFromMarketplaceSourceInput("https://token@example.com/marketplace.json"))
+      .toThrow(/credentials are not allowed/i);
+    expect(() => descriptorFromMarketplaceSourceInput("git@example.com:team/marketplace.git"))
+      .toThrow(/public HTTPS/i);
+  });
+
+  it("keeps ordinary Git URLs on the Git path and gives same-basename sources unique ids", () => {
+    expect(descriptorFromMarketplaceSourceInput("https://github.com/acme/hana-market")).toMatchObject({
+      id: "github-com-acme-hana-market",
+      kind: "git",
+      gitUrl: "https://github.com/acme/hana-market.git",
+    });
+    expect(descriptorFromMarketplaceSourceInput("https://github.com/team/hana-market")).toMatchObject({
+      id: "github-com-team-hana-market",
+      kind: "git",
+      gitUrl: "https://github.com/team/hana-market.git",
+    });
+  });
+
+  it("keeps server-local paths explicit", () => {
+    expect(descriptorFromMarketplaceSourceInput("/srv/hana/marketplaces/team")).toEqual({
+      id: "srv-hana-marketplaces-team",
+      name: "team",
+      kind: "local",
+      path: "/srv/hana/marketplaces/team",
+    });
   });
 });
 
