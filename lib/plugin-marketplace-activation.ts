@@ -16,11 +16,7 @@ export type MarketplaceActivationState =
   | "blocked-by-source"
   | "desired-not-installed";
 
-export type MarketplaceSkillPackageGateState =
-  | "enabled"
-  | "disabled"
-  | "blocked-by-source"
-  | "desired-not-installed";
+export type MarketplaceSkillPackageGateState = MarketplaceActivationState;
 
 export interface EffectiveActivationResult {
   identity: string;

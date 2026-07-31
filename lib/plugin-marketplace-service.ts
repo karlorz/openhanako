@@ -709,6 +709,12 @@ export class PluginMarketplaceService {
     const sources = this.registry.listSources();
     const sourceById = new Map(sources.map((source) => [source.id, source]));
     const activations = this.registry.getControlPlaneActivations();
+    const catalogByIdentity = new Map(
+      this.snapshots.listCurrentPlugins().map((plugin) => [
+        buildPluginMarketplaceRef({ pluginId: plugin.id, marketplaceId: plugin.marketplaceId }),
+        plugin,
+      ]),
+    );
     const rows: ManagePluginsSkillPackageRow[] = [];
 
     for (const record of listClaudeSkillsInstallRecords(this._hanakoHome)) {
@@ -739,7 +745,7 @@ export class PluginMarketplaceService {
         installedPresent: true,
       });
 
-      const catalog = this.getCatalogPlugin(record.pluginId, record.marketplaceId);
+      const catalog = catalogByIdentity.get(identity) || null;
       const name = (catalog?.name && typeof catalog.name === "string" && catalog.name.trim())
         ? catalog.name
         : record.pluginId;
@@ -843,8 +849,7 @@ export class PluginMarketplaceService {
     }
 
     const handled = new Set([...result.deleted, ...result.alreadyMissing]);
-    const current = this.registry.getControlPlaneActivations();
-    const activations: MarketplaceControlPlaneActivations = structuredClone(current || {});
+    const activations: MarketplaceControlPlaneActivations = this.registry.getControlPlaneActivations();
     let changed = false;
     for (const skillName of handled) {
       const identity = buildMarketplaceSkillRef({ skillName, marketplaceId, pluginId });

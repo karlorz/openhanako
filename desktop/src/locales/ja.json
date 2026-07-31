@@ -2025,6 +2025,7 @@
       "marketplaceEmpty": "閲覧できるプラグインはありません",
       "marketLoading": "プラグインマーケットを読み込み中…",
       "marketLoadError": "プラグインマーケットの読み込みに失敗しました",
+      "marketplaceChangedRetry": "マーケットプレイス設定が再度変更されました。もう一度切り替えてください。",
       "marketReadmeLoadError": "README の読み込みに失敗しました",
       "marketInstalled": "インストール済み",
       "marketInstall": "インストール",

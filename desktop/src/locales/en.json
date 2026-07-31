@@ -2091,6 +2091,7 @@
       "marketplaceEmpty": "No plugins to browse",
       "marketLoading": "Loading plugin marketplace…",
       "marketLoadError": "Plugin marketplace failed to load",
+      "marketplaceChangedRetry": "Marketplace settings changed again. Please try the toggle once more.",
       "marketReadmeLoadError": "README failed to load",
       "marketInstalled": "Installed",
       "marketInstall": "Install",
