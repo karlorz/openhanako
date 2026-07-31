@@ -3,6 +3,7 @@ import os from "os";
 import path from "path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  buildPresentSkillPackageMembership,
   discoverClaudeSkillDirs,
   installClaudeSkillsFromPackage,
   inspectClaudePackageWarnings,
@@ -468,5 +469,67 @@ describe("PluginMarketplaceService.installClaudePluginSkills", () => {
       isStudioOwner: false,
     })).toThrow(/studio\.owner/i);
     expect(fs.existsSync(path.join(skillsDir, "wiki-query"))).toBe(true);
+  });
+});
+
+describe("buildPresentSkillPackageMembership", () => {
+  it("maps present skills to their package identity", () => {
+    const home = makeTemp("membership-home-");
+    const skillsDir = path.join(home, "skills");
+    writeSkill(path.join(skillsDir, "wiki-query"), "wiki-query");
+    writeSkill(path.join(skillsDir, "wiki-sync"), "wiki-sync");
+    writeClaudeSkillsInstallRecord(home, {
+      kind: "claude-skills",
+      marketplaceId: "llm-wiki",
+      pluginId: "skillwiki",
+      packagePath: "packages/skills",
+      resolvedRevision: "abc",
+      skills: ["wiki-query", "wiki-sync", "missing-skill"],
+      installedAt: "2026-07-31T00:00:00.000Z",
+    });
+
+    const map = buildPresentSkillPackageMembership(home, skillsDir);
+    expect([...map.keys()].sort()).toEqual(["wiki-query", "wiki-sync"]);
+    expect(map.get("wiki-query")).toEqual({
+      pluginId: "skillwiki",
+      marketplaceId: "llm-wiki",
+      identity: "skillwiki@llm-wiki",
+    });
+    expect(map.has("missing-skill")).toBe(false);
+  });
+
+  it("keeps lexicographically smaller package identity on skill name collision", () => {
+    const home = makeTemp("membership-collision-");
+    const skillsDir = path.join(home, "skills");
+    writeSkill(path.join(skillsDir, "shared-skill"), "shared-skill");
+    // larger identity: zebra@mkt-b
+    writeClaudeSkillsInstallRecord(home, {
+      kind: "claude-skills",
+      marketplaceId: "mkt-b",
+      pluginId: "zebra",
+      packagePath: "packages/zebra",
+      resolvedRevision: null,
+      skills: ["shared-skill"],
+      installedAt: "2026-07-31T00:00:00.000Z",
+    });
+    // smaller identity: apple@mkt-a — wins on collision
+    writeClaudeSkillsInstallRecord(home, {
+      kind: "claude-skills",
+      marketplaceId: "mkt-a",
+      pluginId: "apple",
+      packagePath: "packages/apple",
+      resolvedRevision: null,
+      skills: ["shared-skill"],
+      installedAt: "2026-07-31T00:00:00.000Z",
+    });
+
+    const map = buildPresentSkillPackageMembership(home, skillsDir);
+    expect(map.get("shared-skill")).toEqual({
+      pluginId: "apple",
+      marketplaceId: "mkt-a",
+      identity: "apple@mkt-a",
+    });
+    // Documented: the non-winning package must not claim the skill for enable/ownership.
+    // SkillManager (Task 4) should only treat the map entry's package as owner of the skill.
   });
 });

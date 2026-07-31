@@ -348,4 +348,217 @@ describe("PluginMarketplaceService", () => {
     const missing = svc.resolveInstall("demo", "no-such-source");
     expect(missing).toMatchObject({ ok: false, code: "NOT_FOUND" });
   });
+
+  describe("listInstalledSkillPackages", () => {
+    function writeSkill(home: string, name: string) {
+      const dir = path.join(home, "skills", name);
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, "SKILL.md"), `---\nname: ${name}\n---\n`, "utf8");
+    }
+
+    it("lists installed package with catalog metadata and default-enabled gate", () => {
+      const home = makeHome();
+      seedClaudeSource(home);
+      const svc = new PluginMarketplaceService({ hanakoHome: home, env: {} });
+      svc.registry.addSource({
+        id: "llm-wiki",
+        name: "llm-wiki",
+        kind: "git",
+        gitUrl: "https://example.com/llm-wiki.git",
+      });
+      writeSkill(home, "wiki-query");
+      writeSkill(home, "wiki-sync");
+      writeClaudeSkillsInstallRecord(home, {
+        kind: "claude-skills",
+        marketplaceId: "llm-wiki",
+        pluginId: "skillwiki",
+        packagePath: "packages/skillwiki",
+        resolvedRevision: "abc",
+        skills: ["wiki-query", "wiki-sync"],
+        installedAt: "2026-07-31T00:00:00.000Z",
+      });
+
+      const rows = svc.listInstalledSkillPackages();
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({
+        kind: "marketplace-skill-package",
+        identity: "skillwiki@llm-wiki",
+        pluginId: "skillwiki",
+        marketplaceId: "llm-wiki",
+        name: "skillwiki",
+        version: "1.0.0",
+        packageState: "installed",
+        packageEnabled: true,
+        packageGateRecorded: false,
+        packageGateState: "enabled",
+        skillNames: ["wiki-query", "wiki-sync"],
+        skillCount: 2,
+        missingSkillNames: [],
+        invalidSkillNames: [],
+        sourceStatus: "ok",
+        installAdapter: "skill-manager",
+        installTarget: "hana-skills",
+        actions: {
+          canToggle: true,
+          canUninstall: true,
+          canOpenSkills: true,
+          canReinstall: true,
+        },
+      });
+    });
+
+    it("excludes packages with no install record (not-installed)", () => {
+      const home = makeHome();
+      seedClaudeSource(home);
+      const svc = new PluginMarketplaceService({ hanakoHome: home, env: {} });
+      svc.registry.addSource({
+        id: "llm-wiki",
+        name: "llm-wiki",
+        kind: "git",
+        gitUrl: "https://example.com/llm-wiki.git",
+      });
+
+      expect(svc.listInstalledSkillPackages()).toEqual([]);
+    });
+
+    it("reports packageEnabled false when package gate is disabled", () => {
+      const home = makeHome();
+      seedClaudeSource(home);
+      const svc = new PluginMarketplaceService({ hanakoHome: home, env: {} });
+      svc.registry.addSource({
+        id: "llm-wiki",
+        name: "llm-wiki",
+        kind: "git",
+        gitUrl: "https://example.com/llm-wiki.git",
+      });
+      writeSkill(home, "wiki-query");
+      writeClaudeSkillsInstallRecord(home, {
+        kind: "claude-skills",
+        marketplaceId: "llm-wiki",
+        pluginId: "skillwiki",
+        packagePath: "packages/skillwiki",
+        resolvedRevision: "abc",
+        skills: ["wiki-query"],
+        installedAt: "2026-07-31T00:00:00.000Z",
+      });
+      svc.registry.setControlPlaneActivations({
+        marketplaceSkillPackages: {
+          "skillwiki@llm-wiki": { enabled: false },
+        },
+      });
+
+      const rows = svc.listInstalledSkillPackages();
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({
+        packageEnabled: false,
+        packageGateRecorded: true,
+        packageGateState: "disabled",
+        packageState: "installed",
+      });
+    });
+
+    it("still lists packages when marketplace source is removed", () => {
+      const home = makeHome();
+      writeSkill(home, "wiki-query");
+      writeClaudeSkillsInstallRecord(home, {
+        kind: "claude-skills",
+        marketplaceId: "llm-wiki",
+        pluginId: "skillwiki",
+        packagePath: "packages/skillwiki",
+        resolvedRevision: "abc",
+        skills: ["wiki-query"],
+        installedAt: "2026-07-31T00:00:00.000Z",
+      });
+      const svc = new PluginMarketplaceService({ hanakoHome: home, env: {} });
+
+      const rows = svc.listInstalledSkillPackages();
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({
+        identity: "skillwiki@llm-wiki",
+        packageState: "installed",
+        sourceStatus: "removed",
+        name: "skillwiki",
+        version: null,
+        description: null,
+        packageEnabled: false,
+        packageGateState: "blocked-by-source",
+        actions: {
+          canToggle: true,
+          canUninstall: true,
+          canOpenSkills: true,
+          canReinstall: false,
+        },
+      });
+    });
+
+    it("lists partial and stale-record packages; sorts by name then identity", () => {
+      const home = makeHome();
+      writeSkill(home, "alpha-skill");
+      writeClaudeSkillsInstallRecord(home, {
+        kind: "claude-skills",
+        marketplaceId: "mkt-a",
+        pluginId: "zebra",
+        packagePath: "packages/zebra",
+        resolvedRevision: null,
+        skills: ["alpha-skill", "missing-skill"],
+        installedAt: "2026-07-31T00:00:00.000Z",
+      });
+      writeClaudeSkillsInstallRecord(home, {
+        kind: "claude-skills",
+        marketplaceId: "mkt-b",
+        pluginId: "apple",
+        packagePath: "packages/apple",
+        resolvedRevision: null,
+        skills: ["gone-skill"],
+        installedAt: "2026-07-31T00:00:00.000Z",
+      });
+      const svc = new PluginMarketplaceService({ hanakoHome: home, env: {} });
+
+      const rows = svc.listInstalledSkillPackages();
+      expect(rows.map((r) => r.identity)).toEqual(["apple@mkt-b", "zebra@mkt-a"]);
+      expect(rows[0]).toMatchObject({
+        packageState: "stale-record",
+        skillCount: 0,
+        missingSkillNames: ["gone-skill"],
+        actions: { canOpenSkills: false, canUninstall: true, canReinstall: false },
+      });
+      expect(rows[1]).toMatchObject({
+        packageState: "partial",
+        skillNames: ["alpha-skill"],
+        skillCount: 1,
+        missingSkillNames: ["missing-skill"],
+      });
+    });
+
+    it("marks sourceStatus disabled when source enabled is false", () => {
+      const home = makeHome();
+      seedClaudeSource(home);
+      const svc = new PluginMarketplaceService({ hanakoHome: home, env: {} });
+      svc.registry.addSource({
+        id: "llm-wiki",
+        name: "llm-wiki",
+        kind: "git",
+        gitUrl: "https://example.com/llm-wiki.git",
+      });
+      svc.setSourceEnabled("llm-wiki", false, { isStudioOwner: true });
+      writeSkill(home, "wiki-query");
+      writeClaudeSkillsInstallRecord(home, {
+        kind: "claude-skills",
+        marketplaceId: "llm-wiki",
+        pluginId: "skillwiki",
+        packagePath: "packages/skillwiki",
+        resolvedRevision: "abc",
+        skills: ["wiki-query"],
+        installedAt: "2026-07-31T00:00:00.000Z",
+      });
+
+      const rows = svc.listInstalledSkillPackages();
+      expect(rows[0]).toMatchObject({
+        sourceStatus: "disabled",
+        packageGateState: "blocked-by-source",
+        packageEnabled: false,
+        actions: { canReinstall: false, canToggle: true },
+      });
+    });
+  });
 });

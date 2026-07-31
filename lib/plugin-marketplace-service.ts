@@ -30,6 +30,7 @@ import {
 } from "./plugin-marketplace-identity.ts";
 import {
   computeMarketplaceSkillActivation,
+  computeMarketplaceSkillPackageActivation,
   computeNativeAgentPluginAccess,
   computeRuntimePluginActivation,
 } from "./plugin-marketplace-activation.ts";
@@ -38,6 +39,7 @@ import {
   readClaudeSkillsInstallRecord,
   reconcileClaudeSkillsInstall,
   uninstallClaudeSkillsInstallRecord,
+  type ClaudeSkillsInstallState,
 } from "./plugin-marketplace-claude-skills.ts";
 import {
   ClaudeCompatibilityBindingService,
@@ -80,6 +82,36 @@ export interface MarketplaceCapabilityContract {
   };
   unsupported: Array<{ code: string; message: string }>;
   upgradeGuidance: string | null;
+}
+
+/** Inventory row for Settings → Plugins → Manage Plugins (marketplace skill packages). */
+export type ManagePluginsSkillPackageState = Exclude<ClaudeSkillsInstallState, "not-installed">;
+
+export interface ManagePluginsSkillPackageRow {
+  kind: "marketplace-skill-package";
+  identity: string;
+  pluginId: string;
+  marketplaceId: string;
+  name: string;
+  version: string | null;
+  description: string | null;
+  packageState: ManagePluginsSkillPackageState;
+  packageEnabled: boolean;
+  packageGateRecorded: boolean;
+  packageGateState: string;
+  skillNames: string[];
+  skillCount: number;
+  missingSkillNames: string[];
+  invalidSkillNames: string[];
+  sourceStatus: "ok" | "disabled" | "removed";
+  installAdapter: "skill-manager";
+  installTarget: "hana-skills";
+  actions: {
+    canToggle: boolean;
+    canUninstall: boolean;
+    canOpenSkills: boolean;
+    canReinstall: boolean;
+  };
 }
 
 /**
@@ -656,6 +688,98 @@ export class PluginMarketplaceService {
       }
     }
     return refs.sort();
+  }
+
+  /**
+   * Inventory of installed Claude/marketplace skill packages for Manage Plugins.
+   * Only packages with reconciled state in {installed, partial, stale-record}.
+   * Never converts packages into native plugins.
+   */
+  listInstalledSkillPackages(options: {
+    userSkillsDir?: string;
+  } = {}): ManagePluginsSkillPackageRow[] {
+    const userSkillsDir = options.userSkillsDir || path.join(this._hanakoHome, "skills");
+    const sources = this.registry.listSources();
+    const sourceById = new Map(sources.map((source) => [source.id, source]));
+    const activations = this.registry.getControlPlaneActivations();
+    const rows: ManagePluginsSkillPackageRow[] = [];
+
+    for (const record of listClaudeSkillsInstallRecords(this._hanakoHome)) {
+      const reconciled = reconcileClaudeSkillsInstall(record, userSkillsDir);
+      if (
+        reconciled.state !== "installed"
+        && reconciled.state !== "partial"
+        && reconciled.state !== "stale-record"
+      ) {
+        continue;
+      }
+
+      const identity = buildPluginMarketplaceRef({
+        pluginId: record.pluginId,
+        marketplaceId: record.marketplaceId,
+      });
+      const source = sourceById.get(record.marketplaceId);
+      let sourceStatus: ManagePluginsSkillPackageRow["sourceStatus"];
+      if (!source) sourceStatus = "removed";
+      else if (source.enabled === false) sourceStatus = "disabled";
+      else sourceStatus = "ok";
+
+      // Listed rows are only installed/partial/stale-record ⇒ present for package gate.
+      const packageGate = computeMarketplaceSkillPackageActivation({
+        identity,
+        activations,
+        sources,
+        installedPresent: true,
+      });
+
+      const catalog = this.getCatalogPlugin(record.pluginId, record.marketplaceId);
+      const name = (catalog?.name && typeof catalog.name === "string" && catalog.name.trim())
+        ? catalog.name
+        : record.pluginId;
+      const version = catalog?.version != null && catalog.version !== ""
+        ? String(catalog.version)
+        : null;
+      const description = catalog?.description != null && catalog.description !== ""
+        ? String(catalog.description)
+        : null;
+
+      const skillNames = [...reconciled.present].sort((a, b) => a.localeCompare(b));
+      const skillCount = skillNames.length;
+
+      rows.push({
+        kind: "marketplace-skill-package",
+        identity,
+        pluginId: record.pluginId,
+        marketplaceId: record.marketplaceId,
+        name,
+        version,
+        description,
+        packageState: reconciled.state,
+        packageEnabled: packageGate.enabled,
+        packageGateRecorded: packageGate.recorded,
+        packageGateState: packageGate.state,
+        skillNames,
+        skillCount,
+        missingSkillNames: [...reconciled.missing],
+        invalidSkillNames: [...reconciled.invalid],
+        sourceStatus,
+        installAdapter: "skill-manager",
+        installTarget: "hana-skills",
+        actions: {
+          // Owner check is route-layer; service allows toggle whenever the package is listed
+          // (including source-removed packages that remain for cleanup).
+          canToggle: true,
+          canUninstall: true,
+          canOpenSkills: skillCount > 0,
+          canReinstall: sourceStatus === "ok",
+        },
+      });
+    }
+
+    return rows.sort((a, b) =>
+      a.name.localeCompare(b.name)
+      || a.identity.localeCompare(b.identity)
+    );
   }
 
   getRemovedMarketplaceSkillsPackage(pluginId: string, marketplaceId: string) {
