@@ -165,6 +165,9 @@ import {
   getSkillNameTranslationCachePath,
   translateSkillNamesWithCache,
 } from "../lib/skills/skill-name-translation-cache.ts";
+import { buildPresentSkillPackageMembership } from "../lib/plugin-marketplace-claude-skills.ts";
+import { computeMarketplaceSkillPackageActivation } from "../lib/plugin-marketplace-activation.ts";
+import { PluginMarketplaceService } from "../lib/plugin-marketplace-service.ts";
 import { createUsageLedger } from "../lib/llm/usage-ledger.ts";
 import {
   autoProjectIdForCwd,
@@ -260,6 +263,8 @@ export class HanaEngine {
   declare _sessionManifestStoreRecovery: any;
   declare _sessionProjects: any;
   declare _skills: any;
+  declare _marketplaceSkillMembershipMap: Map<string, { identity: string; pluginId: string; marketplaceId: string }> | null;
+  declare pluginMarketplaceService: PluginMarketplaceService | null | undefined;
   declare _slashSystem: any;
   declare _speechRecognition: any;
   declare _studioCronService: any;
@@ -1979,7 +1984,67 @@ export class HanaEngine {
     await this._skills.reload(this._resourceLoader, this._agentMgr.agents);
     this._resourceLoader.getSystemPrompt = () => this.agent.systemPrompt;
     this._resourceLoader.getSkills = () => this._getSkillsForAgent(this.agent);
+    // Membership changes after install/uninstall; rewire gate then re-sync Agents.
+    this._wireMarketplaceSkillPackageGate();
     this._syncAllAgentSkills();
+  }
+
+  /**
+   * Ensure multi-source marketplace service exists (lazy, shared with routes/tools).
+   * Missing registry must not fail-closed as "all packages disabled".
+   */
+  _ensurePluginMarketplaceService() {
+    if (this.pluginMarketplaceService) return this.pluginMarketplaceService;
+    if (!this.hanakoHome) return null;
+    const fetchImpl = (this as any).fetch;
+    this.pluginMarketplaceService = new PluginMarketplaceService({
+      hanakoHome: this.hanakoHome,
+      fetchOptions: fetchImpl ? { fetchImpl } : undefined,
+    });
+    return this.pluginMarketplaceService;
+  }
+
+  /**
+   * Build present skill→package membership and inject SkillManager package gate.
+   * Membership is refreshed on skills reload; activations/sources are read live.
+   */
+  _wireMarketplaceSkillPackageGate() {
+    if (!this._skills) return;
+    const skillsDir = this._skills.skillsDir;
+    const membershipMap = this.hanakoHome && skillsDir
+      ? buildPresentSkillPackageMembership(this.hanakoHome, skillsDir)
+      : new Map();
+    this._marketplaceSkillMembershipMap = membershipMap;
+
+    // Ensure registry is available so package gates enforce after cold start.
+    this._ensurePluginMarketplaceService();
+
+    this._skills.setMarketplaceSkillPackageGateResolver((skillName) => {
+      const membership = this._marketplaceSkillMembershipMap?.get(skillName);
+      if (!membership) return { enabled: true, reason: null };
+
+      const svc = this.pluginMarketplaceService;
+      if (!svc?.registry) {
+        // Prefer last-known-good / missing registry: do not disable all packages.
+        return { enabled: true, reason: null };
+      }
+
+      const gate = computeMarketplaceSkillPackageActivation({
+        identity: membership.identity,
+        activations: svc.registry.getControlPlaneActivations(),
+        sources: svc.registry.listSources(),
+        installedPresent: true,
+      });
+      if (!gate.enabled) {
+        return {
+          enabled: false,
+          reason: gate.state === "blocked-by-source"
+            ? "marketplace-source-blocked"
+            : "marketplace-package-disabled",
+        };
+      }
+      return { enabled: true, reason: null };
+    });
   }
 
   /** 获取外部技能路径配置（供 API 使用） */
@@ -2339,6 +2404,8 @@ export class HanaEngine {
 
     const HIDDEN_SKILLS = new Set(["canvas-design", "skill-creator", "skills-translate-temp"]);
     this._skills.init(this._resourceLoader, this._agentMgr.agents, HIDDEN_SKILLS);
+    // Marketplace package gate: membership + control-plane activations.
+    this._wireMarketplaceSkillPackageGate();
     const extCount = this._skills.allSkills.filter(s => s.source === "external").length;
     log(`[init] 3/5 ResourceLoader 完成 (${Date.now() - t_rl}ms, ${this._skills.allSkills.length} skills${extCount ? `, ${extCount} external` : ""})`);
 
@@ -2381,6 +2448,8 @@ export class HanaEngine {
     this._skills.watch(this._resourceLoader, this._agentMgr.agents, () => {
       this._resourceLoader.getSystemPrompt = () => this.agent.systemPrompt;
       this._resourceLoader.getSkills = () => this._getSkillsForAgent(this.agent);
+      // Disk changes may alter marketplace skill package membership.
+      this._wireMarketplaceSkillPackageGate();
       this._syncAllAgentSkills();
       this._emitAppEvent("skills-changed", { agentId: null });
     });
