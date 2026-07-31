@@ -64,6 +64,15 @@ Provider catalog model object fields (Settings → Providers → edit model) are
   - `scripts/sign-local.cjs`
   - `.github/workflows/build.yml`
   - `.github/workflows/ci.yml`
+- Marketplace skill packages / Manage Plugins:
+  - `docs/plugins/marketplace-handbook.md`
+  - `lib/plugin-marketplace-activation.ts` (`marketplaceSkillPackages` gate)
+  - `lib/plugin-marketplace-service.ts` (`listInstalledSkillPackages`)
+  - `server/routes/plugins.ts` (`GET …/installed-skill-packages`)
+  - `core/skill-manager.ts` (package gate resolver)
+  - `desktop/src/react/settings/tabs/PluginsTab.tsx`
+  - `desktop/src/react/settings/tabs/PluginMarketplaceTab.tsx`
+  - SkillWiki: `projects/openhanako/work/2026-07-31-manage-plugins-marketplace-skill-packages/`
 
 ## Verification Expectations
 
@@ -87,7 +96,20 @@ npx vitest run \
   --exclude "**/node_modules/**"
 ```
 
-Also run `npm run typecheck` and `git diff --check`. For user-facing desktop fixes, build/install with `SKIP_NOTARIZE=true npm run install:local`, verify codesign, then confirm `/Applications/HanaAgent.app` bundle metadata, `Contents/Resources/build-info.json`, and Settings → About all match the `package.json` version before manual smoke.
+Also run `npm run typecheck` and `git diff --check`. For user-facing desktop fixes, build/install with `SKIP_NOTARIZE=true npm run install:local` (current working tree on the checked-out branch; packs arm64 into `/Applications/HanaAgent.app`), verify codesign, then confirm bundle metadata, `Contents/Resources/build-info.json` (`channel: local`, `gitSha` = intended commit), and Settings → About all match the `package.json` version before manual smoke.
+
+For Manage Plugins / marketplace skill-package changes, additionally run:
+
+```bash
+npx vitest run tests/plugin-marketplace-*.test.ts \
+  tests/http-route-security.test.ts \
+  tests/skill-manager.test.ts \
+  tests/skills-route.test.ts \
+  desktop/src/react/__tests__/settings/PluginMarketplaceTab.test.tsx \
+  desktop/src/react/__tests__/settings/PluginsTab.test.tsx
+```
+
+Manual smoke: install a Hana-skill package → row under Manage Plugins → package enable off/on (global gate) → uninstall via Manage Plugins or Marketplace; native plugins and dropzone remain PluginManager-only.
 
 Manual smoke for the remote server:
 
