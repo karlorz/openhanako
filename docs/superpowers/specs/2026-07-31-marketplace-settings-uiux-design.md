@@ -102,6 +102,32 @@ Add Marketplace Source dialog; there is no always-visible inline source form.
 Refresh all remains an icon action only when its tooltip and accessible label
 make the action clear.
 
+### Marketplace source section-card correction
+
+The Plugin Marketplace page uses the same source-management component as the
+Plugins page, but embeds it below the Marketplace summary. Its source list must
+remain a coherent compact section rather than appearing as a floating heading,
+edge-aligned actions, and a table-like first row.
+
+For both settings pages, the approved presentation is:
+
+- A single compact header row: the section label on the left, with Add source
+  and Refresh all grouped on the right and aligned to the source list.
+- One subtle bordered, rounded source-list surface directly below that header.
+  The surface contains only source rows and uses one-pixel dividers between
+  them; the first official source receives no special gray-band treatment.
+- Each row keeps the existing compact hierarchy: source name plus authority,
+  health, enabled state, and package count; identifier and source kind; then a
+  shortened location/ref/index-path line with its full value available through
+  the existing tooltip.
+- Mutable custom-source actions remain right-aligned within their row.
+  Official and server-owned sources remain action-free.
+
+This is a visual hierarchy correction only. It does not alter source APIs,
+loading, add/refresh/enable/remove behavior, access checks, or marketplace
+catalog state. At narrow widths, the header controls may wrap without clipping
+the location or row actions.
+
 Source rows support these user-facing states:
 
 - Healthy / Enabled
