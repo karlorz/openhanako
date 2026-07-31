@@ -2,6 +2,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { computeMarketplaceSkillPackageActivation } from "../lib/plugin-marketplace-activation.ts";
 import { PluginMarketplaceService } from "../lib/plugin-marketplace-service.ts";
 import { MarketplaceSnapshotStore } from "../lib/plugin-marketplace-snapshots.ts";
 import { parseMarketplaceCatalogStrict } from "../lib/plugin-marketplace-schema.ts";
@@ -337,6 +338,103 @@ describe("marketplace exact activation and native Agent Plugin Access", () => {
         identity: "review@team-a/skill-pack",
         state: "enabled",
       }],
+    });
+  });
+});
+
+describe("computeMarketplaceSkillPackageActivation", () => {
+  const sources = [{ id: "llm-wiki", enabled: true } as any];
+
+  it("defaults installed package to enabled when no record exists", () => {
+    const r = computeMarketplaceSkillPackageActivation({
+      identity: "skillwiki@llm-wiki",
+      activations: {},
+      sources,
+      installedPresent: true,
+    });
+    expect(r).toMatchObject({
+      enabled: true,
+      state: "enabled",
+      recorded: false,
+      requested: false,
+      kind: "marketplace-skill-package",
+      identity: "skillwiki@llm-wiki",
+      marketplaceId: "llm-wiki",
+      pluginId: "skillwiki",
+    });
+  });
+
+  it("disables all when package gate is false", () => {
+    const r = computeMarketplaceSkillPackageActivation({
+      identity: "skillwiki@llm-wiki",
+      activations: {
+        marketplaceSkillPackages: { "skillwiki@llm-wiki": { enabled: false } },
+      },
+      sources,
+      installedPresent: true,
+    });
+    expect(r).toMatchObject({ enabled: false, state: "disabled", recorded: true });
+  });
+
+  it("blocks when source is disabled", () => {
+    const r = computeMarketplaceSkillPackageActivation({
+      identity: "skillwiki@llm-wiki",
+      activations: {
+        marketplaceSkillPackages: { "skillwiki@llm-wiki": { enabled: true } },
+      },
+      sources: [{ id: "llm-wiki", enabled: false } as any],
+      installedPresent: true,
+    });
+    expect(r.enabled).toBe(false);
+    expect(r.state).toBe("blocked-by-source");
+  });
+
+  it("reports desired-not-installed when record requests enable but package is absent", () => {
+    const r = computeMarketplaceSkillPackageActivation({
+      identity: "skillwiki@llm-wiki",
+      activations: {
+        marketplaceSkillPackages: { "skillwiki@llm-wiki": { enabled: true } },
+      },
+      sources,
+      installedPresent: false,
+    });
+    expect(r).toMatchObject({
+      enabled: false,
+      state: "desired-not-installed",
+      recorded: true,
+      requested: true,
+    });
+  });
+
+  it("reports disabled when no record and package is absent", () => {
+    const r = computeMarketplaceSkillPackageActivation({
+      identity: "skillwiki@llm-wiki",
+      activations: {},
+      sources,
+      installedPresent: false,
+    });
+    expect(r).toMatchObject({
+      enabled: false,
+      state: "disabled",
+      recorded: false,
+      requested: false,
+    });
+  });
+
+  it("enables when record is true and package is present", () => {
+    const r = computeMarketplaceSkillPackageActivation({
+      identity: "skillwiki@llm-wiki",
+      activations: {
+        marketplaceSkillPackages: { "skillwiki@llm-wiki": { enabled: true } },
+      },
+      sources,
+      installedPresent: true,
+    });
+    expect(r).toMatchObject({
+      enabled: true,
+      state: "enabled",
+      recorded: true,
+      requested: true,
     });
   });
 });

@@ -16,6 +16,12 @@ export type MarketplaceActivationState =
   | "blocked-by-source"
   | "desired-not-installed";
 
+export type MarketplaceSkillPackageGateState =
+  | "enabled"
+  | "disabled"
+  | "blocked-by-source"
+  | "desired-not-installed";
+
 export interface EffectiveActivationResult {
   identity: string;
   kind: "runtime-plugin" | "marketplace-skill";
@@ -26,6 +32,18 @@ export interface EffectiveActivationResult {
   skillName?: string;
   reason: string | null;
   requested: boolean;
+}
+
+export interface EffectivePackageGateResult {
+  identity: string; // pluginId@marketplaceId
+  kind: "marketplace-skill-package";
+  enabled: boolean; // effective gate (runtime AND-input)
+  state: MarketplaceSkillPackageGateState;
+  marketplaceId: string;
+  pluginId: string;
+  reason: string | null;
+  requested: boolean; // true if explicit record says enabled
+  recorded: boolean;  // true if key present in marketplaceSkillPackages
 }
 
 export type NativeAgentPluginContribution =
@@ -220,6 +238,72 @@ export function computeMarketplaceSkillActivation(options: {
     skillName: parsed.skillName,
     reason: requested ? null : "marketplace skill activation is disabled",
     requested,
+  };
+}
+
+/**
+ * Package-level gate for installed Claude/marketplace skill packages.
+ *
+ * Keys are `pluginId@marketplaceId` (via parsePluginMarketplaceRef).
+ * Installed-default: when no activation record exists and the package is
+ * present (`installedPresent=true`), the gate is enabled.
+ */
+export function computeMarketplaceSkillPackageActivation(options: {
+  identity: string;
+  activations?: MarketplaceControlPlaneActivations;
+  sources: EffectiveMarketplaceSource[];
+  installedPresent: boolean;
+}): EffectivePackageGateResult {
+  const parsed = parsePluginMarketplaceRef(options.identity);
+  const identity = buildPluginMarketplaceRef(parsed);
+  const packages = options.activations?.marketplaceSkillPackages || {};
+  const recorded = Object.prototype.hasOwnProperty.call(packages, identity);
+  const requested = recorded ? recordEnabled(packages[identity]) : false;
+  // effective package request: recorded ? requested : true (installed-default)
+  const packageRequested = recorded ? requested : true;
+  const source = sourceState(parsed.marketplaceId, sourceEnabledMap(options.sources));
+  if (source.blocked) {
+    return {
+      identity,
+      kind: "marketplace-skill-package",
+      enabled: false,
+      state: "blocked-by-source",
+      marketplaceId: parsed.marketplaceId,
+      pluginId: parsed.pluginId,
+      reason: source.reason,
+      requested,
+      recorded,
+    };
+  }
+  if (!options.installedPresent) {
+    // desired-not-installed only when an explicit record requests enable;
+    // no-record installed-default does not mark absent packages as desired.
+    return {
+      identity,
+      kind: "marketplace-skill-package",
+      enabled: false,
+      state: requested ? "desired-not-installed" : "disabled",
+      marketplaceId: parsed.marketplaceId,
+      pluginId: parsed.pluginId,
+      reason: requested
+        ? "marketplace skill package is not installed"
+        : recorded
+          ? "marketplace skill package activation is disabled and package is not installed"
+          : "marketplace skill package is not installed",
+      requested,
+      recorded,
+    };
+  }
+  return {
+    identity,
+    kind: "marketplace-skill-package",
+    enabled: packageRequested,
+    state: packageRequested ? "enabled" : "disabled",
+    marketplaceId: parsed.marketplaceId,
+    pluginId: parsed.pluginId,
+    reason: packageRequested ? null : "marketplace skill package activation is disabled",
+    requested,
+    recorded,
   };
 }
 
