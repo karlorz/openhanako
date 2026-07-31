@@ -434,6 +434,94 @@ describe("PluginMarketplaceSourceRegistry", () => {
     ]));
   });
 
+  it("accepts marketplaceSkillPackages with plugin@marketplace keys and counts them", () => {
+    const report = diagnoseMarketplaceSourcesText(JSON.stringify({
+      schemaVersion: 2,
+      revision: 1,
+      sources: [{
+        id: "llm-wiki",
+        name: "LLM Wiki",
+        kind: "url",
+        url: "https://example.com/llm-wiki.json",
+      }],
+      activations: {
+        marketplaceSkillPackages: {
+          "skillwiki@llm-wiki": { enabled: true },
+          "other-pack@llm-wiki": false,
+        },
+      },
+    }));
+    expect(report.ok).toBe(true);
+    expect(report.file?.activations?.marketplaceSkillPackages).toEqual({
+      "skillwiki@llm-wiki": { enabled: true },
+      "other-pack@llm-wiki": false,
+    });
+    expect(report.summary).toMatchObject({
+      marketplaceSkillPackageActivations: 2,
+    });
+  });
+
+  it("rejects skill-form keys in marketplaceSkillPackages", () => {
+    const report = diagnoseMarketplaceSourcesText(JSON.stringify({
+      schemaVersion: 2,
+      revision: 1,
+      sources: [{
+        id: "llm-wiki",
+        name: "LLM Wiki",
+        kind: "url",
+        url: "https://example.com/llm-wiki.json",
+      }],
+      activations: {
+        marketplaceSkillPackages: {
+          "review@llm-wiki/skillwiki": { enabled: true },
+        },
+      },
+    }));
+    expect(report.ok).toBe(false);
+    expect(report.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        severity: "error",
+        code: "PLUGIN_MARKETPLACE_CONFIG_STRICT_INVALID",
+        message: expect.stringMatching(/source-qualified|marketplaceSkillPackages|plugin/i),
+      }),
+    ]));
+  });
+
+  it("round-trips marketplaceSkillPackages via setControlPlaneActivations (ACTIVATION_ROOT_FIELDS)", () => {
+    const home = makeHome();
+    writeRegistry(home, {
+      schemaVersion: 2,
+      revision: 1,
+      sources: [{ id: "llm-wiki", name: "LLM Wiki", kind: "url", url: "https://example.com/llm-wiki.json" }],
+    });
+    const registry = new PluginMarketplaceSourceRegistry({ hanakoHome: home });
+    const result = registry.setControlPlaneActivations({
+      marketplaceSkillPackages: {
+        "skillwiki@llm-wiki": { enabled: false },
+      },
+    });
+    expect(result.activations.marketplaceSkillPackages).toEqual({
+      "skillwiki@llm-wiki": { enabled: false },
+    });
+    expect(registry.getControlPlaneActivations()).toMatchObject({
+      marketplaceSkillPackages: {
+        "skillwiki@llm-wiki": { enabled: false },
+      },
+    });
+    const raw = JSON.parse(fs.readFileSync(registryPath(home), "utf8"));
+    expect(raw.activations.marketplaceSkillPackages).toEqual({
+      "skillwiki@llm-wiki": { enabled: false },
+    });
+    // marketplaceSkillPackages is a known activation root field (not unsupported)
+    const diag = registry.diagnoseControlPlane();
+    expect(diag.ok).toBe(true);
+    expect(diag.diagnostics.some((d) =>
+      d.code === "PLUGIN_MARKETPLACE_ACTIVATION_FIELD_UNSUPPORTED"
+      && d.path === "$.activations.marketplaceSkillPackages"
+    )).toBe(false);
+    expect(diag.summary.marketplaceSkillPackageActivations).toBe(1);
+  });
+
   it("rejects invalid v2 activation/access records and keeps last-known-good state", () => {
     const home = makeHome();
     writeRegistry(home, {
