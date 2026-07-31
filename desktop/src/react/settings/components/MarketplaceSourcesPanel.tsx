@@ -360,13 +360,12 @@ export function MarketplaceSourcesPanel({
                     </button>
                     <button
                       type="button"
-                      className={styles['pv-add-form-btn']}
+                      className={`hana-toggle${src.enabled === false ? '' : ' on'}`}
                       disabled={busy}
                       onClick={() => setSourceEnabled(src, src.enabled === false)}
                       aria-label={`${src.enabled === false ? t('settings.plugins.marketSourceEnable') : t('settings.plugins.marketSourceDisable')} ${src.id}`}
-                    >
-                      {src.enabled === false ? t('settings.plugins.marketSourceEnable') : t('settings.plugins.marketSourceDisable')}
-                    </button>
+                      title={`${src.enabled === false ? t('settings.plugins.marketSourceEnable') : t('settings.plugins.marketSourceDisable')} ${src.id}`}
+                    />
                     <button
                       type="button"
                       className={`${styles['settings-icon-btn']} ${styles['plugin-action-icon']} ${styles['plugin-action-danger']}`}
