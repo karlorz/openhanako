@@ -31,8 +31,12 @@ interface MarketplaceRegistrySnapshot {
 export interface MarketplaceSourcesPanelProps {
   /** When true, open the add-source dialog on first mount. */
   defaultShowAdd?: boolean;
-  /** Compact layout for embedding under Plugins tab. */
-  compact?: boolean;
+  /** Render inside a parent surface instead of drawing another card. */
+  embedded?: boolean;
+  /** Optional inline heading for an embedded source area. */
+  heading?: string;
+  /** Separate an embedded source area from the content immediately above it. */
+  withTopDivider?: boolean;
   onSourcesChanged?: (sources: MarketplaceSourceRow[]) => void;
 }
 
@@ -89,7 +93,9 @@ function sourceLocation(source: MarketplaceSourceRow): string {
  */
 export function MarketplaceSourcesPanel({
   defaultShowAdd = false,
-  compact = false,
+  embedded = false,
+  heading,
+  withTopDivider = false,
   onSourcesChanged,
 }: MarketplaceSourcesPanelProps) {
   const [sources, setSources] = useState<MarketplaceSourceRow[]>([]);
@@ -237,34 +243,40 @@ export function MarketplaceSourcesPanel({
   };
 
   return (
-    <div className={styles['skills-list-block']} style={compact ? { marginTop: 4 } : undefined}>
-      <div className={styles['pv-add-form-actions']} style={{ marginBottom: sources.length || showAdd ? 8 : 0 }}>
-        <button
-          type="button"
-          className={styles['pv-add-form-btn']}
-          disabled={busy || loading || isStudioOwner === false || registry?.degraded === true}
-          onClick={() => setShowAdd(true)}
-        >
-          {t('settings.plugins.marketSourceAdd')}
-        </button>
-        <button
-          type="button"
-          className={styles['settings-icon-btn']}
-          disabled={busy || loading}
-          aria-label={t('settings.plugins.marketSourceRefreshAll')}
-          title={t('settings.plugins.marketSourceRefreshAll')}
-          onClick={() => loadSources()}
-        >
-          <svg
-            aria-hidden="true"
-            width="14" height="14" viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
-            className={loading ? styles['spin'] : ''}
+    <div className={embedded
+      ? `${styles['marketplace-sources-panel']} ${withTopDivider ? styles['marketplace-sources-panel-divided'] : ''}`
+      : styles['skills-list-block']}
+    >
+      <div className={styles['marketplace-sources-header']}>
+        {heading && <span className={styles['marketplace-sources-title']}>{heading}</span>}
+        <div className={styles['pv-add-form-actions']} style={{ marginBottom: sources.length || showAdd ? 8 : 0 }}>
+          <button
+            type="button"
+            className={styles['pv-add-form-btn']}
+            disabled={busy || loading || isStudioOwner === false || registry?.degraded === true}
+            onClick={() => setShowAdd(true)}
           >
-            <polyline points="23 4 23 10 17 10" />
-            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-          </svg>
-        </button>
+            {t('settings.plugins.marketSourceAdd')}
+          </button>
+          <button
+            type="button"
+            className={styles['settings-icon-btn']}
+            disabled={busy || loading}
+            aria-label={t('settings.plugins.marketSourceRefreshAll')}
+            title={t('settings.plugins.marketSourceRefreshAll')}
+            onClick={() => loadSources()}
+          >
+            <svg
+              aria-hidden="true"
+              width="14" height="14" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
+              className={loading ? styles['spin'] : ''}
+            >
+              <polyline points="23 4 23 10 17 10" />
+              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -292,7 +304,7 @@ export function MarketplaceSourcesPanel({
       ) : null}
 
       {sources.length > 0 && (
-        <div className={styles['skills-list-block']}>
+        <div className={embedded ? styles['marketplace-sources-list'] : styles['skills-list-block']}>
           {sources.map((src) => {
             const canMutate = isStudioOwner !== false && !registry?.degraded
               && src.mutable !== false && src.authority !== 'official' && src.authority !== 'legacy';
