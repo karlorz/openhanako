@@ -2078,7 +2078,15 @@
       "marketSourceStatusRefreshing": "更新中",
       "marketSourceAuthorityOfficial": "公式",
       "marketSourceAuthorityCustom": "カスタム",
-      "marketSourceAuthorityLegacy": "レガシー"
+      "marketSourceAuthorityLegacy": "レガシー",
+      "skillPackageKind": "Hana skills",
+      "skillPackageStatusEnabled": "有効",
+      "skillPackageStatusDisabled": "無効",
+      "skillPackageStatusPartial": "部分インストール",
+      "skillPackageStatusStale": "レコード失効",
+      "skillPackageUninstallConfirm": "スキルパッケージ \"{identity}\" をアンインストールしますか？記録されたスキル {skillCount} 件を完全に削除します。ネイティブプラグインと Agent 開発ツールは影響しません。",
+      "skillPackageToggle": "スキルパッケージ {identity} を切り替え",
+      "skillPackageManageInSkills": "Skills で管理"
     },
     "mcp": {
       "masterTitle": "Master Switch",

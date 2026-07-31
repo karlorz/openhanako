@@ -2078,7 +2078,15 @@
       "marketSourceStatusRefreshing": "새로고침 중",
       "marketSourceAuthorityOfficial": "공식",
       "marketSourceAuthorityCustom": "사용자 지정",
-      "marketSourceAuthorityLegacy": "레거시"
+      "marketSourceAuthorityLegacy": "레거시",
+      "skillPackageKind": "Hana skills",
+      "skillPackageStatusEnabled": "사용",
+      "skillPackageStatusDisabled": "사용 안 함",
+      "skillPackageStatusPartial": "부분 설치",
+      "skillPackageStatusStale": "기록 만료",
+      "skillPackageUninstallConfirm": "스킬 패키지 \"{identity}\"을(를) 제거하시겠습니까? 기록된 스킬 {skillCount}개가 영구 삭제됩니다. 네이티브 플러그인과 Agent 개발 도구는 영향받지 않습니다.",
+      "skillPackageToggle": "스킬 패키지 {identity} 전환",
+      "skillPackageManageInSkills": "Skills에서 관리"
     },
     "mcp": {
       "masterTitle": "Master Switch",

@@ -2144,7 +2144,15 @@
       "marketSwitchSource": "Switch source",
       "marketRetained": "Retained",
       "manageTitle": "Manage Plugins",
-      "permissionTitle": "Permissions"
+      "permissionTitle": "Permissions",
+      "skillPackageKind": "Hana skills",
+      "skillPackageStatusEnabled": "enabled",
+      "skillPackageStatusDisabled": "disabled",
+      "skillPackageStatusPartial": "partial",
+      "skillPackageStatusStale": "stale",
+      "skillPackageUninstallConfirm": "Uninstall skill package \"{identity}\"? This permanently removes {skillCount} recorded skill(s). Native plugins and agent dev-tools dirs are unaffected.",
+      "skillPackageToggle": "Toggle skill package {identity}",
+      "skillPackageManageInSkills": "Manage in Skills"
     },
     "mcp": {
       "masterTitle": "Master Switch",

@@ -2144,7 +2144,15 @@
       "marketSourceStatusRefreshing": "刷新中",
       "marketSourceAuthorityOfficial": "官方",
       "marketSourceAuthorityCustom": "自定义",
-      "marketSourceAuthorityLegacy": "兼容"
+      "marketSourceAuthorityLegacy": "兼容",
+      "skillPackageKind": "Hana skills",
+      "skillPackageStatusEnabled": "已启用",
+      "skillPackageStatusDisabled": "已禁用",
+      "skillPackageStatusPartial": "部分安装",
+      "skillPackageStatusStale": "记录过期",
+      "skillPackageUninstallConfirm": "卸载技能包 \"{identity}\"？将永久删除 {skillCount} 个已记录技能。原生插件与 Agent 开发工具目录不受影响。",
+      "skillPackageToggle": "切换技能包 {identity}",
+      "skillPackageManageInSkills": "在 Skills 中管理"
     },
     "mcp": {
       "masterTitle": "总开关",
