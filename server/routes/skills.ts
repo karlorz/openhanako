@@ -305,11 +305,35 @@ export function createSkillsRoute(engine) {
     }
   }
 
+  function marketplaceOverridesPatch(current, next) {
+    const currentRecord = current && typeof current === "object" && !Array.isArray(current)
+      ? current
+      : {};
+    const nextRecord = next && typeof next === "object" && !Array.isArray(next)
+      ? next
+      : {};
+    const patch = { ...nextRecord };
+
+    // Config persistence is a deep merge: an empty object does not remove
+    // existing child keys. Add explicit null tombstones for package entries
+    // that disappeared so enabling the last disabled skill actually clears
+    // that package's preference while preserving sibling packages.
+    for (const key of Object.keys(currentRecord)) {
+      if (!Object.prototype.hasOwnProperty.call(nextRecord, key)) patch[key] = null;
+    }
+    return patch;
+  }
+
   async function persistSkillPreferences(agentId, enabled, marketplaceOverrides) {
+    const currentMarketplaceOverrides = marketplaceOverrides === undefined
+      ? undefined
+      : readAgentConfig(agentId)?.skills?.marketplace_overrides;
     const partial = {
       skills: {
         enabled,
-        ...(marketplaceOverrides === undefined ? {} : { marketplace_overrides: marketplaceOverrides }),
+        ...(marketplaceOverrides === undefined
+          ? {}
+          : { marketplace_overrides: marketplaceOverridesPatch(currentMarketplaceOverrides, marketplaceOverrides) }),
       },
     };
 
