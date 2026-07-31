@@ -546,6 +546,7 @@ function isPluginSettingsReadRoute(verb, routePath) {
     || routePath === "/api/plugins/marketplace"
     || routePath === "/api/plugins/marketplace/sources"
     || routePath === "/api/plugins/marketplace/catalog"
+    || routePath === "/api/plugins/marketplace/installed-skill-packages"
     || /^\/api\/plugins\/marketplace\/[^/]+\/readme$/.test(routePath)
     || /^\/api\/plugins\/[^/]+\/config-schema$/.test(routePath)
     || /^\/api\/plugins\/[^/]+\/config$/.test(routePath);
