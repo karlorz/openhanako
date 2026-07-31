@@ -119,6 +119,225 @@ describe("skills route", () => {
     expectAppEvent(engine.emitEvent, "skills-changed", { agentId });
   });
 
+  it("persists a marketplace skill opt-out in the selected agent config", async () => {
+    const agentId = "hana";
+    const otherAgentId = "other";
+    for (const id of [agentId, otherAgentId]) {
+      const agentDir = path.join(tempRoot, id);
+      fs.mkdirSync(agentDir, { recursive: true });
+      fs.writeFileSync(path.join(agentDir, "config.yaml"), "agent:\n  name: Hana\n", "utf-8");
+    }
+    const selected = {
+      id: agentId,
+      config: {
+        skills: {
+          enabled: ["ordinary"],
+          marketplace_overrides: { "other@source": { disabled: ["other-skill"] } },
+        },
+      },
+    };
+    const other = {
+      id: otherAgentId,
+      config: { skills: { enabled: [], marketplace_overrides: {} } },
+    };
+
+    const { createSkillsRoute } = await import("../server/routes/skills.ts");
+    const app = new Hono();
+    const engine = {
+      agentsDir: tempRoot,
+      getAgent: vi.fn((id) => id === agentId ? selected : other),
+      getAllSkills: vi.fn(() => [
+        {
+          name: "wiki-query",
+          enabled: true,
+          marketplacePackage: {
+            identity: "skillwiki@llm-wiki",
+            skillName: "wiki-query",
+            explicitlyDisabled: false,
+          },
+        },
+        { name: "ordinary", enabled: true },
+      ]),
+      updateConfig: vi.fn(async (partial, { agentId: targetId }) => {
+        const target = targetId === agentId ? selected : other;
+        target.config.skills = { ...target.config.skills, ...partial.skills };
+      }),
+      emitEvent: vi.fn(),
+    };
+    app.route("/api", createSkillsRoute(engine));
+
+    const off = await app.request(`/api/agents/${agentId}/skills/wiki-query`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: false }),
+    });
+    expect(off.status).toBe(200);
+    expect(await off.json()).toEqual({ ok: true, enabled: ["ordinary"], changed: ["wiki-query"] });
+    expect(engine.updateConfig).toHaveBeenLastCalledWith({
+      skills: {
+        enabled: ["ordinary"],
+        marketplace_overrides: {
+          "other@source": { disabled: ["other-skill"] },
+          "skillwiki@llm-wiki": { disabled: ["wiki-query"] },
+        },
+      },
+    }, { agentId });
+    expect(other.config.skills.marketplace_overrides).toEqual({});
+
+    const on = await app.request(`/api/agents/${agentId}/skills/wiki-query`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: true }),
+    });
+    expect(on.status).toBe(200);
+    expect(selected.config.skills.marketplace_overrides).toEqual({ "other@source": { disabled: ["other-skill"] } });
+  });
+
+  it("keeps package preference enabled separate from a disabled global package gate", async () => {
+    const agentId = "hana";
+    const agentDir = path.join(tempRoot, agentId);
+    fs.mkdirSync(agentDir, { recursive: true });
+    fs.writeFileSync(path.join(agentDir, "config.yaml"), "agent:\n  name: Hana\n", "utf-8");
+    const agent: any = { id: agentId, config: { skills: { enabled: [] } } };
+
+    const { createSkillsRoute } = await import("../server/routes/skills.ts");
+    const app = new Hono();
+    const engine = {
+      agentsDir: tempRoot,
+      getAgent: vi.fn(() => agent),
+      getAllSkills: vi.fn(() => [{
+        name: "wiki-query",
+        enabled: true,
+        active: false,
+        inactiveReason: "marketplace-package-disabled",
+        marketplacePackage: {
+          identity: "skillwiki@llm-wiki",
+          skillName: "wiki-query",
+          explicitlyDisabled: false,
+        },
+      }]),
+      updateConfig: vi.fn(async (partial) => {
+        agent.config.skills = { ...agent.config.skills, ...partial.skills };
+      }),
+      emitEvent: vi.fn(),
+    };
+    app.route("/api", createSkillsRoute(engine));
+
+    const res = await app.request(`/api/agents/${agentId}/skills/wiki-query`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: true }),
+    });
+    expect(res.status).toBe(200);
+    expect(engine.updateConfig).toHaveBeenCalledWith({
+      skills: { enabled: [], marketplace_overrides: {} },
+    }, { agentId });
+    expect(agent.config.skills.marketplace_overrides).toEqual({});
+  });
+
+  it("does not infer marketplace opt-outs from an old full-list payload", async () => {
+    const agentId = "hana";
+    const agentDir = path.join(tempRoot, agentId);
+    fs.mkdirSync(agentDir, { recursive: true });
+    fs.writeFileSync(path.join(agentDir, "config.yaml"), "agent:\n  name: Hana\n", "utf-8");
+    const agent = {
+      id: agentId,
+      config: {
+        skills: {
+          enabled: ["ordinary"],
+          marketplace_overrides: { "skillwiki@llm-wiki": { disabled: ["wiki-query"] } },
+        },
+      },
+    };
+
+    const { createSkillsRoute } = await import("../server/routes/skills.ts");
+    const app = new Hono();
+    const engine = {
+      agentsDir: tempRoot,
+      getAgent: vi.fn(() => agent),
+      getAllSkills: vi.fn(() => [
+        { name: "ordinary", enabled: true },
+        {
+          name: "wiki-query",
+          enabled: false,
+          marketplacePackage: {
+            identity: "skillwiki@llm-wiki",
+            skillName: "wiki-query",
+            explicitlyDisabled: true,
+          },
+        },
+      ]),
+      updateConfig: vi.fn(),
+      emitEvent: vi.fn(),
+    };
+    app.route("/api", createSkillsRoute(engine));
+
+    const res = await app.request(`/api/agents/${agentId}/skills`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: ["ordinary"] }),
+    });
+    expect(res.status).toBe(200);
+    expect(engine.updateConfig).toHaveBeenCalledWith({
+      skills: { enabled: ["ordinary"] },
+    }, { agentId });
+    expect(agent.config.skills.marketplace_overrides).toEqual({ "skillwiki@llm-wiki": { disabled: ["wiki-query"] } });
+  });
+
+  it("clears only explicitly supplied marketplace entries in a full-list update", async () => {
+    const agentId = "hana";
+    const agentDir = path.join(tempRoot, agentId);
+    fs.mkdirSync(agentDir, { recursive: true });
+    fs.writeFileSync(path.join(agentDir, "config.yaml"), "agent:\n  name: Hana\n", "utf-8");
+    const agent = {
+      id: agentId,
+      config: {
+        skills: {
+          enabled: ["ordinary"],
+          marketplace_overrides: {
+            "skillwiki@llm-wiki": { disabled: ["wiki-query"] },
+            "other@source": { disabled: ["other-skill"] },
+          },
+        },
+      },
+    };
+
+    const { createSkillsRoute } = await import("../server/routes/skills.ts");
+    const app = new Hono();
+    const engine = {
+      agentsDir: tempRoot,
+      getAgent: vi.fn(() => agent),
+      getAllSkills: vi.fn(() => [
+        { name: "ordinary", enabled: true },
+        {
+          name: "wiki-query",
+          enabled: false,
+          marketplacePackage: {
+            identity: "skillwiki@llm-wiki",
+            skillName: "wiki-query",
+            explicitlyDisabled: true,
+          },
+        },
+      ]),
+      updateConfig: vi.fn(),
+      emitEvent: vi.fn(),
+    };
+    app.route("/api", createSkillsRoute(engine));
+
+    const res = await app.request(`/api/agents/${agentId}/skills`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: ["ordinary", "wiki-query"] }),
+    });
+    expect(res.status).toBe(200);
+    expect(engine.updateConfig).toHaveBeenCalledWith({
+      skills: {
+        enabled: ["ordinary"],
+        marketplace_overrides: { "other@source": { disabled: ["other-skill"] } },
+      },
+    }, { agentId });
+  });
+
   it("does not emit skills-changed when enabled skills validation fails", async () => {
     const agentId = "hana";
     const agentDir = path.join(tempRoot, agentId);
@@ -252,6 +471,76 @@ describe("skills route", () => {
       skills: { enabled: ["existing", "writer", "reader"] },
     }, { agentId });
     expectAppEvent(engine.emitEvent, "skills-changed", { agentId });
+  });
+
+  it("partitions a mixed bundle between ordinary enabled names and package preferences", async () => {
+    const agentId = makeBundleAgent("mixed-agent");
+    fs.writeFileSync(path.join(tempRoot, "skill-bundles.json"), JSON.stringify({
+      schemaVersion: 1,
+      bundles: [{
+        id: "mixed-bundle",
+        name: "Mixed Bundle",
+        skillNames: ["ordinary", "wiki-query"],
+        source: "user",
+        agentId: null,
+        sourcePackage: null,
+        createdAt: "2026-05-21T00:00:00.000Z",
+        updatedAt: "2026-05-21T00:00:00.000Z",
+      }],
+    }), "utf-8");
+    const agent: any = {
+      id: agentId,
+      config: {
+        skills: {
+          enabled: ["existing"],
+          marketplace_overrides: { "other@source": { disabled: ["other-skill"] } },
+        },
+      },
+    };
+
+    const { createSkillsRoute } = await import("../server/routes/skills.ts");
+    const app = new Hono();
+    const engine = {
+      hanakoHome: tempRoot,
+      agentsDir: tempRoot,
+      getAgent: vi.fn(() => agent),
+      getAllSkills: vi.fn(() => [
+        { name: "existing", enabled: true },
+        { name: "ordinary", enabled: false },
+        {
+          name: "wiki-query",
+          enabled: true,
+          marketplacePackage: {
+            identity: "skillwiki@llm-wiki",
+            skillName: "wiki-query",
+            explicitlyDisabled: false,
+          },
+        },
+      ]),
+      updateConfig: vi.fn(async (partial) => {
+        agent.config.skills = { ...agent.config.skills, ...partial.skills };
+      }),
+      emitEvent: vi.fn(),
+    };
+    app.route("/api", createSkillsRoute(engine));
+
+    const res = await app.request(`/api/agents/${agentId}/skill-bundles/mixed-bundle`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: true }),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      ok: true,
+      enabled: ["existing", "ordinary"],
+      changed: ["ordinary", "wiki-query"],
+    });
+    expect(engine.updateConfig).toHaveBeenCalledWith({
+      skills: {
+        enabled: ["existing", "ordinary"],
+        marketplace_overrides: { "other@source": { disabled: ["other-skill"] } },
+      },
+    }, { agentId });
   });
 
   it("emits global skills-changed after reloading skills", async () => {

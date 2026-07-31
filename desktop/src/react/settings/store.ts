@@ -25,6 +25,8 @@ export interface SkillInfo {
   name: string;
   description?: string;
   enabled: boolean;
+  active?: boolean;
+  inactiveReason?: string | null;
   hidden?: boolean;
   baseDir?: string;
   filePath?: string;
@@ -33,6 +35,11 @@ export interface SkillInfo {
   externalPath?: string | null;
   readonly?: boolean;
   managedBy?: string | null;
+  marketplacePackage?: {
+    identity: string;
+    skillName: string;
+    explicitlyDisabled: boolean;
+  } | null;
   configurable?: boolean;
   deletable?: boolean;
 }

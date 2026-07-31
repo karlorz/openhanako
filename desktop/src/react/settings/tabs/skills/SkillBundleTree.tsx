@@ -92,7 +92,7 @@ function skillDeletable(skill: SkillInfo) {
   if (skill.deletable === false) return false;
   if (skill.readonly) return false;
   if (skill.source === 'workspace') return false;
-  if (skill.managedBy === 'workspace' || skill.managedBy === 'plugin') return false;
+  if (skill.managedBy === 'workspace' || skill.managedBy === 'plugin' || skill.managedBy === 'marketplace-skill-package') return false;
   return true;
 }
 

@@ -668,7 +668,7 @@
     ],
     "version": 3
   },
-  "payloadFingerprint": "sha256:8617f2a2231e528ad1da73e28f5d6271afbbc718d36443bd23081ebe01198f6e",
+  "payloadFingerprint": "sha256:e74469397dc9ab798dec2e8caeb34ba7d43836d795e3d6ca4a33ae1131279ed7",
   "registry": [
     {
       "affectedByEpochMigration": true,
@@ -3132,8 +3132,8 @@
   ],
   "review": {
     "classification": "compatible",
-    "compatibilityReason": "Adds marketplace-qualified Claude skill provenance and derived compatibility-state paths; absent directories remain valid and existing store bytes keep their prior interpretation.",
-    "payloadFingerprint": "sha256:8617f2a2231e528ad1da73e28f5d6271afbbc718d36443bd23081ebe01198f6e"
+    "compatibilityReason": "Adds per-agent marketplace skill preferences and source-qualified runtime metadata without changing persisted store schema or existing store-byte interpretation.",
+    "payloadFingerprint": "sha256:e74469397dc9ab798dec2e8caeb34ba7d43836d795e3d6ca4a33ae1131279ed7"
   },
   "schemas": [
     {
@@ -3215,7 +3215,7 @@
       "contract": "agent config and authored Markdown/image profile protocol",
       "kind": "directory-contract",
       "module": "core/agent-manager.ts",
-      "sourceHash": "sha256:a1f883d4596d7fd7abb1ceab44c099deb152351421511933436b765441a4dff2",
+      "sourceHash": "sha256:6fa7c7ee70acd3b822a3323cabd1f9820c9d891fa544f25a5828bfd2c0e2f081",
       "storeId": "agent-profile"
     },
     {
@@ -3330,7 +3330,7 @@
       "contract": "desktop window bounds, release announcement bookmark, and update cache version marker readers",
       "kind": "directory-contract",
       "module": "desktop/main.cjs",
-      "sourceHash": "sha256:6ef19859a066329e9b33933b50a35411d41960737671c1725e1845d72529c4af",
+      "sourceHash": "sha256:0ffba01275f5bf597593f684f7c51949104b3e6017092171b1e625ddfb4884be",
       "storeId": "desktop-window-version-state"
     },
     {
@@ -3463,7 +3463,7 @@
       "contract": "verified plugin release ZIP naming by pluginId/version and expected sha256",
       "kind": "directory-contract",
       "module": "server/routes/plugins.ts",
-      "sourceHash": "sha256:21160f39314409cecd5d98b4203e66dcaadec81b796c7aeaac4932a62d2e492c",
+      "sourceHash": "sha256:8d3d80565894d7b9a3cfbfe547724f0e24303517965d54a3919fe44b75bfcb7e",
       "storeId": "plugin-download-cache"
     },
     {
@@ -3666,7 +3666,7 @@
       "contract": "SKILL.md package, bundle registry, and export staging protocols",
       "kind": "directory-contract",
       "module": "lib/skills/skill-package-installer.ts",
-      "sourceHash": "sha256:3fefbedf8f0e3e7d22edca491e9a1e9c4cd2afb2327062a8b1a253c1b10d043c",
+      "sourceHash": "sha256:51b6cb308244c8ff4a1e1d777ff8de16d22d15042a9d20b1c32153ed7fc1fa8c",
       "storeId": "skill-state"
     },
     {
@@ -8008,6 +8008,30 @@
     {
       "exemptionId": null,
       "kind": "mkdir",
+      "ordinal": 0,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-marketplace-claude-skills.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "ordinal": 0,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-marketplace-claude-skills.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "ordinal": 0,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-marketplace-claude-skills.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
       "ordinal": 0,
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
       "sourceFile": "lib/plugin-marketplace-claude-skills.ts",

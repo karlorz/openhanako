@@ -13,7 +13,7 @@ import fs from "fs";
 import { Hono } from "hono";
 import { emitAppEvent } from "../app-events.ts";
 import { safeJson } from "../hono-helpers.ts";
-import { saveConfig } from "../../lib/memory/config-loader.ts";
+import { loadConfig, saveConfig } from "../../lib/memory/config-loader.ts";
 import {
   installSkillPackageFromPath,
   sanitizeSkillName,
@@ -33,6 +33,7 @@ import { exportSkillBundlePackage } from "../../lib/skill-bundles/package-servic
 import { createModuleLogger } from "../../lib/debug-log.ts";
 import { materializeUploadedSkillPackage } from "../utils/uploaded-skill-package.ts";
 import { removeAgentSkillReferences } from "../../lib/skills/remove-skill-references.ts";
+import { setMarketplaceSkillPreference } from "../../lib/marketplace-skill-preferences.ts";
 
 const log = createModuleLogger("skills");
 const MAX_SKILL_PREVIEW_BYTES = 2 * 1024 * 1024;
@@ -293,8 +294,24 @@ export function createSkillsRoute(engine) {
     return buffer.toString("utf-8");
   }
 
-  async function persistEnabledSkills(agentId, enabled) {
-    const partial = { skills: { enabled } };
+  function readAgentConfig(agentId) {
+    const agent = engine.getAgent?.(agentId);
+    if (agent?.config) return agent.config;
+    const configPath = path.join(engine.agentsDir, agentId, "config.yaml");
+    try {
+      return loadConfig(configPath);
+    } catch {
+      return {};
+    }
+  }
+
+  async function persistSkillPreferences(agentId, enabled, marketplaceOverrides) {
+    const partial = {
+      skills: {
+        enabled,
+        ...(marketplaceOverrides === undefined ? {} : { marketplace_overrides: marketplaceOverrides }),
+      },
+    };
 
     // 走 engine.updateConfig (ConfigCoordinator)，它会在 partial.skills 存在时
     // 调用 syncAgentSkills 把新 enabled 列表同步到 agent 的内存态和 system prompt。
@@ -314,24 +331,56 @@ export function createSkillsRoute(engine) {
     return {
       skills,
       visibleSet: new Set(skills.map(skill => skill.name)),
+      skillByName: new Map<string, any>(skills.map(skill => [skill.name, skill] as [string, any])),
     };
   }
 
   async function writeSkillDelta(agentId, skillNames, enable) {
-    const requested = [...new Set(skillNames.filter(name => typeof name === "string" && name.trim()))];
+    const requested: string[] = [...new Set<string>(
+      skillNames.filter((name): name is string => typeof name === "string" && Boolean(name.trim())),
+    )];
     return withAgentSkillWriteLock(agentId, async () => {
-      const { skills, visibleSet } = visibleSkillsForAgent(agentId);
+      const { skills, visibleSet, skillByName } = visibleSkillsForAgent(agentId);
       const changed = requested.filter(name => visibleSet.has(name));
-      const currentEnabled = new Set(skills.filter(skill => skill.enabled).map(skill => skill.name));
-      if (enable) {
-        for (const name of changed) currentEnabled.add(name);
-      } else {
-        for (const name of changed) currentEnabled.delete(name);
+      const config = readAgentConfig(agentId);
+      const rawEnabled = Array.isArray(config?.skills?.enabled) ? config.skills.enabled : null;
+      const currentEnabled = new Set(rawEnabled || skills
+        .filter(skill => !skill.marketplacePackage && skill.enabled)
+        .map(skill => skill.name));
+      let marketplaceOverrides = config?.skills?.marketplace_overrides;
+      for (const name of changed) {
+        const skill = skillByName.get(name);
+        if (skill?.marketplacePackage?.identity) {
+          marketplaceOverrides = setMarketplaceSkillPreference(
+            marketplaceOverrides,
+            skill.marketplacePackage.identity,
+            skill.marketplacePackage.skillName || name,
+            enable,
+          );
+        } else if (enable) {
+          currentEnabled.add(name);
+        } else {
+          currentEnabled.delete(name);
+        }
       }
-      const enabled = skills
-        .map(skill => skill.name)
-        .filter(name => currentEnabled.has(name));
-      await persistEnabledSkills(agentId, enabled);
+      const enabledNames = rawEnabled
+        ? [...new Set(rawEnabled.filter(name => typeof name === "string"))]
+        : [];
+      const enabled = rawEnabled
+        ? enabledNames.filter(name => currentEnabled.has(name))
+        : skills.filter(skill => !skill.marketplacePackage && currentEnabled.has(skill.name)).map(skill => skill.name);
+      // Append newly enabled ordinary skills in the same order as the request;
+      // preserve the historical list shape while keeping package defaults out
+      // of skills.enabled.
+      for (const name of changed) {
+        const skill = skillByName.get(name);
+        if (!skill?.marketplacePackage && enable && !enabled.includes(name)) enabled.push(name);
+      }
+      await persistSkillPreferences(
+        agentId,
+        enabled,
+        changed.some(name => skillByName.get(name)?.marketplacePackage) ? marketplaceOverrides : undefined,
+      );
       emitAppEvent(engine, "skills-changed", { agentId });
       return { enabled, changed };
     });
@@ -470,14 +519,33 @@ export function createSkillsRoute(engine) {
 
       // 防御性过滤：把请求体里的 enabled 与该 agent 实际可见的 skill 集合做交集，
       // 防止前端因 store 错位（例如 agent 切换 race）把别的 agent 的列表写进来 (#397)
-      const visible = engine.getAllSkills(id).map(s => s.name);
-      const visibleSet = new Set(visible);
-      const filtered = enabled.filter(name => visibleSet.has(name));
-
       const persisted = await withAgentSkillWriteLock(id, async () => {
-        await persistEnabledSkills(id, filtered);
+        const { skills, skillByName } = visibleSkillsForAgent(id);
+        const visibleSet = new Set(skills.map(s => s.name));
+        const filtered = enabled.filter(name => visibleSet.has(name));
+        const config = readAgentConfig(id);
+        const rawEnabled = Array.isArray(config?.skills?.enabled) ? config.skills.enabled : [];
+        const ordinaryEnabled = filtered.filter(name => !skillByName.get(name)?.marketplacePackage);
+        const packageNames = rawEnabled.filter(name => skillByName.get(name)?.marketplacePackage);
+        const nextEnabled = [...new Set([...ordinaryEnabled, ...packageNames])];
+        let marketplaceOverrides;
+        for (const name of filtered) {
+          const skill = skillByName.get(name);
+          if (!skill?.marketplacePackage?.identity) continue;
+          marketplaceOverrides = setMarketplaceSkillPreference(
+            marketplaceOverrides === undefined ? config?.skills?.marketplace_overrides : marketplaceOverrides,
+            skill.marketplacePackage.identity,
+            skill.marketplacePackage.skillName || name,
+            true,
+          );
+        }
+        await persistSkillPreferences(
+          id,
+          nextEnabled,
+          marketplaceOverrides === undefined ? undefined : marketplaceOverrides,
+        );
         emitAppEvent(engine, "skills-changed", { agentId: id });
-        return filtered;
+        return nextEnabled;
       });
       return c.json({ ok: true, enabled: persisted });
     } catch (err) {
