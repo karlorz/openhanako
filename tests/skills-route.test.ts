@@ -5,6 +5,7 @@ import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import JSZip from "jszip";
 import { extractZip } from "../lib/extract-zip.ts";
+import { deepMerge } from "../lib/memory/config-loader.ts";
 
 function expectAppEvent(emitEvent, type, payload) {
   expect(emitEvent).toHaveBeenCalledWith({
@@ -160,7 +161,7 @@ describe("skills route", () => {
       ]),
       updateConfig: vi.fn(async (partial, { agentId: targetId }) => {
         const target = targetId === agentId ? selected : other;
-        target.config.skills = { ...target.config.skills, ...partial.skills };
+        target.config.skills = deepMerge(target.config.skills, partial.skills);
       }),
       emitEvent: vi.fn(),
     };
@@ -190,6 +191,15 @@ describe("skills route", () => {
       body: JSON.stringify({ enabled: true }),
     });
     expect(on.status).toBe(200);
+    expect(engine.updateConfig).toHaveBeenLastCalledWith({
+      skills: {
+        enabled: ["ordinary"],
+        marketplace_overrides: {
+          "other@source": { disabled: ["other-skill"] },
+          "skillwiki@llm-wiki": null,
+        },
+      },
+    }, { agentId });
     expect(selected.config.skills.marketplace_overrides).toEqual({ "other@source": { disabled: ["other-skill"] } });
   });
 
@@ -333,7 +343,10 @@ describe("skills route", () => {
     expect(engine.updateConfig).toHaveBeenCalledWith({
       skills: {
         enabled: ["ordinary"],
-        marketplace_overrides: { "other@source": { disabled: ["other-skill"] } },
+        marketplace_overrides: {
+          "other@source": { disabled: ["other-skill"] },
+          "skillwiki@llm-wiki": null,
+        },
       },
     }, { agentId });
   });

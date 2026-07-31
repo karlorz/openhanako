@@ -8,6 +8,12 @@ import { SettingsSection } from '../components/SettingsSection';
 import { SettingsRow } from '../components/SettingsRow';
 import { MarketplaceSourcesPanel } from '../components/MarketplaceSourcesPanel';
 import { SelectWidget, Toggle, type SelectOption } from '@/ui';
+import { MarketplaceSkillPackagePage } from './skills/MarketplaceSkillPackagePage';
+import {
+  marketplaceSkillPackageStatus,
+  type ManagePluginsSkillPackageRow,
+  type MarketplaceSkillPackageStatus,
+} from './skills/marketplace-package';
 
 const platform = window.platform;
 const marketplaceBadgeClassName = `${styles['skills-source-badge']} ${styles['plugin-marketplace-badge']}`;
@@ -27,47 +33,10 @@ interface PluginInfo {
   error?: string | null;
 }
 
-/** Inventory row for marketplace Claude / Hana skill packages (not native plugins). */
-interface ManagePluginsSkillPackageRow {
-  kind: 'marketplace-skill-package';
-  identity: string;
-  pluginId: string;
-  marketplaceId: string;
-  name: string;
-  version: string | null;
-  description: string | null;
-  packageState: 'installed' | 'partial' | 'stale-record';
-  packageEnabled: boolean;
-  packageGateRecorded: boolean;
-  packageGateState: string;
-  skillNames: string[];
-  skillCount: number;
-  missingSkillNames: string[];
-  invalidSkillNames: string[];
-  sourceStatus: 'ok' | 'disabled' | 'removed';
-  installAdapter: 'skill-manager';
-  installTarget: 'hana-skills';
-  actions: {
-    canToggle: boolean;
-    canUninstall: boolean;
-    canOpenSkills: boolean;
-    canReinstall: boolean;
-  };
-}
-
-type SkillPackageStatus = 'enabled' | 'disabled' | 'partial' | 'stale';
-
 interface SkillPackageInventoryMeta {
   registry: { revision?: number; digest?: string } | null;
   access: { isStudioOwner?: boolean; isLocalOwner?: boolean } | null;
   activations: Record<string, unknown> | null;
-}
-
-function skillPackageStatus(pkg: ManagePluginsSkillPackageRow): SkillPackageStatus {
-  if (!pkg.packageEnabled) return 'disabled';
-  if (pkg.packageState === 'partial') return 'partial';
-  if (pkg.packageState === 'stale-record') return 'stale';
-  return 'enabled';
 }
 
 interface PluginConfigProperty {
@@ -144,7 +113,7 @@ function StatusBadge({ status }: { status: PluginInfo['status'] }) {
   );
 }
 
-function SkillPackageStatusBadge({ status }: { status: SkillPackageStatus }) {
+function SkillPackageStatusBadge({ status }: { status: MarketplaceSkillPackageStatus }) {
   const labelKey =
     status === 'enabled' ? 'settings.plugins.skillPackageStatusEnabled' :
     status === 'partial' ? 'settings.plugins.skillPackageStatusPartial' :
@@ -245,6 +214,7 @@ export function PluginsTab() {
   const [configSaving, setConfigSaving] = useState(false);
   const [diagnostics, setDiagnostics] = useState<PluginDiagnosticsResponse | null>(null);
   const [diagnosticsLoading, setDiagnosticsLoading] = useState(false);
+  const [openSkillPackageIdentity, setOpenSkillPackageIdentity] = useState<string | null>(null);
 
   /* ── data fetchers ── */
 
@@ -531,6 +501,14 @@ export function PluginsTab() {
     }
   };
 
+  const openSkillPackage = (pkg: ManagePluginsSkillPackageRow) => {
+    if (pkg.actions?.canOpenSkills === false || pkg.skillCount <= 0) {
+      showToast(t('settings.plugins.skillPackagePageNoSkills'), 'error');
+      return;
+    }
+    setOpenSkillPackageIdentity(pkg.identity);
+  };
+
   const updateConfigDraft = (key: string, value: unknown) => {
     setConfigDraft(prev => ({ ...prev, [key]: value }));
     setDirtyConfigKeys(prev => new Set(prev).add(key));
@@ -598,6 +576,15 @@ export function PluginsTab() {
   const isEnabled = (p: PluginInfo) => p.status === 'loaded' || p.status === 'failed';
   const isDimmed = (p: PluginInfo) => p.status === 'disabled' || p.status === 'restricted';
   const inventoryEmpty = plugins.length === 0 && skillPackages.length === 0;
+  const openSkillPackageRow = openSkillPackageIdentity
+    ? skillPackages.find((pkg) => pkg.identity === openSkillPackageIdentity) || null
+    : null;
+
+  useEffect(() => {
+    if (!openSkillPackageIdentity || loading || openSkillPackageRow) return;
+    setOpenSkillPackageIdentity(null);
+    showToast(t('settings.plugins.skillPackagePageStaleReturn'), 'error');
+  }, [loading, openSkillPackageIdentity, openSkillPackageRow, showToast]);
 
   const reloadButton = (
     <button
@@ -646,6 +633,19 @@ export function PluginsTab() {
       />
     </div>
   );
+
+  if (openSkillPackageRow) {
+    return (
+      <MarketplaceSkillPackagePage
+        pkg={openSkillPackageRow}
+        defaultAgentId={useSettingsStore.getState().getSettingsAgentId()}
+        isStudioOwner={isStudioOwner}
+        onBack={() => setOpenSkillPackageIdentity(null)}
+        onOpenMarketplace={() => set({ activeTab: 'plugin-marketplace' })}
+        onTogglePackage={toggleSkillPackage}
+      />
+    );
+  }
 
   return (
     <div className={`${styles['settings-tab-content']} ${styles['active']}`} data-tab="plugins">
@@ -767,7 +767,7 @@ export function PluginsTab() {
             })}
 
             {skillPackages.map(pkg => {
-              const status = skillPackageStatus(pkg);
+              const status = marketplaceSkillPackageStatus(pkg);
               const canAct = isStudioOwner;
               const canToggle = canAct && pkg.actions?.canToggle !== false;
               const canUninstall = canAct && pkg.actions?.canUninstall !== false;
@@ -779,7 +779,19 @@ export function PluginsTab() {
                   data-kind="marketplace-skill-package"
                   data-identity={pkg.identity}
                 >
-                  <div className={styles['skills-list-info']}>
+                  <div
+                    className={`${styles['skills-list-info']} ${styles['skill-package-open-area']}`}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={t('settings.plugins.skillPackageOpenArea', { name: pkg.name })}
+                    onClick={() => openSkillPackage(pkg)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        openSkillPackage(pkg);
+                      }
+                    }}
+                  >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                       <span className={styles['skills-list-name']}>{pkg.name}</span>
                       {pkg.version && (
@@ -819,9 +831,10 @@ export function PluginsTab() {
                     <button
                       type="button"
                       className={styles['settings-save-btn-sm']}
-                      onClick={() => set({ activeTab: 'skills' })}
+                      disabled={pkg.actions?.canOpenSkills === false || pkg.skillCount <= 0}
+                      onClick={() => openSkillPackage(pkg)}
                     >
-                      {t('settings.plugins.skillPackageManageInSkills')}
+                      {t('settings.plugins.skillPackageOpenSkills', { name: pkg.name })}
                     </button>
                     {canUninstall && (
                       <button

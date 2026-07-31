@@ -3132,7 +3132,251 @@
     color: var(--text);
 }
 
+/* ── Installed marketplace skill-package subpage ── */
+
+.skill-package-page {
+    min-width: 0;
+}
+
+.skill-package-page-breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: var(--space-6);
+    margin: calc(-1 * var(--space-8)) 0 var(--space-16);
+    color: var(--text-muted);
+    font-size: var(--fs-caption);
+}
+
+.skill-package-page-back {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-4);
+    padding: var(--space-4) var(--space-6);
+    border: 1px solid transparent;
+    border-radius: var(--radius-input, 6px);
+    background: transparent;
+    color: var(--text-muted);
+    font: inherit;
+    cursor: default;
+    transition: background var(--duration-fast), color var(--duration-fast), border-color var(--duration-fast);
+}
+
+.skill-package-page-back:hover,
+.skill-package-page-back:focus-visible {
+    border-color: var(--border);
+    background: var(--bg-hover);
+    color: var(--text);
+    outline: none;
+}
+
+.skill-package-page-breadcrumb-separator {
+    color: var(--text-muted);
+    opacity: 0.7;
+}
+
+.skill-package-page-breadcrumb-current {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text);
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.skill-package-page-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-16);
+    margin-bottom: var(--space-16);
+}
+
+.skill-package-page-title-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-6);
+}
+
+.skill-package-page-title {
+    margin: 0;
+    color: var(--text);
+    font-size: var(--fs-title, 1.2rem);
+    font-weight: 650;
+}
+
+.skill-package-page-identity {
+    display: block;
+    margin-top: var(--space-4);
+    color: var(--text-muted);
+    font-size: var(--fs-hint);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    overflow-wrap: anywhere;
+}
+
+.skill-package-page-description {
+    max-width: 680px;
+    margin: var(--space-6) 0 0;
+    color: var(--text-muted);
+    font-size: var(--fs-caption);
+    line-height: 1.5;
+}
+
+.skill-package-page-availability {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-16);
+    min-width: 0;
+    padding: var(--space-12);
+    border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--border));
+    border-radius: var(--radius-card, 8px);
+    background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+
+.skill-package-page-availability-locked {
+    border-color: color-mix(in srgb, var(--warning, #c90) 30%, var(--border));
+    background: color-mix(in srgb, var(--warning, #c90) 8%, transparent);
+}
+
+.skill-package-page-availability-copy {
+    min-width: 0;
+}
+
+.skill-package-page-availability-title {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-8);
+    color: var(--text);
+    font-size: var(--fs-ui);
+    font-weight: 600;
+}
+
+.skill-package-page-status-badge,
+.skill-package-page-readonly {
+    display: inline-flex;
+    align-items: center;
+    padding: var(--space-2) var(--space-6);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-input, 6px);
+    background: var(--bg-hover);
+    color: var(--text-muted);
+    font-size: var(--fs-hint);
+    font-weight: 500;
+    line-height: 1.2;
+}
+
+.skill-package-page-availability p {
+    max-width: 760px;
+    margin: var(--space-4) 0 0;
+    color: var(--text-muted);
+    font-size: var(--fs-caption);
+    line-height: 1.5;
+}
+
+.skill-package-page-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-6) var(--space-12);
+    margin-bottom: var(--space-10);
+    color: var(--text-muted);
+    font-size: var(--fs-caption);
+}
+
+.skill-package-page-summary span + span {
+    color: var(--warning, #c90);
+}
+
+.skill-package-page-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-12);
+    margin-bottom: var(--space-8);
+}
+
+.skill-package-page-toolbar-hint {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: var(--fs-hint);
+}
+
+.skill-package-page-batch-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--space-6);
+}
+
+.skill-package-page-list {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card, 8px);
+    background: var(--bg-card);
+}
+
+.skill-package-page-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-16);
+    min-width: 0;
+    padding: var(--space-8) var(--space-12);
+    background: transparent;
+    transition: background var(--duration-fast);
+}
+
+.skill-package-page-row + .skill-package-page-row {
+    border-top: 1px solid var(--border);
+}
+
+.skill-package-page-row:hover {
+    background: var(--overlay-light);
+}
+
+.skill-package-page-skill-title {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-4);
+}
+
+.skill-package-page-inactive {
+    display: block;
+    color: var(--warning, #c90);
+    font-size: var(--fs-hint);
+    line-height: 1.4;
+}
+
+.skill-package-open-area {
+    cursor: pointer;
+    border-radius: var(--radius-input, 6px);
+}
+
+.skill-package-open-area:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
 @media (max-width: 760px) {
+    .skill-package-page-header,
+    .skill-package-page-toolbar,
+    .skill-package-page-availability {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .skill-package-page-header .settings-save-btn-sm {
+        align-self: flex-start;
+    }
+
+    .skill-package-page-batch-actions {
+        justify-content: flex-start;
+    }
+
     .plugin-marketplace-summary,
     .plugin-marketplace-advanced-body {
         grid-template-columns: minmax(0, 1fr);

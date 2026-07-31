@@ -13,6 +13,8 @@ const mockConfirm = vi.fn();
 
 vi.mock('../../settings/api', () => ({
   hanaFetch: (...args: unknown[]) => hanaFetch(...args),
+  hanaUrl: (path: string) => path,
+  yuanFallbackAvatar: () => 'data:image/svg+xml,avatar',
 }));
 
 vi.mock('../../settings/components/MarketplaceSourcesPanel', () => ({
@@ -75,11 +77,38 @@ function skillPackageInventory(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function marketplaceSkill(
+  name: string,
+  identity = 'skillwiki@llm-wiki',
+  enabled = true,
+  overrides: Record<string, unknown> = {},
+) {
+  return {
+    name,
+    description: `${name} description`,
+    source: 'user',
+    enabled,
+    active: enabled,
+    configurable: true,
+    readonly: false,
+    marketplacePackage: {
+      identity,
+      skillName: name,
+      explicitlyDisabled: !enabled,
+      packageEnabled: true,
+    },
+    ...overrides,
+  };
+}
+
 function mockInventory(options: {
   plugins?: unknown[];
   inventory?: Record<string, unknown>;
   onPut?: (body: unknown) => void;
   onDelete?: (path: string, body: unknown) => void;
+  skills?: Record<string, unknown[]>;
+  onPatch?: (path: string, body: unknown) => void;
+  patchFailures?: Set<string>;
 } = {}) {
   const plugins = options.plugins ?? [];
   const inventory = options.inventory ?? skillPackageInventory();
@@ -89,6 +118,17 @@ function mockInventory(options: {
     }
     if (path === '/api/plugins/marketplace/installed-skill-packages') {
       return jsonResponse(inventory);
+    }
+    if (typeof path === 'string' && path.startsWith('/api/skills?')) {
+      const agentId = new URLSearchParams(path.split('?')[1]).get('agentId') || '';
+      return jsonResponse({ skills: options.skills?.[agentId] || [] });
+    }
+    if (typeof path === 'string' && path.startsWith('/api/agents/') && init?.method === 'PATCH') {
+      const body = JSON.parse(String(init.body || '{}'));
+      options.onPatch?.(path, body);
+      const skillName = decodeURIComponent(path.split('/').pop() || '');
+      if (options.patchFailures?.has(skillName)) return jsonResponse({ error: `failed ${skillName}` }, 500);
+      return jsonResponse({ ok: true });
     }
     if (path === '/api/plugins/marketplace/config/activations' && init?.method === 'PUT') {
       const body = JSON.parse(String(init.body));
@@ -130,6 +170,37 @@ describe('PluginsTab skill package inventory', () => {
         'settings.plugins.skillPackageUninstallConfirm':
           `Uninstall ${params?.identity || ''} (${params?.skillCount || '0'} skills)?`,
         'settings.plugins.skillPackageManageInSkills': 'Manage in Skills',
+        'settings.plugins.skillPackageOpenSkills': `Open skills for ${params?.name || ''}`.trim(),
+        'settings.plugins.skillPackageOpenArea': `Open the ${params?.name || ''} skill package`.trim(),
+        'settings.plugins.skillPackagePageBreadcrumb': 'Skill package navigation',
+        'settings.plugins.skillPackagePageAvailability': 'Package availability',
+        'settings.plugins.skillPackagePageSkills': 'Skills',
+        'settings.plugins.skillPackagePageOpenMarketplace': 'Open marketplace',
+        'settings.plugins.skillPackagePageGlobalEnabled': 'Available to all Agents',
+        'settings.plugins.skillPackagePageGlobalDisabled': 'Unavailable to all Agents',
+        'settings.plugins.skillPackagePageSourceBlocked': 'Source unavailable; preferences preserved.',
+        'settings.plugins.skillPackagePageSourceBlockedLabel': 'source unavailable',
+        'settings.plugins.skillPackagePageDisabledHint': 'Disabled globally; preferences preserved.',
+        'settings.plugins.skillPackagePageAvailabilityHint': 'Package gate hint',
+        'settings.plugins.skillPackagePagePartialHint': 'Partially installed.',
+        'settings.plugins.skillPackagePageStaleHint': 'Stale install record.',
+        'settings.plugins.skillPackagePagePreferencesPreserved': 'Preferences are preserved while unavailable.',
+        'settings.plugins.skillPackagePageAgentHint': 'Changes apply only to the selected Agent.',
+        'settings.plugins.skillPackagePageSummary': `${params?.installed || '0'} installed · ${params?.enabled || '0'} enabled · ${params?.disabled || '0'} disabled`,
+        'settings.plugins.skillPackagePageEnableAll': 'Enable all',
+        'settings.plugins.skillPackagePageDisableAll': 'Disable all',
+        'settings.plugins.skillPackagePageBatchNoop': 'No changes needed.',
+        'settings.plugins.skillPackagePageBatchSuccess': `${params?.action || ''}: ${params?.count || '0'} skill(s) updated.`,
+        'settings.plugins.skillPackagePageBatchPartial': `${params?.action || ''}: ${params?.succeeded || '0'} updated; ${params?.failed || '0'} failed.`,
+        'settings.plugins.skillPackagePageReadOnly': 'Read-only',
+        'settings.plugins.skillPackagePageNoAgent': 'Select an Agent.',
+        'settings.plugins.skillPackagePageLoading': 'Loading package skills…',
+        'settings.plugins.skillPackagePageNoSkills': 'No package skills for this Agent.',
+        'settings.plugins.skillPackagePageLoadError': 'Failed to load package skills',
+        'settings.plugins.skillPackagePageStaleReturn': 'Package no longer installed.',
+        'settings.skills.toggleDisableNamed': `Disable ${params?.name || ''}`.trim(),
+        'settings.skills.toggleEnableNamed': `Enable ${params?.name || ''}`.trim(),
+        'settings.skills.marketplaceInactiveAgent': 'Disabled for this Agent; preference preserved.',
         'settings.plugins.empty': 'No plugins installed',
         'settings.plugins.manageTitle': 'Manage Plugins',
         'settings.plugins.reload': 'Reload',
@@ -186,7 +257,7 @@ describe('PluginsTab skill package inventory', () => {
     expect(screen.getByText('enabled')).toBeInTheDocument();
     expect(screen.queryByText('loaded')).not.toBeInTheDocument();
     expect(screen.queryByText('No plugins installed')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Manage in Skills' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Open skills for SkillWiki' })).toBeInTheDocument();
   });
 
   it('does not claim empty inventory when only skill packages are installed', async () => {
@@ -293,13 +364,147 @@ describe('PluginsTab skill package inventory', () => {
     expect(screen.getByTitle(/Uninstall skillwiki@llm-wiki/)).toBeInTheDocument();
   });
 
-  it('navigates Manage in Skills to the skills settings tab', async () => {
-    mockInventory();
+  it('opens a package-local settings page and returns to the loaded Manage Plugins list', async () => {
+    mockInventory({
+      skills: {
+        hana: [marketplaceSkill('wiki-query'), marketplaceSkill('local-only', 'other@source')],
+      },
+    });
+    useSettingsStore.setState({
+      agents: [{ id: 'hana', name: 'Hanako', yuan: 'hanako', isPrimary: true }],
+      currentAgentId: 'hana',
+      settingsAgentId: 'hana',
+    });
     const { PluginsTab } = await import('../../settings/tabs/PluginsTab');
     render(<PluginsTab />);
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Manage in Skills' }));
-    expect(useSettingsStore.getState().activeTab).toBe('skills');
+    fireEvent.click(await screen.findByRole('button', { name: 'Open skills for SkillWiki' }));
+    expect(await screen.findByText('Package availability')).toBeInTheDocument();
+    expect(screen.getByText('wiki-query')).toBeInTheDocument();
+    expect(screen.queryByText('local-only')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Manage Plugins' }));
+    expect(await screen.findByRole('button', { name: 'Open skills for SkillWiki' })).toBeInTheDocument();
+  });
+
+  it('reloads package membership and counts when the selected Agent changes', async () => {
+    mockInventory({
+      skills: {
+        hana: [marketplaceSkill('wiki-query')],
+        other: [marketplaceSkill('wiki-write', 'skillwiki@llm-wiki', false)],
+      },
+    });
+    useSettingsStore.setState({
+      agents: [
+        { id: 'hana', name: 'Hanako', yuan: 'hanako', isPrimary: true },
+        { id: 'other', name: 'Other', yuan: 'hanako', isPrimary: false },
+      ],
+      currentAgentId: 'hana',
+      settingsAgentId: 'hana',
+    });
+    const { PluginsTab } = await import('../../settings/tabs/PluginsTab');
+    render(<PluginsTab />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Open skills for SkillWiki' }));
+    expect(await screen.findByText('wiki-query')).toBeInTheDocument();
+    expect(screen.queryByText('wiki-write')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Hanako' }));
+    fireEvent.click(await screen.findByRole('option', { name: 'Other' }));
+
+    expect(await screen.findByText('wiki-write')).toBeInTheDocument();
+    expect(screen.queryByText('wiki-query')).not.toBeInTheDocument();
+  });
+
+  it('uses the existing per-agent PATCH path for one package skill only', async () => {
+    const patches: Array<{ path: string; body: unknown }> = [];
+    mockInventory({
+      skills: { hana: [marketplaceSkill('wiki-query')] },
+      onPatch: (path, body) => patches.push({ path, body }),
+    });
+    useSettingsStore.setState({
+      agents: [{ id: 'hana', name: 'Hanako', yuan: 'hanako', isPrimary: true }],
+      currentAgentId: 'hana',
+      settingsAgentId: 'hana',
+    });
+    const { PluginsTab } = await import('../../settings/tabs/PluginsTab');
+    render(<PluginsTab />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Open skills for SkillWiki' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Disable wiki-query' }));
+
+    await waitFor(() => expect(patches).toHaveLength(1));
+    expect(patches[0]).toEqual({
+      path: '/api/agents/hana/skills/wiki-query',
+      body: { enabled: false },
+    });
+    expect(hanaFetch.mock.calls.some(([path]) => String(path).includes('/api/agents/hana/skills/wiki-write'))).toBe(false);
+  });
+
+  it('batch-updates only writable members and reports partial failures', async () => {
+    const patches: Array<{ path: string; body: unknown }> = [];
+    mockInventory({
+      skills: {
+        hana: [
+          marketplaceSkill('wiki-query', 'skillwiki@llm-wiki', false),
+          marketplaceSkill('wiki-write', 'skillwiki@llm-wiki', false),
+          marketplaceSkill('other-package', 'other@source', false),
+          marketplaceSkill('readonly', 'skillwiki@llm-wiki', false, { configurable: false }),
+        ],
+      },
+      onPatch: (path, body) => patches.push({ path, body }),
+      patchFailures: new Set(['wiki-write']),
+    });
+    useSettingsStore.setState({
+      agents: [{ id: 'hana', name: 'Hanako', yuan: 'hanako', isPrimary: true }],
+      currentAgentId: 'hana',
+      settingsAgentId: 'hana',
+    });
+    const { PluginsTab } = await import('../../settings/tabs/PluginsTab');
+    render(<PluginsTab />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Open skills for SkillWiki' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Enable all' }));
+
+    await waitFor(() => expect(patches).toHaveLength(2));
+    expect(patches.map(({ path }) => path).sort()).toEqual([
+      '/api/agents/hana/skills/wiki-query',
+      '/api/agents/hana/skills/wiki-write',
+    ]);
+    expect(useSettingsStore.getState().toastType).toBe('error');
+    expect(useSettingsStore.getState().toastMessage).toContain('1 updated; 1 failed');
+  });
+
+  it('locks per-agent controls for a source-blocked package without writing preferences', async () => {
+    const patches: unknown[] = [];
+    mockInventory({
+      inventory: skillPackageInventory({
+        packages: [{
+          ...skillPackageRow,
+          packageEnabled: false,
+          packageGateState: 'blocked-by-source',
+          sourceStatus: 'disabled',
+        }],
+      }),
+      skills: { hana: [marketplaceSkill('wiki-query', 'skillwiki@llm-wiki', true)] },
+      onPatch: (path, body) => patches.push({ path, body }),
+    });
+    useSettingsStore.setState({
+      agents: [{ id: 'hana', name: 'Hanako', yuan: 'hanako', isPrimary: true }],
+      currentAgentId: 'hana',
+      settingsAgentId: 'hana',
+    });
+    const { PluginsTab } = await import('../../settings/tabs/PluginsTab');
+    render(<PluginsTab />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Open skills for SkillWiki' }));
+    const skillToggle = await screen.findByRole('button', { name: 'Enable wiki-query' });
+    expect(skillToggle).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Toggle package skillwiki@llm-wiki' })).toBeDisabled();
+    expect(screen.getByText('Preferences are preserved while unavailable.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Enable all' })).toBeDisabled();
+    fireEvent.click(skillToggle);
+    expect(patches).toHaveLength(0);
   });
 
   it('hides owner actions for non-owners but still shows the inventory row', async () => {
