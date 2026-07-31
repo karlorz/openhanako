@@ -249,7 +249,7 @@ export function MarketplaceSourcesPanel({
     >
       <div className={styles['marketplace-sources-header']}>
         {heading && <span className={styles['marketplace-sources-title']}>{heading}</span>}
-        <div className={styles['pv-add-form-actions']} style={{ marginBottom: sources.length || showAdd ? 8 : 0 }}>
+        <div className={styles['pv-add-form-actions']}>
           <button
             type="button"
             className={styles['pv-add-form-btn']}
@@ -310,7 +310,11 @@ export function MarketplaceSourcesPanel({
               && src.mutable !== false && src.authority !== 'official' && src.authority !== 'legacy';
             const location = sourceLocation(src);
             return (
-              <div key={src.id} className={styles['skills-list-item']} style={{ cursor: 'default' }}>
+              <div
+                key={src.id}
+                className={`${styles['skills-list-item']} ${styles['marketplace-source-row']}`}
+                style={{ cursor: 'default' }}
+              >
                 <div className={styles['skills-list-info']}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                     <span className={styles['skills-list-name']}>{src.name || src.id}</span>

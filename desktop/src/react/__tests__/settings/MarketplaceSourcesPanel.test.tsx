@@ -86,9 +86,12 @@ describe('MarketplaceSourcesPanel product states', () => {
       ],
     }));
 
-    render(<MarketplaceSourcesPanel />);
+    render(<MarketplaceSourcesPanel embedded heading="Marketplace sources" />);
 
     expect(await screen.findByText('Team Git')).toBeInTheDocument();
+    const sourceList = document.querySelector('[class*="marketplace-sources-list"]');
+    expect(sourceList).toBeInTheDocument();
+    expect(sourceList?.querySelectorAll('[class*="marketplace-source-row"]')).toHaveLength(2);
     expect(screen.getByText('https://github.com/example-org/hana-market · refs/tags/v1.2.0 · catalog/marketplace.json')).toBeInTheDocument();
     expect(screen.getByText('3 packages')).toBeInTheDocument();
     expect(screen.getByText('Disabled')).toBeInTheDocument();
