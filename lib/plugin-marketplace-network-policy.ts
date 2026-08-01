@@ -1,9 +1,11 @@
 import dns from "dns";
 import net from "net";
+import crypto from "crypto";
 import { promisify } from "util";
 
 export const DEFAULT_MARKETPLACE_MAX_REDIRECTS = 3;
 export const DEFAULT_MARKETPLACE_MAX_BYTES = 2 * 1024 * 1024;
+export const DEFAULT_MARKETPLACE_RELEASE_MAX_BYTES = 50 * 1024 * 1024;
 export const DEFAULT_MARKETPLACE_CONNECT_TIMEOUT_MS = 10_000;
 export const DEFAULT_MARKETPLACE_OVERALL_TIMEOUT_MS = 30_000;
 export const DEFAULT_ALLOWED_HTTPS_PORTS = new Set([443, 8443]);
@@ -29,6 +31,10 @@ export interface SafeFetchOptions {
   allowQuery?: boolean;
   allowFragment?: boolean;
   allowedPorts?: Set<number>;
+}
+
+export interface SafeFetchBytesOptions extends SafeFetchOptions {
+  expectedSha256?: string;
 }
 
 export interface SanitizedAcquisitionError {
@@ -68,12 +74,15 @@ export function assertPublicHttpsUrl(
   if (!url.hostname) {
     throw policyError("PLUGIN_MARKETPLACE_SOURCE_FORBIDDEN", "URL host is required");
   }
-  const hostLower = url.hostname.toLowerCase();
+  const normalizedHostname = url.hostname.startsWith("[") && url.hostname.endsWith("]")
+    ? url.hostname.slice(1, -1)
+    : url.hostname;
+  const hostLower = normalizedHostname.toLowerCase();
   if (hostLower === "localhost" || hostLower.endsWith(".localhost")) {
     throw policyError("PLUGIN_MARKETPLACE_SOURCE_FORBIDDEN", "localhost is not allowed");
   }
   // Reject literal private/reserved IP hostnames before DNS.
-  if (net.isIP(url.hostname) && isDeniedIpAddress(url.hostname)) {
+  if (net.isIP(normalizedHostname) && isDeniedIpAddress(normalizedHostname)) {
     throw policyError("PLUGIN_MARKETPLACE_SOURCE_FORBIDDEN", "Private or reserved IP hosts are not allowed");
   }
   const port = url.port ? Number(url.port) : 443;
@@ -133,11 +142,14 @@ export async function resolveAndPinPublicHttpsUrl(
   options: SafeFetchOptions = {},
 ): Promise<PinnedHttpsUrl> {
   const url = assertPublicHttpsUrl(raw, options);
-  if (net.isIP(url.hostname)) {
-    if (isDeniedIpAddress(url.hostname)) {
+  const normalizedHostname = url.hostname.startsWith("[") && url.hostname.endsWith("]")
+    ? url.hostname.slice(1, -1)
+    : url.hostname;
+  if (net.isIP(normalizedHostname)) {
+    if (isDeniedIpAddress(normalizedHostname)) {
       throw policyError("PLUGIN_MARKETPLACE_SOURCE_FORBIDDEN", "Private or reserved IP hosts are not allowed");
     }
-    return { url, pinnedAddresses: [url.hostname] };
+    return { url, pinnedAddresses: [normalizedHostname] };
   }
 
   const lookup = options.lookup || defaultLookup;
@@ -176,6 +188,39 @@ async function defaultLookup(hostname: string): Promise<ResolvedAddress[]> {
 }
 
 export async function safeFetchText(rawUrl: string, options: SafeFetchOptions = {}): Promise<string> {
+  const { body } = await safeFetchBuffer(rawUrl, options, "application/json, text/plain, */*");
+  return body.toString("utf8");
+}
+
+export async function safeFetchBytes(
+  rawUrl: string,
+  options: SafeFetchBytesOptions = {},
+): Promise<{ body: Buffer; sha256: string }> {
+  const expected = options.expectedSha256;
+  if (expected !== undefined && !/^[a-f0-9]{64}$/.test(expected)) {
+    throw policyError("PLUGIN_MARKETPLACE_SOURCE_INVALID", "Expected sha256 must be 64 lowercase hex characters");
+  }
+  const { body } = await safeFetchBuffer(
+    rawUrl,
+    {
+      ...options,
+      allowQuery: options.allowQuery ?? true,
+      maxBytes: options.maxBytes ?? DEFAULT_MARKETPLACE_RELEASE_MAX_BYTES,
+    },
+    "application/zip, application/octet-stream, */*",
+  );
+  const sha256 = crypto.createHash("sha256").update(body).digest("hex");
+  if (expected && sha256 !== expected) {
+    throw policyError("PLUGIN_MARKETPLACE_SOURCE_INVALID", "Plugin release sha256 mismatch");
+  }
+  return { body, sha256 };
+}
+
+async function safeFetchBuffer(
+  rawUrl: string,
+  options: SafeFetchOptions,
+  accept: string,
+): Promise<{ body: Buffer; finalUrl: string }> {
   const fetchImpl = options.fetchImpl || globalThis.fetch;
   if (typeof fetchImpl !== "function") {
     throw policyError("PLUGIN_MARKETPLACE_SOURCE_FORBIDDEN", "fetch implementation is unavailable");
@@ -183,7 +228,6 @@ export async function safeFetchText(rawUrl: string, options: SafeFetchOptions = 
   const maxRedirects = options.maxRedirects ?? DEFAULT_MARKETPLACE_MAX_REDIRECTS;
   const maxBytes = options.maxBytes ?? DEFAULT_MARKETPLACE_MAX_BYTES;
   const timeoutMs = options.timeoutMs ?? DEFAULT_MARKETPLACE_OVERALL_TIMEOUT_MS;
-
   let current = rawUrl;
   for (let hop = 0; hop <= maxRedirects; hop++) {
     const pinned = await resolveAndPinPublicHttpsUrl(current, options);
@@ -194,37 +238,19 @@ export async function safeFetchText(rawUrl: string, options: SafeFetchOptions = 
         method: "GET",
         redirect: "manual",
         signal: controller.signal,
-        headers: {
-          Accept: "application/json, text/plain, */*",
-        },
+        headers: { Accept: accept },
       } as RequestInit);
-
       if (response.status >= 300 && response.status < 400) {
         const location = response.headers.get("location");
-        if (!location) {
-          throw policyError("PLUGIN_MARKETPLACE_SOURCE_FORBIDDEN", "Redirect without Location");
-        }
-        if (hop >= maxRedirects) {
-          throw policyError("PLUGIN_MARKETPLACE_FETCH_LIMIT", "Redirect limit exceeded");
-        }
-        // Revalidate every hop as a full absolute/relative HTTPS URL.
+        if (!location) throw policyError("PLUGIN_MARKETPLACE_SOURCE_FORBIDDEN", "Redirect without Location");
+        if (hop >= maxRedirects) throw policyError("PLUGIN_MARKETPLACE_FETCH_LIMIT", "Redirect limit exceeded");
         current = new URL(location, pinned.url).toString();
         continue;
       }
-
-      if (!response.ok) {
-        throw policyError(
-          "PLUGIN_MARKETPLACE_SOURCE_INVALID",
-          `HTTP ${response.status}`,
-        );
-      }
-
-      const text = await readBodyWithLimit(response, maxBytes);
-      return text;
+      if (!response.ok) throw policyError("PLUGIN_MARKETPLACE_SOURCE_INVALID", `HTTP ${response.status}`);
+      return { body: await readBodyBufferWithLimit(response, maxBytes), finalUrl: pinned.url.href };
     } catch (err: any) {
-      if (err?.name === "AbortError") {
-        throw policyError("PLUGIN_MARKETPLACE_FETCH_LIMIT", "Request timed out");
-      }
+      if (err?.name === "AbortError") throw policyError("PLUGIN_MARKETPLACE_FETCH_LIMIT", "Request timed out");
       throw err;
     } finally {
       clearTimeout(timer);
@@ -233,8 +259,7 @@ export async function safeFetchText(rawUrl: string, options: SafeFetchOptions = 
   throw policyError("PLUGIN_MARKETPLACE_FETCH_LIMIT", "Redirect limit exceeded");
 }
 
-async function readBodyWithLimit(response: Response, maxBytes: number): Promise<string> {
-  // Prefer content-length early reject when present.
+async function readBodyBufferWithLimit(response: Response, maxBytes: number): Promise<Buffer> {
   const cl = response.headers.get("content-length");
   if (cl && Number(cl) > maxBytes) {
     throw policyError("PLUGIN_MARKETPLACE_FETCH_LIMIT", "Response body exceeds size limit");
@@ -242,33 +267,26 @@ async function readBodyWithLimit(response: Response, maxBytes: number): Promise<
 
   if (response.body && typeof (response.body as any).getReader === "function") {
     const reader = (response.body as ReadableStream<Uint8Array>).getReader();
-    const chunks: Uint8Array[] = [];
+    const chunks: Buffer[] = [];
     let total = 0;
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-      if (value) {
-        total += value.byteLength;
-        if (total > maxBytes) {
-          try {
-            await reader.cancel();
-          } catch {
-            /* ignore */
-          }
-          throw policyError("PLUGIN_MARKETPLACE_FETCH_LIMIT", "Response body exceeds size limit");
-        }
-        chunks.push(value);
+      if (!value) continue;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        try { await reader.cancel(); } catch { /* ignore */ }
+        throw policyError("PLUGIN_MARKETPLACE_FETCH_LIMIT", "Response body exceeds size limit");
       }
+      chunks.push(Buffer.from(value));
     }
-    const merged = Buffer.concat(chunks.map((c) => Buffer.from(c)));
-    return merged.toString("utf8");
+    return Buffer.concat(chunks);
   }
-
-  const text = await response.text();
-  if (Buffer.byteLength(text, "utf8") > maxBytes) {
+  const body = Buffer.from(await response.arrayBuffer());
+  if (body.length > maxBytes) {
     throw policyError("PLUGIN_MARKETPLACE_FETCH_LIMIT", "Response body exceeds size limit");
   }
-  return text;
+  return body;
 }
 
 export function sanitizeAcquisitionError(

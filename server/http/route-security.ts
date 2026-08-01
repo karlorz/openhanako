@@ -137,6 +137,7 @@ export function classifyHttpRoute({ method = "GET", path = "" } = {}) {
   if (isImageGenerationWriteRoute(verb, routePath)) return scoped("settings.write");
   if (isImageGenerationProviderManagementRoute(verb, routePath)) return scoped("providers.manage");
   if (isPluginSettingsReadRoute(verb, routePath)) return scoped("settings.read");
+  if (isNativeMarketplaceLifecycleRoute(verb, routePath)) return STUDIO_OWNER;
   if (isPluginSettingsWriteRoute(verb, routePath)) return scoped("settings.write");
   if (isProviderManagementRoute(verb, routePath)) return scoped("providers.manage");
   if (isBridgeManagementRoute(verb, routePath)) return scoped("bridge.manage");
@@ -622,6 +623,11 @@ function isPluginSettingsWriteRoute(verb, routePath) {
       || /^\/api\/plugins\/marketplace\/[^/]+\/skills$/.test(routePath)
       || /^\/api\/plugins\/[^/]+$/.test(routePath)
     ));
+}
+
+function isNativeMarketplaceLifecycleRoute(verb, routePath) {
+  return verb === "POST"
+    && /^\/api\/plugins\/marketplace\/[^/]+\/native\/(?:install|uninstall)\/(?:plan|execute)$/.test(routePath);
 }
 
 function isPluginUiReadRoute(verb, routePath) {

@@ -7,6 +7,7 @@ import {
   isDeniedIpAddress,
   resolveAndPinPublicHttpsUrl,
   safeFetchText,
+  safeFetchBytes,
   sanitizeAcquisitionError,
 } from "../lib/plugin-marketplace-network-policy.ts";
 import {
@@ -46,6 +47,9 @@ describe("network policy", () => {
       "https://localhost/x",
       "ftp://example.com/x",
       "https://example.com:22/x",
+      "https://[::1]/x",
+      "https://[fc00::1]/x",
+      "https://[fe80::1]/x",
     ];
     for (const url of rejected) {
       expect(() => assertPublicHttpsUrl(url)).toThrow();
@@ -142,6 +146,26 @@ describe("network policy", () => {
         maxBytes: 10,
       }),
     ).rejects.toThrow(/limit|bytes|body/i);
+  });
+
+  it("fetches bounded release bytes and verifies the exact sha256", async () => {
+    const body = Buffer.from("verified plugin release");
+    const expectedSha256 = (await import("crypto")).createHash("sha256").update(body).digest("hex");
+    const result = await safeFetchBytes("https://example.com/plugin.zip?release=1", {
+      fetchImpl: async () => new Response(body, { status: 200 }),
+      lookup: async () => [{ address: "93.184.216.34", family: 4 }],
+      expectedSha256,
+      maxBytes: 1024,
+      allowQuery: true,
+    });
+    expect(result.body).toEqual(body);
+    expect(result.sha256).toBe(expectedSha256);
+
+    await expect(safeFetchBytes("https://example.com/plugin.zip", {
+      fetchImpl: async () => new Response(body, { status: 200 }),
+      lookup: async () => [{ address: "93.184.216.34", family: 4 }],
+      expectedSha256: "0".repeat(64),
+    })).rejects.toThrow("Plugin release sha256 mismatch");
   });
 
   it("sanitizes acquisition errors for remote principals", () => {

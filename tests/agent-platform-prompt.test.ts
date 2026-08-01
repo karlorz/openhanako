@@ -67,6 +67,18 @@ describe("Agent platform prompt identity", () => {
     expect(prompt).toContain("https://github.com/liliMozi/openhanako");
   });
 
+  it("treats available_skills as authoritative and cached SKILL.md files as existence-only evidence", () => {
+    const prompt = makeAgent("en").buildSystemPrompt({
+      forceMemoryEnabled: false,
+      forceExperienceEnabled: false,
+    });
+
+    expect(prompt).toContain("The <available_skills> block in the system prompt is authoritative");
+    expect(prompt).toContain("SKILL.md path proves only that a file exists");
+    expect(prompt).toContain("installed-package inventory for Marketplace Hana-skill package claims");
+    expect(prompt).toContain("currently available/runtime skills");
+  });
+
   it("distinguishes SessionFile identity from writable local refs in Chinese", () => {
     const prompt = makeAgent("zh-CN").buildSystemPrompt({
       forceMemoryEnabled: false,
