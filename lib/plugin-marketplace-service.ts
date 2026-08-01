@@ -46,6 +46,7 @@ import {
   type ClaudeCompatibilityBinding,
 } from "./claude-compatibility.ts";
 import type { TaggedMarketplacePlugin } from "./plugin-marketplace-schema.ts";
+import { resolveContainedPath } from "./plugin-marketplace-path-policy.ts";
 
 export interface MarketplaceServiceOptions {
   hanakoHome: string;
@@ -442,14 +443,25 @@ export class PluginMarketplaceService {
     });
   }
 
-  async refreshSource(marketplaceId: string, options: { isStudioOwner?: boolean } = {}) {
+  async refreshSource(marketplaceId: string, options: {
+    isStudioOwner?: boolean;
+    expectedRevision?: number;
+    expectedDigest?: string;
+  } = {}) {
     if (!options.isStudioOwner) {
       const err = new Error("studio.owner required") as Error & { code: string; status: number };
       err.code = "PLUGIN_MARKETPLACE_SOURCE_FORBIDDEN";
       err.status = 403;
       throw err;
     }
-    this.assertRegistryUsableForAcquisition();
+    if (options.expectedRevision !== undefined || options.expectedDigest !== undefined) {
+      this.assertRegistryWritePrecondition({
+        expectedRevision: options.expectedRevision,
+        expectedDigest: options.expectedDigest,
+      });
+    } else {
+      this.assertRegistryUsableForAcquisition();
+    }
     const sources = this.registry.listSources();
     const source = sources.find((s) => s.id === marketplaceId);
     if (!source) {
@@ -795,6 +807,133 @@ export class PluginMarketplaceService {
     );
   }
 
+  private requireClaudeSkillsInstallRecord(pluginId: string, marketplaceId: string) {
+    const record = readClaudeSkillsInstallRecord(this._hanakoHome, marketplaceId, pluginId);
+    if (record) return record;
+    const err = new Error(`Marketplace skills install record not found: ${pluginId}@${marketplaceId}`) as Error & {
+      code: string;
+      status: number;
+    };
+    err.code = "PLUGIN_MARKETPLACE_SKILLS_NOT_INSTALLED";
+    err.status = 404;
+    throw err;
+  }
+
+  setMarketplaceSkillPackageEnabled(
+    pluginId: string,
+    marketplaceId: string,
+    enabled: boolean,
+    options: {
+      isStudioOwner?: boolean;
+      expectedRevision?: number;
+      expectedDigest?: string;
+    } = {},
+  ) {
+    if (!options.isStudioOwner) {
+      const err = new Error("studio.owner required to configure marketplace skill packages") as Error & {
+        code: string;
+        status: number;
+      };
+      err.code = "PLUGIN_MARKETPLACE_SOURCE_FORBIDDEN";
+      err.status = 403;
+      throw err;
+    }
+    this.assertRegistryWritePrecondition({
+      expectedRevision: options.expectedRevision,
+      expectedDigest: options.expectedDigest,
+    });
+    this.requireClaudeSkillsInstallRecord(pluginId, marketplaceId);
+
+    const identity = buildPluginMarketplaceRef({ pluginId, marketplaceId });
+    const activations = this.registry.getControlPlaneActivations();
+    const current = activations.marketplaceSkillPackages?.[identity];
+    const currentEnabled = typeof current === "boolean"
+      ? current
+      : current && typeof current === "object" && typeof (current as any).enabled === "boolean"
+        ? (current as any).enabled
+        : undefined;
+    if (currentEnabled === enabled) {
+      const status = this.getRegistryStatus({ forRemote: true });
+      return {
+        pluginId,
+        marketplaceId,
+        identity,
+        enabled,
+        changed: false,
+        revision: status.revision,
+        digest: status.digest,
+        activations,
+      };
+    }
+    activations.marketplaceSkillPackages = {
+      ...(activations.marketplaceSkillPackages || {}),
+      [identity]: { enabled },
+    };
+    const written = this.registry.setControlPlaneActivations(activations, {
+      expectedRevision: options.expectedRevision,
+      expectedDigest: options.expectedDigest,
+    });
+    const status = this.getRegistryStatus({ forRemote: true });
+    return {
+      pluginId,
+      marketplaceId,
+      identity,
+      enabled,
+      changed: true,
+      revision: written.revision,
+      digest: status.digest,
+      activations: written.activations,
+    };
+  }
+
+  getMarketplaceSkillPackageUninstallFacts(
+    pluginId: string,
+    marketplaceId: string,
+    options: { userSkillsDir?: string } = {},
+  ) {
+    const record = this.requireClaudeSkillsInstallRecord(pluginId, marketplaceId);
+    const userSkillsDir = options.userSkillsDir || path.join(this._hanakoHome, "skills");
+    const reconciled = reconcileClaudeSkillsInstall(record, userSkillsDir);
+    const identity = buildPluginMarketplaceRef({ pluginId, marketplaceId });
+    const recordedSkills = [...record.skills].sort((a, b) => a.localeCompare(b));
+    const presentSkills = [...reconciled.present].sort((a, b) => a.localeCompare(b));
+    const missingSkills = [...reconciled.missing].sort((a, b) => a.localeCompare(b));
+    const invalidSkills = [...reconciled.invalid].sort((a, b) => a.localeCompare(b));
+    const invalidSet = new Set(invalidSkills);
+    const cleanupTargets = recordedSkills.filter((skillName) => !invalidSet.has(skillName));
+    const activations = this.registry.getControlPlaneActivations();
+    const marketplaceSkills = cleanupTargets
+      .map((skillName) => buildMarketplaceSkillRef({ skillName, marketplaceId, pluginId }))
+      .filter((skillIdentity) => activations.marketplaceSkills?.[skillIdentity] !== undefined)
+      .sort((a, b) => a.localeCompare(b));
+    const agentSkillOverrides = Object.entries(activations.agentSkillOverrides || {})
+      .flatMap(([agentId, entries]) => marketplaceSkills
+        .filter((skillIdentity) => entries?.[skillIdentity] !== undefined)
+        .map((skillIdentity) => ({ agentId, skillIdentity })))
+      .sort((a, b) => a.agentId.localeCompare(b.agentId) || a.skillIdentity.localeCompare(b.skillIdentity));
+    const source = this.registry.listSources().find((item) => item.id === marketplaceId);
+
+    return {
+      pluginId,
+      marketplaceId,
+      identity,
+      state: reconciled.state,
+      recordedSkills,
+      presentSkills,
+      missingSkills,
+      invalidSkills,
+      cleanupTargets,
+      activationReferences: {
+        packageGate: activations.marketplaceSkillPackages?.[identity] !== undefined ? identity : null,
+        marketplaceSkills,
+        agentSkillOverrides,
+      },
+      packageGateCleanupExpected: invalidSkills.length === 0,
+      sourceStatus: !source ? "removed" : source.enabled === false ? "disabled" : "ok",
+      registry: this.getRegistryStatus({ forRemote: true }),
+    };
+  }
+
   getRemovedMarketplaceSkillsPackage(pluginId: string, marketplaceId: string) {
     if (this.registry.listSources().some((source) => source.id === marketplaceId)) return null;
     const record = readClaudeSkillsInstallRecord(this._hanakoHome, marketplaceId, pluginId);
@@ -1092,35 +1231,50 @@ export class PluginMarketplaceService {
 
     const sources = this.registry.listSources();
     const source = sources.find((s) => s.id === marketplaceId);
-    if (!source || source.kind !== "git") {
+    if (!source || (source.kind !== "git" && source.kind !== "local")) {
       const err = new Error(
-        "Claude skills install currently requires a git marketplace source",
+        "Claude skills install requires a git or authorized local marketplace source",
       ) as Error & { code: string; status: number };
       err.code = "PLUGIN_MARKETPLACE_SOURCE_INVALID";
       err.status = 400;
       throw err;
     }
 
-    const { materializeGitMarketplacePackage } = await import("./plugin-marketplace-git-cache.ts");
     const {
       installClaudeSkillsFromPackage,
       writeClaudeSkillsInstallRecord,
     } = await import("./plugin-marketplace-claude-skills.ts");
-
-    const materialized = await materializeGitMarketplacePackage(
-      {
-        id: source.id,
-        kind: "git",
-        gitUrl: (source as any).gitUrl,
-        gitRef: (source as any).gitRef,
-        indexPath: (source as any).indexPath,
-      },
-      {
-        hanakoHome: this._hanakoHome,
-        packagePath,
-        execGit: options.execGit,
-      },
-    );
+    let materialized: { packageRoot: string; resolvedRevision: string | null };
+    if (source.kind === "git") {
+      const { materializeGitMarketplacePackage } = await import("./plugin-marketplace-git-cache.ts");
+      materialized = await materializeGitMarketplacePackage(
+        {
+          id: source.id,
+          kind: "git",
+          gitUrl: (source as any).gitUrl,
+          gitRef: (source as any).gitRef,
+          indexPath: (source as any).indexPath,
+        },
+        {
+          hanakoHome: this._hanakoHome,
+          packagePath,
+          execGit: options.execGit,
+        },
+      );
+    } else {
+      const sourceRoot = resolveContainedPath({
+        rootDir: this.localAllowedRoot,
+        candidatePath: source.path,
+        allowAbsolute: true,
+      });
+      materialized = {
+        packageRoot: resolveContainedPath({
+          rootDir: sourceRoot,
+          candidatePath: packagePath,
+        }),
+        resolvedRevision: null,
+      };
+    }
 
     const result = installClaudeSkillsFromPackage({
       packageRoot: materialized.packageRoot,

@@ -120,9 +120,41 @@ Hana-compatible marketplace skills keep the existing Skills permission model. Th
 
 ## Hana Agent chat
 
-The `plugin_marketplace` Agent tool can inspect sources, catalog rows, packages, configuration diagnostics, and Claude bindings without confirmation. It can prepare install and compatibility plans without mutation.
+The `plugin_marketplace` Agent tool can inspect sources, catalog rows, installed
+Hana skill packages, configuration diagnostics, and Claude bindings without
+confirmation. It can prepare install, uninstall, and compatibility plans
+without mutation.
 
-Before a mutation, Hana shows a concise operation summary containing the exact qualified target, connected-server ownership requirement, warnings, revision/digest or plan token, and the operation that will occur. The explicit confirmation control is the final step before execution. Adding a source may be followed by an offer to browse its catalog, but Hana does not auto-install recommendations.
+For Claude-compatible sources and Hana skill packages, the high-level Agent
+actions are:
+
+- source lifecycle: `list_sources`, `add_source`, `refresh_source`,
+  `set_source_enabled`, and `remove_source`;
+- package inspection/install: `list_catalog`, `inspect_package`,
+  `plan_install`, and `install`;
+- installed package management: `list_installed_packages`,
+  `set_package_enabled`, `plan_uninstall`, and `uninstall`.
+
+Every package mutation requires exact `pluginId@marketplaceId` identity.
+Source writes, package toggles, and uninstall execution require the current
+registry revision and digest. Install and uninstall execution additionally
+require the deterministic token from their matching plan action. Ordinary
+package toggles accept only the exact package identity and requested boolean;
+the Agent does not author or replace the full activations object.
+
+Contained server-local Claude sources may install relative skill packages
+through the skill manager when both the source root and package root remain
+inside the configured local Marketplace root. Absolute package paths,
+traversal, and symlink escape are rejected before any skill is copied. Git
+source installation keeps the existing clone/ref/revision behavior.
+
+Before a mutation, Hana shows a concise operation summary containing the exact qualified target, connected-server ownership requirement, warnings, revision/digest or plan token, and the operation that will occur. In `auto` (autoreview), reviewable mutations are sent to the automatic reviewer and fail closed if review rejects or is unavailable. In `operate` (full session access), the same reviewable mutations execute directly. Owner checks, stale-state checks, source containment, unsupported-component restrictions, and the native-install block remain enforced in both modes. Adding a source may be followed by an offer to browse its catalog, but Hana does not auto-install recommendations.
+
+Package uninstall uses the same shared lifecycle as
+`DELETE /api/plugins/marketplace/:id/skills`: remove exact recorded skill
+directories, clean handled Agent and bundle references, reload skills, emit
+`skills-changed`, and report partial cleanup without claiming full success.
+It never calls native `PluginManager.removePlugin()`.
 
 Common outcomes are intentionally explicit:
 
@@ -172,6 +204,14 @@ Read endpoints include:
 - `GET /api/plugins/marketplace/compatibility/bindings`
 
 Mutation endpoints include source lifecycle, stale-protected activation writes, package install, compatibility plan/execute, and bridge validation routes under `/api/plugins/marketplace/`. Use the exact payload returned by the current server contract; do not construct a generic raw-config mutation bypass. OpenHanako currently has no dedicated marketplace shell CLI, so operator automation should use the documented HTTP service contract or Hana Agent tool rather than assuming an unimplemented command.
+
+For attended local verification without UI or Computer Use, run
+`node scripts/hana-agent-marketplace-smoke.mjs` against the locally installed
+Hana server. The harness creates two disposable contained Claude sources,
+opens visible detached conversations in `auto` and `operate`, requires real
+`plugin_marketplace` tool calls for the complete lifecycle, verifies
+authoritative session branches and postconditions, and removes only its two
+exact fixture identities.
 
 ## Troubleshooting and recovery
 

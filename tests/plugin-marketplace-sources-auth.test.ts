@@ -471,6 +471,39 @@ describe("marketplace sources auth principal", () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
+  it("rejects stale registry state before refreshing a source", async () => {
+    const home = makeHome();
+    const engine = createEngine(home);
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ schemaVersion: 1, plugins: [] }), { status: 200 }));
+    const { PluginMarketplaceService } = await import("../lib/plugin-marketplace-service.ts");
+    const service = new PluginMarketplaceService({
+      hanakoHome: home,
+      env: {},
+      fetchOptions: {
+        fetchImpl,
+        lookup: async () => [{ address: "93.184.216.34", family: 4 }],
+      },
+    });
+    service.registry.addSource({
+      id: "team-plugins",
+      name: "Team",
+      kind: "url",
+      url: "https://example.com/marketplace.json",
+    });
+    engine.pluginMarketplaceService = service;
+    const app = createAppWithPrincipal(engine, localOwner);
+
+    const res = await app.request("/api/plugins/marketplace/sources/team-plugins/refresh", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ expectedRevision: 0 }),
+    });
+    const body = await res.json();
+    expect(res.status).toBe(409);
+    expect(body.code).toBe("PLUGIN_MARKETPLACE_REGISTRY_STALE");
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   it("blocks multi-source native marketplace install as preview-only", async () => {
     const home = makeHome();
     const engine = createEngine(home);

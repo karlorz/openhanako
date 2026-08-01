@@ -247,6 +247,28 @@ describe("marketplace Claude skills lifecycle", () => {
 });
 
 describe("PluginMarketplaceService.installClaudePluginSkills", () => {
+  it("rejects stale refresh preconditions before source acquisition", async () => {
+    const home = makeTemp("svc-refresh-stale-home-");
+    const fetchImpl = vi.fn();
+    const svc = new PluginMarketplaceService({
+      hanakoHome: home,
+      env: {},
+      fetchOptions: { fetchImpl: fetchImpl as any },
+    });
+    svc.registry.addSource({
+      id: "team-market",
+      name: "Team Market",
+      kind: "url",
+      url: "https://example.com/team-market.json",
+    });
+
+    await expect(svc.refreshSource("team-market", {
+      isStudioOwner: true,
+      expectedRevision: 0,
+    })).rejects.toMatchObject({ code: "PLUGIN_MARKETPLACE_REGISTRY_STALE", status: 409 });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   it("materializes relative package via mocked git and installs skills", async () => {
     const home = makeTemp("svc-home-");
     const skillsDir = makeTemp("svc-skills-");
@@ -310,6 +332,104 @@ describe("PluginMarketplaceService.installClaudePluginSkills", () => {
     const rec = readClaudeSkillsInstallRecord(home, "llm-wiki", "skillwiki");
     expect(rec?.skills.sort()).toEqual(["wiki-query", "wiki-sync"]);
     expect(rec?.warnings).toBeUndefined();
+  });
+
+  it("installs a contained relative package from an authorized local marketplace", async () => {
+    const home = makeTemp("svc-local-home-");
+    const allowedRoot = path.join(home, "plugin-marketplaces-local");
+    const sourceDir = path.join(allowedRoot, "local-claude");
+    const skillsDir = path.join(home, "skills");
+    fs.mkdirSync(sourceDir, { recursive: true });
+    writeSkill(path.join(sourceDir, "packages", "skills", "hello-safe"), "hello-safe");
+
+    const svc = new PluginMarketplaceService({
+      hanakoHome: home,
+      localAllowedRoot: allowedRoot,
+      env: {},
+    });
+    const parsed = parseMarketplaceCatalogAuto(JSON.stringify({
+      name: "local-claude",
+      owner: { name: "fixture" },
+      plugins: [{ name: "hello-plugin", version: "1.0.0", source: "./packages/skills" }],
+    }), {
+      marketplaceId: "local-claude",
+      sourceKind: "local",
+    });
+    svc.snapshots.publish("local-claude", {
+      sourceId: "local-claude",
+      sourceFingerprint: "f".repeat(64),
+      catalogSha256: parsed.catalogSha256,
+      fetchedAt: new Date().toISOString(),
+      plugins: parsed.plugins,
+    });
+    svc.registry.addSource({
+      id: "local-claude",
+      name: "Local Claude",
+      kind: "local",
+      path: "local-claude",
+    });
+
+    const result = await svc.installClaudePluginSkills("hello-plugin", "local-claude", {
+      userSkillsDir: skillsDir,
+      isStudioOwner: true,
+    });
+
+    expect(result).toMatchObject({
+      marketplaceId: "local-claude",
+      pluginId: "hello-plugin",
+      skills: ["hello-safe"],
+      resolvedRevision: null,
+    });
+    expect(fs.existsSync(path.join(skillsDir, "hello-safe", "SKILL.md"))).toBe(true);
+    expect(readClaudeSkillsInstallRecord(home, "local-claude", "hello-plugin")).toMatchObject({
+      packagePath: "packages/skills",
+      resolvedRevision: null,
+      skills: ["hello-safe"],
+    });
+  });
+
+  it("rejects a local package root that escapes through a symlink", async () => {
+    const home = makeTemp("svc-local-escape-home-");
+    const allowedRoot = path.join(home, "plugin-marketplaces-local");
+    const sourceDir = path.join(allowedRoot, "local-claude");
+    const outside = makeTemp("svc-local-escape-outside-");
+    fs.mkdirSync(sourceDir, { recursive: true });
+    writeSkill(path.join(outside, "hello-safe"), "hello-safe");
+    fs.mkdirSync(path.join(sourceDir, "packages"), { recursive: true });
+    fs.symlinkSync(outside, path.join(sourceDir, "packages", "skills"), "dir");
+
+    const svc = new PluginMarketplaceService({
+      hanakoHome: home,
+      localAllowedRoot: allowedRoot,
+      env: {},
+    });
+    const parsed = parseMarketplaceCatalogAuto(JSON.stringify({
+      name: "local-claude",
+      owner: { name: "fixture" },
+      plugins: [{ name: "hello-plugin", version: "1.0.0", source: "./packages/skills" }],
+    }), {
+      marketplaceId: "local-claude",
+      sourceKind: "local",
+    });
+    svc.snapshots.publish("local-claude", {
+      sourceId: "local-claude",
+      sourceFingerprint: "f".repeat(64),
+      catalogSha256: parsed.catalogSha256,
+      fetchedAt: new Date().toISOString(),
+      plugins: parsed.plugins,
+    });
+    svc.registry.addSource({
+      id: "local-claude",
+      name: "Local Claude",
+      kind: "local",
+      path: "local-claude",
+    });
+
+    await expect(svc.installClaudePluginSkills("hello-plugin", "local-claude", {
+      userSkillsDir: path.join(home, "skills"),
+      isStudioOwner: true,
+    })).rejects.toMatchObject({ code: "PLUGIN_MARKETPLACE_SOURCE_FORBIDDEN" });
+    expect(readClaudeSkillsInstallRecord(home, "local-claude", "hello-plugin")).toBeNull();
   });
 
   it("fails zero-success marketplace skill installs and does not write provenance", async () => {
@@ -432,6 +552,14 @@ describe("PluginMarketplaceService.installClaudePluginSkills", () => {
           "other@team/pack": { enabled: false },
         },
       },
+      runtimePlugins: {
+        "native-page@team": { enabled: true },
+      },
+      agentPluginAccess: {
+        "agent-a": {
+          "native-page@team": { enabled: false },
+        },
+      },
     });
     expect(svc.installedMarketplaceSkillRefs()).toEqual(["wiki-query@llm-wiki/skillwiki"]);
 
@@ -449,6 +577,8 @@ describe("PluginMarketplaceService.installClaudePluginSkills", () => {
       marketplaceSkills: { "other@team/pack": { enabled: true } },
       marketplaceSkillPackages: { "other@team": { enabled: true } },
       agentSkillOverrides: { "agent-a": { "other@team/pack": { enabled: false } } },
+      runtimePlugins: { "native-page@team": { enabled: true } },
+      agentPluginAccess: { "agent-a": { "native-page@team": { enabled: false } } },
     });
     expect(fs.readFileSync(path.join(nativeDir, "keep.txt"), "utf8")).toBe("native");
     expect(fs.readFileSync(path.join(devDir, "keep.txt"), "utf8")).toBe("dev");
@@ -475,6 +605,12 @@ describe("PluginMarketplaceService.installClaudePluginSkills", () => {
       name: "llm-wiki",
       kind: "url",
       url: "https://example.com/llm-wiki.json",
+    });
+    svc.registry.addSource({
+      id: "team",
+      name: "team",
+      kind: "url",
+      url: "https://example.com/team.json",
     });
     svc.registry.setControlPlaneActivations({
       marketplaceSkills: {
@@ -533,6 +669,113 @@ describe("PluginMarketplaceService.installClaudePluginSkills", () => {
       isStudioOwner: false,
     })).toThrow(/studio\.owner/i);
     expect(fs.existsSync(path.join(skillsDir, "wiki-query"))).toBe(true);
+  });
+
+  it("toggles only one exact package gate while preserving all activation roots", () => {
+    const home = makeTemp("svc-toggle-home-");
+    const skillsDir = path.join(home, "skills");
+    writeSkill(path.join(skillsDir, "wiki-query"), "wiki-query");
+    writeClaudeSkillsInstallRecord(home, {
+      kind: "claude-skills",
+      marketplaceId: "llm-wiki",
+      pluginId: "skillwiki",
+      packagePath: "packages/skills",
+      resolvedRevision: "abc",
+      skills: ["wiki-query"],
+      installedAt: "2026-07-31T00:00:00.000Z",
+    });
+    const svc = new PluginMarketplaceService({ hanakoHome: home, env: {} });
+    svc.registry.addSource({
+      id: "llm-wiki",
+      name: "llm-wiki",
+      kind: "url",
+      url: "https://example.com/llm-wiki.json",
+    });
+    svc.registry.addSource({
+      id: "team",
+      name: "team",
+      kind: "url",
+      url: "https://example.com/team.json",
+    });
+    svc.registry.setControlPlaneActivations({
+      marketplaceSkillPackages: { "other@team": { enabled: true } },
+      marketplaceSkills: { "wiki-query@llm-wiki/skillwiki": { enabled: false } },
+      runtimePlugins: { "native-page@team": { enabled: true } },
+      agentSkillOverrides: {
+        "agent-a": { "wiki-query@llm-wiki/skillwiki": { enabled: false } },
+      },
+      agentPluginAccess: { "agent-a": { "native-page@team": { enabled: false } } },
+    });
+    const status = svc.getRegistryStatus();
+
+    const result = svc.setMarketplaceSkillPackageEnabled("skillwiki", "llm-wiki", false, {
+      isStudioOwner: true,
+      expectedRevision: status.revision,
+      expectedDigest: status.digest,
+    });
+
+    expect(result).toMatchObject({
+      identity: "skillwiki@llm-wiki",
+      enabled: false,
+      revision: status.revision + 1,
+    });
+    expect(svc.registry.getControlPlaneActivations()).toEqual({
+      marketplaceSkillPackages: {
+        "other@team": { enabled: true },
+        "skillwiki@llm-wiki": { enabled: false },
+      },
+      marketplaceSkills: { "wiki-query@llm-wiki/skillwiki": { enabled: false } },
+      runtimePlugins: { "native-page@team": { enabled: true } },
+      agentSkillOverrides: {
+        "agent-a": { "wiki-query@llm-wiki/skillwiki": { enabled: false } },
+      },
+      agentPluginAccess: { "agent-a": { "native-page@team": { enabled: false } } },
+    });
+
+    const unchangedStatus = svc.getRegistryStatus();
+    const unchanged = svc.setMarketplaceSkillPackageEnabled("skillwiki", "llm-wiki", false, {
+      isStudioOwner: true,
+      expectedRevision: unchangedStatus.revision,
+      expectedDigest: unchangedStatus.digest,
+    });
+    expect(unchanged).toMatchObject({ changed: false, revision: unchangedStatus.revision });
+    expect(svc.getRegistryStatus().revision).toBe(unchangedStatus.revision);
+  });
+
+  it("builds deterministic remote-safe uninstall facts", () => {
+    const home = makeTemp("svc-uninstall-facts-home-");
+    const skillsDir = path.join(home, "skills");
+    writeSkill(path.join(skillsDir, "wiki-query"), "wiki-query");
+    writeClaudeSkillsInstallRecord(home, {
+      kind: "claude-skills",
+      marketplaceId: "llm-wiki",
+      pluginId: "skillwiki",
+      packagePath: "packages/skills",
+      resolvedRevision: "abc",
+      skills: ["wiki-sync", "wiki-query", "../outside"],
+      installedAt: "2026-07-31T00:00:00.000Z",
+    });
+    const svc = new PluginMarketplaceService({ hanakoHome: home, env: {} });
+    const facts = svc.getMarketplaceSkillPackageUninstallFacts("skillwiki", "llm-wiki", {
+      userSkillsDir: skillsDir,
+    });
+
+    expect(facts).toMatchObject({
+      pluginId: "skillwiki",
+      marketplaceId: "llm-wiki",
+      identity: "skillwiki@llm-wiki",
+      state: "partial",
+      recordedSkills: ["../outside", "wiki-query", "wiki-sync"],
+      presentSkills: ["wiki-query"],
+      missingSkills: ["wiki-sync"],
+      invalidSkills: ["../outside"],
+      cleanupTargets: ["wiki-query", "wiki-sync"],
+      registry: { revision: expect.any(Number), digest: expect.any(String) },
+    });
+    expect(JSON.stringify(facts)).not.toContain(home);
+    expect(svc.getMarketplaceSkillPackageUninstallFacts("skillwiki", "llm-wiki", {
+      userSkillsDir: skillsDir,
+    })).toEqual(facts);
   });
 });
 
