@@ -3,6 +3,8 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { PluginManager } from "../core/plugin-manager.ts";
+import { PluginTrustStore } from "../lib/plugin-trust-store.ts";
+import { writeMarketplaceActiveMarker } from "../lib/plugin-marketplace-active-marker.ts";
 
 const tmpHome = path.join(os.tmpdir(), "hana-pm-test-" + Date.now());
 const pluginsDir = path.join(tmpHome, "plugins");
@@ -2043,6 +2045,45 @@ describe("hot operations", () => {
     expect(pm.getPlugin("fa-hot").status).toBe("loaded");
     expect(pm.getAllTools().some(t => t._pluginId === "fa-hot")).toBe(true);
     expect(mockPrefs.getAllowFullAccessPlugins()).toBe(true);
+  });
+
+  it("does not load a Marketplace full-access artifact without its exact trust grant", async () => {
+    const builtinDir = path.join(tmpHome, "builtin-market-trust");
+    const communityDir = path.join(tmpHome, "community-market-trust");
+    const dir = path.join(communityDir, "market-fa");
+    fs.mkdirSync(path.join(dir, "tools"), { recursive: true });
+    fs.mkdirSync(builtinDir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "manifest.json"), JSON.stringify({
+      id: "market-fa", name: "Marketplace FA", version: "1.0.0", trust: "full-access",
+    }));
+    fs.writeFileSync(path.join(dir, "tools", "t.js"), `
+      export const name = "t";
+      export const description = "test";
+      export const parameters = {};
+      export async function execute() { return "ok"; }
+    `);
+    const digest = "a".repeat(64);
+    writeMarketplaceActiveMarker(dir, { marketplaceId: "official", pluginId: "market-fa", artifactDigest: digest });
+    const trustStore = new PluginTrustStore({ hanakoHome: tmpHome });
+    const mockPrefs = createMockPrefs({ allow_full_access_plugins: false });
+    const pm = new PluginManager({
+      pluginsDirs: [builtinDir, communityDir], dataDir, bus: await makeBus(),
+      preferencesManager: mockPrefs, pluginTrustStore: trustStore,
+    } as any);
+    pm.scan();
+    await pm.loadAll();
+    expect(pm.getPlugin("market-fa").status).toBe("restricted");
+
+    await pm.setFullAccess(true);
+    expect(pm.getPlugin("market-fa").status).toBe("restricted");
+    trustStore.grant({ marketplaceId: "official", pluginId: "market-fa", artifactDigest: digest });
+    await pm.enablePlugin("market-fa");
+    expect(pm.getPlugin("market-fa").status).toBe("loaded");
+
+    trustStore.revoke("official", "market-fa", digest);
+    await pm.setFullAccess(false);
+    await pm.setFullAccess(true);
+    expect(pm.getPlugin("market-fa").status).toBe("restricted");
   });
 
   it("setFullAccess(false) unloads community full-access plugins", async () => {

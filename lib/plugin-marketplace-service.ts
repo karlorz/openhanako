@@ -74,6 +74,7 @@ export interface MarketplaceCapabilityContract {
     agentMarketplaceManagement: boolean;
     claudeCompatibilityBindings: boolean;
     nativeMarketplaceInstall: boolean;
+    nativeMarketplaceSettingsLifecycle: boolean;
     exactSourceQualifiedActivation: boolean;
     nativeAgentPluginAccess: boolean;
     controlPlaneDiagnostics: boolean;
@@ -169,6 +170,7 @@ export class PluginMarketplaceService {
         agentMarketplaceManagement: true,
         claudeCompatibilityBindings: true,
         nativeMarketplaceInstall: false,
+        nativeMarketplaceSettingsLifecycle: true,
         exactSourceQualifiedActivation: true,
         nativeAgentPluginAccess: true,
         controlPlaneDiagnostics: true,
@@ -178,8 +180,8 @@ export class PluginMarketplaceService {
       },
       unsupported: [
         {
-          code: "PLUGIN_MARKETPLACE_NATIVE_INSTALL_PREVIEW_ONLY",
-          message: "Native marketplace packages are classified for review only until the PluginManager contract audit is complete.",
+          code: "PLUGIN_MARKETPLACE_NATIVE_AGENT_INSTALL_UNSUPPORTED",
+          message: "Agent-driven native Marketplace installation remains unsupported; Studio owners can use the Settings lifecycle.",
         },
       ],
       upgradeGuidance: null,
@@ -437,6 +439,22 @@ export class PluginMarketplaceService {
       err.status = 403;
       throw err;
     }
+    const next = activations && typeof activations === "object" ? activations as Record<string, any> : {};
+    const previous = this.registry.getControlPlaneActivations()?.agentPluginAccess || {};
+    const activeNativeRefs = new Set(this.installedRuntimePluginRefs());
+    for (const [agentId, identities] of Object.entries(next.agentPluginAccess || {}) as Array<[string, Record<string, any>]>) {
+      for (const [identity, state] of Object.entries(identities || {}) as Array<[string, any]>) {
+        const wasEnabled = (previous as any)?.[agentId]?.[identity]?.enabled === true;
+        if (state?.enabled === true && !wasEnabled && !activeNativeRefs.has(identity)) {
+          const err = new Error(
+            `Agent Plugin Access requires an actively installed native Marketplace identity: ${identity}`,
+          ) as Error & { code: string; status: number };
+          err.code = "PLUGIN_MARKETPLACE_NATIVE_NOT_INSTALLED";
+          err.status = 409;
+          throw err;
+        }
+      }
+    }
     return this.registry.setControlPlaneActivations(activations, {
       expectedRevision: options.expectedRevision,
       expectedDigest: options.expectedDigest,
@@ -641,6 +659,14 @@ export class PluginMarketplaceService {
             nativeContributions: inspection.capabilityInventory.nativePluginContributions,
           })
         : null;
+      const nativeInstallEligible = inspection.destination === "native-plugin"
+        && plugin.distribution?.kind === "release"
+        && typeof plugin.distribution?.packageUrl === "string"
+        && /^[a-f0-9]{64}$/.test(plugin.distribution?.sha256 || "")
+        && !sourceRemoved
+        && sourceAvailable;
+      const nativeLifecycleSupported = inspection.destination === "native-plugin"
+        && (nativeInstallEligible || active);
       return {
         compositeKey: `${plugin.id}@${plugin.marketplaceId}`,
         marketplaceId: plugin.marketplaceId,
@@ -665,10 +691,20 @@ export class PluginMarketplaceService {
         packageActivation,
         packageInstall,
         nativeAgentPluginAccess,
-        canInstall: inspection.installable
-          && packageInstall.state === "not-installed"
-          && !sourceRemoved
-          && sourceAvailable,
+        nativeSettingsLifecycle: inspection.destination === "native-plugin" ? {
+          supported: nativeLifecycleSupported,
+          canInstall: nativeInstallEligible && !active,
+          canUninstall: active,
+          reason: nativeLifecycleSupported
+            ? (active ? "Exact Marketplace-native identity is actively installed" : "Studio-owner Settings install is available")
+            : "Native Settings lifecycle is unavailable for this package or source",
+        } : null,
+        canInstall: inspection.destination === "native-plugin"
+          ? nativeInstallEligible && !active
+          : inspection.installable
+            && packageInstall.state === "not-installed"
+            && !sourceRemoved
+            && sourceAvailable,
         sourceAuthority: source?.authority || "removed",
         sourceStatus: source?.status || "removed",
         sourceEnabled: sourceAvailable,
@@ -683,13 +719,11 @@ export class PluginMarketplaceService {
   installedRuntimePluginRefs(): string[] {
     const refs = new Set<string>();
     for (const record of this.records.list()) {
-      for (const marketplaceId of Object.keys(record.retained || {})) {
-        if (marketplaceId === "legacy-unqualified") continue;
-        refs.add(buildPluginMarketplaceRef({
-          pluginId: record.pluginId,
-          marketplaceId,
-        }));
-      }
+      if (!record.activeMarketplaceId || record.activeMarketplaceId === "legacy-unqualified") continue;
+      refs.add(buildPluginMarketplaceRef({
+        pluginId: record.pluginId,
+        marketplaceId: record.activeMarketplaceId,
+      }));
     }
     return [...refs].sort();
   }

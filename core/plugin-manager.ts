@@ -11,6 +11,7 @@ import { semverGte } from "../lib/plugin-versioning.ts";
 import { detectIncompatiblePluginFormat } from "../lib/plugin-format-guard.ts";
 import { createModuleLogger } from "../lib/debug-log.ts";
 import { getToolSessionPath, normalizeToolRuntimeContext } from "../lib/tools/tool-session.ts";
+import { readMarketplaceActiveMarker } from "../lib/plugin-marketplace-active-marker.ts";
 
 const log = createModuleLogger("plugin-manager");
 
@@ -240,6 +241,7 @@ export class PluginManager {
   declare _resourceWatch: any;
   declare _routeApps: any;
   declare _runtimeContext: any;
+  declare _pluginTrustStore: any;
   declare _scanned: any;
   declare _settingsTabs: any;
   declare _skillPaths: any;
@@ -269,6 +271,7 @@ export class PluginManager {
     lifecycleTimeoutMs,
     logSink,
     runtimeContext,
+    pluginTrustStore,
   }) {
     this._pluginsDirs = pluginsDirs || (pluginsDir ? [pluginsDir] : []);
     this._dataDir = dataDir;
@@ -282,6 +285,7 @@ export class PluginManager {
     this._resourceWatch = resourceWatch || null;
     this._logSink = typeof logSink === "function" ? logSink : null;
     this._runtimeContext = runtimeContext || null;
+    this._pluginTrustStore = pluginTrustStore || null;
     this._plugins = new Map();
     this._scanned = [];
     this._opQueue = Promise.resolve();
@@ -552,7 +556,8 @@ export class PluginManager {
     const activationEvents = normalizeActivationEvents(manifest?.activationEvents, hasLifecycle);
     const capabilities = normalizeCapabilityList(manifest?.capabilities);
     const sensitiveCapabilities = normalizeCapabilityList(manifest?.sensitiveCapabilities);
-    return { id, name, version, description, pluginDir, manifest, contributions, trust, hidden, uiHostCapabilities, configSchema, activationEvents, capabilities, sensitiveCapabilities, hasLifecycle, formatIssue, source: undefined as any, pluginKey: undefined as any };
+    const marketplaceInstall = readMarketplaceActiveMarker(pluginDir, id);
+    return { id, name, version, description, pluginDir, manifest, contributions, trust, hidden, uiHostCapabilities, configSchema, activationEvents, capabilities, sensitiveCapabilities, hasLifecycle, formatIssue, marketplaceInstall, source: undefined as any, pluginKey: undefined as any };
   }
 
   async loadAll() {
@@ -578,8 +583,7 @@ export class PluginManager {
       }
 
       if (desc.source === "community" && desc.trust === "full-access") {
-        const allowed = this._preferencesManager?.getAllowFullAccessPlugins() || false;
-        if (!allowed) {
+        if (!this._isFullAccessAllowed(entry)) {
           entry.status = "restricted";
           this._setPluginEntry(entry);
           continue;
@@ -1387,7 +1391,16 @@ export class PluginManager {
   _isFullAccessAllowed(entryOrDesc, options: any = {}) {
     if (entryOrDesc.source === "builtin") return true;
     if (entryOrDesc.source === "dev") return options.allowFullAccess === true;
-    return this._preferencesManager?.getAllowFullAccessPlugins() || false;
+    const globalFullAccessEnabled = this._preferencesManager?.getAllowFullAccessPlugins() || false;
+    const marketplaceInstall = options.marketplaceInstall || entryOrDesc.marketplaceInstall;
+    if (!marketplaceInstall) return globalFullAccessEnabled;
+    if (!this._pluginTrustStore) return false;
+    return this._pluginTrustStore.isFullAccessAllowed({
+      marketplaceId: marketplaceInstall.marketplaceId,
+      pluginId: entryOrDesc.id,
+      artifactDigest: marketplaceInstall.artifactDigest,
+      globalFullAccessEnabled,
+    });
   }
 
   // ── Hot operations ───────────────────────────────────────────────────────
@@ -1563,7 +1576,7 @@ export class PluginManager {
         const disabledList = this._preferencesManager?.getDisabledPlugins() || [];
         if (disabledList.includes(entry.id)) continue;
 
-        if (allow && entry.status === "restricted") {
+        if (allow && entry.status === "restricted" && this._isFullAccessAllowed(entry)) {
           try {
             await this._loadPluginWithBoundary(entry);
             entry.status = "loaded";

@@ -36,6 +36,7 @@ import {
   resolveHanaPiSdkResourceLoaderCwd,
 } from "../shared/hana-runtime-paths.ts";
 import { PluginManager } from "./plugin-manager.ts";
+import { PluginTrustStore } from "../lib/plugin-trust-store.ts";
 import { EnvChangeLedger } from "./env-change-ledger.ts";
 import { PluginDevService } from "./plugin-dev-service.ts";
 import { createPluginDevTools } from "./plugin-dev-tools.ts";
@@ -2590,6 +2591,7 @@ export class HanaEngine {
       lifecycleTimeoutMs: undefined,
       logSink: (entry) => this._pluginDevService?.recordLog(entry),
       runtimeContext: this.getRuntimeContext(),
+      pluginTrustStore: new PluginTrustStore({ hanakoHome: this.hanakoHome }),
     });
     const allowedPluginDevSourceRoots = [
       pluginDevSourcesDir,

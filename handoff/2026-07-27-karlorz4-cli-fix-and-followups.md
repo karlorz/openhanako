@@ -17,7 +17,7 @@ CI for **`v0.416.51-karlorz.6`** was still **in progress** when this session sto
 | Build `.6` | run **`30216319230`** — was `in_progress` (URL below) |
 | sg01 installed | **`v0.416.51-karlorz.5`** · service **active** · Mobile OK |
 | `hana --help` on host | **fails** (exit 1) until `.6` lands with `contract-versions.json` |
-| Working tree | clean except untracked `scripts/hana-session-identity-repro.mjs` (leave alone) |
+| Working tree | clean except a temporary session-identity diagnostic (removed during later cleanup) |
 
 Build URL: https://github.com/karlorz/openhanako/actions/runs/30216319230  
 Release (when ready): https://github.com/karlorz/openhanako/releases/tag/v0.416.51-karlorz.6
@@ -114,7 +114,6 @@ Questions: cert source, :443 vs reverse proxy, secure cookies / WSS.
 
 - Merge permanent draft PR #1  
 - Full Mobile UAT re-run unless HTTPS changes auth  
-- Touch untracked `scripts/hana-session-identity-repro.mjs`  
 - Deploy from local checkout; use `install-server` + published tag only  
 
 ---

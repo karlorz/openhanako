@@ -48,13 +48,23 @@ Hana classifies every resolved catalog package before it offers an action:
 
 | Destination | Meaning | Follow-up |
 |---|---|---|
-| Native Hana plugin | A Hana-native package interpreted by the existing PluginManager contract. | Native marketplace installation is currently preview-only. Agent-driven native install is blocked. |
+| Native Hana plugin | A Hana-native release package interpreted by the existing PluginManager contract. | A Studio owner may use the Settings plan/execute lifecycle when `nativeMarketplaceSettingsLifecycle` is advertised. Agent-driven native install remains blocked. |
 | Hana-compatible skills | Supported `SKILL.md` content imported through the existing skill manager. | Use **Settings → Skills** and **Agent Skill Toggles** for activation. Package enable is a separate global gate (below). |
 | Unsupported / review required | Unsupported Claude source form or behavior, incomplete package, or package outside the current safety envelope. | Inspect warnings only; no normal install action is shown. |
 
 The destination is a read-only fact for the resolved source revision. There is no “convert to native plugin” selector. Imported marketplace skills are never labeled as native plugins and do not enter PluginManager.
 
 Catalog details show the install adapter, installability, confirmation level, capability inventory, warnings, and install-plan consequences. Dependency declarations, unsupported components, incomplete packages, binaries, and lifecycle scripts are warnings or blockers; Hana does not silently install or execute them.
+
+For native packages, catalog availability, verified download cache, retained
+artifact, active installation, runtime state, and Agent Access are separate
+facts. A retained ZIP or extracted artifact is not installed. Native install
+and uninstall require Studio-owner authority, exact typed identity, current
+registry revision/digest, and a fresh signed plan bound to version, package
+SHA-256, catalog/source facts, and the current active pointer. Uninstall removes
+the active projection and its artifact trust grant while preserving verified
+downloads, retained artifacts, backups, and lifecycle history as non-installed
+evidence.
 
 ## Manage Plugins inventory and package enable gate
 
@@ -116,6 +126,13 @@ Native Plugins has two distinct scopes:
 
 Routes, providers, extensions, lifecycle/background behavior, and other server-global contributions remain owner-reviewed server state. Agent Plugin Access is not a promise that a global plugin is unloaded or sandboxed separately for each Agent.
 
+Agent Plugin Access is offered only when the exact `pluginId@marketplaceId`
+native identity is actively installed. It cannot install or load a package, and
+the backend rejects attempts to enable access for an absent or retained-only
+artifact. A full-access Marketplace plugin additionally requires an exact
+artifact-digest trust grant and the global full-access ceiling. With the global
+ceiling off, the package may remain installed with runtime state `restricted`.
+
 Hana-compatible marketplace skills keep the existing Skills permission model. The Plugin Marketplace links to Skills; it does not duplicate Skill Installation Permissions or per-Agent skill toggles inside Native Plugins.
 
 ## Hana Agent chat
@@ -148,7 +165,7 @@ inside the configured local Marketplace root. Absolute package paths,
 traversal, and symlink escape are rejected before any skill is copied. Git
 source installation keeps the existing clone/ref/revision behavior.
 
-Before a mutation, Hana shows a concise operation summary containing the exact qualified target, connected-server ownership requirement, warnings, revision/digest or plan token, and the operation that will occur. In `auto` (autoreview), reviewable mutations are sent to the automatic reviewer and fail closed if review rejects or is unavailable. In `operate` (full session access), the same reviewable mutations execute directly. Owner checks, stale-state checks, source containment, unsupported-component restrictions, and the native-install block remain enforced in both modes. Adding a source may be followed by an offer to browse its catalog, but Hana does not auto-install recommendations.
+Before a mutation, Hana shows a concise operation summary containing the exact qualified target, connected-server ownership requirement, warnings, revision/digest or plan token, and the operation that will occur. In `auto` (autoreview), reviewable mutations are sent to the automatic reviewer and fail closed if review rejects or is unavailable. In `operate` (full session access), the same reviewable mutations execute directly. Owner checks, stale-state checks, source containment, unsupported-component restrictions, and the Agent-driven native-install block remain enforced in both modes. Native Settings installation is a separate owner-only surface and is not callable through the Agent tool. Adding a source may be followed by an offer to browse its catalog, but Hana does not auto-install recommendations.
 
 Package uninstall uses the same shared lifecycle as
 `DELETE /api/plugins/marketplace/:id/skills`: remove exact recorded skill
@@ -204,6 +221,12 @@ Read endpoints include:
 - `GET /api/plugins/marketplace/compatibility/bindings`
 
 Mutation endpoints include source lifecycle, stale-protected activation writes, package install, compatibility plan/execute, and bridge validation routes under `/api/plugins/marketplace/`. Use the exact payload returned by the current server contract; do not construct a generic raw-config mutation bypass. OpenHanako currently has no dedicated marketplace shell CLI, so operator automation should use the documented HTTP service contract or Hana Agent tool rather than assuming an unimplemented command.
+
+Supported native Settings servers additionally expose owner-only plan and
+execute routes under
+`/api/plugins/marketplace/:id/native/{install,uninstall}/{plan,execute}`.
+Older servers omit the capability and remain inspect-only. Native uninstall
+never uses the Hana-skill `DELETE /api/plugins/marketplace/:id/skills` route.
 
 For attended local verification without UI or Computer Use, run
 `node scripts/hana-agent-marketplace-smoke.mjs` against the locally installed

@@ -235,7 +235,6 @@ export class PluginInstallRecords {
       : assertMarketplaceId(input.marketplaceId);
     const artifactDigest = assertArtifactDigest(input.artifactDigest);
     const now = new Date().toISOString();
-
     const file = this._read();
     // Ensure file is v2 shaped
     if (file.version < INSTALL_RECORDS_VERSION_V2) {
@@ -312,6 +311,51 @@ export class PluginInstallRecords {
     fresh.plugins[id] = record;
     this._write(fresh);
     return structuredClone(record);
+  }
+
+  deactivate(input: {
+    pluginId: string;
+    marketplaceId: string;
+    artifactDigest: string;
+    action?: string;
+    result?: string;
+  }): PluginInstallRecordV2 {
+    const pluginId = assertPluginId(input.pluginId);
+    const marketplaceId = assertMarketplaceId(input.marketplaceId);
+    const artifactDigest = assertArtifactDigest(input.artifactDigest);
+    const file = this._read();
+    const record = file.plugins[pluginId] as PluginInstallRecordV2 | undefined;
+    if (!record || record.activeMarketplaceId !== marketplaceId || record.activeArtifactDigest !== artifactDigest) {
+      const err = new Error("Active Marketplace plugin identity does not match uninstall request") as Error & { code: string };
+      err.code = "PLUGIN_MARKETPLACE_ACTIVE_POINTER_MISMATCH";
+      throw err;
+    }
+    const now = new Date().toISOString();
+    const retained = record.retained?.[marketplaceId]?.[artifactDigest];
+    const next: PluginInstallRecordV2 = {
+      ...record,
+      activeMarketplaceId: null,
+      activeArtifactDigest: null,
+      transaction: null,
+      history: [{
+        action: input.action || "uninstall",
+        result: input.result || "ok",
+        timestamp: now,
+        beforeMarketplaceId: marketplaceId,
+        beforeArtifactDigest: artifactDigest,
+        afterMarketplaceId: null,
+        afterArtifactDigest: null,
+        catalogSha256: retained?.catalogSha256 || null,
+        packageSha256: retained?.packageSha256 || artifactDigest,
+        resolvedRevision: retained?.resolvedRevision || null,
+        version: retained?.version || null,
+      }, ...(record.history || [])].slice(0, MAX_HISTORY),
+      updatedAt: now,
+    };
+    file.version = INSTALL_RECORDS_VERSION_V2;
+    file.plugins[pluginId] = compatFields(next);
+    this._write(file);
+    return structuredClone(compatFields(next));
   }
 
   removeRetainedArtifact(pluginId: string, marketplaceId: string, artifactDigest: string) {

@@ -271,6 +271,64 @@ describe('PluginMarketplaceTab inspector rendering', () => {
     expect(mockHanaFetch).not.toHaveBeenCalledWith('/api/plugins/marketplace/native-page/install', expect.anything());
   });
 
+  it('installs a supported native package through owner plan/execute and never the skills route', async () => {
+    vi.spyOn(window, 'prompt').mockReturnValue('native-page@official');
+    const native = catalogPlugin({
+      pluginId: 'native-page', id: 'native-page', name: 'Native Page', marketplaceId: 'official',
+      compositeKey: 'native-page@official', catalogFormat: null, installTarget: 'native-plugin',
+      installAdapter: 'plugin-manager', installable: false, canInstall: true, active: false,
+      nativeSettingsLifecycle: { supported: true, canInstall: true, canUninstall: false, reason: 'Studio-owner Settings install is available' },
+      confirmationLevel: 'typed-exact',
+    });
+    mockHanaFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === '/api/plugins/marketplace/capabilities') return jsonResponse({ supported: true, features: { nativeMarketplaceSettingsLifecycle: true }, access: { isStudioOwner: true }, registry: { revision: 7, digest: 'a'.repeat(64) } });
+      if (url.startsWith('/api/plugins/marketplace/catalog')) return jsonResponse({ plugins: [native], sources: [], access: { isStudioOwner: true }, registry: { revision: 7, digest: 'a'.repeat(64) } });
+      if (url === '/api/plugins/marketplace/sources') return jsonResponse({ sources: [] });
+      if (url === '/api/plugins/marketplace/native-page/native/install/plan') {
+        expect(JSON.parse(String(init?.body))).toMatchObject({ marketplaceId: 'official', expectedRevision: 7 });
+        return jsonResponse({ identity: 'native-page@official', confirmationText: 'native-page@official', planToken: 'signed-plan', facts: { version: '1.0.0', packageSha256: 'b'.repeat(64), trust: 'full-access', contributions: ['routes'] } });
+      }
+      if (url === '/api/plugins/marketplace/native-page/native/install/execute') {
+        expect(JSON.parse(String(init?.body))).toEqual({ planToken: 'signed-plan', confirmation: 'native-page@official' });
+        return jsonResponse({ ok: true, name: 'Native Page' });
+      }
+      if (url.includes('/readme')) return jsonResponse({ markdown: '' });
+      return jsonResponse({});
+    });
+
+    render(<PluginMarketplaceTab />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Install' }));
+    await waitFor(() => expect(mockShowToast).toHaveBeenCalledWith(expect.any(String), 'success'));
+    expect(mockHanaFetch).not.toHaveBeenCalledWith('/api/plugins/marketplace/native-page/skills', expect.anything());
+  });
+
+  it('uninstalls an active native package through owner plan/execute and preserves retained evidence', async () => {
+    vi.spyOn(window, 'prompt').mockReturnValue('native-page@official');
+    const native = catalogPlugin({
+      pluginId: 'native-page', id: 'native-page', name: 'Native Page', marketplaceId: 'official',
+      compositeKey: 'native-page@official', catalogFormat: null, installTarget: 'native-plugin',
+      installAdapter: 'plugin-manager', installable: false, canInstall: false, active: true, retained: true,
+      nativeSettingsLifecycle: { supported: true, canInstall: false, canUninstall: true, reason: 'Exact Marketplace-native identity is actively installed' },
+    });
+    mockHanaFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === '/api/plugins/marketplace/capabilities') return jsonResponse({ supported: true, features: { nativeMarketplaceSettingsLifecycle: true }, access: { isStudioOwner: true }, registry: { revision: 7, digest: 'a'.repeat(64) } });
+      if (url.startsWith('/api/plugins/marketplace/catalog')) return jsonResponse({ plugins: [native], sources: [], access: { isStudioOwner: true }, registry: { revision: 7, digest: 'a'.repeat(64) } });
+      if (url === '/api/plugins/marketplace/sources') return jsonResponse({ sources: [] });
+      if (url === '/api/plugins/marketplace/native-page/native/uninstall/plan') return jsonResponse({ identity: 'native-page@official', confirmationText: 'native-page@official', planToken: 'remove-plan' });
+      if (url === '/api/plugins/marketplace/native-page/native/uninstall/execute') {
+        expect(JSON.parse(String(init?.body))).toEqual({ planToken: 'remove-plan', confirmation: 'native-page@official' });
+        return jsonResponse({ ok: true, installed: false, retained: true });
+      }
+      if (url.includes('/readme')) return jsonResponse({ markdown: '' });
+      return jsonResponse({});
+    });
+
+    render(<PluginMarketplaceTab />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Uninstall' }));
+    await waitFor(() => expect(mockShowToast).toHaveBeenCalledWith(expect.stringContaining('retained artifact remains non-installed'), 'success'));
+    expect(mockHanaFetch).not.toHaveBeenCalledWith('/api/plugins/marketplace/native-page/skills', expect.anything());
+  });
+
   it('distinguishes a supported empty catalog from an unsupported or missing source state', async () => {
     mockCatalog([]);
 
@@ -327,8 +385,7 @@ describe('PluginMarketplaceTab inspector rendering', () => {
     expect(screen.getByText('Skills Settings / Agent Skill Toggles (not Native Plugins)')).toBeInTheDocument();
   });
 
-  it('shows selected-Agent native access separately and writes the exact qualified identity', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+  it('keeps selected-Agent native access unavailable until the exact native identity is installed', async () => {
     mockStoreState.agents = [{ id: 'agent-a', name: 'Agent A' }];
     mockStoreState.currentAgentId = 'agent-a';
     const native = catalogPlugin({
@@ -379,9 +436,7 @@ describe('PluginMarketplaceTab inspector rendering', () => {
 
     expect(await screen.findByText('Selected-Agent Plugin Access')).toBeInTheDocument();
     expect(screen.getByText(/Routes, providers, extensions/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Enable Agent Access' }));
-
-    expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('native-page@official'));
+    expect(screen.queryByRole('button', { name: 'Enable Agent Access' })).not.toBeInTheDocument();
     expect(await screen.findByText('desired-not-installed · native runtime plugin artifact is not installed')).toBeInTheDocument();
   });
 
@@ -543,7 +598,7 @@ describe('PluginMarketplaceTab inspector rendering', () => {
     expect(mockShowToast).not.toHaveBeenCalledWith(expect.any(String), 'success');
   });
 
-  it('surfaces owner or install-permission denial without reporting success', async () => {
+  it('disables owner-only package mutations for non-owners', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     mockHanaFetch.mockImplementation(async (url: string) => {
       if (url === '/api/plugins/marketplace/capabilities') return jsonResponse({ supported: true, features: {}, access: { isStudioOwner: false }, registry: { revision: 1, digest: 'd'.repeat(64) } });
@@ -555,9 +610,8 @@ describe('PluginMarketplaceTab inspector rendering', () => {
     });
     render(<PluginMarketplaceTab />);
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Install skills' }));
-
-    await waitFor(() => expect(mockShowToast).toHaveBeenCalledWith(expect.stringContaining('studio.owner or install permission required'), 'error'));
+    expect(await screen.findByRole('button', { name: 'Install skills' })).toBeDisabled();
+    expect(mockShowToast).not.toHaveBeenCalledWith(expect.any(String), 'error');
     expect(mockShowToast).not.toHaveBeenCalledWith(expect.any(String), 'success');
   });
 

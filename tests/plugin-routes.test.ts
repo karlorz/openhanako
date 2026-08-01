@@ -1148,7 +1148,7 @@ describe("plugin management API", () => {
       }
     });
 
-    it("installs release marketplace plugins after downloading and verifying sha256", async () => {
+    it("blocks the legacy release install bypass in favor of the owner plan/execute lifecycle", async () => {
       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "hana-release-plugin-"));
       try {
         const zip = makeStoredZip({
@@ -1210,12 +1210,12 @@ describe("plugin management API", () => {
           body: JSON.stringify({}),
         });
 
-        expect(installRes.status).toBe(200);
+        expect(installRes.status).toBe(409);
         expect(await installRes.json()).toMatchObject({
-          id: "demo",
-          installedManifestExists: true,
+          code: "PLUGIN_MARKETPLACE_NATIVE_INSTALL_PREVIEW_ONLY",
+          error: expect.stringContaining("plan/execute lifecycle"),
         });
-        expect(installPlugin).toHaveBeenCalled();
+        expect(installPlugin).not.toHaveBeenCalled();
       } finally {
         fs.rmSync(tmp, { recursive: true, force: true });
       }
@@ -1387,7 +1387,56 @@ describe("plugin management API", () => {
       }
     });
 
-    it("rejects release marketplace plugins when sha256 does not match", async () => {
+    it("installs a retained artifact whose plugin is nested beside artifact metadata", async () => {
+      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "hana-plugin-retained-wrapper-"));
+      try {
+        const sourcePath = path.join(tmp, "artifact");
+        const pluginSource = path.join(sourcePath, "demo");
+        const userPluginsDir = path.join(tmp, "plugins");
+        fs.mkdirSync(pluginSource, { recursive: true });
+        fs.writeFileSync(path.join(sourcePath, ".hana-artifact.json"), JSON.stringify({ schemaVersion: 1 }), "utf8");
+        fs.writeFileSync(path.join(pluginSource, "manifest.json"), JSON.stringify({
+          id: "demo",
+          name: "Demo",
+          version: "1.0.0",
+          trust: "restricted",
+        }), "utf8");
+        const installPlugin = vi.fn(async (dir) => ({
+          id: "demo",
+          name: "Demo",
+          version: "1.0.0",
+          status: "loaded",
+          pluginDir: dir,
+        }));
+        const engine = mockEngine({
+          hanakoHome: tmp,
+          pm: {
+            getUserPluginsDir: () => userPluginsDir,
+            listPlugins: () => [],
+            installPlugin,
+            isValidPluginDir: (dir) => fs.existsSync(path.join(dir, "manifest.json")),
+          },
+        });
+        const app = createApp(engine);
+
+        const res = await app.request("/api/plugins/install", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path: sourcePath }),
+        });
+
+        expect(res.status).toBe(200);
+        expect(await res.json()).toMatchObject({ id: "demo", status: "loaded" });
+        const installedDir = path.join(userPluginsDir, "demo");
+        expect(installPlugin).toHaveBeenCalledWith(installedDir, { source: "community" });
+        expect(fs.existsSync(path.join(installedDir, "manifest.json"))).toBe(true);
+        expect(fs.existsSync(path.join(installedDir, "demo", "manifest.json"))).toBe(false);
+      } finally {
+        fs.rmSync(tmp, { recursive: true, force: true });
+      }
+    });
+
+    it("does not acquire legacy native releases before the owner plan/execute lifecycle", async () => {
       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "hana-release-plugin-bad-sha-"));
       try {
         const zip = makeStoredZip({
@@ -1438,8 +1487,11 @@ describe("plugin management API", () => {
           body: JSON.stringify({}),
         });
 
-        expect(installRes.status).toBe(502);
-        expect(await installRes.json()).toEqual({ error: "Plugin release sha256 mismatch" });
+        expect(installRes.status).toBe(409);
+        expect(await installRes.json()).toMatchObject({
+          code: "PLUGIN_MARKETPLACE_NATIVE_INSTALL_PREVIEW_ONLY",
+        });
+        expect(engine.fetch).not.toHaveBeenCalled();
         expect(installPlugin).not.toHaveBeenCalled();
       } finally {
         fs.rmSync(tmp, { recursive: true, force: true });
