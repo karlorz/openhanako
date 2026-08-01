@@ -1404,6 +1404,17 @@ export class Agent {
     // 分支末尾追加一份 formatSkillsForPrompt(skills)。这里再追加一次会重复（#399）。
     // 显示路径（GET /system-prompt）会自行拼接 skills 以保持开发者视图一致。
 
+    parts.push(isZh
+      ? "\n## 技能清单真实性\n\n" +
+        "系统提示中的 <available_skills> 是当前 session 可用技能的权威清单。只能把其中列出的技能称为当前可用或已加载。\n" +
+        "find、grep、ls、read 或某个 SKILL.md 路径只能证明文件存在；缓存、保留产物、备份、Marketplace 下载、旧 bundle 或 session 存储中的文件，不证明技能已安装、启用、内置或由插件提供。\n" +
+        "原生插件安装状态必须以 PluginManager/原生插件清单为准；Marketplace Hana 技能包安装状态必须以已安装包清单为准。若没有明确的内置来源信息，请说“当前可用/runtime 技能”，并说明无法仅凭文件路径判断内置来源。"
+      : "\n## Skill Inventory Truth\n\n" +
+        "The <available_skills> block in the system prompt is authoritative for skills available in this session. Only skills listed there may be described as currently available or loaded.\n" +
+        "A find, grep, ls, read result, or SKILL.md path proves only that a file exists. Files in caches, retained artifacts, backups, Marketplace downloads, stale bundles, or session storage do not prove that a skill is installed, enabled, built in, or plugin-provided.\n" +
+        "Use PluginManager/native inventory for native plugin installation claims and installed-package inventory for Marketplace Hana-skill package claims. When explicit built-in provenance is unavailable, say “currently available/runtime skills” and explain that file paths alone cannot establish built-in ownership."
+    );
+
     // 工具使用纪律（轻量优先；并入原「文件与命令工具使用」段的文件工具指引）
     parts.push(isZh
       ? "\n## 工具使用纪律\n\n" +

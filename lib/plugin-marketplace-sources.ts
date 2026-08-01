@@ -725,7 +725,10 @@ export function diagnoseMarketplaceSourcesText(
       seenLocations.set(locationKey, source.id);
     }
 
-    const sourceIds = new Set(file.sources.map((source) => source.id));
+    const sourceIds = new Set([
+      OFFICIAL_MARKETPLACE_ID,
+      ...file.sources.map((source) => source.id),
+    ]);
     const activationIds = activationSourceIds(file.activations);
     for (const marketplaceId of activationIds) {
       if (!sourceIds.has(marketplaceId)) {
@@ -805,7 +808,10 @@ function parseDurableFile(rawText: string): MarketplaceSourcesFile {
     : undefined;
 
   if (activations) {
-    const registeredSources = new Set(sources.map((source) => source.id));
+    const registeredSources = new Set([
+      OFFICIAL_MARKETPLACE_ID,
+      ...sources.map((source) => source.id),
+    ]);
     for (const marketplaceId of activationSourceIds(activations)) {
       if (!registeredSources.has(marketplaceId)) {
         throw new Error(

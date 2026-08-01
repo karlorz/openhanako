@@ -96,6 +96,12 @@ interface MarketplacePlugin {
     serverGlobalContributions?: string[];
     warnings?: string[];
   } | null;
+  nativeSettingsLifecycle?: {
+    supported?: boolean;
+    canInstall?: boolean;
+    canUninstall?: boolean;
+    reason?: string | null;
+  } | null;
 }
 
 interface MarketplaceConfigDiagnostics {
@@ -170,7 +176,9 @@ function marketInstallLabel(plugin: MarketplacePlugin): string {
     if (plugin.packageInstall?.state === 'partial') return 'Uninstall remaining skills';
     if (plugin.packageInstall?.state === 'stale-record') return 'Clear stale installation';
   }
-  if (plugin.installTarget === 'unsupported' || plugin.installable === false) return 'Inspect only';
+  if (plugin.installTarget === 'native-plugin' && plugin.nativeSettingsLifecycle?.canUninstall) return 'Uninstall';
+  if (plugin.installTarget === 'native-plugin' && plugin.nativeSettingsLifecycle?.canInstall) return 'Install';
+  if (plugin.installTarget === 'unsupported' || (plugin.installable === false && !plugin.nativeSettingsLifecycle?.supported)) return 'Inspect only';
   if (plugin.compatible === false || plugin.installAction === 'incompatible') return t('settings.plugins.marketIncompatible');
   if (plugin.installAction === 'downgrade') return t('settings.plugins.marketDowngrade');
   if (plugin.installAction === 'reinstall') return t('settings.plugins.marketReinstall');
@@ -236,7 +244,7 @@ function marketVersionStatus(plugin: MarketplacePlugin): string | null {
       return `${plugin.packageInstall.missing.length} recorded skill director${plugin.packageInstall.missing.length === 1 ? 'y' : 'ies'} already missing`;
     }
   }
-  if (plugin.installTarget === 'unsupported' || plugin.installable === false) return 'Unsupported package';
+  if (plugin.installTarget === 'unsupported' || (plugin.installable === false && !plugin.nativeSettingsLifecycle?.supported)) return 'Unsupported package';
   if (plugin.compatible === false || plugin.installAction === 'incompatible') return t('settings.plugins.marketIncompatible');
   if (plugin.installAction === 'downgrade') {
     return t('settings.plugins.marketDowngradeTo', { version: marketVersion(plugin) });
@@ -267,6 +275,7 @@ function mapCatalogRow(row: any): MarketplacePlugin {
   const installable = row.installable ?? installMeta.installable;
   const packageInstall = row.packageInstall || { state: 'not-installed', recorded: [], present: [], missing: [], invalid: [] };
   const installTarget = row.installTarget || installMeta.installTarget || null;
+  const nativeSettingsLifecycle = row.nativeSettingsLifecycle || null;
   const isSkillsPackage = isSkillsTarget(installTarget);
   const skillsInstalled = isSkillsPackage && packageInstall.state !== 'not-installed';
   return {
@@ -286,13 +295,17 @@ function mapCatalogRow(row: any): MarketplacePlugin {
     active,
     retained: row.retained,
     installed: isSkillsPackage ? skillsInstalled : active,
-    canInstall: isSkillsPackage
+    canInstall: installTarget === 'native-plugin'
+      ? nativeSettingsLifecycle?.canInstall === true
+      : isSkillsPackage
       ? serverCanInstall && installable !== false && packageInstall.state === 'not-installed' && row.available !== false
       : serverCanInstall && installable !== false && !active,
     installAction: isSkillsPackage
       ? (packageInstall.state === 'not-installed' ? 'install' : 'reinstall')
-      : (installable === false ? 'incompatible' : (active ? 'reinstall' : 'install')),
-    compatible: installable === false ? false : true,
+      : (installTarget === 'native-plugin' && nativeSettingsLifecycle?.supported
+          ? (active ? 'reinstall' : 'install')
+          : (installable === false ? 'incompatible' : (active ? 'reinstall' : 'install'))),
+    compatible: installable === false && !nativeSettingsLifecycle?.supported ? false : true,
     catalogFormat,
     installTarget,
     installAdapter: row.installAdapter || installMeta.installAdapter || null,
@@ -306,6 +319,7 @@ function mapCatalogRow(row: any): MarketplacePlugin {
     packageInstall,
     packageActivation: row.packageActivation || null,
     nativeAgentPluginAccess: row.nativeAgentPluginAccess || null,
+    nativeSettingsLifecycle,
   };
 }
 
@@ -643,7 +657,7 @@ export function PluginMarketplaceTab() {
   }, [loadMarketplace]);
 
   const installPlugin = async (plugin: MarketplacePlugin) => {
-    if (!plugin.canInstall || plugin.installable === false || plugin.installTarget === 'unsupported') return;
+    if (!plugin.canInstall || plugin.installTarget === 'unsupported') return;
     const allowDowngrade = plugin.installAction === 'downgrade'
       ? window.confirm(t('settings.plugins.marketDowngradeConfirm', {
           from: plugin.installedVersion || '',
@@ -651,10 +665,37 @@ export function PluginMarketplaceTab() {
         }))
       : false;
     if (plugin.installAction === 'downgrade' && !allowDowngrade) return;
-    if (!confirmInstallPlan(plugin)) return;
+    if (plugin.installTarget !== 'native-plugin' && !confirmInstallPlan(plugin)) return;
 
     setInstallingPluginId(rowKey(plugin));
     try {
+      if (plugin.installTarget === 'native-plugin') {
+        const planRes = await hanaFetch(`/api/plugins/marketplace/${encodeURIComponent(plugin.id)}/native/install/plan`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            marketplaceId: plugin.marketplaceId,
+            expectedRevision: marketplace?.registry?.revision,
+            expectedDigest: marketplace?.registry?.digest,
+          }),
+        });
+        const plan = await planRes.json().catch(() => ({}));
+        if (plan.error) throw new Error(plan.error);
+        const typed = window.prompt(
+          `Install native Marketplace plugin ${plan.identity}?\n\nVersion: ${plan.facts?.version || marketVersion(plugin)}\nPackage SHA-256: ${plan.facts?.packageSha256 || 'unknown'}\nRuntime trust: ${plan.facts?.trust || plugin.trust || 'restricted'}\nServer-global contributions: ${(plan.facts?.contributions || []).join(', ') || 'none'}\n\nType ${plan.confirmationText} to continue.`,
+        );
+        if (typed !== plan.confirmationText) return;
+        const executeRes = await hanaFetch(`/api/plugins/marketplace/${encodeURIComponent(plugin.id)}/native/install/execute`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ planToken: plan.planToken, confirmation: typed }),
+        });
+        const result = await executeRes.json().catch(() => ({}));
+        if (result.error) throw new Error(result.error);
+        showToast(t('settings.plugins.installSuccess', { name: result.name || plugin.name }), 'success');
+        await loadMarketplace();
+        return;
+      }
       const res = await hanaFetch(`/api/plugins/marketplace/${encodeURIComponent(plugin.id)}/install`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -674,6 +715,41 @@ export function PluginMarketplaceTab() {
       await loadMarketplace();
     } catch (err: unknown) {
       showToast(t('settings.plugins.installError') + ': ' + (err instanceof Error ? err.message : String(err)), 'error');
+    } finally {
+      setInstallingPluginId(null);
+    }
+  };
+
+  const uninstallNativePlugin = async (plugin: MarketplacePlugin) => {
+    if (!plugin.marketplaceId || plugin.installTarget !== 'native-plugin' || !plugin.nativeSettingsLifecycle?.canUninstall) return;
+    setInstallingPluginId(rowKey(plugin));
+    try {
+      const planRes = await hanaFetch(`/api/plugins/marketplace/${encodeURIComponent(plugin.id)}/native/uninstall/plan`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          marketplaceId: plugin.marketplaceId,
+          expectedRevision: marketplace?.registry?.revision,
+          expectedDigest: marketplace?.registry?.digest,
+        }),
+      });
+      const plan = await planRes.json().catch(() => ({}));
+      if (plan.error) throw new Error(plan.error);
+      const typed = window.prompt(
+        `Uninstall ${plan.identity}? The active projection and artifact trust will be removed; retained verified artifacts and history will remain non-installed.\n\nType ${plan.confirmationText} to continue.`,
+      );
+      if (typed !== plan.confirmationText) return;
+      const executeRes = await hanaFetch(`/api/plugins/marketplace/${encodeURIComponent(plugin.id)}/native/uninstall/execute`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ planToken: plan.planToken, confirmation: typed }),
+      });
+      const result = await executeRes.json().catch(() => ({}));
+      if (result.error) throw new Error(result.error);
+      showToast(`Uninstalled ${plan.identity}; retained artifact remains non-installed.`, 'success');
+      await loadMarketplace();
+    } catch (err: unknown) {
+      showToast(`Native Marketplace uninstall failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
     } finally {
       setInstallingPluginId(null);
     }
@@ -1057,15 +1133,20 @@ export function PluginMarketplaceTab() {
                                 className={styles['settings-save-btn-sm']}
                                 disabled={
                                   installingPluginId === rowKey(selectedPlugin)
+                                  || marketplace?.access?.isStudioOwner === false
                                   || (
-                                    selectedPlugin.packageInstall?.state === 'not-installed'
+                                    selectedPlugin.installTarget === 'native-plugin'
+                                      ? !selectedPlugin.nativeSettingsLifecycle?.canInstall && !selectedPlugin.nativeSettingsLifecycle?.canUninstall
+                                      : selectedPlugin.packageInstall?.state === 'not-installed'
                                       ? !selectedPlugin.canInstall
-                                      : marketplace?.access?.isStudioOwner === false
+                                      : false
                                   )
                                 }
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  if (selectedPlugin.packageInstall && selectedPlugin.packageInstall.state !== 'not-installed') {
+                                  if (selectedPlugin.installTarget === 'native-plugin' && selectedPlugin.nativeSettingsLifecycle?.canUninstall) {
+                                    void uninstallNativePlugin(selectedPlugin);
+                                  } else if (selectedPlugin.packageInstall && selectedPlugin.packageInstall.state !== 'not-installed') {
                                     void uninstallSkillsPackage(selectedPlugin);
                                   } else {
                                     void installPlugin(selectedPlugin);
@@ -1107,11 +1188,11 @@ export function PluginMarketplaceTab() {
                                   }}
                                 />
                               )}
-                              {selectedPlugin.installTarget === 'native-plugin' && selectedAgentId && (
+                              {selectedPlugin.installTarget === 'native-plugin' && selectedAgentId && selectedPlugin.active && (
                                 <button
                                   type="button"
                                   className={styles['settings-save-btn-sm']}
-                                  disabled={updatingAgentAccess || marketplace?.access?.isStudioOwner === false}
+                                  disabled={updatingAgentAccess || marketplace?.access?.isStudioOwner === false || selectedPlugin.nativeAgentPluginAccess?.state === 'desired-not-installed'}
                                   onClick={() => { void toggleNativeAgentAccess(selectedPlugin); }}
                                 >
                                   {selectedPlugin.nativeAgentPluginAccess?.enabled ? 'Disable Agent Access' : 'Enable Agent Access'}
@@ -1168,8 +1249,14 @@ export function PluginMarketplaceTab() {
                             </div>
                             <div className={styles['plugin-marketplace-property-row']}>
                               <span>Installable</span>
-                              <strong>{selectedPlugin.installable === false || selectedPlugin.installTarget === 'unsupported' ? 'No' : 'Yes'}</strong>
+                              <strong>{selectedPlugin.nativeSettingsLifecycle?.supported || (selectedPlugin.installable !== false && selectedPlugin.installTarget !== 'unsupported') ? 'Yes' : 'No'}</strong>
                             </div>
+                            {selectedPlugin.installTarget === 'native-plugin' && selectedPlugin.nativeSettingsLifecycle && (
+                              <div className={styles['plugin-marketplace-property-row']}>
+                                <span>Installation</span>
+                                <strong>{selectedPlugin.active ? 'installed' : 'not installed'} · {selectedPlugin.nativeSettingsLifecycle.reason || 'Settings lifecycle unavailable'}</strong>
+                              </div>
+                            )}
                             {(selectedPlugin.catalogFormat || selectedPlugin.sourceStatus) && (
                               <div className={styles['plugin-marketplace-property-row']}>
                                 <span>Source</span>

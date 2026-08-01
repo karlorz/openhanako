@@ -666,6 +666,40 @@ describe("PluginMarketplaceSourceRegistry", () => {
     });
   });
 
+  it("accepts activation records for the compiled official marketplace source", () => {
+    const home = makeHome();
+    writeRegistry(home, {
+      schemaVersion: 1,
+      revision: 3,
+      sources: [],
+    });
+    const registry = new PluginMarketplaceSourceRegistry({ hanakoHome: home });
+    const status = registry.getStatus();
+
+    const result = registry.setControlPlaneActivations({
+      agentPluginAccess: {
+        hanako: {
+          [`demo@${OFFICIAL_MARKETPLACE_ID}`]: { enabled: true, contributions: ["tools"] },
+        },
+      },
+    }, {
+      expectedRevision: 3,
+      expectedDigest: status.digest,
+    });
+
+    expect(result).toMatchObject({
+      revision: 4,
+      activations: {
+        agentPluginAccess: {
+          hanako: {
+            [`demo@${OFFICIAL_MARKETPLACE_ID}`]: { enabled: true, contributions: ["tools"] },
+          },
+        },
+      },
+    });
+    expect(registry.diagnoseControlPlane().ok).toBe(true);
+  });
+
   it("preserves v2 activation records while disabling and adding sources", () => {
     const home = makeHome();
     writeRegistry(home, {

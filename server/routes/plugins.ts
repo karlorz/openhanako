@@ -2,7 +2,6 @@ import { Hono } from "hono";
 import fs from "fs";
 import path from "path";
 import os from "os";
-import crypto from "crypto";
 import { extractZip } from "../../lib/extract-zip.ts";
 import { fromRoot } from "../../shared/hana-root.ts";
 import { DEFAULT_THEME } from "../../desktop/src/shared/theme-registry.cjs";
@@ -49,6 +48,10 @@ import { inspectMarketplacePackage } from "../../lib/plugin-marketplace-inspecto
 import { emitAppEvent } from "../app-events.ts";
 import { uninstallMarketplaceSkillPackage } from "../../lib/plugin-marketplace-skill-uninstall.ts";
 import { refreshMarketplaceSkillRuntime } from "../../lib/plugin-marketplace-skill-runtime.ts";
+import { safeFetchBytes } from "../../lib/plugin-marketplace-network-policy.ts";
+import { PluginTrustStore } from "../../lib/plugin-trust-store.ts";
+import { PluginMarketplaceNativeLifecycle } from "../../lib/plugin-marketplace-native-lifecycle.ts";
+import { readMarketplaceActiveMarker, writeMarketplaceActiveMarker } from "../../lib/plugin-marketplace-active-marker.ts";
 
 const log = createModuleLogger("plugin-install");
 
@@ -401,6 +404,15 @@ function getInstallTargetDir(pm: any, desc: any, stagedDir: string, userPluginsD
   return targetDir;
 }
 
+function resolvePluginSourceRoot(rootDir: string) {
+  if (fs.existsSync(path.join(rootDir, "manifest.json")) || detectIncompatiblePluginFormat(rootDir)) return rootDir;
+  const childDirs = fs.readdirSync(rootDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory());
+  return childDirs.length === 1
+    ? path.join(rootDir, childDirs[0].name)
+    : rootDir;
+}
+
 async function stagePluginSource({ pm, sourcePath, userPluginsDir }: { pm: any; sourcePath: string; userPluginsDir: string }) {
   const stat = fs.statSync(sourcePath);
   const cleanupPaths = [];
@@ -414,12 +426,9 @@ async function stagePluginSource({ pm, sourcePath, userPluginsDir }: { pm: any; 
       const extractDir = fs.mkdtempSync(path.join(os.tmpdir(), "plugin-install-"));
       cleanupPaths.push(extractDir);
       await extractZip(sourcePath, extractDir);
-      const entries = fs.readdirSync(extractDir, { withFileTypes: true });
-      pluginSrc = entries.length === 1 && entries[0].isDirectory()
-        ? path.join(extractDir, entries[0].name)
-        : extractDir;
+      pluginSrc = resolvePluginSourceRoot(extractDir);
     } else if (stat.isDirectory()) {
-      pluginSrc = sourcePath;
+      pluginSrc = resolvePluginSourceRoot(sourcePath);
     } else {
       throw createPluginRouteError("Path must be a .zip file or directory", 400, "PLUGIN_INSTALL_SOURCE_INVALID");
     }
@@ -499,6 +508,7 @@ async function installPluginFromPath({
   expectedVersion,
   allowDowngrade = false,
   installRecord = {},
+  marketplaceInstall = null,
 }: {
   engine?: any;
   pm?: any;
@@ -508,6 +518,7 @@ async function installPluginFromPath({
   expectedVersion?: string;
   allowDowngrade?: boolean;
   installRecord?: Record<string, any>;
+  marketplaceInstall?: { marketplaceId: string; pluginId: string; artifactDigest: string } | null;
 } = {}) {
   fs.statSync(sourcePath);
   const sourceFile = registerSessionFileFromRequest(engine, {
@@ -539,15 +550,22 @@ async function installPluginFromPath({
     backup = createPluginInstallBackup({
       hanakoHome: engine.hanakoHome,
       pluginId: desc.id,
+      marketplaceId: marketplaceInstall?.marketplaceId,
       pluginDir: targetDir,
       version: installedVersion,
     } as any);
     fs.rmSync(targetDir, { recursive: true, force: true });
     fs.renameSync(stagedDir, targetDir);
+    if (marketplaceInstall) {
+      writeMarketplaceActiveMarker(targetDir, marketplaceInstall);
+    }
 
     let entry;
     try {
-      entry = await pm.installPlugin(targetDir, { source: "community" });
+      entry = await pm.installPlugin(targetDir, {
+        source: "community",
+        ...(marketplaceInstall ? { marketplaceInstall } : {}),
+      });
       assertInstallEntryHealthy(entry);
       await engine.syncPluginExtensions();
     } catch (err) {
@@ -627,13 +645,6 @@ async function downloadMarketplaceRelease({ engine, plugin }: { engine: any; plu
     throw err;
   }
 
-  const packageUrl = new URL(dist.packageUrl);
-  if (packageUrl.protocol !== "https:") {
-    const err = new Error("Plugin release packageUrl must use https") as Error & { status: number };
-    err.status = 400;
-    throw err;
-  }
-
   const fetchImpl = engine.fetch || globalThis.fetch;
   if (typeof fetchImpl !== "function") {
     const err = new Error("fetch is unavailable") as Error & { status: number };
@@ -646,29 +657,19 @@ async function downloadMarketplaceRelease({ engine, plugin }: { engine: any; plu
     throw err;
   }
 
-  const res = await fetchImpl(packageUrl.toString());
-  if (!res.ok) {
-    const err = new Error(`Plugin release download failed: ${res.status}`) as Error & { status: number };
-    err.status = 502;
-    throw err;
-  }
-  const contentLength = Number(res.headers?.get?.("content-length") || 0);
-  if (contentLength > MAX_PLUGIN_RELEASE_PACKAGE_SIZE) {
-    const err = new Error("Plugin release package is too large") as Error & { status: number };
-    err.status = 413;
-    throw err;
-  }
-
-  const body = Buffer.from(await res.arrayBuffer());
-  if (body.length > MAX_PLUGIN_RELEASE_PACKAGE_SIZE) {
-    const err = new Error("Plugin release package is too large") as Error & { status: number };
-    err.status = 413;
-    throw err;
-  }
-  const actualSha256 = crypto.createHash("sha256").update(body).digest("hex");
-  if (actualSha256 !== expectedSha256) {
-    const err = new Error("Plugin release sha256 mismatch") as Error & { status: number };
-    err.status = 502;
+  let body: Buffer;
+  try {
+    ({ body } = await safeFetchBytes(dist.packageUrl, {
+      fetchImpl,
+      expectedSha256,
+      maxBytes: MAX_PLUGIN_RELEASE_PACKAGE_SIZE,
+      allowQuery: true,
+    }));
+  } catch (cause: any) {
+    const message = cause?.message || "Plugin release download failed";
+    const err = new Error(message) as Error & { status: number; code?: string };
+    err.status = /too large|size limit/i.test(message) ? 413 : 502;
+    err.code = cause?.code;
     throw err;
   }
 
@@ -998,6 +999,18 @@ export function createPluginsRoute(engine: any) {
     return service;
   }
 
+  function getNativeMarketplaceLifecycle() {
+    let lifecycle = engine.pluginMarketplaceNativeLifecycle as PluginMarketplaceNativeLifecycle | undefined;
+    if (!lifecycle) {
+      lifecycle = new PluginMarketplaceNativeLifecycle({
+        service: getMarketplaceService(),
+        trustStore: new PluginTrustStore({ hanakoHome: engine.hanakoHome }),
+      });
+      engine.pluginMarketplaceNativeLifecycle = lifecycle;
+    }
+    return lifecycle;
+  }
+
   function principalFlags(c: any) {
     // HTTP auth middleware sets authPrincipal (not requestPrincipal). Local desktop
     // loopback tokens are kind=local_user + credentialKind=loopback_token.
@@ -1318,6 +1331,162 @@ export function createPluginsRoute(engine: any) {
     });
   });
 
+  route.post("/plugins/marketplace/:id/native/install/plan", async (c) => {
+    const flags = principalFlags(c);
+    const body = await c.req.json().catch(() => ({}));
+    try {
+      const plan = getNativeMarketplaceLifecycle().planInstall({
+        pluginId: c.req.param("id"),
+        marketplaceId: body.marketplaceId,
+        isStudioOwner: flags.isStudioOwner,
+        ...expectedRegistryPreconditionsFromBody(body),
+      });
+      return c.json(plan);
+    } catch (err: any) {
+      return c.json({ error: err.message, code: err.code }, err.status || 400);
+    }
+  });
+
+  route.post("/plugins/marketplace/:id/native/install/execute", async (c) => {
+    const flags = principalFlags(c);
+    const body = await c.req.json().catch(() => ({}));
+    const pm = engine.pluginManager;
+    if (!pm) return c.json({ error: "Plugin manager not available" }, 500);
+    try {
+      const outcome = await getNativeMarketplaceLifecycle().executeInstall({
+        planToken: body.planToken,
+        confirmation: body.confirmation,
+        isStudioOwner: flags.isStudioOwner,
+      }, async (facts) => {
+        const svc = getMarketplaceService();
+        const plugin = svc.getCatalogPlugin(facts.pluginId, facts.marketplaceId);
+        if (!plugin) throw createPluginRouteError("Marketplace plugin not found", 404, "PLUGIN_MARKETPLACE_NOT_FOUND");
+        let artifactPath = facts.retainedArtifactPath;
+        if (!artifactPath) {
+          const packagePath = await downloadMarketplaceRelease({ engine, plugin });
+          const extractDir = fs.mkdtempSync(path.join(os.tmpdir(), "plugin-native-retain-"));
+          try {
+            await extractZip(packagePath, extractDir);
+            artifactPath = svc.artifacts.retain({
+              marketplaceId: facts.marketplaceId,
+              pluginId: facts.pluginId,
+              artifactDigest: facts.packageSha256,
+              version: facts.version,
+              sourceFingerprint: facts.sourceFingerprint,
+              catalogSha256: facts.catalogSha256,
+              packageSha256: facts.packageSha256,
+              packageUrl: facts.packageUrl,
+              resolvedRevision: facts.resolvedRevision || undefined,
+              packageDir: extractDir,
+            }).artifactPath;
+          } finally {
+            fs.rmSync(extractDir, { recursive: true, force: true });
+          }
+        }
+        const entry = await installPluginFromPath({
+          engine,
+          pm,
+          sourcePath: artifactPath,
+          expectedPluginId: facts.pluginId,
+          expectedVersion: facts.version,
+          marketplaceInstall: {
+            marketplaceId: facts.marketplaceId,
+            pluginId: facts.pluginId,
+            artifactDigest: facts.packageSha256,
+          },
+          installRecord: {
+            source: "marketplace",
+            marketplaceId: facts.marketplaceId,
+            packageUrl: facts.packageUrl,
+            sha256: facts.packageSha256,
+            sourceFingerprint: facts.sourceFingerprint,
+            catalogSha256: facts.catalogSha256,
+            artifactPath,
+          },
+        });
+        svc.records.retainAndActivate({
+          pluginId: facts.pluginId,
+          marketplaceId: facts.marketplaceId,
+          artifactDigest: facts.packageSha256,
+          version: facts.version,
+          sourceFingerprint: facts.sourceFingerprint,
+          catalogSha256: facts.catalogSha256,
+          packageSha256: facts.packageSha256,
+          packageUrl: facts.packageUrl,
+          artifactPath,
+          resolvedRevision: facts.resolvedRevision || undefined,
+          action: facts.activeArtifactDigest ? "update" : "install",
+          result: entry.status || "ok",
+        });
+        svc.artifacts.markActivated(facts.marketplaceId, facts.pluginId, facts.packageSha256);
+        return { ...entry, artifactPath };
+      });
+      return c.json({ ok: true, ...outcome.result, identity: outcome.plan.identity, artifactDigest: outcome.plan.packageSha256 });
+    } catch (err: any) {
+      return c.json({ error: err.message, code: err.code }, err.status || 500);
+    }
+  });
+
+  route.post("/plugins/marketplace/:id/native/uninstall/plan", async (c) => {
+    const flags = principalFlags(c);
+    const body = await c.req.json().catch(() => ({}));
+    try {
+      return c.json(getNativeMarketplaceLifecycle().planUninstall({
+        pluginId: c.req.param("id"),
+        marketplaceId: body.marketplaceId,
+        isStudioOwner: flags.isStudioOwner,
+        ...expectedRegistryPreconditionsFromBody(body),
+      }));
+    } catch (err: any) {
+      return c.json({ error: err.message, code: err.code }, err.status || 400);
+    }
+  });
+
+  route.post("/plugins/marketplace/:id/native/uninstall/execute", async (c) => {
+    const flags = principalFlags(c);
+    const body = await c.req.json().catch(() => ({}));
+    const pm = engine.pluginManager;
+    if (!pm) return c.json({ error: "Plugin manager not available" }, 500);
+    try {
+      const outcome = await getNativeMarketplaceLifecycle().executeUninstall({
+        planToken: body.planToken,
+        confirmation: body.confirmation,
+        isStudioOwner: flags.isStudioOwner,
+      }, async (facts) => {
+        const svc = getMarketplaceService();
+        const activeDir = path.join(pm.getUserPluginsDir(), facts.pluginId);
+        const backup = createPluginInstallBackup({
+          hanakoHome: engine.hanakoHome,
+          pluginId: facts.pluginId,
+          marketplaceId: facts.marketplaceId,
+          pluginDir: activeDir,
+          version: facts.version,
+        });
+        let pluginDir: string | null = null;
+        try {
+          pluginDir = await pm.removePlugin(facts.pluginId, { source: "community" });
+          await engine.syncPluginExtensions();
+          if (pluginDir && fs.existsSync(pluginDir)) fs.rmSync(pluginDir, { recursive: true, force: true });
+          svc.records.deactivate({
+            pluginId: facts.pluginId,
+            marketplaceId: facts.marketplaceId,
+            artifactDigest: facts.packageSha256,
+          });
+        } catch (err) {
+          if (backup && restorePluginInstallBackup(backup, activeDir)) {
+            await pm.installPlugin(activeDir, { source: "community" }).catch(() => {});
+            await engine.syncPluginExtensions().catch(() => {});
+          }
+          throw err;
+        }
+        return { retained: true, installed: false };
+      });
+      return c.json({ ok: true, identity: outcome.plan.identity, ...outcome.result });
+    } catch (err: any) {
+      return c.json({ error: err.message, code: err.code }, err.status || 500);
+    }
+  });
+
   route.post("/plugins/:pluginId/source-switch", async (c) => {
     const body = await c.req.json().catch(() => ({}));
     const pluginId = c.req.param("pluginId");
@@ -1476,7 +1645,6 @@ export function createPluginsRoute(engine: any) {
       let sourceFingerprint: string | null = null;
       let svc: PluginMarketplaceService | null = null;
       let resolution: ReturnType<PluginMarketplaceService["resolveInstall"]> | null = null;
-      let pluginFromMultiSource = false;
 
       // Multi-source resolve first when durable home exists (official-wins / qualified / ambiguous).
       if (engine.hanakoHome) {
@@ -1487,7 +1655,6 @@ export function createPluginsRoute(engine: any) {
         if (resolution.ok === true) {
           sourceMarketplaceId = resolution.row.marketplaceId;
           plugin = svc.getCatalogPlugin(pluginId, sourceMarketplaceId);
-          pluginFromMultiSource = !!plugin;
           const status = svc.snapshots.getStatus(sourceMarketplaceId);
           if (status.state === "ok" || status.state === "stale" || status.state === "refreshing") {
             catalogSha256 = status.current?.catalogSha256 || null;
@@ -1594,9 +1761,9 @@ export function createPluginsRoute(engine: any) {
       }
 
       const marketplaceInspection = inspectMarketplacePackage(plugin);
-      if (svc && sourceMarketplaceId && pluginFromMultiSource && marketplaceInspection.destination === "native-plugin") {
+      if (marketplaceInspection.destination === "native-plugin") {
         throw createPluginRouteError(
-          "Native marketplace install is preview-only until the PluginManager contract audit and Agent Plugin Access routing are complete.",
+          "Native Marketplace packages must use the Studio-owner Settings plan/execute lifecycle.",
           409,
           "PLUGIN_MARKETPLACE_NATIVE_INSTALL_PREVIEW_ONLY",
         );
@@ -1798,6 +1965,17 @@ export function createPluginsRoute(engine: any) {
     if (!pm) return c.json({ error: "Plugin manager not available" }, 500);
     const id = c.req.param("id");
     try {
+      const existing = pm.findPluginEntry?.({ id, source: "community" });
+      const marker = existing?.pluginDir ? readMarketplaceActiveMarker(existing.pluginDir, id) : null;
+      const installRecord = engine.hanakoHome ? getMarketplaceService().records.get(id) : null;
+      const qualifiedActive = installRecord?.activeMarketplaceId
+        && installRecord.activeMarketplaceId !== "legacy-unqualified";
+      if (marker || qualifiedActive) {
+        return c.json({
+          error: "Marketplace-native plugins must be uninstalled through the Studio-owner Settings plan/execute lifecycle",
+          code: "PLUGIN_MARKETPLACE_NATIVE_LIFECYCLE_REQUIRED",
+        }, 409);
+      }
       const pluginDir = await pm.removePlugin(id, { source: "community" });
       await engine.syncPluginExtensions();
       removePluginInstallRecord(engine, id);

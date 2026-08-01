@@ -510,6 +510,24 @@ describe("HTTP route security policy", () => {
     }
   });
 
+  it("requires Studio owner for native Marketplace plan and execute routes", async () => {
+    const { authorizeHttpRoute, classifyHttpRoute } = await import("../server/http/route-security.ts");
+    const writer = devicePrincipal(["settings.read", "settings.write"]);
+    const owner = devicePrincipal(["settings.read", "settings.write", "studio.owner"]);
+    for (const path of [
+      "/api/plugins/marketplace/hyperframes/native/install/plan",
+      "/api/plugins/marketplace/hyperframes/native/install/execute",
+      "/api/plugins/marketplace/hyperframes/native/uninstall/plan",
+      "/api/plugins/marketplace/hyperframes/native/uninstall/execute",
+    ]) {
+      expect(classifyHttpRoute({ method: "POST", path })).toMatchObject({ kind: "studio_owner" });
+      expect(authorizeHttpRoute({ method: "POST", path, principal: writer }))
+        .toMatchObject({ allowed: false, error: "studio_owner_required", status: 403 });
+      expect(authorizeHttpRoute({ method: "POST", path, principal: owner }))
+        .toMatchObject({ allowed: true });
+    }
+  });
+
   it("allows settings.read to inventory installed marketplace skill packages", async () => {
     const { authorizeHttpRoute, classifyHttpRoute } = await import("../server/http/route-security.ts");
     const path = "/api/plugins/marketplace/installed-skill-packages";

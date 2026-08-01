@@ -305,6 +305,19 @@ describe("marketplace sources auth principal", () => {
     expect(invalidBody.code).toBe("PLUGIN_MARKETPLACE_CONTROL_PLANE_INVALID");
     expect(engine.reloadSkills).not.toHaveBeenCalled();
 
+    engine.pluginMarketplaceService.records.retainAndActivate({
+      pluginId: "demo",
+      marketplaceId: "team-plugins",
+      artifactDigest: "a".repeat(64),
+      version: "1.0.0",
+      sourceFingerprint: "b".repeat(64),
+      catalogSha256: "c".repeat(64),
+      packageSha256: "a".repeat(64),
+      artifactPath: home,
+      action: "install",
+      result: "loaded",
+    });
+
     const ok = await app.request("/api/plugins/marketplace/config/activations", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
