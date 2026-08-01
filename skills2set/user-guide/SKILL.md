@@ -371,7 +371,7 @@ HanaAgent 现在统一用 SessionFile 管理文件。桌面附件、生成图片
 - **Agent 技能开关**：选择一个 Agent，打开或关闭它能使用的用户技能
 - **兼容技能**：查看自动发现的外部技能目录，或手动添加目录
 
-全局安装技能后，不会自动给所有 Agent 打开。你需要在 Agent 技能开关里选择对应 Agent 再启用。新建 Agent 会默认继承当前已安装的用户技能快照；自学技能属于写出它的 Agent。
+手动安装到全局技能目录的普通用户技能，不会自动给所有现有 Agent 打开。你需要在 Agent 技能开关里选择对应 Agent 再启用。新建 Agent 会默认继承当前已安装的用户技能快照；自学技能属于写出它的 Agent。Marketplace 安装的 Hana 技能包使用下面单独说明的默认规则。
 
 在输入框输入 `/` 时，技能会以徽章形式出现。选中技能徽章后，本次消息会明确要求 HanaAgent 使用该技能。
 
@@ -386,6 +386,22 @@ HanaAgent 现在统一用 SessionFile 管理文件。桌面附件、生成图片
 - **插件卡片**：插件工具和插件消息可以在聊天里返回可交互卡片，重新打开历史会话后仍会按卡片显示
 - **插件页面 / Widget**：插件可以在主界面新增页面或右侧栏部件，可固定或隐藏
 - **热更新**：安装、启用或 reload 全权插件后，空闲会话会重新绑定插件事件；正在回复或切换中的会话会等到下一次安全重建再生效
+
+### Plugin Marketplace
+
+Marketplace 里可能同时出现两类内容，Hana 会先检查包的目标类型：
+
+- `hana-skills` + `skill-manager`：这是 Claude-compatible Hana 技能包，不是原生插件。安装后会在设置 → 插件 → 管理插件中显示 **Hana skills badge**，但仍由技能系统管理。
+- `native-plugin` + `plugin-manager`：这是由 `PluginManager` 管理的原生 Hana 插件。本地 folder 或 ZIP 可以拖入设置 → 插件安装；当前多来源/Agent 契约下，Marketplace 中的原生插件只能预览，Agent 驱动的安装暂缓。
+
+四种开关作用不同：
+
+- **Marketplace package gate**：全局开启或关闭一个已安装的 Hana 技能包；新安装的包在没有旧设置时默认开启。
+- **Agent Skill Toggle**：只控制某一个 Agent 是否使用某一个技能。
+- **native plugin toggle**：控制原生插件是否由 PluginManager 加载运行。
+- **Marketplace source toggle**：控制一个商店来源是否参与目录浏览，不会代替上面三个开关。
+
+整包关闭（例如关闭 SkillWiki 包里的全部技能）应使用 Marketplace package gate；只关闭 Hanako 的一个技能应使用 Agent Skill Toggle。详细的商店来源、安装、卸载和故障处理由 `marketplace-manager` 指导。原生插件开发和发布则由 `hana-plugin-creator` 指导。
 
 ### 连接器（MCP）
 
@@ -546,7 +562,7 @@ HanaAgent 默认运行在沙箱中，限制了它能访问的文件范围和系�
 有些模型不支持 extended thinking。检查你用的模型是否支持这个功能。
 
 ### 插件装了但不生效？
-检查插件状态是否为 loaded。如果是 restricted 插件，某些高级功能（routes、hooks）需要全权信任才能生效。在设置 → 插件中可以查看状态。
+先看它是原生插件还是带 Hana skills badge 的 Marketplace 技能包。原生插件检查状态是否为 loaded；如果是 restricted 插件，某些高级功能（routes、hooks）需要全权信任。Marketplace 技能包则检查 Marketplace package gate 和对应 Agent Skill Toggle，不要把它当作 PluginManager 加载问题。
 
 ### HanaAgent 支持 MCP 吗？
 支持。进入设置 → 连接器，可以添加本地或远程的 MCP 服务；远程服务支持 OAuth 登录授权、Bearer Token 和代理网络诊断，连接断开会自动重连，每个 Agent 还能单独控制启用哪些连接器。
