@@ -47,8 +47,8 @@ import { PluginInstallRecords } from "../../lib/plugin-install-records.ts";
 import { PluginArtifactStore } from "../../lib/plugin-artifact-store.ts";
 import { inspectMarketplacePackage } from "../../lib/plugin-marketplace-inspector.ts";
 import { emitAppEvent } from "../app-events.ts";
-import { removeAgentSkillReferences } from "../../lib/skills/remove-skill-references.ts";
-import { removeSkillsFromBundles } from "../../lib/skill-bundles/store.ts";
+import { uninstallMarketplaceSkillPackage } from "../../lib/plugin-marketplace-skill-uninstall.ts";
+import { refreshMarketplaceSkillRuntime } from "../../lib/plugin-marketplace-skill-runtime.ts";
 
 const log = createModuleLogger("plugin-install");
 
@@ -1154,12 +1154,9 @@ export function createPluginsRoute(engine: any) {
       });
       // Package/skill activation toggles must re-wire the package gate and re-sync
       // agent skill injection without waiting for a skills-dir file watch.
-      try {
-        await engine.reloadSkills?.();
-      } catch {
-        // best-effort reload; activation write already committed
-      }
-      emitAppEvent(engine, "skills-changed", { agentId: null });
+      await refreshMarketplaceSkillRuntime(engine, {
+        emitSkillsChanged: () => emitAppEvent(engine, "skills-changed", { agentId: null }),
+      });
       return c.json({
         ...result,
         registry: svc.getRegistryStatus({ forRemote: !flags.isLocalOwner }),
@@ -1290,10 +1287,12 @@ export function createPluginsRoute(engine: any) {
 
   route.post("/plugins/marketplace/sources/:marketplaceId/refresh", async (c) => {
     const flags = principalFlags(c);
+    const body = await c.req.json().catch(() => ({}));
     try {
       const svc = getMarketplaceService();
       const status = await svc.refreshSource(c.req.param("marketplaceId"), {
         isStudioOwner: flags.isStudioOwner,
+        ...expectedRegistryPreconditionsFromBody(body),
       });
       return c.json({ marketplaceId: c.req.param("marketplaceId"), status });
     } catch (err: any) {
@@ -1757,42 +1756,17 @@ export function createPluginsRoute(engine: any) {
     try {
       const flags = principalFlags(c);
       const svc = getMarketplaceService();
-      const result = svc.uninstallClaudePluginSkills(pluginId, marketplaceId, {
+      const result = await uninstallMarketplaceSkillPackage({
+        engine,
+        service: svc,
+        pluginId,
+        marketplaceId,
         userSkillsDir: engine.userSkillsDir,
         isStudioOwner: flags.isStudioOwner,
         ...expectedRegistryPreconditionsFromBody(body),
+        emitSkillsChanged: () => emitAppEvent(engine, "skills-changed", { agentId: null }),
       });
-      const handled = [...result.deleted, ...result.alreadyMissing];
-      const referenceCleanup = engine.agentsDir
-        ? removeAgentSkillReferences(engine.agentsDir, handled, { marketplacePackageIdentity: `${pluginId}@${marketplaceId}`, marketplacePackageSkillNames: result.complete ? undefined : handled, agents: engine.agents?.values?.() })
-        : { updatedAgents: [], failedAgents: [] };
-      let bundleCleanupError: string | null = null;
-      if (engine.hanakoHome && handled.length > 0) {
-        try {
-          removeSkillsFromBundles(engine, handled);
-        } catch (err: any) {
-          bundleCleanupError = err?.message || String(err);
-        }
-      }
-      let reloadError: string | null = null;
-      try {
-        await engine.reloadSkills?.();
-      } catch (err: any) {
-        reloadError = err?.message || String(err);
-      }
-      emitAppEvent(engine, "skills-changed", { agentId: null });
-      const ok = result.complete
-        && !result.activationCleanupError
-        && referenceCleanup.failedAgents.length === 0
-        && !bundleCleanupError
-        && !reloadError;
-      return c.json({
-        ok,
-        ...result,
-        referenceCleanup,
-        bundleCleanupError,
-        reloadError,
-      }, ok ? 200 : 207);
+      return c.json(result, result.ok ? 200 : 207);
     } catch (err: any) {
       return c.json({
         error: err?.message || String(err),

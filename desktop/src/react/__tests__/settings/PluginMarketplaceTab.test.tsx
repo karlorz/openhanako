@@ -580,6 +580,13 @@ describe('PluginMarketplaceTab inspector rendering', () => {
   });
 
   it('shows package enable toggle for installed skills packages and PUTs marketplaceSkillPackages clone', async () => {
+    const existingActivations = {
+      marketplaceSkillPackages: { 'other@src': { enabled: true } },
+      marketplaceSkills: { 'wiki-query@llm-wiki/skillwiki': { enabled: true } },
+      runtimePlugins: { 'demo@official': { enabled: true } },
+      agentSkillOverrides: { 'agent-a': { 'wiki-query@llm-wiki/skillwiki': { enabled: false } } },
+      agentPluginAccess: { 'agent-a': { 'demo@official': { enabled: false } } },
+    };
     const installed = catalogPlugin({
       canInstall: false,
       packageInstall: {
@@ -608,11 +615,7 @@ describe('PluginMarketplaceTab inspector rendering', () => {
           configDiagnostics: {
             file: {
               revision: 7,
-              activations: {
-                marketplaceSkillPackages: { 'other@src': { enabled: true } },
-                marketplaceSkills: { 'wiki-query@llm-wiki/skillwiki': { enabled: true } },
-                runtimePlugins: { 'demo@official': { enabled: true } },
-              },
+              activations: existingActivations,
             },
             summary: { revision: 7 },
           },
@@ -628,11 +631,7 @@ describe('PluginMarketplaceTab inspector rendering', () => {
           configDiagnostics: {
             file: {
               revision: 7,
-              activations: {
-                marketplaceSkillPackages: { 'other@src': { enabled: true } },
-                marketplaceSkills: { 'wiki-query@llm-wiki/skillwiki': { enabled: true } },
-                runtimePlugins: { 'demo@official': { enabled: true } },
-              },
+              activations: existingActivations,
             },
             summary: { revision: 7 },
           },
@@ -651,8 +650,10 @@ describe('PluginMarketplaceTab inspector rendering', () => {
               'other@src': { enabled: true },
               'skillwiki@llm-wiki': { enabled: false },
             },
-            marketplaceSkills: { 'wiki-query@llm-wiki/skillwiki': { enabled: true } },
-            runtimePlugins: { 'demo@official': { enabled: true } },
+            marketplaceSkills: existingActivations.marketplaceSkills,
+            runtimePlugins: existingActivations.runtimePlugins,
+            agentSkillOverrides: existingActivations.agentSkillOverrides,
+            agentPluginAccess: existingActivations.agentPluginAccess,
           },
         });
         return jsonResponse({ revision: 8 });

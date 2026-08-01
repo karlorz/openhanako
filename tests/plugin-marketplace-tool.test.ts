@@ -53,6 +53,7 @@ function unsupportedClaudePlugin() {
 
 function makeMarketplaceService(plugin: any = claudeSkillPlugin()) {
   return {
+    localAllowedRoot: "/tmp/hana/plugin-marketplaces-local",
     ensureOfficialSnapshotSeededAsync: vi.fn().mockResolvedValue({ state: "ok" }),
     listSources: vi.fn().mockReturnValue([
       { id: MARKETPLACE_ID, name: "LLM Wiki", kind: "git", authority: "custom", status: "ok" },
@@ -65,6 +66,26 @@ function makeMarketplaceService(plugin: any = claudeSkillPlugin()) {
         compositeKey: sourceQualifiedId((plugin as any).id),
         installTarget: "hana-skills",
       }],
+    }),
+    addSource: vi.fn().mockReturnValue({
+      source: { id: "team-market", name: "Team Market", kind: "git", url: "https://github.com/example/team-market.git" },
+      revision: 2,
+      digest: "b".repeat(64),
+    }),
+    refreshSource: vi.fn().mockResolvedValue({
+      source: { id: MARKETPLACE_ID, name: "LLM Wiki", kind: "git", status: "ok" },
+      revision: 2,
+      digest: "b".repeat(64),
+    }),
+    setSourceEnabled: vi.fn().mockReturnValue({
+      source: { id: MARKETPLACE_ID, name: "LLM Wiki", kind: "git", enabled: false },
+      revision: 2,
+      digest: "b".repeat(64),
+    }),
+    removeSource: vi.fn().mockReturnValue({
+      removed: MARKETPLACE_ID,
+      revision: 2,
+      digest: "b".repeat(64),
     }),
     resolveInstall: vi.fn().mockImplementation((pluginId: string, marketplaceId?: string | null) => ({
       ok: true,
@@ -79,6 +100,48 @@ function makeMarketplaceService(plugin: any = claudeSkillPlugin()) {
       skipped: [],
       warnings: [],
       resolvedRevision: "abc123",
+    }),
+    listInstalledSkillPackages: vi.fn().mockReturnValue([{
+      pluginId: (plugin as any).id,
+      marketplaceId: MARKETPLACE_ID,
+      identity: sourceQualifiedId((plugin as any).id),
+      state: "installed",
+      skills: ["skillwiki"],
+      enabled: true,
+    }]),
+    setMarketplaceSkillPackageEnabled: vi.fn().mockReturnValue({
+      pluginId: (plugin as any).id,
+      marketplaceId: MARKETPLACE_ID,
+      identity: sourceQualifiedId((plugin as any).id),
+      enabled: false,
+      revision: 2,
+      digest: "b".repeat(64),
+    }),
+    getMarketplaceSkillPackageUninstallFacts: vi.fn().mockReturnValue({
+      pluginId: (plugin as any).id,
+      marketplaceId: MARKETPLACE_ID,
+      identity: sourceQualifiedId((plugin as any).id),
+      state: "installed",
+      recordedSkills: ["skillwiki"],
+      presentSkills: ["skillwiki"],
+      missingSkills: [],
+      invalidSkills: [],
+      cleanupTargets: ["skillwiki"],
+      activationReferences: {
+        packageGate: sourceQualifiedId((plugin as any).id),
+        marketplaceSkills: [sourceQualifiedId("skillwiki")],
+      },
+      registry: { revision: 1, digest: "a".repeat(64) },
+    }),
+    uninstallClaudePluginSkills: vi.fn().mockReturnValue({
+      marketplaceId: MARKETPLACE_ID,
+      pluginId: (plugin as any).id,
+      deleted: ["skillwiki"],
+      alreadyMissing: [],
+      failed: [],
+      remaining: [],
+      complete: true,
+      activationCleanupError: null,
     }),
     getRegistryStatus: vi.fn().mockReturnValue({
       revision: 1,
@@ -131,6 +194,9 @@ function makeTool(options: {
       pluginMarketplaceService: marketplaceService,
       userSkillsDir: options.userSkillsDir === null ? null : "/tmp/hana-user-skills",
       reloadSkills,
+      agentsDir: "/tmp/hana-agents",
+      agents: new Map(),
+      config: { bundles: [] },
     }),
   });
   return { tool, marketplaceService, reloadSkills };
@@ -148,8 +214,8 @@ async function getPlanToken(tool: ReturnType<typeof createPluginMarketplaceTool>
 }
 
 describe("plugin_marketplace Agent tool", () => {
-  it("declares read permissions for inspection and review permissions for installs", () => {
-    const { tool } = makeTool();
+  it("declares aligned permissions for reads, configuration, install, and uninstall", () => {
+    const { tool, marketplaceService } = makeTool();
 
     expect(tool.sessionPermission.resolveInvocation({ action: "list_catalog" })).toMatchObject({
       action: "read",
@@ -188,6 +254,7 @@ describe("plugin_marketplace Agent tool", () => {
         pluginId: "skillwiki",
         marketplaceId: MARKETPLACE_ID,
         planToken: "plan-token",
+        skillInstallRoot: "/tmp/hana-user-skills",
         ownerRequired: true,
       },
     });
@@ -200,7 +267,7 @@ describe("plugin_marketplace Agent tool", () => {
       action: "set_activations",
       expectedRevision: 1,
     })).toMatchObject({
-      action: "update",
+      action: "configure",
       kind: "review",
       capability: "plugin_marketplace.configure",
       target: {
@@ -208,18 +275,233 @@ describe("plugin_marketplace Agent tool", () => {
         id: "plugin-marketplace:control-plane",
       },
     });
+    expect(tool.sessionPermission.resolveInvocation({ action: "list_installed_packages" })).toMatchObject({
+      action: "read",
+      kind: "read",
+      capability: "plugin_marketplace.read",
+    });
+    expect(tool.sessionPermission.resolveInvocation({
+      action: "add_source",
+      source: "https://github.com/example/team-market.git",
+      expectedRevision: 1,
+      expectedDigest: "a".repeat(64),
+    })).toMatchObject({
+      action: "configure",
+      kind: "review",
+      capability: "plugin_marketplace.configure",
+      sideEffect: {
+        source: "https://github.com/example/team-market.git",
+        expectedRevision: 1,
+        expectedDigest: "a".repeat(64),
+        ownerRequired: true,
+      },
+    });
+    expect(tool.sessionPermission.resolveInvocation({
+      action: "add_source",
+      source: "./team-market",
+      expectedRevision: 1,
+      expectedDigest: "a".repeat(64),
+    })).toMatchObject({
+      action: "configure",
+      kind: "review",
+      capability: "plugin_marketplace.configure",
+      sideEffect: {
+        source: "./team-market",
+        sourceKind: "local",
+        localSourcePath: "/tmp/hana/plugin-marketplaces-local/team-market",
+        localAllowedRoot: "/tmp/hana/plugin-marketplaces-local",
+      },
+    });
+    expect(tool.sessionPermission.resolveInvocation({
+      action: "set_package_enabled",
+      pluginId: "skillwiki",
+      marketplaceId: MARKETPLACE_ID,
+      enabled: false,
+      expectedRevision: 1,
+      expectedDigest: "a".repeat(64),
+    })).toMatchObject({
+      action: "configure",
+      kind: "review",
+      capability: "plugin_marketplace.configure",
+      target: { id: `plugin-marketplace:${sourceQualifiedId("skillwiki")}` },
+    });
+    marketplaceService.listSources.mockReturnValue([{
+      id: MARKETPLACE_ID,
+      name: "LLM Wiki",
+      kind: "local",
+      path: "./llm-wiki",
+      authority: "custom",
+      status: "ok",
+    }]);
+    expect(tool.sessionPermission.resolveInvocation({
+      action: "refresh_source",
+      marketplaceId: MARKETPLACE_ID,
+      expectedRevision: 1,
+      expectedDigest: "a".repeat(64),
+    })).toMatchObject({
+      sideEffect: {
+        sourceKind: "local",
+        localSourcePath: "/tmp/hana/plugin-marketplaces-local/llm-wiki",
+        localAllowedRoot: "/tmp/hana/plugin-marketplaces-local",
+        sourceAuthority: "custom",
+      },
+    });
     expect(tool.sessionPermission.resolveInvocation({ action: "remove_source" })).toBeNull();
+    expect(tool.sessionPermission.resolveInvocation({
+      action: "uninstall",
+      pluginId: "skillwiki",
+      marketplaceId: MARKETPLACE_ID,
+      planToken: "uninstall-plan-token",
+      expectedRevision: 1,
+      expectedDigest: "a".repeat(64),
+    })).toMatchObject({
+      action: "uninstall",
+      kind: "review",
+      capability: "plugin_marketplace.uninstall",
+      target: { id: `plugin-marketplace:${sourceQualifiedId("skillwiki")}` },
+      sideEffect: {
+        pluginId: "skillwiki",
+        marketplaceId: MARKETPLACE_ID,
+        planToken: "uninstall-plan-token",
+        ownerRequired: true,
+      },
+    });
     expect(tool.sessionPermission.resolveInvocation({
       action: "execute_compat_mutation",
       compatAction: "refresh",
       bindingId: "claude-live",
       planToken: "compat-plan-token",
     })).toMatchObject({
-      action: "update",
+      action: "configure",
       kind: "review",
       capability: "plugin_marketplace.configure",
       target: { id: "plugin-marketplace:claude-compat:claude-live" },
     });
+  });
+
+  it("delegates stale-protected source lifecycle mutations", async () => {
+    const { tool, marketplaceService } = makeTool();
+    const preconditions = {
+      expectedRevision: 1,
+      expectedDigest: "a".repeat(64),
+    };
+
+    const added = await tool.execute("add", {
+      action: "add_source",
+      source: "https://github.com/example/team-market.git",
+      ...preconditions,
+    });
+    expect(added.isError).toBeUndefined();
+    expect(marketplaceService.addSource).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "git", gitUrl: "https://github.com/example/team-market.git" }),
+      { isStudioOwner: true, isLocalOwner: false, ...preconditions },
+    );
+
+    await tool.execute("refresh", { action: "refresh_source", marketplaceId: MARKETPLACE_ID, ...preconditions });
+    expect(marketplaceService.refreshSource).toHaveBeenCalledWith(MARKETPLACE_ID, {
+      isStudioOwner: true,
+      ...preconditions,
+    });
+
+    await tool.execute("disable", {
+      action: "set_source_enabled",
+      marketplaceId: MARKETPLACE_ID,
+      enabled: false,
+      ...preconditions,
+    });
+    expect(marketplaceService.setSourceEnabled).toHaveBeenCalledWith(MARKETPLACE_ID, false, {
+      isStudioOwner: true,
+      ...preconditions,
+    });
+
+    await tool.execute("remove", { action: "remove_source", marketplaceId: MARKETPLACE_ID, ...preconditions });
+    expect(marketplaceService.removeSource).toHaveBeenCalledWith(MARKETPLACE_ID, {
+      isStudioOwner: true,
+      ...preconditions,
+    });
+  });
+
+  it("requires stale-state preconditions for every source mutation", async () => {
+    const { tool, marketplaceService } = makeTool();
+    for (const params of [
+      { action: "add_source", source: "https://github.com/example/team-market.git" },
+      { action: "refresh_source", marketplaceId: MARKETPLACE_ID },
+      { action: "set_source_enabled", marketplaceId: MARKETPLACE_ID, enabled: false },
+      { action: "remove_source", marketplaceId: MARKETPLACE_ID },
+    ]) {
+      const result = await tool.execute("missing-preconditions", params);
+      expect(result.isError).toBe(true);
+      expect(result.details).toMatchObject({ ok: false, code: "PLUGIN_MARKETPLACE_PRECONDITION_REQUIRED" });
+    }
+    expect(marketplaceService.addSource).not.toHaveBeenCalled();
+    expect(marketplaceService.refreshSource).not.toHaveBeenCalled();
+    expect(marketplaceService.setSourceEnabled).not.toHaveBeenCalled();
+    expect(marketplaceService.removeSource).not.toHaveBeenCalled();
+  });
+
+  it("lists installed skill packages with registry identity", async () => {
+    const { tool, marketplaceService } = makeTool();
+    const result = await tool.execute("inventory", { action: "list_installed_packages" });
+
+    expect(result.isError).toBeUndefined();
+    expect(marketplaceService.listInstalledSkillPackages).toHaveBeenCalledTimes(1);
+    expect(result.details).toMatchObject({
+      ok: true,
+      packages: [{ identity: sourceQualifiedId("skillwiki"), enabled: true }],
+      registry: { revision: 1, digest: "a".repeat(64) },
+    });
+  });
+
+  it("toggles one exact package without accepting a full activation object", async () => {
+    const { tool, marketplaceService } = makeTool();
+    const result = await tool.execute("toggle", {
+      action: "set_package_enabled",
+      pluginId: "skillwiki",
+      marketplaceId: MARKETPLACE_ID,
+      enabled: false,
+      expectedRevision: 1,
+      expectedDigest: "a".repeat(64),
+      activations: { runtimePlugins: { unrelated: { enabled: false } } },
+    });
+
+    expect(result.isError).toBeUndefined();
+    expect(marketplaceService.setMarketplaceSkillPackageEnabled).toHaveBeenCalledWith(
+      "skillwiki",
+      MARKETPLACE_ID,
+      false,
+      {
+        isStudioOwner: true,
+        expectedRevision: 1,
+        expectedDigest: "a".repeat(64),
+      },
+    );
+    expect(marketplaceService.setControlPlaneActivations).not.toHaveBeenCalled();
+  });
+
+  it("skips skill reload for an idempotent package toggle", async () => {
+    const { tool, marketplaceService, reloadSkills } = makeTool();
+    marketplaceService.setMarketplaceSkillPackageEnabled.mockReturnValue({
+      pluginId: "skillwiki",
+      marketplaceId: MARKETPLACE_ID,
+      identity: sourceQualifiedId("skillwiki"),
+      enabled: false,
+      changed: false,
+      revision: 1,
+      digest: "a".repeat(64),
+    });
+
+    const result = await tool.execute("toggle-idempotent", {
+      action: "set_package_enabled",
+      pluginId: "skillwiki",
+      marketplaceId: MARKETPLACE_ID,
+      enabled: false,
+      expectedRevision: 1,
+      expectedDigest: "a".repeat(64),
+    });
+
+    expect(result.isError).toBeUndefined();
+    expect(result.details).toMatchObject({ changed: false, revision: 1 });
+    expect(reloadSkills).not.toHaveBeenCalled();
   });
 
   it("lists catalog rows through the marketplace service", async () => {
@@ -450,6 +732,74 @@ describe("plugin_marketplace Agent tool", () => {
       expectedPlanToken: expect.any(String),
     });
     expect(marketplaceService.installClaudePluginSkills).not.toHaveBeenCalled();
+  });
+
+  it("requires exact source-qualified identity for install mutations", async () => {
+    const { tool, marketplaceService } = makeTool();
+    const result = await tool.execute("install", {
+      action: "install",
+      pluginId: "skillwiki",
+      planToken: "plan-token",
+    });
+    expect(result.isError).toBe(true);
+    expect(result.details).toMatchObject({ ok: false, code: "PLUGIN_MARKETPLACE_MARKETPLACE_ID_REQUIRED" });
+    expect(marketplaceService.resolveInstall).not.toHaveBeenCalled();
+  });
+
+  it("plans and executes exact stale-protected package uninstall", async () => {
+    const { tool, marketplaceService, reloadSkills } = makeTool();
+    const planned = await tool.execute("plan-uninstall", {
+      action: "plan_uninstall",
+      pluginId: "skillwiki",
+      marketplaceId: MARKETPLACE_ID,
+    });
+    expect(planned.isError).toBeUndefined();
+    expect(planned.details).toMatchObject({
+      ok: true,
+      identity: sourceQualifiedId("skillwiki"),
+      recordedSkills: ["skillwiki"],
+      planToken: expect.any(String),
+      registry: { revision: 1, digest: "a".repeat(64) },
+    });
+    const planToken = (planned.details as any).planToken;
+
+    const stale = await tool.execute("stale-uninstall", {
+      action: "uninstall",
+      pluginId: "skillwiki",
+      marketplaceId: MARKETPLACE_ID,
+      planToken: "stale-token",
+      expectedRevision: 1,
+      expectedDigest: "a".repeat(64),
+    });
+    expect(stale.isError).toBe(true);
+    expect(stale.details).toMatchObject({ ok: false, code: "PLUGIN_MARKETPLACE_PLAN_STALE" });
+    expect(marketplaceService.uninstallClaudePluginSkills).not.toHaveBeenCalled();
+
+    const removed = await tool.execute("uninstall", {
+      action: "uninstall",
+      pluginId: "skillwiki",
+      marketplaceId: MARKETPLACE_ID,
+      planToken,
+      expectedRevision: 1,
+      expectedDigest: "a".repeat(64),
+    });
+    expect(removed.isError).toBeUndefined();
+    expect(marketplaceService.uninstallClaudePluginSkills).toHaveBeenCalledWith(
+      "skillwiki",
+      MARKETPLACE_ID,
+      {
+        userSkillsDir: "/tmp/hana-user-skills",
+        isStudioOwner: true,
+        expectedRevision: 1,
+        expectedDigest: "a".repeat(64),
+      },
+    );
+    expect(reloadSkills).toHaveBeenCalledTimes(1);
+    expect(removed.details).toMatchObject({
+      ok: true,
+      complete: true,
+      deleted: ["skillwiki"],
+    });
   });
 
   it("installs Hana skill packages and reloads skills after approval has passed", async () => {
