@@ -27,8 +27,9 @@ export async function uninstallMarketplaceSkillPackage(options: {
   const handled = [...result.deleted, ...result.alreadyMissing];
   const referenceCleanup = options.engine.agentsDir
     ? removeAgentSkillReferences(options.engine.agentsDir, handled, {
-        marketplacePackageIdentity: `${options.pluginId}@${options.marketplaceId}`,
-        marketplacePackageSkillNames: result.complete ? undefined : handled,
+        // Keep source-qualified per-Agent opt-outs dormant across uninstall.
+        // Reinstalling the same package identity must not silently re-enable
+        // skills the user explicitly disabled before removal.
         agents: options.engine.agents?.values?.(),
       })
     : { updatedAgents: [], failedAgents: [] };

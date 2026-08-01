@@ -10,6 +10,13 @@ metadata:
 
 Use this skill for Hana application plugins, not Codex `.codex-plugin` bundles.
 
+This skill owns native plugin authoring and publication. Native packages use
+destination `native-plugin`, adapter `plugin-manager`, and `PluginManager`.
+For existing Marketplace sources or Claude-compatible packages with
+destination `hana-skills` and adapter `skill-manager`, hand off installation,
+package enable/disable, per-Agent routing, uninstall, and troubleshooting to
+`marketplace-manager`. A Hana skill package never becomes a native plugin.
+
 ## First Contact
 
 On first use, give a map, not an encyclopedia. Explain what Hana plugins can add, ask what the user wants to build, and invite follow-up questions. Expand details only after the user asks or after the chosen scaffold needs them.
@@ -178,12 +185,14 @@ python3 skills2set/hana-plugin-creator/scripts/create_hana_plugin.py "Jimeng Pro
 - Keep `capabilities.chat` separate from `capabilities.media.*`. Media-only providers must set `chat.projection = "none"` so they never appear in chat model selectors.
 - CLI-backed providers must declare `runtime.kind = "local-cli"` or `"browser-cli"` with structured arg bindings and output contracts. Do not build shell command strings.
 
-## Marketplace Rules
+## Native Hana Plugin Marketplace Publication Rules
 
+- Use `marketplace-manager` for existing source and package operations. Keep
+  this section limited to authoring and publishing native Hana plugins.
 - Marketplace metadata lives in the `OH-Plugins` repository, not inside `project-hana`.
 - Official source plugins may live in `OH-Plugins/official-plugins/<plugin-id>/` with a matching `plugins/<plugin-id>.yaml`.
 - Hana supports multiple named marketplace sources; OH-Plugins remains the compiled official default. Custom sources are URL, local, or public HTTPS Git.
-- Catalog identity is `{marketplaceId, pluginId}` (optional `pluginId@marketplaceId`). Runtime still uses bare `pluginId` with **one active marketplace source per server**.
+- Catalog identity is `{marketplaceId, pluginId}` (optional `pluginId@marketplaceId`). The source-qualified identity belongs to Marketplace operations; the native PluginManager runtime still uses a bare `pluginId` slot with **one active marketplace source per server**.
 - Data, configuration, sensitive configuration, backups, and trust are source-qualified. Switching sources does not copy state or secrets.
 - Release packages must include lowercase 64-hex `sha256`. Remote marketplaces are public credential-free HTTPS only in v1.
 - Optional health self-test: plugins may expose a cheap activation check for source-switch health; catalog refresh never executes plugin code.
@@ -193,8 +202,8 @@ python3 skills2set/hana-plugin-creator/scripts/create_hana_plugin.py "Jimeng Pro
 - Hana selects the highest SemVer version compatible with the current app and exposes update, reinstall, incompatible, and downgrade states to the UI.
 - If the selected compatible version is lower than the installed version, install requires explicit downgrade confirmation with `allowDowngrade: true`.
 - Release installs are backed up before replacement and rolled back when the new plugin fails to load.
-- Local file marketplaces can install `distribution.kind = "source"` entries because paths resolve on disk.
-- URL marketplaces browse entries, show README content, and install release packages by downloading the zip and verifying `sha256`.
+- Local file native compatibility marketplaces may use `distribution.kind = "source"` because paths resolve on the Hana server.
+- URL native compatibility releases download a zip and verify `sha256`. Under the current durable multi-source/Agent contract, native Marketplace installation is preview-only/deferred; do not bypass that boundary. Claude-compatible Hana skill packages use `skill-manager`, not this publication workflow.
 - Before pushing `OH-Plugins`, complete the release safety review and wait for explicit user confirmation.
 
 ## UI Rules

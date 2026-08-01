@@ -3,6 +3,21 @@
 > This document is for community developers who want to build user-installable plugins.
 > System plugins (built-in features) use the same plugin format, placed in the project's `plugins/` directory and bundled with the app.
 
+This guide primarily covers **native Hana application plugins** owned by
+`PluginManager`. Marketplace catalogs can also expose Claude-compatible Hana
+skill packages. Always inspect the catalog destination and adapter before
+installing:
+
+| Catalog destination | Owner | Result |
+|---|---|---|
+| `native-plugin` + `plugin-manager` | `PluginManager` | Native plugin runtime, trust, enable/disable, and uninstall. |
+| `hana-skills` + `skill-manager` | SkillManager | Hana skill package; never converted into a native plugin. |
+
+Under the current durable multi-source/Agent contract, native Marketplace
+installation is preview-only/deferred. Hana skill packages use the supported
+skill-manager lifecycle. A legacy single-catalog native release path may remain
+for compatibility; it is not the current Agent installation contract.
+
 ## Quick Start
 
 1. Create a folder with a tool file:
@@ -27,7 +42,7 @@ export async function execute(input) {
 }
 ```
 
-2. Open HanaAgent → Settings → Plugins, drag the folder into the install area (or drag a .zip)
+2. Open HanaAgent → Settings → Plugins, drag the native plugin folder into the install area (or drag a .zip)
 3. After installation, the Agent can immediately call `my-plugin_hello`
 4. Uninstall: click the delete button on the plugins page
 
@@ -40,7 +55,7 @@ Pick the plugin shape first, then follow the manifest, runtime, and UI guidance 
 | Tool-only | No UI, adds Agent-callable tools | `restricted` |
 | Runtime | Lifecycle, EventBus, background tasks, dynamic tools | `full-access` |
 | UI | Page / widget / WebView/iframe card / `chat.surface` | `full-access` |
-| Marketplace entry | Makes the plugin discoverable in the marketplace | `OH-Plugins/plugins/<id>.yaml` |
+| Native Marketplace entry | Publishes a native plugin for catalog inspection/compatibility flows | `OH-Plugins/plugins/<id>.yaml` |
 
 Start with the `hana-plugin-creator` scaffold, then delete what you do not need:
 
@@ -118,12 +133,12 @@ compatibility. The first phase supports `invokeTool`, `expectToolText` and
 `"destructive": true`, and the run must additionally pass
 `allowDestructive: true`.
 
-## Installation & Management
+## Native Plugin Installation & Management
 
 ### Installation Methods
 
-- **Drag-and-drop**: Drag a plugin folder or .zip into Settings → Plugins install area
-- **File picker**: Click the install area and select a plugin folder or .zip via the file picker
+- **Drag-and-drop**: Drag a native plugin folder or .zip into Settings → Plugins install area
+- **File picker**: Click the install area and select a native plugin folder or .zip via the file picker
 - **Manual**: Place the plugin directory in `${HANA_HOME}/plugins/`. The actual path is shown in Settings → Plugins or via `/api/plugins/settings` as `plugins_dir`
 
 ### Management
@@ -432,6 +447,12 @@ The Agent loads this knowledge automatically when needed.
 ```
 
 Zero code, same pattern as Claude Code skills.
+
+These are skills bundled inside a native PluginManager package. They remain
+plugin-owned and follow that plugin's lifecycle. A Marketplace package
+classified as `hana-skills` + `skill-manager` is installed directly as Hana
+skills instead; it does not enter PluginManager merely because it contains
+`SKILL.md`.
 
 ### Commands (User Commands)
 
@@ -1164,12 +1185,21 @@ TaskRegistry persists task records and schedule metadata. On restart, active tas
 
 The "Open plugin marketplace" button in Settings -> Plugins opens a marketplace subpage. Hana keeps **OH-Plugins** as the compiled always-on official catalog and also supports **named custom sources** (URL, local path, and public HTTPS Git).
 
+Before any mutation, inspect the resolved destination and adapter. A
+`hana-skills` + `skill-manager` package installs through SkillManager and
+appears in Manage Plugins with a **Hana skills badge**. Its global
+**Marketplace package gate** is separate from each **Agent Skill Toggle**.
+A `native-plugin` + `plugin-manager` package belongs to PluginManager; native
+installation in the current multi-source/Agent contract is
+preview-only/deferred. Source enablement is another separate control and does
+not toggle an installed package.
+
 | Layer | Identity |
 |------|----------|
 | Catalog row | `{marketplaceId, pluginId}` (optional `pluginId@marketplaceId`) |
 | Retained artifact | `{marketplaceId, pluginId, artifactDigest}` |
 | Persistent state / trust | source-qualified (`plugin-data/<marketplaceId>/<pluginId>/`, trust grants per artifact) |
-| Runtime slot | bare `pluginId` — **one active source per plugin per server** |
+| Legacy native runtime slot | bare `pluginId` — **one active source per plugin per server** |
 
 Default official catalog:
 
@@ -1184,7 +1214,7 @@ Source management APIs:
 - `POST /api/plugins/marketplace/sources/:id/refresh` — refresh into last-known-good snapshot store
 - `DELETE /api/plugins/marketplace/sources/:id` — blocked while active/retained artifacts reference the source
 - `GET /api/plugins/marketplace/catalog` — composite rows with source badges and active/retained state
-- `POST /api/plugins/marketplace/:id/install` — resolves via official-wins or `marketplaceId` pin, retains artifact, writes install-record v2
+- `POST /api/plugins/marketplace/:id/install` — legacy native compatibility path; current Agent workflows route by destination and do not use it for `hana-skills`
 - `POST /api/plugins/:pluginId/source-switch` — transactional switch to another retained marketplace source
 
 Settings → Plugin marketplace includes **Add source** (URL / local server path / public Git), per-source refresh/remove, composite rows, and **Switch source**. Fresh bare install uses **official-wins**; multiple non-official matches require an explicit marketplace pin. Switching never copies state, secrets, or trust across sources. Remote sources are **public credential-free HTTPS only** in v1.
@@ -1232,11 +1262,11 @@ Without either environment variable, Hana first tries `${HANA_HOME}/plugin-marke
 }
 ```
 
-The marketplace UI shows the plugin list and README in a wider settings subpage. Selecting a plugin reads `/api/plugins/marketplace/:id/readme`. `distribution.kind: "release"` downloads the zip package, verifies `sha256`, then installs it into the user's plugin directory. `distribution.kind: "source"` is only for local file marketplace development because the source path must resolve to a directory on the user's machine.
+The marketplace UI shows the package list and README in a wider settings subpage. Selecting a package reads `/api/plugins/marketplace/:id/readme`. For a legacy native compatibility release, `distribution.kind: "release"` downloads the zip, verifies `sha256`, and installs it into the native plugin directory. For `hana-skills` + `skill-manager`, Hana uses the skill-package plan/install lifecycle and never installs the package as a native plugin. `distribution.kind: "source"` remains local-file-only because the source path must resolve on the Hana server.
 
 Marketplace version management uses `versions[]` as the long-term contract: each item declares `version`, that version's `compatibility.minAppVersion`, and its own `distribution`. If `versions[]` is absent, Hana treats the root-level `version` / `compatibility` / `distribution` as a single version entry. The client chooses the highest SemVer version compatible with the current app, while exposing `latestVersion`, `selectedVersion`, `installedVersion`, `updateAvailable`, `downgrade`, `reinstall`, `compatible`, `installAction`, and `canInstall` for UI state.
 
-If the installed version is newer than the highest compatible marketplace version, the action is marked as `downgrade` and install requires explicit `allowDowngrade: true`. Drag-and-drop / local path installs also reject implicit downgrades. Updates back up under `${HANA_HOME}/plugin-backups/<marketplaceId>/<pluginId>/` when marketplace-qualified (legacy bare `${HANA_HOME}/plugin-backups/<pluginId>/` still works). Successful installs are recorded in `${HANA_HOME}/plugin-installs.json` (v2: active pointer + retained map + switch journal/history). Immutable retained packages live under `${HANA_HOME}/plugin-artifacts/<marketplaceId>/<pluginId>/<digest>/`.
+If an installed legacy native version is newer than the highest compatible marketplace version, the action is marked as `downgrade` and install requires explicit `allowDowngrade: true`. Native drag-and-drop / local path installs also reject implicit downgrades. Native compatibility updates back up under `${HANA_HOME}/plugin-backups/<marketplaceId>/<pluginId>/` when marketplace-qualified (legacy bare `${HANA_HOME}/plugin-backups/<pluginId>/` still works). Native installs are recorded in `${HANA_HOME}/plugin-installs.json` and retained under `${HANA_HOME}/plugin-artifacts/...`. Hana skill packages use SkillManager inventory, the global package gate, and the dedicated Marketplace skill uninstall lifecycle instead.
 
 ## Forward Compatibility
 

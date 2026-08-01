@@ -222,4 +222,40 @@ describe("first run default workspace", () => {
 
     expect(report.invalidAgentDirs).toEqual([]);
   });
+
+  it("syncs a complete bundled skill directory including nested references", async () => {
+    const bundledSkillDir = path.join(tmpDir, "skills2set", "marketplace-manager");
+    const referencesDir = path.join(bundledSkillDir, "references");
+    const references = [
+      ["claude-skill-packages.md", "# Claude skill packages\n"],
+      ["native-hana-plugins.md", "# Native Hana plugins\n"],
+      ["troubleshooting.md", "# Troubleshooting\n"],
+    ];
+    fs.mkdirSync(referencesDir, { recursive: true });
+    fs.writeFileSync(path.join(bundledSkillDir, "SKILL.md"), [
+      "---",
+      "name: marketplace-manager",
+      "description: Manage Marketplace packages safely.",
+      "---",
+      "",
+      "# Marketplace Manager",
+      "",
+    ].join("\n"), "utf-8");
+    for (const [name, content] of references) {
+      fs.writeFileSync(path.join(referencesDir, name), content, "utf-8");
+    }
+    const { ensureFirstRun } = await import("../core/first-run.ts");
+
+    ensureFirstRun(hanakoHome, productDir);
+
+    const installedSkillDir = path.join(hanakoHome, "skills", "marketplace-manager");
+    expect(fs.readFileSync(path.join(installedSkillDir, "SKILL.md"), "utf-8"))
+      .toContain("name: marketplace-manager");
+    for (const [name, content] of references) {
+      expect(fs.readFileSync(
+        path.join(installedSkillDir, "references", name),
+        "utf-8",
+      )).toBe(content);
+    }
+  });
 });

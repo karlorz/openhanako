@@ -6,6 +6,7 @@ import { Hono } from "hono";
 import { createPluginsRoute } from "../server/routes/plugins.ts";
 import { writeClaudeSkillsInstallRecord } from "../lib/plugin-marketplace-claude-skills.ts";
 import { loadConfig, saveConfig } from "../lib/memory/config-loader.ts";
+import { createSkillBundle, loadSkillBundleStore } from "../lib/skill-bundles/store.ts";
 
 const tempDirs: string[] = [];
 function makeHome() {
@@ -588,7 +589,7 @@ describe("marketplace sources auth principal", () => {
       id: "agent-a",
       config: {
         skills: {
-          enabled: ["wiki-query", "other"],
+          enabled: ["wiki-query", "wiki-sync", "other"],
           marketplace_overrides: {
             "skillwiki@llm-wiki": { disabled: ["wiki-query", "wiki-sync"] },
             "other@source": { disabled: ["other-skill"] },
@@ -606,6 +607,10 @@ describe("marketplace sources auth principal", () => {
       resolvedRevision: "abc",
       skills: ["wiki-query", "wiki-sync"],
       installedAt: "2026-07-31T00:00:00.000Z",
+    });
+    createSkillBundle(engine, {
+      name: "Marketplace Mix",
+      skillNames: ["wiki-query", "wiki-sync", "other"],
     });
     const app = createAppWithPrincipal(engine, localOwner);
 
@@ -629,11 +634,16 @@ describe("marketplace sources auth principal", () => {
     expect(fs.existsSync(skillDir)).toBe(false);
     expect(loadConfig(agentConfig)?.skills?.enabled).toEqual(["other"]);
     expect(loadConfig(agentConfig)?.skills?.marketplace_overrides).toEqual({
+      "skillwiki@llm-wiki": { disabled: ["wiki-query", "wiki-sync"] },
       "other@source": { disabled: ["other-skill"] },
     });
     expect(agent.config.skills.marketplace_overrides).toEqual({
+      "skillwiki@llm-wiki": { disabled: ["wiki-query", "wiki-sync"] },
       "other@source": { disabled: ["other-skill"] },
     });
+    expect(loadSkillBundleStore(engine).bundles).toEqual([
+      expect.objectContaining({ skillNames: ["other"] }),
+    ]);
     expect(engine.reloadSkills).toHaveBeenCalledOnce();
     expect(engine.emitEvent).toHaveBeenCalledWith(expect.objectContaining({
       type: "app_event",
