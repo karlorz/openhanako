@@ -3,52 +3,310 @@
   "entries": [
     {
       "schemaVersion": 1,
-      "tag": "v0.421.24-karlorz.3",
+      "tag": "v0.421.24-karlorz.4",
       "version": "0.421.24",
-      "previousTag": "v0.421.24-karlorz.2",
-      "generatedAt": "2026-07-30T15:42:00.000Z",
+      "previousTag": "v0.421.24-karlorz.3",
+      "generatedAt": "2026-08-02T00:49:04.934Z",
       "noUserFacingChanges": false,
       "summary": {
-        "zh": "支持 Claude 插件市场浏览与技能 Lane 安装，优化多 Sources 界面与路由隔离。",
-        "en": "Adds Claude marketplace browse and skills-lane installation, improving multi-source UI and route security."
+        "zh": "完善 Marketplace 原生插件与 Claude 技能包生命周期，加入包级开关、Manage Plugins 管理、持久化兼容绑定与更严格的安全校验。",
+        "en": "Completes native-plugin and Claude skill-package Marketplace lifecycles with package gates, Manage Plugins controls, persistent compatibility bindings, and stronger safety checks."
       },
       "counts": {
-        "feature": 1,
-        "fix": 1,
-        "improvement": 0,
+        "feature": 3,
+        "fix": 2,
+        "improvement": 2,
         "migration": 0
       },
       "source": {
         "owner": "karlorz",
         "repo": "openhanako",
-        "commitRange": "v0.421.24-karlorz.2..HEAD",
-        "releaseUrl": "https://github.com/karlorz/openhanako/releases/tag/v0.421.24-karlorz.3",
+        "commitRange": "v0.421.24-karlorz.3..HEAD",
+        "releaseUrl": "https://github.com/karlorz/openhanako/releases/tag/v0.421.24-karlorz.4",
         "releaseNotes": ""
       },
       "items": [
         {
-          "id": "claude-marketplace-skills-lane",
+          "id": "native-marketplace-lifecycle",
           "kind": "feature",
           "importance": "high",
           "title": {
-            "zh": "支持 Claude 插件市场浏览与技能 Lane 安装",
-            "en": "Support Claude marketplace browse and skills-lane installation"
+            "zh": "支持原生 Marketplace 安装与卸载流程",
+            "en": "Add native Marketplace install and uninstall lifecycle"
           },
           "summary": {
-            "zh": "增加 Claude 插件市场源的解析与浏览支持，实现技能 Package Inspector 与按 Lane 安装/卸载隔离。",
-            "en": "Adds parsing and browse support for Claude plugin marketplace sources, providing package inspector and isolated lane installation/uninstallation."
+            "zh": "原生 Marketplace 包现在通过 Studio 所有者确认的计划与执行流程安装或卸载，并在停用后保留可审计工件。",
+            "en": "Native Marketplace packages now use an owner-confirmed plan and execution flow for installation and removal, while retaining auditable artifacts after deactivation."
           },
           "details": [
             {
-              "zh": "提供多 Marketplace Sources 管理面板，并在端点与 UI 层面做安全路径校验。",
-              "en": "Provides multi-marketplace sources management panel with path and security validation on server endpoints and UI."
+              "zh": "安装计划会展示能力、信任与网络影响，高风险操作需要所有者确认。",
+              "en": "Install plans expose capability, trust, and network impact, with owner confirmation required for high-risk operations."
+            },
+            {
+              "zh": "服务器路由与 Agent 规划工具共同执行所有者边界。",
+              "en": "Server routes and the Agent planning tool enforce the owner boundary together."
             }
           ],
           "sources": [
             {
               "type": "commit",
-              "ref": "5e193d713",
-              "title": "fix(plugins): harden Claude marketplace install and package inspector"
+              "ref": "219d66e36f88a1a358ab415d04b9c4086a6c3204",
+              "title": "Add native Marketplace plan/execute lifecycle"
+            },
+            {
+              "type": "commit",
+              "ref": "c3eb1941823eba05613ec2c1d5109274e3698925",
+              "title": "feat(plugins): add Agent marketplace planner tool"
+            },
+            {
+              "type": "commit",
+              "ref": "8f39739bf0324c6ae304a86e7b69b12ed2232b37",
+              "title": "feat: harden marketplace capability contract"
+            }
+          ]
+        },
+        {
+          "id": "marketplace-skill-package-manager",
+          "kind": "feature",
+          "importance": "high",
+          "title": {
+            "zh": "在 Manage Plugins 管理 Marketplace 技能包",
+            "en": "Manage Marketplace skill packages in Manage Plugins"
+          },
+          "summary": {
+            "zh": "Marketplace 技能包现在会出现在统一的 Manage Plugins 清单中，并支持安装记录协调、状态展示与卸载。",
+            "en": "Marketplace skill packages now appear in the unified Manage Plugins inventory with install-record reconciliation, status reporting, and uninstall support."
+          },
+          "details": [
+            {
+              "zh": "新增内置 Marketplace 管理技能，让 Agent 可以完成来源、计划、安装与清理流程。",
+              "en": "A bundled Marketplace manager skill lets Agents handle source, planning, installation, and cleanup workflows."
+            },
+            {
+              "zh": "技能包清单保持 GET /api/plugins 的原生插件数组契约不变。",
+              "en": "The skill-package inventory preserves the native plugin array contract of GET /api/plugins."
+            }
+          ],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "96167c8c886276d396c7f50bfbace8980b98310b",
+              "title": "feat: add bundled marketplace manager skill"
+            },
+            {
+              "type": "commit",
+              "ref": "e5c4438e3a49bc4e2428552f62244b55679b2c00",
+              "title": "feat: complete agent marketplace skill lifecycle"
+            },
+            {
+              "type": "commit",
+              "ref": "41fcff0491486f1be19dce7536e18baf4e686904",
+              "title": "feat(desktop): show marketplace skill packages in Manage Plugins"
+            },
+            {
+              "type": "commit",
+              "ref": "56f10e9a3511427ecee0f97cc81e42f19604de49",
+              "title": "feat(api): expose installed marketplace skill packages inventory"
+            },
+            {
+              "type": "commit",
+              "ref": "764a4c551caebc8270335d9815a080561f7e6ff6",
+              "title": "fix: add marketplace skill package uninstall lifecycle"
+            }
+          ]
+        },
+        {
+          "id": "marketplace-package-gates",
+          "kind": "feature",
+          "importance": "high",
+          "title": {
+            "zh": "可按包启用或停用 Marketplace 技能",
+            "en": "Enable or disable Marketplace skills as a package"
+          },
+          "summary": {
+            "zh": "新增全局包级启用开关；停用会阻止所有 Agent 使用该包，同时保留每个 Agent 的技能偏好。",
+            "en": "Adds a global package-level gate that blocks the package for every Agent when disabled while preserving each Agent's skill preferences."
+          },
+          "details": [
+            {
+              "zh": "已安装包在没有显式记录时默认启用，卸载时会清理包级状态。",
+              "en": "Installed packages default to enabled without an explicit record, and uninstall removes package-level state."
+            },
+            {
+              "zh": "设置界面缺少完整 activations 快照时会拒绝写入，避免覆盖并发状态。",
+              "en": "Settings refuse writes without a complete activations snapshot, preventing concurrent state from being overwritten."
+            }
+          ],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "d0e2dc3338cef3b65b50a5758f2ce3469c6b7cd5",
+              "title": "feat(marketplace): add package-level skill package activation gate"
+            },
+            {
+              "type": "commit",
+              "ref": "8fc687432568a75bb06aa7444156adfc9e1588e9",
+              "title": "feat(skills): enforce marketplace skill package enable gate"
+            },
+            {
+              "type": "commit",
+              "ref": "9dc4d6504b6a28ac2bfc89fb6f8380a361121516",
+              "title": "feat: default-enable marketplace skill packages per agent"
+            },
+            {
+              "type": "commit",
+              "ref": "91da471dff1925bb674a9a20b9b92a33e67be259",
+              "title": "fix(marketplace): clean package gate on skill package uninstall"
+            },
+            {
+              "type": "commit",
+              "ref": "76310bca2306fef927db24f57acf224972d1bee7",
+              "title": "fix(desktop): refuse skill package toggle without activations snapshot"
+            },
+            {
+              "type": "commit",
+              "ref": "355b1f2808ce6c9f52523b8fa60018863135722a",
+              "title": "fix: enforce marketplace skill package disablement"
+            }
+          ]
+        },
+        {
+          "id": "marketplace-settings-ui",
+          "kind": "improvement",
+          "importance": "medium",
+          "title": {
+            "zh": "重新整理 Marketplace 设置与来源操作",
+            "en": "Refresh Marketplace settings and source controls"
+          },
+          "summary": {
+            "zh": "重新组织 Marketplace 设置页面、来源区块与对话框，使刷新、启停和管理操作更清晰一致。",
+            "en": "Reorganizes Marketplace settings, source sections, and dialogs so refresh, enablement, and management actions are clearer and more consistent."
+          },
+          "details": [
+            {
+              "zh": "来源操作顺序、开关行为和插件管理表面现在保持一致。",
+              "en": "Source action ordering, toggle behavior, and plugin-management surfaces are now aligned."
+            }
+          ],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "be142b366035d379bba375e4809cb4dedef48db0",
+              "title": "feat: add marketplace skill package settings page"
+            },
+            {
+              "type": "commit",
+              "ref": "21d7f86a06b9206fdce7e0fe34bf5b57c9ba1a78",
+              "title": "fix: order marketplace source actions"
+            },
+            {
+              "type": "commit",
+              "ref": "457437971c957f7dfd1efae2eb8ef6a08a807b2e",
+              "title": "fix: use marketplace source toggle"
+            },
+            {
+              "type": "commit",
+              "ref": "8377dbb849128c17ffb20a806d85e5a9c5a58ef9",
+              "title": "fix: render marketplace source dialog in settings"
+            },
+            {
+              "type": "commit",
+              "ref": "f2c5307aac59fdf43709347b3745ede43b868d7d",
+              "title": "fix: flatten marketplace settings surfaces"
+            },
+            {
+              "type": "commit",
+              "ref": "fc8fe66b9e705de3f1912df0ea3f18abb57fab12",
+              "title": "feat: refine marketplace settings management"
+            },
+            {
+              "type": "commit",
+              "ref": "031eda298ab84d5cb67899b64c98d89445319bbe",
+              "title": "feat: complete marketplace settings experience"
+            }
+          ]
+        },
+        {
+          "id": "claude-compatibility-bindings",
+          "kind": "improvement",
+          "importance": "medium",
+          "title": {
+            "zh": "持久化 Claude 兼容绑定",
+            "en": "Persist Claude compatibility bindings"
+          },
+          "summary": {
+            "zh": "新增持久化 Claude 兼容绑定与 Marketplace 配置控制面，使跨会话的来源、激活与访问状态保持一致。",
+            "en": "Adds persistent Claude compatibility bindings and a Marketplace configuration control plane so source, activation, and access state remain consistent across sessions."
+          },
+          "details": [],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "4475220540f87ba38b348f2eca0250b7a81965dc",
+              "title": "feat: add persistent Claude compatibility bindings"
+            },
+            {
+              "type": "commit",
+              "ref": "c537d14ece18ef8b40de6cfb21e1eb2bc03c28c7",
+              "title": "feat: add marketplace config control plane"
+            },
+            {
+              "type": "commit",
+              "ref": "1d3a652b7bd15ed3d08e75ed0839b2ac872e7584",
+              "title": "feat: add marketplace activation access foundation"
+            }
+          ]
+        },
+        {
+          "id": "marketplace-security-hardening",
+          "kind": "fix",
+          "importance": "high",
+          "title": {
+            "zh": "加强 Marketplace 生命周期与诊断隐私",
+            "en": "Harden Marketplace lifecycle and diagnostic privacy"
+          },
+          "summary": {
+            "zh": "安装计划、来源状态、并发写入与卸载清理现在具有更严格的一致性检查，并会隐藏远程诊断路径。",
+            "en": "Install planning, source state, concurrent writes, and uninstall cleanup now use stricter consistency checks, while remote diagnostic paths are redacted."
+          },
+          "details": [
+            {
+              "zh": "Agent 安装会绑定注册表与来源快照，过期计划会在写入前被拒绝。",
+              "en": "Agent installs are bound to registry and source snapshots, and stale plans are rejected before writes."
+            }
+          ],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "b08e139ba0d5b37204ba48a137f53d6346ee2516",
+              "title": "fix: harden Claude Marketplace lifecycle"
+            },
+            {
+              "type": "commit",
+              "ref": "79faf8d2e0d645c099cd219aa985ff2bb25d6639",
+              "title": "fix: redact remote marketplace diagnostic path"
+            }
+          ]
+        },
+        {
+          "id": "local-artifact-refresh",
+          "kind": "fix",
+          "importance": "low",
+          "title": {
+            "zh": "本地构建会刷新同版本工件",
+            "en": "Refresh same-version artifacts in local builds"
+          },
+          "summary": {
+            "zh": "本地构建现在会在版本号不变但内容发生变化时刷新对应工件。",
+            "en": "Local builds now refresh artifacts when their content changes even if the version number stays the same."
+          },
+          "details": [],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "82a431ae8af53dfb47edb67b04fd5f0e1dbff8bf",
+              "title": "fix(desktop): refresh same-version artifacts for local builds"
             }
           ]
         }
