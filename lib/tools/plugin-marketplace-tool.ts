@@ -459,7 +459,7 @@ export function createPluginMarketplaceTool(deps: {
   return {
     name: "plugin_marketplace",
     label: "Plugin Marketplace",
-    description: "Inspect and manage Claude-compatible Marketplace sources and Hana skill packages. Use plan_install/plan_uninstall before mutations. Native Marketplace plugin installation remains disabled.",
+    description: "Inspect and manage Claude-compatible Marketplace sources and Hana skill packages. Use plan_install/plan_uninstall before mutations. Agent-driven native Marketplace installation remains unsupported; Studio owners use the Settings signed plan/execute lifecycle.",
     sessionPermission: {
       resolveInvocation: (input: any) => {
         const marketplaceId = asText(input?.marketplaceId);
@@ -665,7 +665,7 @@ export function createPluginMarketplaceTool(deps: {
             });
           }
           if (payload.installTarget === "native-plugin") {
-            return toolError("Agent marketplace install currently supports Hana skill packages only. Use Settings for native plugin installs until the PluginManager contract audit is complete.", {
+            return toolError("Agent-driven native Marketplace installation remains unsupported. Studio owners can use the Settings signed plan/execute lifecycle for native plugin installs.", {
               ok: false,
               code: "PLUGIN_MARKETPLACE_NATIVE_INSTALL_NOT_AGENT_ENABLED",
               ...payload,

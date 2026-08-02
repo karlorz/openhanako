@@ -1051,6 +1051,27 @@ export function createPluginsRoute(engine: any) {
     };
   }
 
+  function marketplaceDiagnosticsPayload(
+    svc: ReturnType<typeof getMarketplaceService>,
+    flags: ReturnType<typeof principalFlags>,
+  ) {
+    const report = svc.getControlPlaneDiagnostics({
+      // Studio owners may need the complete snapshot to make a safe full
+      // activations replacement. Non-owners receive only the metadata needed
+      // to inspect revision/schema health; service-local paths and control
+      // plane maps remain private.
+      forRemote: !flags.isLocalOwner,
+    });
+    if (flags.isStudioOwner || !report.file) return report;
+    return {
+      ...report,
+      file: {
+        schemaVersion: report.file.schemaVersion,
+        revision: report.file.revision,
+      },
+    };
+  }
+
   // ── Multi-source marketplace registry (Approach 1) ──
   route.get("/plugins/marketplace/capabilities", (c) => {
     try {
@@ -1060,7 +1081,7 @@ export function createPluginsRoute(engine: any) {
         ...svc.getCapabilityContract(),
         access: marketplaceAccessPayload(flags),
         registry: svc.getRegistryStatus({ forRemote: !flags.isLocalOwner }),
-        configDiagnostics: svc.getControlPlaneDiagnostics({ forRemote: !flags.isLocalOwner }),
+        configDiagnostics: marketplaceDiagnosticsPayload(svc, flags),
       });
     } catch (err: any) {
       return c.json({
@@ -1081,7 +1102,7 @@ export function createPluginsRoute(engine: any) {
       capabilities: svc.getCapabilityContract(),
       access: marketplaceAccessPayload(flags),
       registry: svc.getRegistryStatus({ forRemote: !flags.isLocalOwner }),
-      configDiagnostics: svc.getControlPlaneDiagnostics({ forRemote: !flags.isLocalOwner }),
+      configDiagnostics: marketplaceDiagnosticsPayload(svc, flags),
     });
   });
 
@@ -1173,7 +1194,7 @@ export function createPluginsRoute(engine: any) {
       return c.json({
         ...result,
         registry: svc.getRegistryStatus({ forRemote: !flags.isLocalOwner }),
-        configDiagnostics: svc.getControlPlaneDiagnostics({ forRemote: !flags.isLocalOwner }),
+        configDiagnostics: marketplaceDiagnosticsPayload(svc, flags),
       });
     } catch (err: any) {
       return c.json({
@@ -1326,7 +1347,7 @@ export function createPluginsRoute(engine: any) {
       capabilities: svc.getCapabilityContract(),
       access: marketplaceAccessPayload(flags),
       registry: svc.getRegistryStatus({ forRemote }),
-      configDiagnostics: svc.getControlPlaneDiagnostics({ forRemote }),
+      configDiagnostics: marketplaceDiagnosticsPayload(svc, flags),
       ...svc.listCatalogRows({ forRemote, agentId }),
     });
   });

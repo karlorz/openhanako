@@ -528,26 +528,43 @@ describe("HTTP route security policy", () => {
     }
   });
 
+  it("requires Studio owner for the legacy Marketplace install route", async () => {
+    const { authorizeHttpRoute, classifyHttpRoute } = await import("../server/http/route-security.ts");
+    const path = "/api/plugins/marketplace/demo/install";
+    const writer = devicePrincipal(["settings.read", "settings.write"]);
+    const owner = devicePrincipal(["settings.read", "settings.write", "studio.owner"]);
+
+    expect(classifyHttpRoute({ method: "POST", path })).toMatchObject({ kind: "studio_owner" });
+    expect(authorizeHttpRoute({ method: "POST", path, principal: writer }))
+      .toMatchObject({ allowed: false, error: "studio_owner_required", status: 403 });
+    expect(authorizeHttpRoute({ method: "POST", path, principal: owner }))
+      .toMatchObject({ allowed: true });
+  });
+
   it("allows settings.read to inventory installed marketplace skill packages", async () => {
     const { authorizeHttpRoute, classifyHttpRoute } = await import("../server/http/route-security.ts");
-    const path = "/api/plugins/marketplace/installed-skill-packages";
-    expect(classifyHttpRoute({ method: "GET", path }))
-      .toMatchObject({ kind: "scope", scope: "settings.read" });
-    expect(authorizeHttpRoute({
-      method: "GET",
-      path,
-      principal: devicePrincipal(["settings.read"]),
-    })).toMatchObject({ allowed: true });
-    expect(authorizeHttpRoute({
-      method: "GET",
-      path,
-      principal: devicePrincipal(["chat"]),
-    })).toMatchObject({
-      allowed: false,
-      status: 403,
-      error: "insufficient_scope",
-      requiredScope: "settings.read",
-    });
+    for (const path of [
+      "/api/plugins/marketplace/capabilities",
+      "/api/plugins/marketplace/installed-skill-packages",
+    ]) {
+      expect(classifyHttpRoute({ method: "GET", path }))
+        .toMatchObject({ kind: "scope", scope: "settings.read" });
+      expect(authorizeHttpRoute({
+        method: "GET",
+        path,
+        principal: devicePrincipal(["settings.read"]),
+      })).toMatchObject({ allowed: true });
+      expect(authorizeHttpRoute({
+        method: "GET",
+        path,
+        principal: devicePrincipal(["chat"]),
+      })).toMatchObject({
+        allowed: false,
+        status: 403,
+        error: "insufficient_scope",
+        requiredScope: "settings.read",
+      });
+    }
   });
 
   it("treats media submit routes as chat actions for plugin and client surfaces", async () => {

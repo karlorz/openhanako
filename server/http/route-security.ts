@@ -138,6 +138,7 @@ export function classifyHttpRoute({ method = "GET", path = "" } = {}) {
   if (isImageGenerationProviderManagementRoute(verb, routePath)) return scoped("providers.manage");
   if (isPluginSettingsReadRoute(verb, routePath)) return scoped("settings.read");
   if (isNativeMarketplaceLifecycleRoute(verb, routePath)) return STUDIO_OWNER;
+  if (isLegacyMarketplaceInstallRoute(verb, routePath)) return STUDIO_OWNER;
   if (isPluginSettingsWriteRoute(verb, routePath)) return scoped("settings.write");
   if (isProviderManagementRoute(verb, routePath)) return scoped("providers.manage");
   if (isBridgeManagementRoute(verb, routePath)) return scoped("bridge.manage");
@@ -598,6 +599,7 @@ function isPluginSettingsReadRoute(verb, routePath) {
     || routePath === "/api/plugins/event-bus/capabilities"
     || routePath === "/api/plugins/diagnostics"
     || routePath === "/api/plugins/marketplace"
+    || routePath === "/api/plugins/marketplace/capabilities"
     || routePath === "/api/plugins/marketplace/sources"
     || routePath === "/api/plugins/marketplace/catalog"
     || routePath === "/api/plugins/marketplace/installed-skill-packages"
@@ -614,7 +616,6 @@ function isPluginSettingsWriteRoute(verb, routePath) {
   ))
     || (verb === "POST" && (
       routePath === "/api/plugins/marketplace/sources"
-      || /^\/api\/plugins\/marketplace\/[^/]+\/install$/.test(routePath)
       || /^\/api\/plugins\/marketplace\/sources\/[^/]+\/refresh$/.test(routePath)
       || /^\/api\/plugins\/[^/]+\/source-switch$/.test(routePath)
     ))
@@ -628,6 +629,11 @@ function isPluginSettingsWriteRoute(verb, routePath) {
 function isNativeMarketplaceLifecycleRoute(verb, routePath) {
   return verb === "POST"
     && /^\/api\/plugins\/marketplace\/[^/]+\/native\/(?:install|uninstall)\/(?:plan|execute)$/.test(routePath);
+}
+
+function isLegacyMarketplaceInstallRoute(verb, routePath) {
+  return verb === "POST"
+    && /^\/api\/plugins\/marketplace\/[^/]+\/install$/.test(routePath);
 }
 
 function isPluginUiReadRoute(verb, routePath) {

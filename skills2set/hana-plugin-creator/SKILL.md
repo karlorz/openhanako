@@ -203,7 +203,12 @@ python3 skills2set/hana-plugin-creator/scripts/create_hana_plugin.py "Jimeng Pro
 - If the selected compatible version is lower than the installed version, install requires explicit downgrade confirmation with `allowDowngrade: true`.
 - Release installs are backed up before replacement and rolled back when the new plugin fails to load.
 - Local file native compatibility marketplaces may use `distribution.kind = "source"` because paths resolve on the Hana server.
-- URL native compatibility releases download a zip and verify `sha256`. Under the current durable multi-source/Agent contract, native Marketplace installation is preview-only/deferred; do not bypass that boundary. Claude-compatible Hana skill packages use `skill-manager`, not this publication workflow.
+- URL native compatibility releases download a zip and verify `sha256`. Studio
+  owners install and uninstall native Marketplace packages through Settings'
+  signed plan/execute lifecycle; Agent-driven native installation remains
+  unsupported (preview-only/deferred), and legacy release metadata cannot
+  bypass that boundary. Claude-compatible Hana skill packages use
+  `skill-manager`, not this publication workflow.
 - Before pushing `OH-Plugins`, complete the release safety review and wait for explicit user confirmation.
 
 ## UI Rules
