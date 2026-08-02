@@ -313,6 +313,31 @@ describe('PluginsTab skill package inventory', () => {
     await waitFor(() => expect(hanaFetch).toHaveBeenCalledWith('/api/plugins/hyperframes/config'));
   });
 
+  it('keeps native plugins visible when skill-package inventory is unavailable', async () => {
+    hanaFetch.mockImplementation(async (path: string) => {
+      if (path === '/api/plugins?source=community') {
+        return jsonResponse([{
+          id: 'hyperframes',
+          name: 'HyperFrames',
+          status: 'loaded',
+          source: 'community',
+          trust: 'full-access',
+          contributions: ['configuration'],
+        }]);
+      }
+      if (path === '/api/plugins/marketplace/installed-skill-packages') {
+        throw new Error('inventory unsupported');
+      }
+      return jsonResponse({});
+    });
+
+    const { PluginsTab } = await import('../../settings/tabs/PluginsTab');
+    render(<PluginsTab />);
+
+    expect(await screen.findByText('HyperFrames')).toBeInTheDocument();
+    expect(screen.queryByText('No plugins installed')).not.toBeInTheDocument();
+  });
+
   it('keeps native removal confirmation and lifecycle request on a bare danger icon', async () => {
     const deletes: string[] = [];
     mockInventory({

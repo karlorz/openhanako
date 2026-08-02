@@ -131,9 +131,10 @@ async function resolveCatalogPlugin(
   };
 }
 
-function inspectionPayload(plugin: any, marketplaceId: string) {
+function inspectionPayload(svc: PluginMarketplaceService, plugin: any, marketplaceId: string) {
   const inspection = inspectMarketplacePackage(plugin);
   const installPlan = createMarketplaceInstallPlan(inspection);
+  const planContext = svc.getInstallPlanContext(marketplaceId);
   const planFacts = {
     pluginId: plugin.id,
     marketplaceId,
@@ -149,6 +150,7 @@ function inspectionPayload(plugin: any, marketplaceId: string) {
     capabilityInventory: inspection.capabilityInventory,
     warnings: inspection.warnings,
     installPlan,
+    ...planContext,
   };
   return {
     pluginId: plugin.id,
@@ -166,6 +168,7 @@ function inspectionPayload(plugin: any, marketplaceId: string) {
     capabilityInventory: inspection.capabilityInventory,
     warnings: inspection.warnings,
     installPlan,
+    ...planContext,
     planToken: planTokenFor(planFacts),
   };
 }
@@ -395,6 +398,7 @@ function resolveInvocation(input: any = {}, options: {
     };
   }
   if (action === "set_activations") {
+    if (!hasRegistryPreconditions(input)) return null;
     return {
       action: "configure",
       kind: "review",
@@ -406,8 +410,7 @@ function resolveInvocation(input: any = {}, options: {
       },
       sideEffect: {
         summary: "Updates exact source-qualified marketplace activation/access records in server-owned plugin-marketplaces.json after revision/digest validation.",
-        expectedRevision: typeof input.expectedRevision === "number" ? input.expectedRevision : null,
-        expectedDigest: typeof input.expectedDigest === "string" ? input.expectedDigest : null,
+        ...registryPreconditions(input),
         ownerRequired: true,
       },
     };
@@ -634,7 +637,7 @@ export function createPluginMarketplaceTool(deps: {
           const identityError = packageIdentityRequired(pluginId, marketplaceId);
           if (identityError) return identityError;
           const resolved = await resolveCatalogPlugin(svc, pluginId, marketplaceId);
-          const payload = inspectionPayload(resolved.plugin, resolved.marketplaceId);
+          const payload = inspectionPayload(svc, resolved.plugin, resolved.marketplaceId);
           return toolOk(safeJson(payload), { ok: true, ...payload });
         }
 
@@ -649,7 +652,7 @@ export function createPluginMarketplaceTool(deps: {
             });
           }
           const resolved = await resolveCatalogPlugin(svc, pluginId, marketplaceId);
-          const payload = inspectionPayload(resolved.plugin, resolved.marketplaceId);
+          const payload = inspectionPayload(svc, resolved.plugin, resolved.marketplaceId);
           if (planToken !== payload.planToken) {
             return toolError("Marketplace install plan changed; call plan_install again before install.", {
               ok: false,
@@ -685,6 +688,9 @@ export function createPluginMarketplaceTool(deps: {
           const result = await svc.installClaudePluginSkills(pluginId, resolved.marketplaceId, {
             userSkillsDir,
             isStudioOwner: true,
+            expectedRevision: payload.registry.revision,
+            expectedDigest: payload.registry.digest || undefined,
+            expectedSourceSnapshot: payload.sourceSnapshot,
           });
           await reloadSkillsBestEffort(engine);
           const details = {
@@ -764,6 +770,7 @@ export function createPluginMarketplaceTool(deps: {
         }
 
         if (action === "set_activations") {
+          if (!hasRegistryPreconditions(params)) return preconditionsRequired();
           if (!params || !Object.prototype.hasOwnProperty.call(params, "activations")) {
             return toolError("activations is required for set_activations", {
               ok: false,
@@ -772,8 +779,7 @@ export function createPluginMarketplaceTool(deps: {
           }
           const result = svc.setControlPlaneActivations(params.activations, {
             isStudioOwner: true,
-            expectedRevision: typeof params.expectedRevision === "number" ? params.expectedRevision : undefined,
-            expectedDigest: typeof params.expectedDigest === "string" ? params.expectedDigest : undefined,
+            ...registryPreconditions(params),
           });
           const details = {
             ok: true,
