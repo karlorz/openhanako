@@ -58,6 +58,17 @@ function makeMarketplaceService(plugin: any = claudeSkillPlugin()) {
     listSources: vi.fn().mockReturnValue([
       { id: MARKETPLACE_ID, name: "LLM Wiki", kind: "git", authority: "custom", status: "ok" },
     ]),
+    getInstallPlanContext: vi.fn().mockReturnValue({
+      registry: { revision: 1, digest: "a".repeat(64) },
+      sourceEnabled: true,
+      sourceSnapshot: {
+        state: "ok",
+        sourceFingerprint: "2".repeat(64),
+        catalogSha256: "3".repeat(64),
+        requestedRef: "refs/heads/main",
+        resolvedRevision: "4".repeat(40),
+      },
+    }),
     listCatalogRows: vi.fn().mockReturnValue({
       sources: [{ id: MARKETPLACE_ID, name: "LLM Wiki", kind: "git", authority: "custom", status: "ok" }],
       plugins: [{
@@ -266,6 +277,11 @@ describe("plugin_marketplace Agent tool", () => {
     expect(tool.sessionPermission.resolveInvocation({
       action: "set_activations",
       expectedRevision: 1,
+    })).toBeNull();
+    expect(tool.sessionPermission.resolveInvocation({
+      action: "set_activations",
+      expectedRevision: 1,
+      expectedDigest: "a".repeat(64),
     })).toMatchObject({
       action: "configure",
       kind: "review",
@@ -569,6 +585,23 @@ describe("plugin_marketplace Agent tool", () => {
     });
   });
 
+  it("rejects activation replacement without complete optimistic preconditions", async () => {
+    const { tool, marketplaceService } = makeTool();
+
+    const result = await tool.execute("missing-activation-precondition", {
+      action: "set_activations",
+      activations: { marketplaceSkillPackages: {} },
+      expectedRevision: 1,
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.details).toMatchObject({
+      ok: false,
+      code: "PLUGIN_MARKETPLACE_PRECONDITION_REQUIRED",
+    });
+    expect(marketplaceService.setControlPlaneActivations).not.toHaveBeenCalled();
+  });
+
   it("plans and executes stale-protected Claude compatibility lifecycle mutations", async () => {
     const { tool, marketplaceService } = makeTool();
     const binding = {
@@ -734,6 +767,70 @@ describe("plugin_marketplace Agent tool", () => {
     expect(marketplaceService.installClaudePluginSkills).not.toHaveBeenCalled();
   });
 
+  it("invalidates an install plan when the marketplace registry changes", async () => {
+    const { tool, marketplaceService } = makeTool();
+    const planToken = await getPlanToken(tool, "skillwiki");
+    marketplaceService.getInstallPlanContext.mockReturnValue({
+      registry: { revision: 2, digest: "b".repeat(64) },
+      sourceEnabled: true,
+      sourceSnapshot: {
+        state: "ok",
+        sourceFingerprint: "2".repeat(64),
+        catalogSha256: "3".repeat(64),
+        requestedRef: "refs/heads/main",
+        resolvedRevision: "4".repeat(40),
+      },
+    });
+
+    const result = await tool.execute("install-after-registry-change", {
+      action: "install",
+      pluginId: "skillwiki",
+      marketplaceId: MARKETPLACE_ID,
+      planToken,
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.details).toMatchObject({
+      ok: false,
+      code: "PLUGIN_MARKETPLACE_PLAN_STALE",
+      pluginId: "skillwiki",
+      marketplaceId: MARKETPLACE_ID,
+    });
+    expect(marketplaceService.installClaudePluginSkills).not.toHaveBeenCalled();
+  });
+
+  it("invalidates an install plan when the source snapshot changes", async () => {
+    const { tool, marketplaceService } = makeTool();
+    const planToken = await getPlanToken(tool, "skillwiki");
+    marketplaceService.getInstallPlanContext.mockReturnValue({
+      registry: { revision: 1, digest: "a".repeat(64) },
+      sourceEnabled: true,
+      sourceSnapshot: {
+        state: "ok",
+        sourceFingerprint: "2".repeat(64),
+        catalogSha256: "5".repeat(64),
+        requestedRef: "refs/heads/main",
+        resolvedRevision: "6".repeat(40),
+      },
+    });
+
+    const result = await tool.execute("install-after-source-refresh", {
+      action: "install",
+      pluginId: "skillwiki",
+      marketplaceId: MARKETPLACE_ID,
+      planToken,
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.details).toMatchObject({
+      ok: false,
+      code: "PLUGIN_MARKETPLACE_PLAN_STALE",
+      pluginId: "skillwiki",
+      marketplaceId: MARKETPLACE_ID,
+    });
+    expect(marketplaceService.installClaudePluginSkills).not.toHaveBeenCalled();
+  });
+
   it("requires exact source-qualified identity for install mutations", async () => {
     const { tool, marketplaceService } = makeTool();
     const result = await tool.execute("install", {
@@ -820,6 +917,15 @@ describe("plugin_marketplace Agent tool", () => {
       {
         userSkillsDir: "/tmp/hana-user-skills",
         isStudioOwner: true,
+        expectedRevision: 1,
+        expectedDigest: "a".repeat(64),
+        expectedSourceSnapshot: {
+          state: "ok",
+          sourceFingerprint: "2".repeat(64),
+          catalogSha256: "3".repeat(64),
+          requestedRef: "refs/heads/main",
+          resolvedRevision: "4".repeat(40),
+        },
       },
     );
     expect(reloadSkills).toHaveBeenCalledTimes(1);

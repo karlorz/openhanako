@@ -540,7 +540,7 @@ function describeRecordCount(record: unknown): number {
   return isPlainObject(record) ? Object.keys(record).length : 0;
 }
 
-function activationSourceIds(activations: MarketplaceControlPlaneActivations | undefined): string[] {
+export function activationSourceIds(activations: MarketplaceControlPlaneActivations | undefined): string[] {
   const ids = new Set<string>();
   for (const key of Object.keys(activations?.runtimePlugins || {})) {
     try {

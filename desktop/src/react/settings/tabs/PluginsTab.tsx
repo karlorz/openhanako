@@ -241,33 +241,35 @@ export function PluginsTab() {
   }, []);
 
   const loadPlugins = useCallback(async () => {
-    try {
-      const [nativeRes, skillPkgRes] = await Promise.all([
-        hanaFetch('/api/plugins?source=community'),
-        hanaFetch('/api/plugins/marketplace/installed-skill-packages'),
-      ]);
+    const [nativeResult, skillPackageResult] = await Promise.allSettled([
+      hanaFetch('/api/plugins?source=community'),
+      hanaFetch('/api/plugins/marketplace/installed-skill-packages'),
+    ]);
 
+    if (nativeResult.status === 'fulfilled') {
       try {
-        const nativeData = await nativeRes.json();
+        const nativeData = await nativeResult.value.json();
         setPlugins(Array.isArray(nativeData) ? nativeData : []);
       } catch (err) {
         console.error('[plugins] native load failed:', err);
         setPlugins([]);
       }
+    } else {
+      console.error('[plugins] native load failed:', nativeResult.reason);
+      setPlugins([]);
+    }
 
+    if (skillPackageResult.status === 'fulfilled') {
       try {
-        const skillData = await skillPkgRes.json();
+        const skillData = await skillPackageResult.value.json();
         applySkillPackageSnapshot(skillData);
       } catch (err) {
         console.error('[plugins] skill package inventory load failed:', err);
-        setSkillPackages([]);
-        setSkillPackageMeta({ registry: null, access: null, activations: null });
+        applySkillPackageSnapshot({});
       }
-    } catch (err) {
-      console.error('[plugins] load failed:', err);
-      setPlugins([]);
-      setSkillPackages([]);
-      setSkillPackageMeta({ registry: null, access: null, activations: null });
+    } else {
+      console.error('[plugins] skill package inventory load failed:', skillPackageResult.reason);
+      applySkillPackageSnapshot({});
     }
   }, [applySkillPackageSnapshot]);
 

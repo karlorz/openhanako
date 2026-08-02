@@ -269,6 +269,44 @@ describe("PluginMarketplaceService", () => {
     expect(svc.listCatalogRows().plugins).toEqual([]);
   });
 
+  it("refuses source removal while control-plane activations still reference it", () => {
+    const home = makeHome();
+    const svc = new PluginMarketplaceService({ hanakoHome: home, env: {} });
+    svc.registry.addSource({
+      id: "llm-wiki",
+      name: "llm-wiki",
+      kind: "git",
+      gitUrl: "https://example.com/llm-wiki.git",
+    });
+    svc.registry.setControlPlaneActivations({
+      marketplaceSkillPackages: {
+        "skillwiki@llm-wiki": { enabled: false },
+      },
+    });
+
+    expect(() => svc.removeSource("llm-wiki", { isStudioOwner: true }))
+      .toThrow(/source is in use/i);
+    expect(svc.listSources().some((source) => source.id === "llm-wiki")).toBe(true);
+  });
+
+  it("does not resolve installs from a disabled source", () => {
+    const home = makeHome();
+    seedClaudeSource(home);
+    const svc = new PluginMarketplaceService({ hanakoHome: home, env: {} });
+    svc.registry.addSource({
+      id: "llm-wiki",
+      name: "llm-wiki",
+      kind: "git",
+      gitUrl: "https://example.com/llm-wiki.git",
+    });
+    svc.setSourceEnabled("llm-wiki", false, { isStudioOwner: true });
+
+    expect(svc.resolveInstall("skillwiki", "llm-wiki")).toMatchObject({
+      ok: false,
+      code: "NOT_FOUND",
+    });
+  });
+
   it("synthesizes an uninstall-only row when the removed-source snapshot is unavailable", () => {
     const home = makeHome();
     writeClaudeSkillsInstallRecord(home, {
@@ -621,6 +659,55 @@ describe("PluginMarketplaceService", () => {
         packageGateState: "blocked-by-source",
         packageEnabled: false,
         actions: { canReinstall: false, canToggle: true },
+      });
+    });
+
+    it("does not overwrite a concurrent activation change during uninstall cleanup", () => {
+      const home = makeHome();
+      const svc = new PluginMarketplaceService({ hanakoHome: home, env: {} });
+      svc.registry.addSource({
+        id: "llm-wiki",
+        name: "llm-wiki",
+        kind: "git",
+        gitUrl: "https://example.com/llm-wiki.git",
+      });
+      writeSkill(home, "wiki-query");
+      writeClaudeSkillsInstallRecord(home, {
+        kind: "claude-skills",
+        marketplaceId: "llm-wiki",
+        pluginId: "skillwiki",
+        packagePath: "packages/skillwiki",
+        resolvedRevision: "abc",
+        skills: ["wiki-query"],
+        installedAt: "2026-07-31T00:00:00.000Z",
+      });
+      svc.registry.setControlPlaneActivations({
+        marketplaceSkillPackages: {
+          "skillwiki@llm-wiki": { enabled: false },
+        },
+      });
+      const before = svc.getRegistryStatus();
+      const getActivations = svc.registry.getControlPlaneActivations.bind(svc.registry);
+      vi.spyOn(svc.registry, "getControlPlaneActivations").mockImplementationOnce(() => {
+        const staleSnapshot = getActivations();
+        svc.registry.setControlPlaneActivations({
+          runtimePlugins: { "demo@llm-wiki": { enabled: true } },
+        });
+        return staleSnapshot;
+      });
+
+      const result = svc.uninstallClaudePluginSkills("skillwiki", "llm-wiki", {
+        isStudioOwner: true,
+        expectedRevision: before.revision,
+        expectedDigest: before.digest || undefined,
+        removeDir: (dir) => fs.rmSync(dir, { recursive: true, force: true }),
+      });
+
+      expect(result.complete).toBe(true);
+      expect(result.activationCleanupError).toEqual(expect.any(String));
+      expect(result.activationCleanupError).toMatch(/revision|digest/i);
+      expect(svc.registry.getControlPlaneActivations()).toEqual({
+        runtimePlugins: { "demo@llm-wiki": { enabled: true } },
       });
     });
   });
