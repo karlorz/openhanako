@@ -709,7 +709,7 @@ describe("plugin_marketplace Agent tool", () => {
     expect(marketplaceService.installClaudePluginSkills).not.toHaveBeenCalled();
   });
 
-  it("keeps native plugin installs out of the Agent until PluginManager contract audit is complete", async () => {
+  it("directs Agent native installs to the owner Settings signed lifecycle", async () => {
     const { tool, marketplaceService } = makeTool({ plugin: nativePlugin() });
     const planToken = await getPlanToken(tool, "native-page");
 
@@ -728,6 +728,9 @@ describe("plugin_marketplace Agent tool", () => {
       installTarget: "native-plugin",
       confirmationLevel: "typed-exact",
     });
+    expect((result.details as any).error || (result.details as any).message).toMatch(
+      /Agent-driven native Marketplace installation remains unsupported.*Settings signed plan\/execute lifecycle/i,
+    );
     expect((result.details as any).warnings).toEqual(expect.arrayContaining([
       "native plugin requests full-access review",
       "native plugin has server-impacting contributions: routes",

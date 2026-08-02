@@ -36,7 +36,7 @@ the presence of `SKILL.md`.
 | Inspection result | Route |
 |---|---|
 | `hana-skills` + `skill-manager` | Use the Claude skill-package lifecycle. |
-| `native-plugin` + `plugin-manager` | Inspect/explain the native lane; current multi-source/Agent native install is deferred. |
+| `native-plugin` + `plugin-manager` | Use the Studio-owner Settings signed plan/execute lifecycle; Agent-driven native install remains unsupported (preview-only/deferred). |
 | Unsupported or non-installable | Inspect only and report the blocker. |
 | Authoring or development | Hand off to `hana-plugin-creator`. |
 | Destination or adapter missing/ambiguous | Stop and inspect again. |
@@ -79,6 +79,8 @@ source-qualified identity.
 - Never convert a Claude skill package into a native plugin.
 - Never use PluginManager uninstall for a Hana skill package.
 - Never use skill-manager installation for a native plugin.
+- Never use legacy release metadata to bypass the Studio-owner Settings
+  signed plan/execute lifecycle for a native Marketplace package.
 - Never bypass `plugin_marketplace` with shell commands, raw HTTP calls, or
   direct registry/activation edits.
 - Never author a full activation-object replacement for an ordinary package

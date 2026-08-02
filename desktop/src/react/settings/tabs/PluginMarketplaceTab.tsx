@@ -819,8 +819,12 @@ export function PluginMarketplaceTab() {
     ].join('\n');
     if (!window.confirm(`${summary}\n\nConfirm this exact source-qualified access change?`)) return;
 
-    const existing = marketplace?.configDiagnostics?.file?.activations || {};
-    const activations = structuredClone(existing);
+    const snapshot = marketplace?.configDiagnostics?.file?.activations;
+    if (!snapshot || typeof snapshot !== 'object') {
+      showToast('Marketplace config is missing activations snapshot; reload before changing Agent Plugin Access.', 'error');
+      return;
+    }
+    const activations = structuredClone(snapshot);
     activations.agentPluginAccess ||= {};
     activations.agentPluginAccess[selectedAgentId] ||= {};
     activations.agentPluginAccess[selectedAgentId][identity] = {

@@ -440,6 +440,119 @@ describe('PluginMarketplaceTab inspector rendering', () => {
     expect(await screen.findByText('desired-not-installed · native runtime plugin artifact is not installed')).toBeInTheDocument();
   });
 
+  it('refuses native Agent access changes when the activations snapshot is missing', async () => {
+    mockStoreState.agents = [{ id: 'agent-a', name: 'Agent A' }];
+    mockStoreState.currentAgentId = 'agent-a';
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const native = catalogPlugin({
+      pluginId: 'native-page',
+      id: 'native-page',
+      name: 'Native Page',
+      marketplaceId: 'official',
+      compositeKey: 'native-page@official',
+      installTarget: 'native-plugin',
+      installAdapter: 'plugin-manager',
+      installable: false,
+      canInstall: false,
+      active: true,
+      runtimeActivation: { state: 'active', reason: 'native runtime plugin artifact is installed' },
+      nativeAgentPluginAccess: {
+        identity: 'native-page@official',
+        agentId: 'agent-a',
+        enabled: false,
+        state: 'disabled',
+        serverGlobalContributions: ['routes'],
+      },
+      capabilityInventory: {
+        skills: [],
+        nativePluginContributions: ['tools', 'routes'],
+        agentFacing: ['tools'],
+        serverImpact: ['routes'],
+        unsupportedClaudeComponents: [],
+      },
+    });
+    const put = vi.fn();
+    mockHanaFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === '/api/plugins/marketplace/capabilities') {
+        return jsonResponse({ supported: true, features: {}, access: { isStudioOwner: true }, registry: { revision: 7, digest: 'a'.repeat(64) }, configDiagnostics: { file: { revision: 7 }, summary: { revision: 7 } } });
+      }
+      if (url.startsWith('/api/plugins/marketplace/catalog')) {
+        return jsonResponse({ plugins: [native], sources: [], capabilities: { supported: true, features: {} }, access: { isStudioOwner: true }, registry: { revision: 7, digest: 'a'.repeat(64) }, configDiagnostics: { file: { revision: 7 }, summary: { revision: 7 } } });
+      }
+      if (url === '/api/plugins/marketplace/sources') return jsonResponse({ sources: [] });
+      if (url === '/api/plugins/marketplace/config/activations' && init?.method === 'PUT') put();
+      if (url.includes('/readme')) return jsonResponse({ markdown: '' });
+      return jsonResponse({});
+    });
+
+    render(<PluginMarketplaceTab />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Enable Agent Access' }));
+
+    await waitFor(() => expect(mockShowToast).toHaveBeenCalledWith(
+      expect.stringContaining('missing activations snapshot'),
+      'error',
+    ));
+    expect(put).not.toHaveBeenCalled();
+  });
+
+  it('preserves sibling activation maps when enabling native Agent access', async () => {
+    mockStoreState.agents = [{ id: 'agent-a', name: 'Agent A' }];
+    mockStoreState.currentAgentId = 'agent-a';
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const existingActivations = {
+      runtimePlugins: { 'other@source': { enabled: true } },
+      marketplaceSkills: { 'skill@source/pkg': { enabled: false } },
+      marketplaceSkillPackages: { 'pkg@source': { enabled: true } },
+      agentSkillOverrides: { 'agent-a': { 'skill@source/pkg': { enabled: true } } },
+      agentPluginAccess: { 'agent-b': { 'other@source': { enabled: false } } },
+    };
+    const native = catalogPlugin({
+      pluginId: 'native-page',
+      id: 'native-page',
+      name: 'Native Page',
+      marketplaceId: 'official',
+      compositeKey: 'native-page@official',
+      installTarget: 'native-plugin',
+      installAdapter: 'plugin-manager',
+      installable: false,
+      canInstall: false,
+      active: true,
+      runtimeActivation: { state: 'active' },
+      nativeAgentPluginAccess: { identity: 'native-page@official', agentId: 'agent-a', enabled: false, state: 'disabled' },
+      capabilityInventory: { skills: [], nativePluginContributions: ['tools'], agentFacing: ['tools'], serverImpact: [], unsupportedClaudeComponents: [] },
+    });
+    const puts: unknown[] = [];
+    mockHanaFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === '/api/plugins/marketplace/capabilities') return jsonResponse({ supported: true, features: {}, access: { isStudioOwner: true }, registry: { revision: 7, digest: 'a'.repeat(64) }, configDiagnostics: { file: { revision: 7, activations: existingActivations }, summary: { revision: 7 } } });
+      if (url.startsWith('/api/plugins/marketplace/catalog')) return jsonResponse({ plugins: [native], sources: [], capabilities: { supported: true, features: {} }, access: { isStudioOwner: true }, registry: { revision: 7, digest: 'a'.repeat(64) }, configDiagnostics: { file: { revision: 7, activations: existingActivations }, summary: { revision: 7 } } });
+      if (url === '/api/plugins/marketplace/sources') return jsonResponse({ sources: [] });
+      if (url === '/api/plugins/marketplace/config/activations' && init?.method === 'PUT') {
+        puts.push(JSON.parse(String(init.body)));
+        return jsonResponse({ ok: true });
+      }
+      if (url.includes('/readme')) return jsonResponse({ markdown: '' });
+      return jsonResponse({});
+    });
+
+    render(<PluginMarketplaceTab />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Enable Agent Access' }));
+
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect(puts[0]).toEqual({
+      expectedRevision: 7,
+      expectedDigest: 'a'.repeat(64),
+      activations: {
+        ...existingActivations,
+        agentPluginAccess: {
+          ...existingActivations.agentPluginAccess,
+          'agent-a': {
+            'native-page@official': { enabled: true, contributions: ['tools'] },
+          },
+        },
+      },
+    });
+  });
+
   it('renders live, mirror, and snapshot compatibility state with redacted paths and bridge limits', async () => {
     mockHanaFetch.mockImplementation(async (url: string) => {
       if (url === '/api/plugins/marketplace/capabilities') return jsonResponse({ supported: true, features: { claudeCompatibilityBindings: true }, access: { isStudioOwner: false, isLocalOwner: false }, registry: { revision: 2, digest: 'c'.repeat(64), path: '[server-local path redacted]' }, configDiagnostics: { path: '[server-local path redacted]', file: { revision: 2 }, summary: { revision: 2 } } });
