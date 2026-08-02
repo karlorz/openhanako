@@ -8,6 +8,7 @@ import {
   type MarketplaceSourceRegistryStatus,
   type MarketplaceControlPlaneActivations,
   type MarketplaceControlPlaneDiagnosticReport,
+  activationSourceIds,
 } from "./plugin-marketplace-sources.ts";
 import { MarketplaceSnapshotStore } from "./plugin-marketplace-snapshots.ts";
 import { acquireAndPublishSourceSnapshot } from "./plugin-marketplace-adapters.ts";
@@ -318,6 +319,62 @@ export class PluginMarketplaceService {
     return this._listSourcesWithCatalogCounts(listed, this.snapshots.listCurrentPlugins(), options);
   }
 
+  getInstallPlanContext(marketplaceId: string) {
+    const registry = this.getRegistryStatus({ forRemote: true });
+    const source = this.registry.listSources().find((candidate) => candidate.id === marketplaceId) || null;
+    const status = this.snapshots.getStatus(marketplaceId);
+    const current = status.current;
+    return {
+      registry: {
+        revision: registry.revision,
+        digest: registry.digest,
+      },
+      sourceEnabled: Boolean(source && source.enabled !== false),
+      sourceSnapshot: {
+        state: status.state,
+        sourceFingerprint: current?.sourceFingerprint || null,
+        catalogSha256: current?.catalogSha256 || null,
+        requestedRef: current?.requestedRef || null,
+        resolvedRevision: current?.resolvedRevision || null,
+      },
+    };
+  }
+
+  _assertClaudeSkillsInstallPlan(
+    marketplaceId: string,
+    options: {
+      expectedRevision?: number;
+      expectedDigest?: string;
+      expectedSourceSnapshot?: ReturnType<PluginMarketplaceService["getInstallPlanContext"]>["sourceSnapshot"];
+    },
+  ) {
+    if (options.expectedRevision !== undefined || options.expectedDigest !== undefined) {
+      this.assertRegistryWritePrecondition({
+        expectedRevision: options.expectedRevision,
+        expectedDigest: options.expectedDigest,
+      });
+    }
+    if (options.expectedSourceSnapshot) {
+      const current = this.getInstallPlanContext(marketplaceId).sourceSnapshot;
+      const expected = options.expectedSourceSnapshot;
+      if (
+        current.state !== expected.state
+        || current.sourceFingerprint !== expected.sourceFingerprint
+        || current.catalogSha256 !== expected.catalogSha256
+        || current.requestedRef !== expected.requestedRef
+        || current.resolvedRevision !== expected.resolvedRevision
+      ) {
+        const err = new Error("Marketplace source snapshot changed; create a fresh install plan") as Error & {
+          code: string;
+          status: number;
+        };
+        err.code = "PLUGIN_MARKETPLACE_PLAN_STALE";
+        err.status = 409;
+        throw err;
+      }
+    }
+  }
+
   _listSourcesWithCatalogCounts(
     listed: EffectiveMarketplaceSource[],
     plugins: TaggedMarketplacePlugin[],
@@ -407,8 +464,14 @@ export class PluginMarketplaceService {
       expectedRevision: options.expectedRevision,
       expectedDigest: options.expectedDigest,
       isSourceInUse: (id) =>
-        this.artifacts.isSourceInUse(id) || this.records.isSourceInUse(id),
+        this.artifacts.isSourceInUse(id)
+        || this.records.isSourceInUse(id)
+        || this._activationsReferenceSource(id),
     });
+  }
+
+  _activationsReferenceSource(marketplaceId: string) {
+    return activationSourceIds(this.registry.getControlPlaneActivations()).includes(marketplaceId);
   }
 
   setSourceEnabled(marketplaceId: string, enabled: boolean, options: {
@@ -1048,7 +1111,10 @@ export class PluginMarketplaceService {
     let activationCleanupError: string | null = null;
     if (changed) {
       try {
-        this.registry.setControlPlaneActivations(activations);
+        this.registry.setControlPlaneActivations(activations, {
+          expectedRevision: options.expectedRevision,
+          expectedDigest: options.expectedDigest,
+        });
       } catch (err: any) {
         activationCleanupError = err?.message || String(err);
       }
@@ -1135,8 +1201,10 @@ export class PluginMarketplaceService {
   _coverage(): MarketplaceResolveSourceCoverage[] {
     return this.registry.listSources().map((source) => {
       const status = this.snapshots.getStatus(source.id);
-      const usable = status.state === "ok" || status.state === "stale"
-        || (status.state === "refreshing" && !!status.current);
+      const usable = source.enabled !== false && (
+        status.state === "ok" || status.state === "stale"
+        || (status.state === "refreshing" && !!status.current)
+      );
       return {
         sourceId: source.id,
         authority: source.authority,
@@ -1207,6 +1275,9 @@ export class PluginMarketplaceService {
       userSkillsDir: string;
       isStudioOwner?: boolean;
       execGit?: any;
+      expectedRevision?: number;
+      expectedDigest?: string;
+      expectedSourceSnapshot?: ReturnType<PluginMarketplaceService["getInstallPlanContext"]>["sourceSnapshot"];
     },
   ): Promise<{
     marketplaceId: string;
@@ -1225,6 +1296,7 @@ export class PluginMarketplaceService {
       err.status = 403;
       throw err;
     }
+    this._assertClaudeSkillsInstallPlan(marketplaceId, options);
     this.assertRegistryUsableForAcquisition();
 
     const plugin = this.getCatalogPlugin(pluginId, marketplaceId);
@@ -1273,6 +1345,15 @@ export class PluginMarketplaceService {
       err.status = 400;
       throw err;
     }
+    if (source.enabled === false) {
+      const err = new Error(`Marketplace source is disabled: ${marketplaceId}`) as Error & {
+        code: string;
+        status: number;
+      };
+      err.code = "PLUGIN_MARKETPLACE_SOURCE_DISABLED";
+      err.status = 409;
+      throw err;
+    }
 
     const {
       installClaudeSkillsFromPackage,
@@ -1308,6 +1389,18 @@ export class PluginMarketplaceService {
         }),
         resolvedRevision: null,
       };
+    }
+
+    this._assertClaudeSkillsInstallPlan(marketplaceId, options);
+    const expectedResolvedRevision = options.expectedSourceSnapshot?.resolvedRevision || null;
+    if (expectedResolvedRevision && materialized.resolvedRevision !== expectedResolvedRevision) {
+      const err = new Error("Marketplace source revision changed; create a fresh install plan") as Error & {
+        code: string;
+        status: number;
+      };
+      err.code = "PLUGIN_MARKETPLACE_PLAN_STALE";
+      err.status = 409;
+      throw err;
     }
 
     const result = installClaudeSkillsFromPackage({
