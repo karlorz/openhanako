@@ -156,6 +156,82 @@ describe("marketplace sources auth principal", () => {
     });
   });
 
+  it("keeps the capabilities snapshot owner-only while exposing safe remote diagnostics", async () => {
+    const home = makeHome();
+    fs.writeFileSync(path.join(home, "user-settings.json"), "{}\n", "utf8");
+    fs.writeFileSync(path.join(home, "plugin-marketplaces.json"), JSON.stringify({
+      schemaVersion: 2,
+      revision: 4,
+      sources: [{
+        id: "team-plugins",
+        name: "Team",
+        kind: "url",
+        url: "https://example.com/marketplace.json",
+      }],
+      activations: {
+        runtimePlugins: { "demo@team-plugins": { enabled: true } },
+        agentPluginAccess: { agentA: { "demo@team-plugins": { enabled: true } } },
+      },
+      claudeCompatibility: {
+        bindings: [{
+          id: "binding-1",
+          mode: "snapshot",
+          enabled: true,
+          inputs: [{ role: "user-settings", path: path.join(home, "user-settings.json") }],
+        }],
+      },
+    }, null, 2), "utf8");
+    const engine = createEngine(home);
+
+    const ownerRes = await createAppWithPrincipal(engine, localOwner)
+      .request("/api/plugins/marketplace/capabilities");
+    const ownerBody = await ownerRes.json();
+    expect(ownerRes.status).toBe(200);
+    expect(ownerBody.configDiagnostics).toMatchObject({
+      path: path.join(home, "plugin-marketplaces.json"),
+      file: {
+        schemaVersion: 2,
+        revision: 4,
+        sources: [{ id: "team-plugins" }],
+        activations: {
+          runtimePlugins: { "demo@team-plugins": { enabled: true } },
+        },
+        claudeCompatibility: { bindings: [{ id: "binding-1" }] },
+      },
+      summary: { schemaVersion: 2, revision: 4 },
+    });
+
+    const reader = Object.freeze({
+      kind: "device",
+      connectionKind: "lan",
+      credentialKind: "device_credential",
+      scopes: ["settings.read"],
+    });
+    vi.spyOn(engine.pluginMarketplaceService, "ensureOfficialSnapshotSeededAsync")
+      .mockResolvedValue({ state: "ok" });
+    const readerApp = createAppWithPrincipal(engine, reader);
+    for (const endpoint of [
+      "/api/plugins/marketplace/capabilities",
+      "/api/plugins/marketplace/config",
+      "/api/plugins/marketplace/catalog",
+    ]) {
+      const readerRes = await readerApp.request(endpoint);
+      const readerBody = await readerRes.json();
+      expect(readerRes.status, endpoint).toBe(200);
+      expect(readerBody.configDiagnostics, endpoint).toMatchObject({
+        path: "[server-local path redacted]",
+        file: { schemaVersion: 2, revision: 4 },
+        summary: { schemaVersion: 2, revision: 4 },
+      });
+      expect(readerBody.configDiagnostics.file, endpoint).not.toHaveProperty("sources");
+      expect(readerBody.configDiagnostics.file, endpoint).not.toHaveProperty("activations");
+      expect(readerBody.configDiagnostics.file, endpoint).not.toHaveProperty("claudeCompatibility");
+      expect(readerBody.configDiagnostics, endpoint).not.toHaveProperty("sources");
+      expect(readerBody.configDiagnostics, endpoint).not.toHaveProperty("activations");
+      expect(readerBody.configDiagnostics, endpoint).not.toHaveProperty("claudeCompatibilityBindings");
+    }
+  });
+
   it("returns config diagnostics without seeding or fetching marketplace content", async () => {
     const home = makeHome();
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ schemaVersion: 1, plugins: [] }), { status: 200 }));

@@ -13,10 +13,12 @@ installing:
 | `native-plugin` + `plugin-manager` | `PluginManager` | Native plugin runtime, trust, enable/disable, and uninstall. |
 | `hana-skills` + `skill-manager` | SkillManager | Hana skill package; never converted into a native plugin. |
 
-Under the current durable multi-source/Agent contract, native Marketplace
-installation is preview-only/deferred. Hana skill packages use the supported
-skill-manager lifecycle. A legacy single-catalog native release path may remain
-for compatibility; it is not the current Agent installation contract.
+Under the current durable multi-source/Agent contract, Studio owners install
+and uninstall native Marketplace packages through the Settings signed
+plan/execute lifecycle. Agent-driven native installation remains unsupported
+(preview-only/deferred). Hana skill packages use the separate supported
+SkillManager lifecycle. Legacy release metadata cannot bypass the owner
+Settings lifecycle or enable Agent-driven native installation.
 
 ## Quick Start
 
@@ -1121,10 +1123,12 @@ Before any mutation, inspect the resolved destination and adapter. A
 `hana-skills` + `skill-manager` package installs through SkillManager and
 appears in Manage Plugins with a **Hana skills badge**. Its global
 **Marketplace package gate** is separate from each **Agent Skill Toggle**.
-A `native-plugin` + `plugin-manager` package belongs to PluginManager; native
-installation in the current multi-source/Agent contract is
-preview-only/deferred. Source enablement is another separate control and does
-not toggle an installed package.
+A `native-plugin` + `plugin-manager` package belongs to PluginManager. Studio
+owners can install and uninstall native Marketplace packages from Settings
+through the signed plan/execute lifecycle; Agent-driven native installation is
+unsupported (preview-only/deferred) under the current multi-source/Agent contract.
+Source enablement is another separate
+control and does not toggle an installed package.
 
 | Layer | Identity |
 |------|----------|
@@ -1146,7 +1150,7 @@ Source management APIs:
 - `POST /api/plugins/marketplace/sources/:id/refresh` — refresh into last-known-good snapshot store
 - `DELETE /api/plugins/marketplace/sources/:id` — blocked while active/retained artifacts reference the source
 - `GET /api/plugins/marketplace/catalog` — composite rows with source badges and active/retained state
-- `POST /api/plugins/marketplace/:id/install` — legacy native compatibility path; current Agent workflows route by destination and do not use it for `hana-skills`
+- `POST /api/plugins/marketplace/:id/install` — legacy native compatibility path; it is Studio-owner-only, rejects native Marketplace packages in favor of the signed Settings plan/execute lifecycle, and cannot bypass that boundary with release metadata. Agent workflows do not use it for `hana-skills`
 - `POST /api/plugins/:pluginId/source-switch` — transactional switch to another retained marketplace source
 
 Settings → Plugin marketplace includes **Add source** (URL / local server path / public Git), per-source refresh/remove, composite rows, and **Switch source**. Fresh bare install uses **official-wins**; multiple non-official matches require an explicit marketplace pin. Switching never copies state, secrets, or trust across sources. Remote sources are **public credential-free HTTPS only** in v1.
@@ -1194,7 +1198,7 @@ Without either environment variable, Hana first tries `${HANA_HOME}/plugin-marke
 }
 ```
 
-The marketplace UI shows the package list and README in a wider settings subpage. Selecting a package reads `/api/plugins/marketplace/:id/readme`. For a legacy native compatibility release, `distribution.kind: "release"` downloads the zip, verifies `sha256`, and installs it into the native plugin directory. For `hana-skills` + `skill-manager`, Hana uses the skill-package plan/install lifecycle and never installs the package as a native plugin. `distribution.kind: "source"` remains local-file-only because the source path must resolve on the Hana server.
+The marketplace UI shows the package list and README in a wider settings subpage. Selecting a package reads `/api/plugins/marketplace/:id/readme`. For a native Marketplace package, Studio Settings obtains a signed plan and executes the owner-only install or uninstall lifecycle; the Agent lane remains unsupported. The legacy release-metadata endpoint is owner-gated and rejects native packages, so release metadata cannot bypass the signed Settings lifecycle. For `hana-skills` + `skill-manager`, Hana uses the separate skill-package plan/install lifecycle and never installs the package as a native plugin. `distribution.kind: "source"` remains local-file-only because the source path must resolve on the Hana server.
 
 Marketplace version management uses `versions[]` as the long-term contract: each item declares `version`, that version's `compatibility.minAppVersion`, and its own `distribution`. If `versions[]` is absent, Hana treats the root-level `version` / `compatibility` / `distribution` as a single version entry. The client chooses the highest SemVer version compatible with the current app, while exposing `latestVersion`, `selectedVersion`, `installedVersion`, `updateAvailable`, `downgrade`, `reinstall`, `compatible`, `installAction`, and `canInstall` for UI state.
 
