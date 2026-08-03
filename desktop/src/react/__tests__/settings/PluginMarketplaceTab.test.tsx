@@ -272,7 +272,6 @@ describe('PluginMarketplaceTab inspector rendering', () => {
   });
 
   it('installs a supported native package through owner plan/execute and never the skills route', async () => {
-    vi.spyOn(window, 'prompt').mockReturnValue('native-page@official');
     const native = catalogPlugin({
       pluginId: 'native-page', id: 'native-page', name: 'Native Page', marketplaceId: 'official',
       compositeKey: 'native-page@official', catalogFormat: null, installTarget: 'native-plugin',
@@ -296,14 +295,23 @@ describe('PluginMarketplaceTab inspector rendering', () => {
       return jsonResponse({});
     });
 
+    const promptSpy = vi.spyOn(window, 'prompt');
     render(<PluginMarketplaceTab />);
     fireEvent.click(await screen.findByRole('button', { name: 'Install' }));
+
+    const dialog = await screen.findByRole('dialog', { name: 'Install native Marketplace plugin' });
+    expect(dialog).toBeInTheDocument();
+    expect(promptSpy).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByRole('textbox', { name: 'Type confirmation' }), {
+      target: { value: 'native-page@official' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+
     await waitFor(() => expect(mockShowToast).toHaveBeenCalledWith(expect.any(String), 'success'));
     expect(mockHanaFetch).not.toHaveBeenCalledWith('/api/plugins/marketplace/native-page/skills', expect.anything());
   });
 
   it('uninstalls an active native package through owner plan/execute and preserves retained evidence', async () => {
-    vi.spyOn(window, 'prompt').mockReturnValue('native-page@official');
     const native = catalogPlugin({
       pluginId: 'native-page', id: 'native-page', name: 'Native Page', marketplaceId: 'official',
       compositeKey: 'native-page@official', catalogFormat: null, installTarget: 'native-plugin',
@@ -323,8 +331,18 @@ describe('PluginMarketplaceTab inspector rendering', () => {
       return jsonResponse({});
     });
 
+    const promptSpy = vi.spyOn(window, 'prompt');
     render(<PluginMarketplaceTab />);
     fireEvent.click(await screen.findByRole('button', { name: 'Uninstall' }));
+
+    const dialog = await screen.findByRole('dialog', { name: 'Uninstall native Marketplace plugin' });
+    expect(dialog).toBeInTheDocument();
+    expect(promptSpy).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByRole('textbox', { name: 'Type confirmation' }), {
+      target: { value: 'native-page@official' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+
     await waitFor(() => expect(mockShowToast).toHaveBeenCalledWith(expect.stringContaining('retained artifact remains non-installed'), 'success'));
     expect(mockHanaFetch).not.toHaveBeenCalledWith('/api/plugins/marketplace/native-page/skills', expect.anything());
   });
