@@ -31,6 +31,11 @@ type MarketplaceRegistrySnapshot = MarketplaceRegistryPrecondition & {
   degraded?: boolean;
 };
 
+type MarketplaceSourcesLoadResult = {
+  registry: MarketplaceRegistrySnapshot | null;
+  sources: MarketplaceSourceRow[];
+};
+
 export interface MarketplaceSourcesPanelProps {
   /** When true, open the add-source dialog on first mount. */
   defaultShowAdd?: boolean;
@@ -41,6 +46,7 @@ export interface MarketplaceSourcesPanelProps {
   /** Separate an embedded source area from the content immediately above it. */
   withTopDivider?: boolean;
   onSourcesChanged?: (sources: MarketplaceSourceRow[]) => void;
+  /** Called once after each successful source mutation that also yields a refreshed source list. */
 }
 
 function sourceKindLabel(kind?: string): string {
@@ -110,7 +116,7 @@ export function MarketplaceSourcesPanel({
   const [isStudioOwner, setIsStudioOwner] = useState<boolean | null>(null);
   const showToast = useSettingsStore((s) => s.showToast);
 
-  const loadSources = useCallback(async (): Promise<MarketplaceRegistrySnapshot | null> => {
+  const loadSources = useCallback(async (): Promise<MarketplaceSourcesLoadResult | null> => {
     setLoading(true);
     setError(null);
     try {
@@ -124,8 +130,7 @@ export function MarketplaceSourcesPanel({
       const nextRegistry = data.registry || null;
       setRegistry(nextRegistry);
       setIsStudioOwner(typeof data.access?.isStudioOwner === 'boolean' ? data.access.isStudioOwner : null);
-      onSourcesChanged?.(list);
-      return nextRegistry;
+      return { registry: nextRegistry, sources: list };
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       // Soft: keep previous list on transient network abort/fetch failures
@@ -139,7 +144,7 @@ export function MarketplaceSourcesPanel({
     } finally {
       setLoading(false);
     }
-  }, [onSourcesChanged]);
+  }, []);
 
   useEffect(() => {
     void loadSources();
@@ -148,6 +153,11 @@ export function MarketplaceSourcesPanel({
   useEffect(() => {
     if (defaultShowAdd) setShowAdd(true);
   }, [defaultShowAdd]);
+
+  const reloadAfterMutation = async () => {
+    const refreshed = await loadSources();
+    if (refreshed) onSourcesChanged?.(refreshed.sources);
+  };
 
   /**
    * Source and package gates share one server-owned registry. A package change
@@ -161,10 +171,10 @@ export function MarketplaceSourcesPanel({
       return await operation(registry);
     } catch (err) {
       if (!isMarketplaceRegistryStaleConflict(err)) throw err;
-      const freshRegistry = await loadSources();
-      if (!freshRegistry) throw err;
+      const fresh = await loadSources();
+      if (!fresh?.registry) throw err;
       try {
-        return await operation(freshRegistry);
+        return await operation(fresh.registry);
       } catch (retryErr) {
         if (isMarketplaceRegistryStaleConflict(retryErr)) {
           await loadSources();
@@ -198,7 +208,7 @@ export function MarketplaceSourcesPanel({
         }
       });
       showToast(t('settings.plugins.marketSourceAdded'), 'success');
-      await loadSources();
+      await reloadAfterMutation();
     } catch (err: unknown) {
       showToast(err instanceof Error ? err.message : String(err), 'error');
     } finally {
@@ -225,7 +235,7 @@ export function MarketplaceSourcesPanel({
         }
       });
       showToast(t('settings.plugins.marketSourceRemoved'), 'success');
-      await loadSources();
+      await reloadAfterMutation();
     } catch (err: unknown) {
       showToast(err instanceof Error ? err.message : String(err), 'error');
     } finally {
@@ -260,7 +270,7 @@ export function MarketplaceSourcesPanel({
         id: source.id,
         state: enabled ? t('settings.plugins.marketSourceEnabled') : t('settings.plugins.marketSourceDisabled'),
       }), 'success');
-      await loadSources();
+      await reloadAfterMutation();
     } catch (err: unknown) {
       showToast(err instanceof Error ? err.message : String(err), 'error');
     } finally {
@@ -279,7 +289,7 @@ export function MarketplaceSourcesPanel({
         throw new Error(data.error || data.detail || t('settings.plugins.marketSourceRefreshFailed'));
       }
       showToast(t('settings.plugins.marketSourceRefreshed'), 'success');
-      await loadSources();
+      await reloadAfterMutation();
     } catch (err: unknown) {
       showToast(err instanceof Error ? err.message : String(err), 'error');
     } finally {
