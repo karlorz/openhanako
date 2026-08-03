@@ -153,16 +153,23 @@ describe('MarketplaceSourcesPanel product states', () => {
 
   it('keeps source refresh/remove callbacks and revision/digest behavior unchanged', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const onSourcesChanged = vi.fn();
     let loadCount = 0;
     const calls: Array<{ url: string; method?: string }> = [];
     mockHanaFetch.mockImplementation(async (url: string, init?: RequestInit) => {
       calls.push({ url, method: init?.method });
       if (url === '/api/plugins/marketplace/sources' && !init?.method) {
         loadCount += 1;
+        const postRefresh = loadCount === 2;
+        const postRemove = loadCount === 3;
         return response({
           access: { isStudioOwner: true },
           registry: { revision: 9, digest: 'a'.repeat(64), degraded: false },
-          sources: [{ id: 'team-git', name: 'Team Git', authority: 'custom', enabled: true, mutable: true }],
+          sources: postRemove
+            ? []
+            : postRefresh
+              ? [{ id: 'team-git', name: 'Team Git', authority: 'custom', enabled: true, mutable: true, status: 'ok', catalogCount: 5 }]
+              : [{ id: 'team-git', name: 'Team Git', authority: 'custom', enabled: true, mutable: true }],
         });
       }
       if (url === '/api/plugins/marketplace/sources/team-git/refresh') {
@@ -176,12 +183,20 @@ describe('MarketplaceSourcesPanel product states', () => {
       return response({});
     });
 
-    render(<MarketplaceSourcesPanel />);
+    render(<MarketplaceSourcesPanel onSourcesChanged={onSourcesChanged} />);
+    expect(await screen.findByText('Team Git')).toBeInTheDocument();
+    expect(onSourcesChanged).not.toHaveBeenCalled();
+
     fireEvent.click(await screen.findByRole('button', { name: 'Refresh team-git' }));
     await waitFor(() => expect(mockShowToast).toHaveBeenCalledWith('settings.plugins.marketSourceRefreshed', 'success'));
+    await waitFor(() => expect(onSourcesChanged).toHaveBeenCalledExactlyOnceWith([
+      { id: 'team-git', name: 'Team Git', authority: 'custom', enabled: true, mutable: true, status: 'ok', catalogCount: 5 },
+    ]));
 
+    onSourcesChanged.mockClear();
     fireEvent.click(await screen.findByRole('button', { name: 'Remove marketplace source team-git' }));
     await waitFor(() => expect(mockShowToast).toHaveBeenCalledWith('settings.plugins.marketSourceRemoved', 'success'));
+    await waitFor(() => expect(onSourcesChanged).toHaveBeenCalledExactlyOnceWith([]));
     expect(loadCount).toBeGreaterThanOrEqual(3);
     expect(calls).toContainEqual({
       url: '/api/plugins/marketplace/sources/team-git/refresh',
@@ -269,6 +284,7 @@ describe('MarketplaceSourcesPanel product states', () => {
 
   it('confirms an exact source enable/disable action and sends revision/digest preconditions', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const onSourcesChanged = vi.fn();
     let loads = 0;
     mockHanaFetch.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === '/api/plugins/marketplace/sources' && !init?.method) {
@@ -276,7 +292,7 @@ describe('MarketplaceSourcesPanel product states', () => {
         return response({
           access: { isStudioOwner: true },
           registry: { revision: loads === 1 ? 5 : 6, digest: (loads === 1 ? 'd' : 'e').repeat(64), degraded: false },
-          sources: [{ id: 'team', name: 'Team', kind: 'git', authority: 'custom', enabled: true, status: 'ok', catalogCount: 1, mutable: true }],
+          sources: [{ id: 'team', name: 'Team', kind: 'git', authority: 'custom', enabled: loads === 1, status: 'ok', catalogCount: 1, mutable: true }],
         });
       }
       if (url === '/api/plugins/marketplace/sources/team/enabled') {
@@ -287,15 +303,19 @@ describe('MarketplaceSourcesPanel product states', () => {
       return response({});
     });
 
-    render(<MarketplaceSourcesPanel />);
+    render(<MarketplaceSourcesPanel onSourcesChanged={onSourcesChanged} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Disable team' }));
 
     expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('Disable marketplace source team'));
     await waitFor(() => expect(mockShowToast).toHaveBeenCalledWith('Marketplace source team Disabled', 'success'));
+    await waitFor(() => expect(onSourcesChanged).toHaveBeenCalledExactlyOnceWith([
+      { id: 'team', name: 'Team', kind: 'git', authority: 'custom', enabled: false, status: 'ok', catalogCount: 1, mutable: true },
+    ]));
   });
 
   it('refreshes sources and retries a stale source toggle once with the new registry preconditions', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const onSourcesChanged = vi.fn();
     let loads = 0;
     const toggleBodies: unknown[] = [];
     mockHanaFetch.mockImplementation(async (url: string, init?: RequestInit) => {
@@ -305,7 +325,7 @@ describe('MarketplaceSourcesPanel product states', () => {
         return response({
           access: { isStudioOwner: true },
           registry: { revision: fresh ? 57 : 48, digest: (fresh ? 'f' : 'e').repeat(64), degraded: false },
-          sources: [{ id: 'team', name: 'Team', kind: 'git', authority: 'custom', enabled: true, mutable: true }],
+          sources: [{ id: 'team', name: 'Team', kind: 'git', authority: 'custom', enabled: fresh ? false : true, mutable: true }],
         });
       }
       if (url === '/api/plugins/marketplace/sources/team/enabled') {
@@ -320,7 +340,7 @@ describe('MarketplaceSourcesPanel product states', () => {
       return response({});
     });
 
-    render(<MarketplaceSourcesPanel />);
+    render(<MarketplaceSourcesPanel onSourcesChanged={onSourcesChanged} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Disable team' }));
 
     await waitFor(() => expect(toggleBodies).toHaveLength(2));
@@ -329,17 +349,63 @@ describe('MarketplaceSourcesPanel product states', () => {
       { enabled: false, expectedRevision: 57, expectedDigest: 'f'.repeat(64) },
     ]);
     expect(mockShowToast).toHaveBeenCalledWith('Marketplace source team Disabled', 'success');
+    await waitFor(() => expect(onSourcesChanged).toHaveBeenCalledExactlyOnceWith([
+      { id: 'team', name: 'Team', kind: 'git', authority: 'custom', enabled: false, mutable: true },
+    ]));
+  });
+
+  it('does not notify or reload sources for read-only source loads or callback identity changes', async () => {
+    const firstCallback = vi.fn();
+    const latestCallback = vi.fn();
+    let reads = 0;
+    mockHanaFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === '/api/plugins/marketplace/sources' && !init?.method) {
+        reads += 1;
+        return response({
+          access: { isStudioOwner: true },
+          registry: { revision: 1, digest: 'a'.repeat(64), degraded: false },
+          sources: [{ id: 'team', name: 'Team', authority: 'custom', enabled: true, mutable: true }],
+        });
+      }
+      return response({});
+    });
+
+    const { rerender } = render(<MarketplaceSourcesPanel onSourcesChanged={firstCallback} />);
+
+    // 1. Initial render produces one source GET, renders Team, calls neither callback
+    expect(await screen.findByText('Team')).toBeInTheDocument();
+    expect(reads).toBe(1);
+    expect(firstCallback).not.toHaveBeenCalled();
+    expect(latestCallback).not.toHaveBeenCalled();
+
+    // 2. Clicking Reload produces a second source GET but still calls no callback
+    fireEvent.click(screen.getByRole('button', { name: 'Reload source list' }));
+    await waitFor(() => expect(reads).toBe(2));
+    expect(firstCallback).not.toHaveBeenCalled();
+    expect(latestCallback).not.toHaveBeenCalled();
+
+    // 3. Rerendering with a new callback identity does not produce a third GET
+    //    and calls neither the old nor the new callback.
+    const { act } = await import('react');
+    rerender(<MarketplaceSourcesPanel onSourcesChanged={latestCallback} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(reads).toBe(2);
+    expect(firstCallback).not.toHaveBeenCalled();
+    expect(latestCallback).not.toHaveBeenCalled();
   });
 
   it('submits a one-field Git source through the compact server request boundary', async () => {
-    let loads = 0;
+    const firstCallback = vi.fn();
+    const latestCallback = vi.fn();
+    let reads = 0;
     mockHanaFetch.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === '/api/plugins/marketplace/sources' && !init?.method) {
-        loads += 1;
+        reads += 1;
+        const empty = reads === 1;
         return response({
           access: { isStudioOwner: true },
-          registry: { revision: loads === 1 ? 7 : 8, digest: (loads === 1 ? 'a' : 'b').repeat(64), degraded: false },
-          sources: [],
+          registry: { revision: empty ? 7 : 8, digest: (empty ? 'a' : 'b').repeat(64), degraded: false },
+          sources: empty ? [] : [{ id: 'team', name: 'Team', authority: 'custom', enabled: true, mutable: true }],
         });
       }
       if (url === '/api/plugins/marketplace/sources' && init?.method === 'POST') {
@@ -353,14 +419,34 @@ describe('MarketplaceSourcesPanel product states', () => {
       return response({});
     });
 
-    render(<MarketplaceSourcesPanel />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Add source' }));
+    const { rerender } = render(<MarketplaceSourcesPanel onSourcesChanged={firstCallback} />);
+
+    // 1. Initial render — callback not called yet
+    expect(await screen.findByText('settings.plugins.marketSourceEmpty')).toBeInTheDocument();
+    expect(reads).toBe(1);
+    expect(firstCallback).not.toHaveBeenCalled();
+    expect(latestCallback).not.toHaveBeenCalled();
+
+    // 2. Rerender with latestCallback — no new GET, no callback
+    const { act } = await import('react');
+    rerender(<MarketplaceSourcesPanel onSourcesChanged={latestCallback} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(reads).toBe(1);
+    expect(latestCallback).not.toHaveBeenCalled();
+    expect(firstCallback).not.toHaveBeenCalled();
+
+    // 3. Add source via dialog
+    fireEvent.click(screen.getByRole('button', { name: 'Add source' }));
     const sourceInput = screen.getByRole('textbox', { name: 'Source' });
     fireEvent.change(sourceInput, { target: { value: 'https://github.com/example-org/hana-market' } });
     expect(screen.getByText('Detected: public HTTPS Git repository')).toBeInTheDocument();
     fireEvent.submit(sourceInput.closest('form')!);
 
-    await waitFor(() => expect(mockShowToast).toHaveBeenCalledWith('settings.plugins.marketSourceAdded', 'success'));
+    // 4. Dialog closes after onSubmit returns, then latestCallback fires with the refreshed list
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(mockShowToast).toHaveBeenCalledWith('settings.plugins.marketSourceAdded', 'success');
+    expect(reads).toBe(2);
+    await waitFor(() => expect(latestCallback).toHaveBeenCalledExactlyOnceWith([{ id: 'team', name: 'Team', authority: 'custom', enabled: true, mutable: true }]));
+    expect(firstCallback).not.toHaveBeenCalled();
   });
 });
