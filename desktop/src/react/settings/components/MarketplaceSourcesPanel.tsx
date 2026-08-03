@@ -45,8 +45,8 @@ export interface MarketplaceSourcesPanelProps {
   heading?: string;
   /** Separate an embedded source area from the content immediately above it. */
   withTopDivider?: boolean;
-  onSourcesChanged?: (sources: MarketplaceSourceRow[]) => void;
   /** Called once after each successful source mutation that also yields a refreshed source list. */
+  onSourcesChanged?: (sources: MarketplaceSourceRow[]) => void;
 }
 
 function sourceKindLabel(kind?: string): string {
