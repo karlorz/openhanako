@@ -346,7 +346,18 @@ function isInstalledSkillsPackage(plugin: MarketplacePlugin): boolean {
     && plugin.packageInstall.state !== 'not-installed';
 }
 
-function confirmInstallPlan(plugin: MarketplacePlugin): boolean {
+type TypedConfirmationRequest = {
+  title: string;
+  message: string;
+  expected: string;
+};
+
+type TypedConfirmationRequester = (request: TypedConfirmationRequest) => Promise<boolean>;
+
+async function confirmInstallPlan(
+  plugin: MarketplacePlugin,
+  requestTypedConfirmation: TypedConfirmationRequester,
+): Promise<boolean> {
   const warnings = warningMessages(plugin);
   const level = plugin.confirmationLevel || plugin.installPlan?.confirmationLevel || 'inline';
   const planLines = [
@@ -359,10 +370,15 @@ function confirmInstallPlan(plugin: MarketplacePlugin): boolean {
 
   if (level === 'typed-exact') {
     const expected = sourceQualifiedId(plugin);
-    const typed = window.prompt(
-      `Review this install plan before continuing:\n\n${planLines.join('\n')}\n\nType ${expected} to install.`,
-    );
-    return typed === expected;
+    return requestTypedConfirmation({
+      title: 'Install Marketplace package',
+      message: [
+        'Review this install plan before continuing:',
+        planLines.join('\n'),
+        `Type ${expected} to install.`,
+      ].join('\n\n'),
+      expected,
+    });
   }
 
   return window.confirm(`Review this install plan before continuing:\n\n${planLines.join('\n')}\n\nThe connected server owner must approve this mutation.`);
@@ -411,9 +427,31 @@ export function PluginMarketplaceTab() {
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(settingsAgentId || currentAgentId || null);
   const [updatingAgentAccess, setUpdatingAgentAccess] = useState(false);
   const [togglingPackageKey, setTogglingPackageKey] = useState<string | null>(null);
+  const [typedConfirmation, setTypedConfirmation] = useState<(TypedConfirmationRequest & { value: string }) | null>(null);
   const loadGenRef = React.useRef(0);
   const readmeGenRef = React.useRef(0);
   const readmeKeyRef = React.useRef<string | null>(null);
+  const typedConfirmationResolverRef = React.useRef<((confirmed: boolean) => void) | null>(null);
+
+  const requestTypedConfirmation = useCallback((request: TypedConfirmationRequest): Promise<boolean> => {
+    typedConfirmationResolverRef.current?.(false);
+    return new Promise((resolve) => {
+      typedConfirmationResolverRef.current = resolve;
+      setTypedConfirmation({ ...request, value: '' });
+    });
+  }, []);
+
+  const finishTypedConfirmation = useCallback((confirmed: boolean) => {
+    const resolve = typedConfirmationResolverRef.current;
+    typedConfirmationResolverRef.current = null;
+    setTypedConfirmation(null);
+    resolve?.(confirmed);
+  }, []);
+
+  useEffect(() => () => {
+    typedConfirmationResolverRef.current?.(false);
+    typedConfirmationResolverRef.current = null;
+  }, []);
 
   useEffect(() => {
     if (!selectedAgentId && (settingsAgentId || currentAgentId)) {
@@ -665,7 +703,7 @@ export function PluginMarketplaceTab() {
         }))
       : false;
     if (plugin.installAction === 'downgrade' && !allowDowngrade) return;
-    if (plugin.installTarget !== 'native-plugin' && !confirmInstallPlan(plugin)) return;
+    if (plugin.installTarget !== 'native-plugin' && !(await confirmInstallPlan(plugin, requestTypedConfirmation))) return;
 
     setInstallingPluginId(rowKey(plugin));
     try {
@@ -681,14 +719,27 @@ export function PluginMarketplaceTab() {
         });
         const plan = await planRes.json().catch(() => ({}));
         if (plan.error) throw new Error(plan.error);
-        const typed = window.prompt(
-          `Install native Marketplace plugin ${plan.identity}?\n\nVersion: ${plan.facts?.version || marketVersion(plugin)}\nPackage SHA-256: ${plan.facts?.packageSha256 || 'unknown'}\nRuntime trust: ${plan.facts?.trust || plugin.trust || 'restricted'}\nServer-global contributions: ${(plan.facts?.contributions || []).join(', ') || 'none'}\n\nType ${plan.confirmationText} to continue.`,
-        );
-        if (typed !== plan.confirmationText) return;
+        const confirmationText = typeof plan.confirmationText === 'string' ? plan.confirmationText : '';
+        if (!confirmationText) return;
+        const confirmed = await requestTypedConfirmation({
+          title: 'Install native Marketplace plugin',
+          message: [
+            `Install native Marketplace plugin ${plan.identity}?`,
+            '',
+            `Version: ${plan.facts?.version || marketVersion(plugin)}`,
+            `Package SHA-256: ${plan.facts?.packageSha256 || 'unknown'}`,
+            `Runtime trust: ${plan.facts?.trust || plugin.trust || 'restricted'}`,
+            `Server-global contributions: ${(plan.facts?.contributions || []).join(', ') || 'none'}`,
+            '',
+            `Type ${confirmationText} to continue.`,
+          ].join('\n'),
+          expected: confirmationText,
+        });
+        if (!confirmed) return;
         const executeRes = await hanaFetch(`/api/plugins/marketplace/${encodeURIComponent(plugin.id)}/native/install/execute`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ planToken: plan.planToken, confirmation: typed }),
+          body: JSON.stringify({ planToken: plan.planToken, confirmation: confirmationText }),
         });
         const result = await executeRes.json().catch(() => ({}));
         if (result.error) throw new Error(result.error);
@@ -735,14 +786,22 @@ export function PluginMarketplaceTab() {
       });
       const plan = await planRes.json().catch(() => ({}));
       if (plan.error) throw new Error(plan.error);
-      const typed = window.prompt(
-        `Uninstall ${plan.identity}? The active projection and artifact trust will be removed; retained verified artifacts and history will remain non-installed.\n\nType ${plan.confirmationText} to continue.`,
-      );
-      if (typed !== plan.confirmationText) return;
+      const confirmationText = typeof plan.confirmationText === 'string' ? plan.confirmationText : '';
+      if (!confirmationText) return;
+      const confirmed = await requestTypedConfirmation({
+        title: 'Uninstall native Marketplace plugin',
+        message: [
+          `Uninstall ${plan.identity}? The active projection and artifact trust will be removed; retained verified artifacts and history will remain non-installed.`,
+          '',
+          `Type ${confirmationText} to continue.`,
+        ].join('\n'),
+        expected: confirmationText,
+      });
+      if (!confirmed) return;
       const executeRes = await hanaFetch(`/api/plugins/marketplace/${encodeURIComponent(plugin.id)}/native/uninstall/execute`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ planToken: plan.planToken, confirmation: typed }),
+        body: JSON.stringify({ planToken: plan.planToken, confirmation: confirmationText }),
       });
       const result = await executeRes.json().catch(() => ({}));
       if (result.error) throw new Error(result.error);
@@ -1487,6 +1546,65 @@ export function PluginMarketplaceTab() {
           </details>
         )}
       </SettingsSection>
+
+      {typedConfirmation ? (
+        <div
+          className={styles['skill-bundle-dialog-backdrop']}
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) finishTypedConfirmation(false);
+          }}
+        >
+          <form
+            className={styles['skill-bundle-dialog']}
+            role="dialog"
+            aria-modal="true"
+            aria-label={typedConfirmation.title}
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (typedConfirmation.value === typedConfirmation.expected) finishTypedConfirmation(true);
+            }}
+          >
+            <div className={styles['skill-bundle-dialog-header']}>
+              <h3>{typedConfirmation.title}</h3>
+              <button
+                type="button"
+                aria-label="Close"
+                onClick={() => finishTypedConfirmation(false)}
+              >
+                ×
+              </button>
+            </div>
+            <p className={styles['skill-bundle-dialog-text']} style={{ whiteSpace: 'pre-wrap' }}>
+              {typedConfirmation.message}
+            </p>
+            <label className={styles['skill-bundle-dialog-field']}>
+              <span>Type confirmation</span>
+              <input
+                value={typedConfirmation.value}
+                autoFocus
+                autoComplete="off"
+                spellCheck={false}
+                aria-label="Type confirmation"
+                onChange={(event) => setTypedConfirmation(prev => (
+                  prev ? { ...prev, value: event.target.value } : prev
+                ))}
+              />
+            </label>
+            <div className={styles['skill-bundle-dialog-actions']}>
+              <button type="button" onClick={() => finishTypedConfirmation(false)}>
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className={styles['skill-bundle-dialog-primary']}
+                disabled={typedConfirmation.value !== typedConfirmation.expected}
+              >
+                Confirm
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
     </div>
   );
 }
