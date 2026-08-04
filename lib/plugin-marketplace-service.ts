@@ -1374,6 +1374,7 @@ export class PluginMarketplaceService {
           hanakoHome: this._hanakoHome,
           packagePath,
           execGit: options.execGit,
+          expectedRevision: options.expectedSourceSnapshot?.resolvedRevision || undefined,
         },
       );
     } else {

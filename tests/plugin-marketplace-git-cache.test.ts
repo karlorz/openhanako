@@ -224,4 +224,82 @@ describe("git marketplace policy", () => {
       ? fs.readdirSync(failedRoot).filter((name) => name.startsWith(".stage-"))
       : []).toEqual([]);
   });
+
+  it("pins materialization to expectedRevision when branch HEAD differs", async () => {
+    const home = makeHome();
+    const source = {
+      id: "team-plugins",
+      kind: "git" as const,
+      gitUrl: "https://github.com/example/team-plugins.git",
+      gitRef: "refs/heads/main",
+    };
+    const snapshotRev = "a".repeat(40);
+    const headRev = "b".repeat(40);
+    let fetchCalled = false;
+    const execGit = vi.fn(async (_bin: string, args: string[]) => {
+      if (args[0] === "clone") {
+        const dest = args[args.length - 1];
+        fs.mkdirSync(path.join(dest, "packages", "skills", "demo"), { recursive: true });
+        fs.writeFileSync(path.join(dest, "packages", "skills", "demo", "SKILL.md"), "---\nname: demo\n---\n", "utf8");
+        return "";
+      }
+      if (args.includes("sparse-checkout")) return "";
+      if (args.includes("rev-parse")) {
+        // First call (after clone) returns HEAD; second call (after fetch+checkout) returns pinned rev
+        return fetchCalled ? `${snapshotRev}\n` : `${headRev}\n`;
+      }
+      if (args.includes("fetch")) {
+        fetchCalled = true;
+        return "";
+      }
+      if (args.includes("checkout")) return "";
+      throw new Error(`unexpected git args: ${args.join(" ")}`);
+    });
+
+    const result = await materializeGitMarketplacePackage(source, {
+      hanakoHome: home,
+      packagePath: "packages/skills",
+      execGit: execGit as any,
+      expectedRevision: snapshotRev,
+    });
+
+    expect(result.resolvedRevision).toBe(snapshotRev);
+    expect(fetchCalled).toBe(true);
+    expect(execGit.mock.calls.some((c) => c[1].includes("fetch"))).toBe(true);
+    expect(execGit.mock.calls.some((c) => c[1].includes("checkout") && c[1].includes(snapshotRev))).toBe(true);
+  });
+
+  it("skips fetch when expectedRevision matches HEAD", async () => {
+    const home = makeHome();
+    const source = {
+      id: "team-plugins",
+      kind: "git" as const,
+      gitUrl: "https://github.com/example/team-plugins.git",
+      gitRef: "refs/heads/main",
+    };
+    const rev = "c".repeat(40);
+    const execGit = vi.fn(async (_bin: string, args: string[]) => {
+      if (args[0] === "clone") {
+        const dest = args[args.length - 1];
+        fs.mkdirSync(path.join(dest, "packages", "skills", "demo"), { recursive: true });
+        fs.writeFileSync(path.join(dest, "packages", "skills", "demo", "SKILL.md"), "---\nname: demo\n---\n", "utf8");
+        return "";
+      }
+      if (args.includes("sparse-checkout")) return "";
+      if (args.includes("rev-parse")) return `${rev}\n`;
+      if (args.includes("fetch")) return "";
+      if (args.includes("checkout")) return "";
+      throw new Error(`unexpected git args: ${args.join(" ")}`);
+    });
+
+    const result = await materializeGitMarketplacePackage(source, {
+      hanakoHome: home,
+      packagePath: "packages/skills",
+      execGit: execGit as any,
+      expectedRevision: rev,
+    });
+
+    expect(result.resolvedRevision).toBe(rev);
+    expect(execGit.mock.calls.some((c) => c[1][0] === "fetch")).toBe(false);
+  });
 });
