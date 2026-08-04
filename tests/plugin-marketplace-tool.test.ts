@@ -325,8 +325,8 @@ describe("plugin_marketplace Agent tool", () => {
       sideEffect: {
         source: "./team-market",
         sourceKind: "local",
-        localSourcePath: "/tmp/hana/plugin-marketplaces-local/team-market",
-        localAllowedRoot: "/tmp/hana/plugin-marketplaces-local",
+        localSourcePath: path.resolve("/tmp/hana/plugin-marketplaces-local/team-market"),
+        localAllowedRoot: path.resolve("/tmp/hana/plugin-marketplaces-local"),
       },
     });
     expect(tool.sessionPermission.resolveInvocation({
@@ -358,8 +358,8 @@ describe("plugin_marketplace Agent tool", () => {
     })).toMatchObject({
       sideEffect: {
         sourceKind: "local",
-        localSourcePath: "/tmp/hana/plugin-marketplaces-local/llm-wiki",
-        localAllowedRoot: "/tmp/hana/plugin-marketplaces-local",
+        localSourcePath: path.resolve("/tmp/hana/plugin-marketplaces-local/llm-wiki"),
+        localAllowedRoot: path.resolve("/tmp/hana/plugin-marketplaces-local"),
         sourceAuthority: "custom",
       },
     });
