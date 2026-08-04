@@ -68,6 +68,7 @@ export default [
         ...globals.node,
         fetch: 'readonly',
         AbortSignal: 'readonly',
+        WebSocket: 'readonly',
       },
     },
   },
