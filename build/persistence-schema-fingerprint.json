@@ -668,7 +668,7 @@
     ],
     "version": 3
   },
-  "payloadFingerprint": "sha256:353ce0844c068fedf9133d3c38f638b4120c12bf8fc473761d8cae259b90332c",
+  "payloadFingerprint": "sha256:f15555bc5d1a546e1dbae4a6ee7c99a9f1f5164efad480ac31feaa552b6bba99",
   "registry": [
     {
       "affectedByEpochMigration": true,
@@ -3132,8 +3132,8 @@
   ],
   "review": {
     "classification": "compatible",
-    "compatibilityReason": "Cleans per-agent marketplace skill-package references during uninstall while preserving the existing config and installed-plugin store schemas and byte interpretation.",
-    "payloadFingerprint": "sha256:353ce0844c068fedf9133d3c38f638b4120c12bf8fc473761d8cae259b90332c"
+    "compatibilityReason": "Registers the marketplace active-marker and plugin temp-extraction persistence sites under the installed-plugins store while preserving the existing config and installed-plugin store schemas and byte interpretation.",
+    "payloadFingerprint": "sha256:f15555bc5d1a546e1dbae4a6ee7c99a9f1f5164efad480ac31feaa552b6bba99"
   },
   "schemas": [
     {
@@ -3393,7 +3393,7 @@
       "contract": "installed manifest, install receipt, backup, multi-source artifacts, marketplace registry, Claude skill provenance, and compatibility-state protocols",
       "kind": "directory-contract",
       "module": "core/plugin-manager.ts",
-      "sourceHash": "sha256:78098ac67519299dd169da7eab6abef5f960141551fb63a5266c3d36210d9497",
+      "sourceHash": "sha256:3888a3a5ba19eedaa07ee6ef8d29f5cf173f4231076f286f9eb31bd4844b7fbe",
       "storeId": "installed-plugins"
     },
     {
@@ -3463,7 +3463,7 @@
       "contract": "verified plugin release ZIP naming by pluginId/version and expected sha256",
       "kind": "directory-contract",
       "module": "server/routes/plugins.ts",
-      "sourceHash": "sha256:a20f39823ac50f2430c7f3b65a45d82728fdf8d84781f6dacc055361f9924c1c",
+      "sourceHash": "sha256:6dc1fdbaccbc29b39d00a3d245a18c9886404d09aa930c81ca666875a24fc0fd",
       "storeId": "plugin-download-cache"
     },
     {
@@ -8007,6 +8007,22 @@
     },
     {
       "exemptionId": null,
+      "kind": "atomic-write",
+      "ordinal": 0,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-marketplace-active-marker.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "mkdir",
+      "ordinal": 0,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-marketplace-active-marker.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
       "kind": "mkdir",
       "ordinal": 0,
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
@@ -9534,12 +9550,28 @@
       "storeId": "installed-plugins"
     },
     {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "ordinal": 0,
+      "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
+      "sourceFile": "server/routes/plugins.ts",
+      "storeId": "installed-plugins"
+    },
+    {
       "exemptionId": "conditional-plugin-install-cleanup",
       "kind": "remove-path",
       "ordinal": 1,
       "reason": "One bounded cleanup list contains both HANA_HOME .installing staging and operating-system extraction temp; flow-sensitive attribution must replace this exact conditional site.",
       "sourceFile": "server/routes/plugins.ts",
       "storeId": null
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "ordinal": 1,
+      "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
+      "sourceFile": "server/routes/plugins.ts",
+      "storeId": "installed-plugins"
     },
     {
       "exemptionId": null,
