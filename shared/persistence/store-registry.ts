@@ -854,8 +854,8 @@ export const PERSISTENT_STORES: readonly StoreDescriptor[] = Object.freeze([
     migrationEntry: ["plugin installation compatibility checks", "PluginInstallRecords.migrateToV2"],
     identityContract: "Bare pluginId remains the active runtime projection identity; retained artifacts, trust, backups, Claude skill provenance, and compatibility state remain source-, package-, binding-, or digest-qualified.",
     siteRules: [
-      ...rules(["lib/plugin-install-backups.ts", "lib/plugin-install-records.ts", "lib/plugin-artifact-store.ts", "lib/plugin-trust-store.ts", "lib/plugin-marketplace-sources.ts", "lib/plugin-marketplace-snapshots.ts", "lib/plugin-marketplace-git-cache.ts", "lib/plugin-marketplace-claude-skills.ts", "lib/claude-compatibility.ts", "lib/plugin-source-switch.ts"], "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state."),
-      ...rules(["server/routes/plugins.ts"], "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.", ["mkdir", "copy-file", "rename", "remove-path"], "(?:userPluginsDir|pluginSrc|stagedDir|targetDir|pluginDir)"),
+      ...rules(["lib/plugin-install-backups.ts", "lib/plugin-install-records.ts", "lib/plugin-artifact-store.ts", "lib/plugin-trust-store.ts", "lib/plugin-marketplace-sources.ts", "lib/plugin-marketplace-snapshots.ts", "lib/plugin-marketplace-git-cache.ts", "lib/plugin-marketplace-claude-skills.ts", "lib/plugin-marketplace-active-marker.ts", "lib/claude-compatibility.ts", "lib/plugin-source-switch.ts"], "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state."),
+      ...rules(["server/routes/plugins.ts"], "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.", ["mkdir", "copy-file", "rename", "remove-path"], "(?:userPluginsDir|pluginSrc|stagedDir|targetDir|pluginDir|extractDir|tmpTarget)"),
     ],
   }),
   defineStore({

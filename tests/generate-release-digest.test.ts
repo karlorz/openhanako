@@ -59,18 +59,23 @@ function runEnvrcContract({
   ].join("\n");
 
   try {
+    const childEnv: Record<string, string | undefined> = {
+      ...process.env,
+      HOME: tmpDir,
+      PATH: `${binDir}:${process.env.PATH || ""}`,
+      TEST_CONFIGURE_SECRET: configureSecret ? "true" : "false",
+      TEST_CONFIGURED_SECRET_PATH: configuredPath ?? secretPath,
+      TEST_DIRENV_MALFORMED: malformed ? "true" : "false",
+      TEST_ENVRC_PATH: path.resolve(".envrc"),
+      TEST_SECRET_MODE: secretMode,
+    };
+    // The .envrc contract test is hermetic: an operator's real
+    // OPENHANAKO_RELEASE_DIGEST_SECRET_FILE must not switch the .envrc into
+    // its configured-secret branch on a developer machine.
+    delete childEnv.OPENHANAKO_RELEASE_DIGEST_SECRET_FILE;
     const result = spawnSync("bash", ["-c", script], {
       encoding: "utf-8",
-      env: {
-        ...process.env,
-        HOME: tmpDir,
-        PATH: `${binDir}:${process.env.PATH || ""}`,
-        TEST_CONFIGURE_SECRET: configureSecret ? "true" : "false",
-        TEST_CONFIGURED_SECRET_PATH: configuredPath ?? secretPath,
-        TEST_DIRENV_MALFORMED: malformed ? "true" : "false",
-        TEST_ENVRC_PATH: path.resolve(".envrc"),
-        TEST_SECRET_MODE: secretMode,
-      },
+      env: childEnv,
     });
     return {
       status: result.status,

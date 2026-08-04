@@ -2802,7 +2802,7 @@
     },
     {
       "sourceFile": "core/engine.ts",
-      "line": 320,
+      "line": 321,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(this.channelsDir, { recursive: true })",
       "reason": "Creates the channel root.",
@@ -2811,7 +2811,7 @@
     },
     {
       "sourceFile": "core/engine.ts",
-      "line": 366,
+      "line": 367,
       "kind": "persistent-store-constructor",
       "excerpt": "new PreferencesManager({ userDir: this.userDir, agentsDir: this.agentsDir })",
       "reason": "Constructs the preferences owner.",
@@ -2820,7 +2820,7 @@
     },
     {
       "sourceFile": "core/engine.ts",
-      "line": 367,
+      "line": 368,
       "kind": "persistent-store-constructor",
       "excerpt": "new InputDraftsStore({ hanakoHome: this.hanakoHome })",
       "reason": "Constructs draft/project stores.",
@@ -2829,7 +2829,7 @@
     },
     {
       "sourceFile": "core/engine.ts",
-      "line": 385,
+      "line": 386,
       "kind": "persistent-store-constructor",
       "excerpt": "new SessionProjectCatalogStore({ userDir: this.userDir })",
       "reason": "Constructs draft/project stores.",
@@ -2838,7 +2838,7 @@
     },
     {
       "sourceFile": "core/engine.ts",
-      "line": 618,
+      "line": 619,
       "kind": "persistent-store-constructor",
       "excerpt": "new TaskRegistry({ persistencePath: path.join(this.hanakoHome, \".ephemeral\", \"plugin-tasks.json\"), getSessionIdForPath: (sessionPath) => this.getSessionIdForPath(sessionPath), })",
       "reason": "Constructs the plugin task registry.",
@@ -2847,7 +2847,7 @@
     },
     {
       "sourceFile": "core/engine.ts",
-      "line": 1241,
+      "line": 1242,
       "kind": "persistent-store-constructor",
       "excerpt": "new SessionManifestStore({ dbPath })",
       "reason": "Constructs the manifest store during engine construction.",
@@ -2856,7 +2856,7 @@
     },
     {
       "sourceFile": "core/engine.ts",
-      "line": 1262,
+      "line": 1263,
       "kind": "persistent-store-constructor",
       "excerpt": "new SessionManifestStore({ dbPath })",
       "reason": "Constructs the manifest store during engine construction.",
@@ -2865,7 +2865,7 @@
     },
     {
       "sourceFile": "core/engine.ts",
-      "line": 2321,
+      "line": 2322,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(skillsDir, { recursive: true })",
       "reason": "Creates the user skill root.",
@@ -2874,7 +2874,7 @@
     },
     {
       "sourceFile": "core/engine.ts",
-      "line": 2507,
+      "line": 2508,
       "kind": "remove-path",
       "excerpt": "fs.unlinkSync(filePath)",
       "reason": "Deletes an expired legacy ephemeral session JSONL locator.",
@@ -2883,7 +2883,7 @@
     },
     {
       "sourceFile": "core/engine.ts",
-      "line": 2561,
+      "line": 2562,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(pluginDevSourcesDir, { recursive: true })",
       "reason": "Creates the plugin development source root.",
@@ -6969,9 +6969,27 @@
     },
     {
       "sourceFile": "lib/plugin-install-records.ts",
-      "line": 375,
+      "line": 419,
       "kind": "copy-file",
       "excerpt": "fs.copyFileSync(this._path, checkpoint)",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/plugin-marketplace-active-marker.ts",
+      "line": 29,
+      "kind": "mkdir",
+      "excerpt": "fs.mkdirSync(pluginDir, { recursive: true })",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/plugin-marketplace-active-marker.ts",
+      "line": 30,
+      "kind": "atomic-write",
+      "excerpt": "atomicWriteSync(path.join(pluginDir, MARKETPLACE_ACTIVE_MARKER), `${JSON.stringify(marker, null, 2)}\\n`)",
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
       "storeId": "installed-plugins",
       "exemptionId": null
@@ -7068,7 +7086,7 @@
     },
     {
       "sourceFile": "lib/plugin-marketplace-git-cache.ts",
-      "line": 338,
+      "line": 340,
       "kind": "remove-path",
       "excerpt": "fs.rmSync(entry.fullPath, { recursive: true, force: true })",
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
@@ -7077,7 +7095,7 @@
     },
     {
       "sourceFile": "lib/plugin-marketplace-git-cache.ts",
-      "line": 377,
+      "line": 386,
       "kind": "remove-path",
       "excerpt": "fs.rmSync(staging, { recursive: true, force: true })",
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
@@ -7086,7 +7104,7 @@
     },
     {
       "sourceFile": "lib/plugin-marketplace-git-cache.ts",
-      "line": 378,
+      "line": 387,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(staging, { recursive: true })",
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
@@ -7095,7 +7113,7 @@
     },
     {
       "sourceFile": "lib/plugin-marketplace-git-cache.ts",
-      "line": 429,
+      "line": 451,
       "kind": "remove-path",
       "excerpt": "fs.rmSync(oldTarget, { recursive: true, force: true })",
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
@@ -7104,7 +7122,7 @@
     },
     {
       "sourceFile": "lib/plugin-marketplace-git-cache.ts",
-      "line": 430,
+      "line": 452,
       "kind": "rename",
       "excerpt": "fs.renameSync(target, oldTarget)",
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
@@ -7113,7 +7131,7 @@
     },
     {
       "sourceFile": "lib/plugin-marketplace-git-cache.ts",
-      "line": 432,
+      "line": 454,
       "kind": "rename",
       "excerpt": "fs.renameSync(staging, target)",
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
@@ -7122,7 +7140,7 @@
     },
     {
       "sourceFile": "lib/plugin-marketplace-git-cache.ts",
-      "line": 434,
+      "line": 456,
       "kind": "rename",
       "excerpt": "fs.renameSync(oldTarget, target)",
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
@@ -7131,7 +7149,7 @@
     },
     {
       "sourceFile": "lib/plugin-marketplace-git-cache.ts",
-      "line": 437,
+      "line": 459,
       "kind": "remove-path",
       "excerpt": "fs.rmSync(oldTarget, { recursive: true, force: true })",
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
@@ -7140,7 +7158,7 @@
     },
     {
       "sourceFile": "lib/plugin-marketplace-git-cache.ts",
-      "line": 447,
+      "line": 469,
       "kind": "remove-path",
       "excerpt": "fs.rmSync(staging, { recursive: true, force: true })",
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
@@ -7194,7 +7212,7 @@
     },
     {
       "sourceFile": "lib/plugin-marketplace-sources.ts",
-      "line": 141,
+      "line": 216,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(p, o)",
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
@@ -7203,7 +7221,7 @@
     },
     {
       "sourceFile": "lib/plugin-marketplace-sources.ts",
-      "line": 145,
+      "line": 220,
       "kind": "write-file",
       "excerpt": "fs.writeFileSync(p, data, encoding)",
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
@@ -8643,7 +8661,7 @@
     },
     {
       "sourceFile": "server/routes/plugins.ts",
-      "line": 406,
+      "line": 419,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(userPluginsDir, { recursive: true })",
       "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
@@ -8652,7 +8670,7 @@
     },
     {
       "sourceFile": "server/routes/plugins.ts",
-      "line": 430,
+      "line": 440,
       "kind": "copy-file",
       "excerpt": "fs.cpSync(pluginSrc, tmpTarget, { recursive: true })",
       "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
@@ -8661,7 +8679,7 @@
     },
     {
       "sourceFile": "server/routes/plugins.ts",
-      "line": 437,
+      "line": 447,
       "kind": "remove-path",
       "excerpt": "fs.rmSync(cleanupPath, { recursive: true, force: true })",
       "reason": "One bounded cleanup list contains both HANA_HOME .installing staging and operating-system extraction temp; flow-sensitive attribution must replace this exact conditional site.",
@@ -8670,7 +8688,7 @@
     },
     {
       "sourceFile": "server/routes/plugins.ts",
-      "line": 482,
+      "line": 492,
       "kind": "remove-path",
       "excerpt": "fs.rmSync(targetDir, { recursive: true, force: true })",
       "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
@@ -8679,7 +8697,7 @@
     },
     {
       "sourceFile": "server/routes/plugins.ts",
-      "line": 544,
+      "line": 557,
       "kind": "remove-path",
       "excerpt": "fs.rmSync(targetDir, { recursive: true, force: true })",
       "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
@@ -8688,7 +8706,7 @@
     },
     {
       "sourceFile": "server/routes/plugins.ts",
-      "line": 545,
+      "line": 558,
       "kind": "rename",
       "excerpt": "fs.renameSync(stagedDir, targetDir)",
       "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
@@ -8697,7 +8715,7 @@
     },
     {
       "sourceFile": "server/routes/plugins.ts",
-      "line": 571,
+      "line": 590,
       "kind": "remove-path",
       "excerpt": "fs.rmSync(cleanupPath, { recursive: true, force: true })",
       "reason": "One bounded cleanup list contains both HANA_HOME .installing staging and operating-system extraction temp; flow-sensitive attribution must replace this exact conditional site.",
@@ -8706,7 +8724,7 @@
     },
     {
       "sourceFile": "server/routes/plugins.ts",
-      "line": 677,
+      "line": 679,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(downloadsDir, { recursive: true })",
       "reason": "Caches a sha256-verified plugin release package.",
@@ -8715,7 +8733,7 @@
     },
     {
       "sourceFile": "server/routes/plugins.ts",
-      "line": 679,
+      "line": 681,
       "kind": "write-file",
       "excerpt": "fs.writeFileSync(packagePath, body)",
       "reason": "Caches a sha256-verified plugin release package.",
@@ -8724,7 +8742,25 @@
     },
     {
       "sourceFile": "server/routes/plugins.ts",
-      "line": 1827,
+      "line": 1404,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(extractDir, { recursive: true, force: true })",
+      "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "server/routes/plugins.ts",
+      "line": 1490,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(pluginDir, { recursive: true, force: true })",
+      "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "server/routes/plugins.ts",
+      "line": 2004,
       "kind": "remove-path",
       "excerpt": "fs.rmSync(pluginDir, { recursive: true, force: true })",
       "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
