@@ -1,3 +1,4 @@
+import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { createPluginMarketplaceTool } from "../lib/tools/plugin-marketplace-tool.ts";
 
@@ -265,7 +266,7 @@ describe("plugin_marketplace Agent tool", () => {
         pluginId: "skillwiki",
         marketplaceId: MARKETPLACE_ID,
         planToken: "plan-token",
-        skillInstallRoot: "/tmp/hana-user-skills",
+        skillInstallRoot: path.resolve("/tmp/hana-user-skills"),
         ownerRequired: true,
       },
     });
