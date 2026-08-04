@@ -176,6 +176,19 @@ prompt. Do not “fix” auto UAT by patching marketplace mutation kinds from
 not valid auto evidence. Prefer configuring utility models, or use `operate`
 when operator full-session access is intentional.
 
+**Plan-validated skill-package mutations under Auto:** for
+`plugin_marketplace` install / package enable / uninstall, when the tool
+invocation already carries a valid `planToken` (install/uninstall) or current
+registry `expectedRevision` + `expectedDigest` (package enable/uninstall), the
+approval gateway may **deterministically allow** the action without calling the
+LLM reviewer (`ruleIds` includes
+`marketplace-skill-package-plan-validated`). The tool still enforces owner
+access, plan/token freshness, and registry preconditions. Cold install still
+requires `plan_install` then `install` with the returned `planToken`. Git skill
+installs pin materialization to the plan’s `resolvedRevision` so a branch move
+between plan and install does not fail as a stale plan when the planned
+revision is still fetchable.
+
 Package uninstall uses the same shared lifecycle as
 `DELETE /api/plugins/marketplace/:id/skills`: remove exact recorded skill
 directories, clean handled Agent and bundle references, reload skills, emit
