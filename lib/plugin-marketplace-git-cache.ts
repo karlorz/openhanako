@@ -291,6 +291,7 @@ function readCachedPackageMaterialization(
     gitUrl: string;
     gitRef: string;
     packagePath: string;
+    expectedRevision?: string | null;
   },
 ): { packageRoot: string; resolvedRevision: string; repoRoot: string } | null {
   const packageRoot = path.join(target, expected.packagePath);
@@ -311,6 +312,7 @@ function readCachedPackageMaterialization(
   ) {
     return null;
   }
+  if (expected.expectedRevision && resolvedRevision !== expected.expectedRevision) return null;
   try {
     // Touch mtime so prunePackageCache treats hits as recently used.
     const now = new Date();
@@ -351,6 +353,7 @@ export async function materializeGitMarketplacePackage(
     gitBinary?: string;
     timeoutMs?: number;
     execGit?: typeof runGit;
+    expectedRevision?: string;
   },
 ): Promise<{ packageRoot: string; resolvedRevision: string; repoRoot: string }> {
   const sourceId = assertMarketplaceId(source.id);
@@ -407,9 +410,22 @@ export async function materializeGitMarketplacePackage(
       await execGit(gitBin, ["-C", staging, "checkout", "HEAD", "--", options.packagePath], { timeoutMs });
     }
 
-    const rev = (await execGit(gitBin, ["-C", staging, "rev-parse", "HEAD"], { timeoutMs })).trim();
+    let rev = (await execGit(gitBin, ["-C", staging, "rev-parse", "HEAD"], { timeoutMs })).trim();
     if (!/^[0-9a-f]{40}$/.test(rev)) {
       throw Object.assign(new Error("Failed to resolve git revision"), { code: "PLUGIN_MARKETPLACE_GIT_UNAVAILABLE" });
+    }
+
+    // Pin to expected revision when the snapshot was acquired from a different
+    // shallow-clone (branch may have moved between catalog fetch and install).
+    // Fetch the exact commit so the materialized tree matches the plan.
+    const expectedRevision = options.expectedRevision;
+    if (expectedRevision && /^[0-9a-f]{40}$/.test(expectedRevision) && expectedRevision !== rev) {
+      await execGit(gitBin, [
+        "-C", staging, "fetch", "--depth", "1", "origin", expectedRevision,
+      ], { timeoutMs, cwd: options.hanakoHome });
+      await execGit(gitBin, ["-C", staging, "checkout", expectedRevision], { timeoutMs });
+      // checkout of an exact SHA detaches HEAD at it; update rev for the cache marker.
+      rev = expectedRevision;
     }
     const stagedPackageRoot = path.join(staging, options.packagePath);
     if (!fs.existsSync(stagedPackageRoot) || !fs.statSync(stagedPackageRoot).isDirectory()) {
