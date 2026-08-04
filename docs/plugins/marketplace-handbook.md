@@ -167,6 +167,15 @@ source installation keeps the existing clone/ref/revision behavior.
 
 Before a mutation, Hana shows a concise operation summary containing the exact qualified target, connected-server ownership requirement, warnings, revision/digest or plan token, and the operation that will occur. In `auto` (autoreview), reviewable mutations are sent to the automatic reviewer and fail closed if review rejects or is unavailable. In `operate` (full session access), the same reviewable mutations execute directly. Owner checks, stale-state checks, source containment, unsupported-component restrictions, and the Agent-driven native-install block remain enforced in both modes. Native Settings installation is a separate owner-only surface and is not callable through the Agent tool. Adding a source may be followed by an offer to browse its catalog, but Hana does not auto-install recommendations.
 
+**Auto-mode operators:** automatic review needs working **utility** and
+**utility_large** models on the Agent (credentials + provider reachable). Empty
+or broken utility models typically surface as `TOOL_APPROVAL_DENIED` /
+`TOOL_APPROVAL_UNAVAILABLE` / reviewer transport failures rather than a user
+prompt. Do not “fix” auto UAT by patching marketplace mutation kinds from
+`review` to `routine` on a live host bundle — that bypasses autoreview and is
+not valid auto evidence. Prefer configuring utility models, or use `operate`
+when operator full-session access is intentional.
+
 Package uninstall uses the same shared lifecycle as
 `DELETE /api/plugins/marketplace/:id/skills`: remove exact recorded skill
 directories, clean handled Agent and bundle references, reload skills, emit
