@@ -587,4 +587,82 @@ describe("ApprovalGateway", () => {
     });
     expect(callText).not.toHaveBeenCalled();
   });
+
+  it("deterministically allows marketplace skill package install with valid planToken", async () => {
+    const smallToolModelReviewer = vi.fn();
+    const gateway = createApprovalGateway({ smallToolModelReviewer });
+
+    const decision = await gateway.review(request({
+      toolName: "plugin_marketplace",
+      actionName: "install",
+      params: { action: "install", pluginId: "skillwiki", marketplaceId: "github-com-karlorz-llm-wiki", planToken: "abc123" },
+      target: { type: "setting", id: "plugin-marketplace:skillwiki@github-com-karlorz-llm-wiki", label: "Marketplace install: skillwiki@github-com-karlorz-llm-wiki" },
+      sideEffect: {
+        summary: "Installs exact source-qualified package skillwiki@github-com-karlorz-llm-wiki on the connected Hana server after validating the current plan token.",
+        pluginId: "skillwiki",
+        marketplaceId: "github-com-karlorz-llm-wiki",
+        planToken: "abc123",
+        ownerRequired: true,
+      },
+    }));
+
+    expect(decision).toMatchObject({
+      action: "allow",
+      reviewer: "policy",
+      risk: "low",
+      ruleIds: ["marketplace-skill-package-plan-validated"],
+    });
+    expect(smallToolModelReviewer).not.toHaveBeenCalled();
+  });
+
+  it("deterministically allows marketplace set_package_enabled with registry preconditions", async () => {
+    const smallToolModelReviewer = vi.fn();
+    const gateway = createApprovalGateway({ smallToolModelReviewer });
+
+    const decision = await gateway.review(request({
+      toolName: "plugin_marketplace",
+      actionName: "set_package_enabled",
+      params: { action: "set_package_enabled", pluginId: "skillwiki", marketplaceId: "github-com-karlorz-llm-wiki", enabled: false, expectedRevision: 46, expectedDigest: "deadbeef" },
+      target: { type: "setting", id: "plugin-marketplace:skillwiki@github-com-karlorz-llm-wiki", label: "Marketplace skill package: skillwiki@github-com-karlorz-llm-wiki" },
+      sideEffect: {
+        summary: "Disables every skill in exact package skillwiki@github-com-karlorz-llm-wiki while preserving per-Agent skill preferences and all unrelated activation maps.",
+        pluginId: "skillwiki",
+        marketplaceId: "github-com-karlorz-llm-wiki",
+        enabled: false,
+        expectedRevision: 46,
+        expectedDigest: "deadbeef",
+        ownerRequired: true,
+      },
+    }));
+
+    expect(decision).toMatchObject({
+      action: "allow",
+      reviewer: "policy",
+      risk: "low",
+      ruleIds: ["marketplace-skill-package-plan-validated"],
+    });
+    expect(smallToolModelReviewer).not.toHaveBeenCalled();
+  });
+
+  it("does not deterministically allow marketplace mutations without planToken or preconditions", async () => {
+    const smallToolModelReviewer = vi.fn(async () => ({ action: "ask_user", reason: "no plan token", risk: "medium" }));
+    const gateway = createApprovalGateway({ smallToolModelReviewer });
+
+    const decision = await gateway.review(request({
+      toolName: "plugin_marketplace",
+      actionName: "install",
+      params: { action: "install", pluginId: "skillwiki", marketplaceId: "github-com-karlorz-llm-wiki" },
+      target: { type: "setting", id: "plugin-marketplace:skillwiki@github-com-karlorz-llm-wiki", label: "Marketplace install: skillwiki@github-com-karlorz-llm-wiki" },
+      sideEffect: {
+        summary: "Installs exact source-qualified package skillwiki@github-com-karlorz-llm-wiki.",
+        pluginId: "skillwiki",
+        marketplaceId: "github-com-karlorz-llm-wiki",
+        ownerRequired: true,
+      },
+    }));
+
+    // No planToken and no preconditions → falls through to reviewer
+    expect(decision.action).toBe("ask_user");
+    expect(smallToolModelReviewer).toHaveBeenCalled();
+  });
 });
