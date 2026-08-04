@@ -300,6 +300,73 @@ describe("git marketplace policy", () => {
     });
 
     expect(result.resolvedRevision).toBe(rev);
-    expect(execGit.mock.calls.some((c) => c[1][0] === "fetch")).toBe(false);
+    expect(execGit.mock.calls.some((c) => c[1].includes("fetch"))).toBe(false);
+  });
+
+  it("misses warm cache when expectedRevision differs from cached marker and pins the requested rev", async () => {
+    const home = makeHome();
+    const source = {
+      id: "team-plugins",
+      kind: "git" as const,
+      gitUrl: "https://github.com/example/team-plugins.git",
+      gitRef: "refs/heads/main",
+    };
+    const revA = "a".repeat(40);
+    const revB = "b".repeat(40);
+    let cloneCalls = 0;
+    let fetchCalled = false;
+    const execGit = vi.fn(async (_bin: string, args: string[]) => {
+      if (args[0] === "clone") {
+        cloneCalls += 1;
+        const dest = args[args.length - 1];
+        fs.mkdirSync(path.join(dest, "packages", "skills", "demo"), { recursive: true });
+        fs.writeFileSync(path.join(dest, "packages", "skills", "demo", "SKILL.md"), "---\nname: demo\n---\n", "utf8");
+        return "";
+      }
+      if (args.includes("sparse-checkout")) return "";
+      if (args.includes("rev-parse")) {
+        // After clone for second materialize: branch HEAD may be revA; after pin, HEAD is revB.
+        return fetchCalled ? `${revB}\n` : `${revA}\n`;
+      }
+      if (args.includes("fetch")) {
+        fetchCalled = true;
+        return "";
+      }
+      if (args.includes("checkout")) return "";
+      throw new Error(`unexpected git args: ${args.join(" ")}`);
+    });
+
+    // Seed cache at rev A (no expectedRevision → whatever HEAD is).
+    const first = await materializeGitMarketplacePackage(source, {
+      hanakoHome: home,
+      packagePath: "packages/skills",
+      execGit: execGit as any,
+    });
+    expect(first.resolvedRevision).toBe(revA);
+    expect(cloneCalls).toBe(1);
+
+    // Warm-cache hit with matching expectedRevision must reuse (no second clone).
+    const same = await materializeGitMarketplacePackage(source, {
+      hanakoHome: home,
+      packagePath: "packages/skills",
+      execGit: execGit as any,
+      expectedRevision: revA,
+    });
+    expect(same.resolvedRevision).toBe(revA);
+    expect(cloneCalls).toBe(1);
+
+    // Mismatched expectedRevision must not silently return rev A.
+    fetchCalled = false;
+    const second = await materializeGitMarketplacePackage(source, {
+      hanakoHome: home,
+      packagePath: "packages/skills",
+      execGit: execGit as any,
+      expectedRevision: revB,
+    });
+    expect(second.resolvedRevision).toBe(revB);
+    expect(cloneCalls).toBe(2);
+    expect(fetchCalled).toBe(true);
+    expect(execGit.mock.calls.some((c) => c[1].includes("fetch") && c[1].includes(revB))).toBe(true);
+    expect(execGit.mock.calls.some((c) => c[1].includes("checkout") && c[1].includes(revB))).toBe(true);
   });
 });
