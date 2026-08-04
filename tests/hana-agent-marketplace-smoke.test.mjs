@@ -137,7 +137,7 @@ describe("hana Agent Marketplace smoke helpers", () => {
   });
 
   it("requires the persisted detached-session permission scope", () => {
-    const roots = ["/tmp/hana-marketplaces", "/tmp/hana-skills"];
+    const roots = ["/tmp/hana-marketplaces", "/tmp/hana-skills"].map((folder) => path.resolve(folder));
     expect(assertPersistedSessionEvidence({
       permissionMode: "auto",
       accessMode: "operate",
