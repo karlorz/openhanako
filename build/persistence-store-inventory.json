@@ -7351,6 +7351,24 @@
       "ordinal": 0
     },
     {
+      "sourceFile": "lib/plugin-marketplace-active-marker.ts",
+      "kind": "atomic-write",
+      "excerpt": "atomicWriteSync(path.join(pluginDir, MARKETPLACE_ACTIVE_MARKER), `${JSON.stringify(marker, null, 2)}\\n`)",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null,
+      "ordinal": 0
+    },
+    {
+      "sourceFile": "lib/plugin-marketplace-active-marker.ts",
+      "kind": "mkdir",
+      "excerpt": "fs.mkdirSync(pluginDir, { recursive: true })",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null,
+      "ordinal": 0
+    },
+    {
       "sourceFile": "lib/plugin-marketplace-claude-skills.ts",
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(path.dirname(filePath), { recursive: true })",
@@ -9063,11 +9081,29 @@
     {
       "sourceFile": "server/routes/plugins.ts",
       "kind": "remove-path",
+      "excerpt": "fs.rmSync(extractDir, { recursive: true, force: true })",
+      "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
+      "storeId": "installed-plugins",
+      "exemptionId": null,
+      "ordinal": 0
+    },
+    {
+      "sourceFile": "server/routes/plugins.ts",
+      "kind": "remove-path",
       "excerpt": "fs.rmSync(pluginDir, { recursive: true, force: true })",
       "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
       "storeId": "installed-plugins",
       "exemptionId": null,
       "ordinal": 0
+    },
+    {
+      "sourceFile": "server/routes/plugins.ts",
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(pluginDir, { recursive: true, force: true })",
+      "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
+      "storeId": "installed-plugins",
+      "exemptionId": null,
+      "ordinal": 1
     },
     {
       "sourceFile": "server/routes/plugins.ts",
