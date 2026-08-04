@@ -363,6 +363,9 @@ export async function materializeGitMarketplacePackage(
   const gitRef = assertStrictGitRef(source.gitRef || normalized.gitRef);
 
   const cacheRoot = path.join(options.hanakoHome, GIT_MARKETPLACE_CACHE_DIR, sourceId, "packages");
+  // Cache directory identity is stable across revisions; pin validity is
+  // checked via the marker's resolvedRevision (expectedRevision is not part of
+  // the directory name so branch churn reuses one entry).
   const cacheKey = {
     sourceId,
     gitUrl,
@@ -370,7 +373,10 @@ export async function materializeGitMarketplacePackage(
     packagePath: options.packagePath,
   };
   const target = path.join(cacheRoot, stablePackageCacheName(cacheKey));
-  const cached = readCachedPackageMaterialization(target, cacheKey);
+  const cached = readCachedPackageMaterialization(target, {
+    ...cacheKey,
+    expectedRevision: options.expectedRevision || null,
+  });
   if (cached) {
     prunePackageCache(cacheRoot, target);
     return cached;
