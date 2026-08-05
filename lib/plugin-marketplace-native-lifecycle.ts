@@ -7,7 +7,7 @@ import type { PluginTrustStore } from "./plugin-trust-store.ts";
 const PLAN_SCHEMA_VERSION = 1;
 const DEFAULT_PLAN_TTL_MS = 5 * 60_000;
 
-type NativeAction = "install" | "uninstall";
+type NativeAction = "install" | "uninstall" | "source-switch";
 
 interface NativePlanFacts {
   schemaVersion: 1;
@@ -29,6 +29,7 @@ interface NativePlanFacts {
   retainedArtifactPath: string | null;
   activeMarketplaceId: string | null;
   activeArtifactDigest: string | null;
+  artifactDigest: string | null;
 }
 
 interface SignedPlanEnvelope {
@@ -141,9 +142,31 @@ export class PluginMarketplaceNativeLifecycle {
     return { plan: facts, result };
   }
 
+  planSourceSwitch(input: {
+    pluginId: string;
+    marketplaceId: string;
+    artifactDigest?: string;
+    isStudioOwner: boolean;
+    expectedRevision?: number;
+    expectedDigest?: string;
+  }) {
+    const facts = this.buildFacts("source-switch", input);
+    return this.planPayload(facts);
+  }
+
+  async executeSourceSwitch<T>(input: {
+    planToken: string;
+    confirmation: string;
+    isStudioOwner: boolean;
+  }, executor: (facts: NativePlanFacts) => Promise<T>): Promise<{ plan: NativePlanFacts; result: T }> {
+    const facts = this.consumeAndValidate("source-switch", input);
+    return { plan: facts, result: await executor(facts) };
+  }
+
   private buildFacts(action: NativeAction, input: {
     pluginId: string;
     marketplaceId: string;
+    artifactDigest?: string;
     isStudioOwner: boolean;
     expectedRevision?: number;
     expectedDigest?: string;
@@ -163,11 +186,13 @@ export class PluginMarketplaceNativeLifecycle {
     if (!plugin) throw lifecycleError("Marketplace plugin not found", 404, "PLUGIN_MARKETPLACE_NOT_FOUND");
     const inspection = inspectMarketplacePackage(plugin);
     const dist: any = plugin.distribution;
-    if (inspection.destination !== "native-plugin" || dist?.kind !== "release" || !dist.packageUrl || !dist.sha256) {
-      throw lifecycleError("Package is not a supported native Marketplace release", 409, "PLUGIN_MARKETPLACE_NATIVE_UNSUPPORTED");
-    }
-    if (!/^[a-f0-9]{64}$/.test(dist.sha256)) {
-      throw lifecycleError("Plugin release sha256 must be 64 lowercase hex characters", 400, "PLUGIN_MARKETPLACE_SOURCE_INVALID");
+    if (action !== "source-switch") {
+      if (inspection.destination !== "native-plugin" || dist?.kind !== "release" || !dist.packageUrl || !dist.sha256) {
+        throw lifecycleError("Package is not a supported native Marketplace release", 409, "PLUGIN_MARKETPLACE_NATIVE_UNSUPPORTED");
+      }
+      if (!/^[a-f0-9]{64}$/.test(dist.sha256)) {
+        throw lifecycleError("Plugin release sha256 must be 64 lowercase hex characters", 400, "PLUGIN_MARKETPLACE_SOURCE_INVALID");
+      }
     }
     const registry = this.service.getRegistryStatus();
     const snapshot = this.service.snapshots.getStatus(input.marketplaceId);
@@ -176,17 +201,45 @@ export class PluginMarketplaceNativeLifecycle {
       : null;
     if (!current) throw lifecycleError("Marketplace snapshot is unavailable", 409, "PLUGIN_MARKETPLACE_SOURCE_INVALID");
     const install = this.service.records.get(plugin.id);
+    const retained = install?.retained?.[input.marketplaceId] || {};
+    let artifactDigest: string | null = null;
+    if (action === "source-switch") {
+      const candidates = Object.keys(retained);
+      if (candidates.length === 0) {
+        throw lifecycleError("No retained artifact for the target marketplace", 409, "PLUGIN_MARKETPLACE_SOURCE_INVALID");
+      }
+      if (input.artifactDigest) {
+        if (!candidates.includes(input.artifactDigest)) {
+          throw lifecycleError("Requested artifact digest is not retained", 409, "PLUGIN_MARKETPLACE_SOURCE_INVALID");
+        }
+        artifactDigest = input.artifactDigest;
+      } else {
+        const sorted = candidates.sort((a, b) =>
+          String(retained[b]?.lastActivatedAt || retained[b]?.retainedAt)
+            .localeCompare(String(retained[a]?.lastActivatedAt || retained[a]?.retainedAt)),
+        );
+        artifactDigest = sorted[0];
+      }
+      const artifactPath = this.service.artifacts.get(input.marketplaceId, plugin.id, artifactDigest)?.artifactPath;
+      if (!artifactPath || !fs.existsSync(artifactPath)) {
+        throw lifecycleError("Retained artifact is missing on disk", 409, "PLUGIN_MARKETPLACE_SOURCE_INVALID");
+      }
+    }
     const activeRetained = action === "uninstall"
-      && install?.activeMarketplaceId === input.marketplaceId
-      && install.activeArtifactDigest
-      ? install.retained?.[input.marketplaceId]?.[install.activeArtifactDigest]
-      : null;
+      ? install?.activeMarketplaceId === input.marketplaceId && install.activeArtifactDigest
+        ? install.retained?.[input.marketplaceId]?.[install.activeArtifactDigest]
+        : null
+      : action === "source-switch" && artifactDigest
+        ? install?.retained?.[input.marketplaceId]?.[artifactDigest]
+        : null;
     const packageSha256 = action === "uninstall"
       ? activeRetained?.packageSha256 || install?.activeArtifactDigest || dist.sha256
-      : dist.sha256;
-    const retained = this.service.artifacts.get(input.marketplaceId, plugin.id, packageSha256);
-    const retainedArtifactPath = retained?.artifactPath && fs.existsSync(retained.artifactPath)
-      ? retained.artifactPath
+      : action === "source-switch"
+        ? activeRetained?.packageSha256 || artifactDigest || dist.sha256 || null
+        : dist.sha256;
+    const retainedArtifact = this.service.artifacts.get(input.marketplaceId, plugin.id, packageSha256);
+    const retainedArtifactPath = retainedArtifact?.artifactPath && fs.existsSync(retainedArtifact.artifactPath)
+      ? retainedArtifact.artifactPath
       : null;
     return {
       schemaVersion: PLAN_SCHEMA_VERSION,
@@ -194,8 +247,8 @@ export class PluginMarketplaceNativeLifecycle {
       identity: `${plugin.id}@${input.marketplaceId}`,
       pluginId: plugin.id,
       marketplaceId: input.marketplaceId,
-      version: activeRetained?.version || plugin.version,
-      packageUrl: activeRetained?.packageUrl || dist.packageUrl,
+      version: activeRetained?.version || plugin.version || "0.0.0",
+      packageUrl: activeRetained?.packageUrl || dist.packageUrl || null,
       packageSha256,
       registryRevision: registry.revision,
       registryDigest: registry.digest,
@@ -204,10 +257,13 @@ export class PluginMarketplaceNativeLifecycle {
       resolvedRevision: activeRetained?.resolvedRevision || current.resolvedRevision || null,
       trust: plugin.trust || "restricted",
       contributions: Array.isArray(plugin.contributions) ? [...plugin.contributions].sort() : [],
-      confirmationText: `${plugin.id}@${input.marketplaceId}`,
+      confirmationText: action === "source-switch"
+        ? `${plugin.id}@${input.marketplaceId} source switch`
+        : `${plugin.id}@${input.marketplaceId}`,
       retainedArtifactPath,
       activeMarketplaceId: install?.activeMarketplaceId || null,
       activeArtifactDigest: install?.activeArtifactDigest || null,
+      artifactDigest,
     };
   }
 
@@ -261,6 +317,7 @@ export class PluginMarketplaceNativeLifecycle {
       isStudioOwner: true,
       expectedRevision: envelope.facts.registryRevision,
       expectedDigest: envelope.facts.registryDigest,
+      artifactDigest: envelope.facts.artifactDigest ?? undefined,
     });
     if (stable(current) !== stable(envelope.facts)) {
       throw lifecycleError("Native lifecycle plan is stale", 409, "PLUGIN_MARKETPLACE_PLAN_STALE");
