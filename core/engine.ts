@@ -146,6 +146,8 @@ import {
   wrapWithSessionExecutionCancellation,
 } from "../lib/session-execution-registry.ts";
 import { PluginInstallRecords } from "../lib/plugin-install-records.ts";
+import { PluginArtifactStore } from "../lib/plugin-artifact-store.ts";
+import { PluginSourceSwitchCoordinator } from "../lib/plugin-source-switch.ts";
 import { ComputerHost } from "./computer-use/computer-host.ts";
 import { ComputerProviderRegistry } from "./computer-use/provider-registry.ts";
 import { createMockComputerProvider } from "./computer-use/providers/mock-provider.ts";
@@ -2558,6 +2560,34 @@ export class HanaEngine {
   // ════════════════════════════
 
   /**
+   * Boot-time journal recovery for interrupted native source switches (finding 6).
+   * A crash between staging and commit leaves a transaction journal pointing at the
+   * last committed source; restore that projection before any community plugin is
+   * scanned or loaded. Fail-closed: plugins whose rollback cannot complete keep
+   * their journal for a later boot and are reported in `failed`.
+   */
+  async recoverIncompleteSourceSwitches(): Promise<{ recovered: string[]; failed: Array<{ pluginId: string; error: string }> }> {
+    if (!this.hanakoHome) return { recovered: [], failed: [] };
+    const coordinator = new PluginSourceSwitchCoordinator({
+      records: new PluginInstallRecords({ hanakoHome: this.hanakoHome }),
+      artifacts: new PluginArtifactStore({ hanakoHome: this.hanakoHome }),
+      pluginsDir: path.join(this.hanakoHome, "plugins"),
+      runtime: {
+        async unloadActive() {},
+        async activateCandidate() {},
+        async healthCheck() { return true; },
+      },
+    });
+    const outcome = await coordinator.recoverIncompleteTransactions();
+    if (outcome.failed.length > 0) {
+      moduleLog.error(
+        `source-switch recovery failed for ${outcome.failed.map((f) => f.pluginId).join(",")}; journals retained`,
+      );
+    }
+    return outcome;
+  }
+
+  /**
    * Initialize plugin system. Called after Hub construction (EventBus available).
    * @param {import('../hub/event-bus.ts').EventBus} bus
    */
@@ -2618,6 +2648,9 @@ export class HanaEngine {
     });
     this._pluginDevEventBusCleanup?.();
     this._pluginDevEventBusCleanup = this._pluginDevService.registerEventBusHandlers(bus);
+    // Boot reconciliation: a crash between staging and commit must restore the
+    // last committed source before community plugins load (finding 6).
+    await this.recoverIncompleteSourceSwitches();
     this._pluginManager.scan();
     await this._pluginManager.loadAll();
 
