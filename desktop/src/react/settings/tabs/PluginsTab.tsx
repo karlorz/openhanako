@@ -8,60 +8,21 @@ import { SettingsSection } from '../components/SettingsSection';
 import { SettingsRow } from '../components/SettingsRow';
 import { MarketplaceSourcesPanel } from '../components/MarketplaceSourcesPanel';
 import { BrowseIcon, RefreshIcon, RemoveIcon } from '../components/PluginActionIcons';
-import { SelectWidget, Toggle, type SelectOption } from '@/ui';
+import { Toggle } from '@/ui';
 import { MarketplaceSkillPackagePage } from './skills/MarketplaceSkillPackagePage';
 import {
   writeMarketplaceSkillPackageToggle,
   type MarketplaceActivationSnapshot,
 } from '../marketplace-registry';
+import { type ManagePluginsSkillPackageRow } from './skills/marketplace-package';
+import { PluginConfigEditor, type PluginInfo } from '../components/plugins/PluginConfigEditor';
 import {
-  marketplaceSkillPackageStatus,
-  type ManagePluginsSkillPackageRow,
-  type MarketplaceSkillPackageStatus,
-} from './skills/marketplace-package';
+  ManagePluginsSkillPackagesPanel,
+  type SkillPackageInventoryMeta,
+} from '../components/plugins/ManagePluginsSkillPackagesPanel';
 
 const platform = window.platform;
 const marketplaceBadgeClassName = `${styles['skills-source-badge']} ${styles['plugin-marketplace-badge']}`;
-
-interface PluginInfo {
-  id: string;
-  name: string;
-  version?: string;
-  description?: string;
-  status: 'loaded' | 'failed' | 'disabled' | 'restricted';
-  activationState?: string | null;
-  activationEvents?: string[];
-  activationError?: string | null;
-  source: 'builtin' | 'community';
-  trust: 'restricted' | 'full-access';
-  contributions?: string[];
-  error?: string | null;
-}
-
-interface SkillPackageInventoryMeta {
-  registry: { revision?: number; digest?: string } | null;
-  access: { isStudioOwner?: boolean; isLocalOwner?: boolean } | null;
-  activations: Record<string, unknown> | null;
-}
-
-interface PluginConfigProperty {
-  type?: 'string' | 'number' | 'integer' | 'boolean' | 'object' | 'array';
-  title?: string;
-  description?: string;
-  default?: unknown;
-  enum?: unknown[];
-  sensitive?: boolean;
-  scope?: 'global' | 'per-agent' | 'per-session';
-  ui?: { control?: string };
-}
-
-interface PluginConfigResponse {
-  pluginId: string;
-  schema: {
-    properties?: Record<string, PluginConfigProperty>;
-  };
-  values: Record<string, unknown>;
-}
 
 interface PluginDiagnostics {
   id: string;
@@ -118,27 +79,6 @@ function StatusBadge({ status }: { status: PluginInfo['status'] }) {
   );
 }
 
-function SkillPackageStatusBadge({ status }: { status: MarketplaceSkillPackageStatus }) {
-  const labelKey =
-    status === 'enabled' ? 'settings.plugins.skillPackageStatusEnabled' :
-    status === 'partial' ? 'settings.plugins.skillPackageStatusPartial' :
-    status === 'stale' ? 'settings.plugins.skillPackageStatusStale' :
-    'settings.plugins.skillPackageStatusDisabled';
-
-  const style: React.CSSProperties =
-    status === 'enabled'
-      ? { color: 'var(--success, #5a9)', background: 'rgba(90,170,153,0.1)' }
-      : status === 'partial' || status === 'stale'
-      ? { color: 'var(--warning, #c90)', background: 'rgba(204,153,0,0.12)' }
-      : { color: 'var(--text-muted)', background: 'var(--overlay-light, rgba(0,0,0,0.06))' };
-
-  return (
-    <span className={styles['oauth-status-badge']} style={style}>
-      {t(labelKey)}
-    </span>
-  );
-}
-
 /* ── Contribution badges ── */
 
 function ContributionBadges({ contributions }: { contributions?: string[] }) {
@@ -160,29 +100,6 @@ function ContributionBadges({ contributions }: { contributions?: string[] }) {
       ))}
     </span>
   );
-}
-
-function formatConfigValue(property: PluginConfigProperty, value: unknown): string {
-  if (property.type === 'object' || property.type === 'array') {
-    return value === undefined ? '' : JSON.stringify(value, null, 2);
-  }
-  return value === undefined || value === null ? '' : String(value);
-}
-
-function parseConfigValue(property: PluginConfigProperty, value: string): unknown {
-  if (property.type === 'number') return Number(value);
-  if (property.type === 'integer') return Number.parseInt(value, 10);
-  if (property.type === 'object' || property.type === 'array') return value.trim() ? JSON.parse(value) : property.type === 'array' ? [] : {};
-  return value;
-}
-
-function buildJsonTextDrafts(config: PluginConfigResponse): Record<string, string> {
-  const drafts: Record<string, string> = {};
-  for (const [key, property] of Object.entries(config.schema.properties || {})) {
-    if (property.type !== 'object' && property.type !== 'array') continue;
-    drafts[key] = formatConfigValue(property, config.values?.[key]);
-  }
-  return drafts;
 }
 
 function count(value: unknown[] | undefined): number {
@@ -212,11 +129,6 @@ export function PluginsTab() {
   const [loading, setLoading] = useState(true);
   const [dragOver, setDragOver] = useState(false);
   const [configPlugin, setConfigPlugin] = useState<PluginInfo | null>(null);
-  const [pluginConfig, setPluginConfig] = useState<PluginConfigResponse | null>(null);
-  const [configDraft, setConfigDraft] = useState<Record<string, unknown>>({});
-  const [jsonTextDrafts, setJsonTextDrafts] = useState<Record<string, string>>({});
-  const [dirtyConfigKeys, setDirtyConfigKeys] = useState<Set<string>>(new Set());
-  const [configSaving, setConfigSaving] = useState(false);
   const [diagnostics, setDiagnostics] = useState<PluginDiagnosticsResponse | null>(null);
   const [diagnosticsLoading, setDiagnosticsLoading] = useState(false);
   const [openSkillPackageIdentity, setOpenSkillPackageIdentity] = useState<string | null>(null);
@@ -272,21 +184,6 @@ export function PluginsTab() {
       applySkillPackageSnapshot({});
     }
   }, [applySkillPackageSnapshot]);
-
-  const loadPluginConfig = useCallback(async (plugin: PluginInfo) => {
-    try {
-      const res = await hanaFetch(`/api/plugins/${encodeURIComponent(plugin.id)}/config`);
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      setConfigPlugin(plugin);
-      setPluginConfig(data);
-      setConfigDraft(data.values || {});
-      setJsonTextDrafts(buildJsonTextDrafts(data));
-      setDirtyConfigKeys(new Set());
-    } catch (err: unknown) {
-      showToast(t('settings.plugins.configLoadError') + ': ' + (err instanceof Error ? err.message : String(err)), 'error');
-    }
-  }, [showToast]);
 
   const loadDiagnostics = useCallback(async () => {
     setDiagnosticsLoading(true);
@@ -519,7 +416,9 @@ export function PluginsTab() {
     }
   };
 
-  const openSkillPackage = (pkg: ManagePluginsSkillPackageRow) => {
+  const openSkillPackage = (identity: string) => {
+    const pkg = skillPackages.find(row => row.identity === identity);
+    if (!pkg) return;
     if (pkg.actions?.canOpenSkills === false || pkg.skillCount <= 0) {
       showToast(t('settings.plugins.skillPackagePageNoSkills'), 'error');
       return;
@@ -527,67 +426,13 @@ export function PluginsTab() {
     setOpenSkillPackageIdentity(pkg.identity);
   };
 
-  const updateConfigDraft = (key: string, value: unknown) => {
-    setConfigDraft(prev => ({ ...prev, [key]: value }));
-    setDirtyConfigKeys(prev => new Set(prev).add(key));
-  };
+  const closeConfigEditor = useCallback(() => {
+    setConfigPlugin(null);
+  }, []);
 
-  const updateJsonTextDraft = (key: string, value: string) => {
-    setJsonTextDrafts(prev => ({ ...prev, [key]: value }));
-    setDirtyConfigKeys(prev => new Set(prev).add(key));
-  };
-
-  const parseJsonTextDraft = (
-    key: string,
-    property: PluginConfigProperty,
-    text: string,
-  ): { ok: true; value: unknown } | { ok: false } => {
-    try {
-      const parsed = parseConfigValue(property, text);
-      setConfigDraft(prev => ({ ...prev, [key]: parsed }));
-      return { ok: true, value: parsed };
-    } catch {
-      showToast(t('settings.plugins.invalidJson'), 'error');
-      return { ok: false };
-    }
-  };
-
-  const savePluginConfig = async () => {
-    if (!configPlugin || !pluginConfig) return;
-    const values: Record<string, unknown> = {};
-    for (const key of dirtyConfigKeys) {
-      const property = pluginConfig.schema.properties?.[key] || {};
-      const isJsonProperty = property.type === 'object' || property.type === 'array';
-      let value = configDraft[key];
-      if (isJsonProperty) {
-        const text = jsonTextDrafts[key] ?? formatConfigValue(property, value);
-        const parsed = parseJsonTextDraft(key, property, text);
-        if (!parsed.ok) return;
-        value = parsed.value;
-      }
-      if (property.sensitive && value === '********') continue;
-      values[key] = value;
-    }
-    setConfigSaving(true);
-    try {
-      const res = await hanaFetch(`/api/plugins/${encodeURIComponent(configPlugin.id)}/config`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ values }),
-      });
-      const data = await res.json();
-      if (data.error) throw new Error(data.fields?.[0]?.message || data.error);
-      setPluginConfig(data);
-      setConfigDraft(data.values || {});
-      setJsonTextDrafts(buildJsonTextDrafts(data));
-      setDirtyConfigKeys(new Set());
-      showToast(t('settings.autoSaved'), 'success');
-    } catch (err: unknown) {
-      showToast(t('settings.saveFailed') + ': ' + (err instanceof Error ? err.message : String(err)), 'error');
-    } finally {
-      setConfigSaving(false);
-    }
-  };
+  // The editor refreshes its own draft after a successful save; the tab has
+  // no post-save side effect (same as before the decomposition).
+  const handleConfigSaved = useCallback(() => {}, []);
 
   /* ── render ── */
 
@@ -751,7 +596,7 @@ export function PluginsTab() {
                         className={`${styles['settings-icon-btn']} ${styles['plugin-action-icon']}`}
                         aria-label={t('settings.plugins.configure', { name: plugin.name })}
                         title={t('settings.plugins.configure', { name: plugin.name })}
-                        onClick={() => loadPluginConfig(plugin)}
+                        onClick={() => setConfigPlugin(plugin)}
                       >
                         <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                           <circle cx="12" cy="12" r="3" />
@@ -781,110 +626,14 @@ export function PluginsTab() {
               );
             })}
 
-            {skillPackages.map(pkg => {
-              const status = marketplaceSkillPackageStatus(pkg);
-              const canAct = isStudioOwner;
-              const canToggle = canAct && pkg.actions?.canToggle !== false;
-              const canUninstall = canAct && pkg.actions?.canUninstall !== false;
-
-              return (
-                <div
-                  key={pkg.identity}
-                  className={styles['skills-list-item']}
-                  data-kind="marketplace-skill-package"
-                  data-identity={pkg.identity}
-                >
-                  <div
-                    className={`${styles['skills-list-info']} ${styles['skill-package-open-area']}`}
-                    role="button"
-                    tabIndex={0}
-                    aria-label={t('settings.plugins.skillPackageOpenArea', { name: pkg.name })}
-                    onClick={() => openSkillPackage(pkg)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault();
-                        openSkillPackage(pkg);
-                      }
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                      <span className={styles['skills-list-name']}>{pkg.name}</span>
-                      {pkg.version && (
-                        <span className={styles['skills-list-name-hint']}>v{pkg.version}</span>
-                      )}
-                      <span
-                        className={marketplaceBadgeClassName}
-                        style={{
-                          opacity: 1,
-                          background: 'var(--overlay-light, rgba(0,0,0,0.05))',
-                          padding: '1px 6px',
-                          borderRadius: 'var(--radius-sm)',
-                        }}
-                      >
-                        {t('settings.plugins.skillPackageKind')}
-                      </span>
-                      <SkillPackageStatusBadge status={status} />
-                    </div>
-                    <span className={styles['skills-list-desc']}>{pkg.identity}</span>
-                    {pkg.description && (
-                      <span className={styles['skills-list-desc']}>{pkg.description}</span>
-                    )}
-                    {pkg.skillCount > 0 && (
-                      <span className={styles['skills-list-desc']}>
-                        {t('settings.plugins.skillPackageSkillsCount', { count: String(pkg.skillCount) })}
-                        {pkg.skillNames.length > 0 ? ` · ${pkg.skillNames.slice(0, 3).join(', ')}` : ''}
-                      </span>
-                    )}
-                    <span className={styles['skills-list-desc']}>
-                      {status === 'disabled'
-                        ? t('settings.plugins.skillPackageDisabledPreservesPreferences')
-                        : t('settings.plugins.skillPackageDefaultOn')}
-                    </span>
-                  </div>
-
-                  <div className={styles['skills-list-actions']} style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                    <button
-                      type="button"
-                      className={`${styles['settings-icon-btn']} ${styles['plugin-action-icon']}`}
-                      disabled={pkg.actions?.canOpenSkills === false || pkg.skillCount <= 0}
-                      aria-label={t('settings.plugins.skillPackageOpenSkills', { name: pkg.name })}
-                      title={t('settings.plugins.skillPackageOpenSkills', { name: pkg.name })}
-                      onClick={() => openSkillPackage(pkg)}
-                    >
-                      <BrowseIcon />
-                    </button>
-                    {canUninstall && (
-                      <button
-                        type="button"
-                        className={`${styles['settings-icon-btn']} ${styles['plugin-action-icon']} ${styles['plugin-action-danger']}`}
-                        aria-label={t('settings.plugins.skillPackageUninstallConfirm', {
-                          identity: pkg.identity,
-                          name: pkg.name,
-                          skillCount: String(pkg.skillCount),
-                        })}
-                        title={t('settings.plugins.skillPackageUninstallConfirm', {
-                          identity: pkg.identity,
-                          name: pkg.name,
-                          skillCount: String(pkg.skillCount),
-                        })}
-                        onClick={() => void uninstallSkillPackage(pkg)}
-                      >
-                        <RemoveIcon />
-                      </button>
-                    )}
-                    {canToggle && (
-                      <button
-                        type="button"
-                        className={`hana-toggle${pkg.packageEnabled ? ' on' : ''}${togglingSkillPackageIdentity === pkg.identity ? ' loading' : ''}`}
-                        disabled={togglingSkillPackageIdentity === pkg.identity}
-                        aria-label={t('settings.plugins.skillPackageToggle', { identity: pkg.identity, name: pkg.name })}
-                        onClick={() => void toggleSkillPackage(pkg, !pkg.packageEnabled)}
-                      />
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+            <ManagePluginsSkillPackagesPanel
+              rows={skillPackages}
+              meta={skillPackageMeta}
+              onOpen={openSkillPackage}
+              onToggle={toggleSkillPackage}
+              onUninstall={uninstallSkillPackage}
+              busyIdentity={togglingSkillPackageIdentity}
+            />
           </div>
         )}
 
@@ -978,61 +727,12 @@ export function PluginsTab() {
         </details>
       </SettingsSection>
 
-      {configPlugin && pluginConfig && (
-        <SettingsSection
-          title={t('settings.plugins.configTitle', { name: configPlugin.name })}
-          context={
-            <button
-              className={styles['settings-save-btn-sm']}
-              disabled={configSaving || dirtyConfigKeys.size === 0}
-              onClick={savePluginConfig}
-            >
-              {t('settings.api.save')}
-            </button>
-          }
-        >
-          {Object.entries(pluginConfig.schema.properties || {}).filter(([, property]) => (property.scope || 'global') === 'global').map(([key, property]) => {
-            const label = property.title || key;
-            const hint = property.description || (property.sensitive ? t('settings.plugins.sensitiveHint') : undefined);
-            const value = configDraft[key];
-            const control = property.type === 'boolean' ? (
-              <button
-                className={`hana-toggle${value === true ? ' on' : ''}`}
-                onClick={() => updateConfigDraft(key, value !== true)}
-              />
-            ) : property.enum ? (
-              <SelectWidget
-                options={property.enum.map((item): SelectOption => ({ value: String(item), label: String(item) }))}
-                value={formatConfigValue(property, value)}
-                onChange={(v) => updateConfigDraft(key, parseConfigValue(property, v))}
-              />
-            ) : property.type === 'object' || property.type === 'array' ? (
-              <textarea
-                className={styles['settings-input']}
-                rows={4}
-                value={jsonTextDrafts[key] ?? formatConfigValue(property, value)}
-                onChange={(e) => updateJsonTextDraft(key, e.target.value)}
-                onBlur={(e) => { parseJsonTextDraft(key, property, e.target.value); }}
-              />
-            ) : (
-              <input
-                className={styles['settings-input']}
-                type={property.sensitive ? 'password' : property.type === 'number' || property.type === 'integer' ? 'number' : 'text'}
-                value={formatConfigValue(property, value)}
-                onChange={(e) => updateConfigDraft(key, parseConfigValue(property, e.target.value))}
-              />
-            );
-            return (
-              <SettingsRow
-                key={key}
-                label={label}
-                hint={hint}
-                control={control}
-                layout={property.type === 'object' || property.type === 'array' ? 'stacked' : 'inline'}
-              />
-            );
-          })}
-        </SettingsSection>
+      {configPlugin && (
+        <PluginConfigEditor
+          plugin={configPlugin}
+          onClose={closeConfigEditor}
+          onSaved={handleConfigSaved}
+        />
       )}
 
       {/* 权限：标准白卡片 row */}
