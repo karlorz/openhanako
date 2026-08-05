@@ -683,14 +683,13 @@ export function PluginMarketplaceTab() {
         if (plan.error) throw new Error(plan.error);
         const confirmationText = typeof plan.confirmationText === 'string' ? plan.confirmationText : '';
         if (!confirmationText) return;
-        const confirmed = window.confirm([
-          `Install native Marketplace plugin ${plan.identity}?`,
-          '',
-          `Version: ${plan.facts?.version || marketVersion(plugin)}`,
-          `Package SHA-256: ${plan.facts?.packageSha256 || 'unknown'}`,
-          `Runtime trust: ${plan.facts?.trust || plugin.trust || 'restricted'}`,
-          `Server-global contributions: ${(plan.facts?.contributions || []).join(', ') || 'none'}`,
-        ].join('\n'));
+        const confirmed = window.confirm(t('settings.plugins.marketNativeInstallConfirm', {
+          identity: plan.identity,
+          version: plan.facts?.version || marketVersion(plugin),
+          packageSha256: plan.facts?.packageSha256 || 'unknown',
+          trust: plan.facts?.trust || plugin.trust || 'restricted',
+          contributions: (plan.facts?.contributions || []).join(', ') || 'none',
+        }));
         if (!confirmed) return;
         const executeRes = await hanaFetch(`/api/plugins/marketplace/${encodeURIComponent(plugin.id)}/native/install/execute`, {
           method: 'POST',
@@ -746,7 +745,7 @@ export function PluginMarketplaceTab() {
       const confirmationText = typeof plan.confirmationText === 'string' ? plan.confirmationText : '';
       if (!confirmationText) return;
       const confirmed = window.confirm(
-        `Uninstall ${plan.identity}? The active projection and artifact trust will be removed; retained verified artifacts and history will remain non-installed.`,
+        t('settings.plugins.marketNativeUninstallConfirm', { identity: plan.identity }),
       );
       if (!confirmed) return;
       const executeRes = await hanaFetch(`/api/plugins/marketplace/${encodeURIComponent(plugin.id)}/native/uninstall/execute`, {
@@ -756,10 +755,10 @@ export function PluginMarketplaceTab() {
       });
       const result = await executeRes.json().catch(() => ({}));
       if (result.error) throw new Error(result.error);
-      showToast(`Uninstalled ${plan.identity}; retained artifact remains non-installed.`, 'success');
+      showToast(t('settings.plugins.marketNativeUninstallSuccess', { identity: plan.identity }), 'success');
       await loadMarketplace();
     } catch (err: unknown) {
-      showToast(`Native Marketplace uninstall failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
+      showToast(t('settings.plugins.marketNativeUninstallError', { message: err instanceof Error ? err.message : String(err) }), 'error');
     } finally {
       setInstallingPluginId(null);
     }
@@ -796,14 +795,14 @@ export function PluginMarketplaceTab() {
           data.reloadError ? `skill reload: ${data.reloadError}` : '',
         ].filter(Boolean);
         const failures = details.join('; ') || 'Some cleanup steps remain unresolved.';
-        showToast(`Marketplace skills uninstall is partial: ${failures}`, 'error');
+        showToast(t('settings.plugins.marketSkillsUninstallPartial', { failures }), 'error');
       } else {
         const removedCount = (data.deleted?.length || 0) + (data.alreadyMissing?.length || 0);
-        showToast(`Removed ${removedCount} recorded skill${removedCount === 1 ? '' : 's'} from ${sourceQualifiedId(plugin)}`, 'success');
+        showToast(t('settings.plugins.marketSkillsRemoved', { count: String(removedCount), identity: sourceQualifiedId(plugin) }), 'success');
       }
       await loadMarketplace();
     } catch (err: unknown) {
-      showToast(`Marketplace skills uninstall failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
+      showToast(t('settings.plugins.marketSkillsUninstallFailed', { message: err instanceof Error ? err.message : String(err) }), 'error');
     } finally {
       setInstallingPluginId(null);
     }
@@ -1001,7 +1000,7 @@ export function PluginMarketplaceTab() {
                 <p>One server-owned registry and shared catalog for every connected desktop and Agent.</p>
               </div>
               <span className={styles['skills-source-badge']}>
-                {marketplace?.capabilities?.supported === false ? 'Unsupported server' : 'Supported server'}
+                {marketplace?.capabilities?.supported === false ? 'Unsupported server' : t('settings.plugins.marketSupportedServer')}
               </span>
             </div>
             <div className={styles['plugin-marketplace-scope-facts']}>
@@ -1191,7 +1190,7 @@ export function PluginMarketplaceTab() {
                                     identity: sourceQualifiedId(selectedPlugin),
                                     name: selectedPlugin.name,
                                   }) || `Toggle skill package ${sourceQualifiedId(selectedPlugin)}`}
-                                  title="Package enable (global skill-manager gate)"
+                                  title={t('settings.plugins.marketPackageGateTitle')}
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     const next = !packageGateEnabled(
@@ -1209,7 +1208,7 @@ export function PluginMarketplaceTab() {
                                   disabled={updatingAgentAccess || marketplace?.access?.isStudioOwner === false || selectedPlugin.nativeAgentPluginAccess?.state === 'desired-not-installed'}
                                   onClick={() => { void toggleNativeAgentAccess(selectedPlugin); }}
                                 >
-                                  {selectedPlugin.nativeAgentPluginAccess?.enabled ? 'Disable Agent Access' : 'Enable Agent Access'}
+                                  {t(selectedPlugin.nativeAgentPluginAccess?.enabled ? 'settings.plugins.disableAgentAccess' : 'settings.plugins.enableAgentAccess')}
                                 </button>
                               )}
                               {selectedPlugin.marketplaceId && selectedPlugin.retained && !selectedPlugin.active && (
@@ -1262,34 +1261,34 @@ export function PluginMarketplaceTab() {
                           </div>
                           <div className={styles['plugin-marketplace-inspector']}>
                             <div className={styles['plugin-marketplace-property-row']}>
-                              <span>Identity</span>
+                              <span>{t('settings.plugins.marketIdentity')}</span>
                               <code translate="no">{sourceQualifiedId(selectedPlugin)}</code>
                             </div>
                             <div className={styles['plugin-marketplace-property-row']}>
-                              <span>Install Target</span>
+                              <span>{t('settings.plugins.marketInstallTarget')}</span>
                               <strong>{marketTargetLabel(selectedPlugin.installTarget || selectedPlugin.installPlan?.destination)}</strong>
                             </div>
                             <div className={styles['plugin-marketplace-property-row']}>
-                              <span>Install Adapter</span>
+                              <span>{t('settings.plugins.marketInstallAdapter')}</span>
                               <strong>{marketAdapterLabel(selectedPlugin.installAdapter || selectedPlugin.installPlan?.installAdapter)}</strong>
                             </div>
                             <div className={styles['plugin-marketplace-property-row']}>
-                              <span>Confirmation</span>
+                              <span>{t('settings.plugins.marketConfirmation')}</span>
                               <strong>{marketConfirmationLabel(selectedPlugin.confirmationLevel || selectedPlugin.installPlan?.confirmationLevel)}</strong>
                             </div>
                             <div className={styles['plugin-marketplace-property-row']}>
-                              <span>Installable</span>
-                              <strong>{selectedPlugin.nativeSettingsLifecycle?.supported || (selectedPlugin.installable !== false && selectedPlugin.installTarget !== 'unsupported') ? 'Yes' : 'No'}</strong>
+                              <span>{t('settings.plugins.marketInstallable')}</span>
+                              <strong>{selectedPlugin.nativeSettingsLifecycle?.supported || (selectedPlugin.installable !== false && selectedPlugin.installTarget !== 'unsupported') ? t('settings.plugins.marketYes') : t('settings.plugins.marketNo')}</strong>
                             </div>
                             {selectedPlugin.installTarget === 'native-plugin' && selectedPlugin.nativeSettingsLifecycle && (
                               <div className={styles['plugin-marketplace-property-row']}>
-                                <span>Installation</span>
-                                <strong>{selectedPlugin.active ? 'installed' : 'not installed'} · {selectedPlugin.nativeSettingsLifecycle.reason || 'Settings lifecycle unavailable'}</strong>
+                                <span>{t('settings.plugins.marketInstallation')}</span>
+                                <strong>{selectedPlugin.active ? t('settings.plugins.marketInstalled') : t('settings.plugins.marketNotInstalled')} · {selectedPlugin.nativeSettingsLifecycle.reason || 'Settings lifecycle unavailable'}</strong>
                               </div>
                             )}
                             {(selectedPlugin.catalogFormat || selectedPlugin.sourceStatus) && (
                               <div className={styles['plugin-marketplace-property-row']}>
-                                <span>Source</span>
+                                <span>{t('settings.plugins.marketSource')}</span>
                                 <strong>
                                   {[selectedPlugin.catalogFormat, selectedPlugin.sourceAuthority, selectedPlugin.sourceStatus]
                                     .filter(Boolean)
@@ -1299,25 +1298,25 @@ export function PluginMarketplaceTab() {
                             )}
                             {selectedPlugin.runtimeActivation && (
                               <div className={styles['plugin-marketplace-property-row']}>
-                                <span>Server runtime</span>
-                                <strong>{selectedPlugin.runtimeActivation.state || 'unknown'}{selectedPlugin.runtimeActivation.reason ? ` · ${selectedPlugin.runtimeActivation.reason}` : ''}</strong>
+                                <span>{t('settings.plugins.marketServerRuntime')}</span>
+                                <strong>{selectedPlugin.runtimeActivation.state || t('settings.plugins.marketUnknown')}{selectedPlugin.runtimeActivation.reason ? ` · ${selectedPlugin.runtimeActivation.reason}` : ''}</strong>
                               </div>
                             )}
                             {selectedPlugin.installTarget === 'native-plugin' && selectedPlugin.nativeAgentPluginAccess && (
                               <div className={styles['plugin-marketplace-plan']}>
-                                <span>Agent Plugin Access</span>
+                                <span>{t('settings.plugins.marketAgentPluginAccess')}</span>
                                 <strong>
-                                  {selectedPlugin.nativeAgentPluginAccess.state || 'unknown'}
+                                  {selectedPlugin.nativeAgentPluginAccess.state || t('settings.plugins.marketUnknown')}
                                   {selectedPlugin.nativeAgentPluginAccess.reason ? ` · ${selectedPlugin.nativeAgentPluginAccess.reason}` : ''}
                                 </strong>
                               </div>
                             )}
                             {isSkillsTarget(selectedPlugin.installTarget) && (
                               <div className={styles['plugin-marketplace-plan']}>
-                                <span>Package state</span>
+                                <span>{t('settings.plugins.marketPackageState')}</span>
                                 <strong>
                                   {selectedPlugin.packageInstall?.state || 'not-installed'}
-                                  {selectedPlugin.available === false ? ' · source removed / uninstall only' : ''}
+                                  {selectedPlugin.available === false ? ' · ' + t('settings.plugins.marketSourceRemovedUninstallOnly') : ''}
                                 </strong>
                               </div>
                             )}
@@ -1373,7 +1372,7 @@ export function PluginMarketplaceTab() {
                             )}
                             {selectedWarnings.length > 0 && (
                               <div className={styles['plugin-marketplace-warnings']} role="status">
-                                <span>Warnings</span>
+                                <span>{t('settings.plugins.marketWarnings')}</span>
                                 <ul>
                                   {selectedWarnings.map(warning => (
                                     <li key={warning}>{warning}</li>
