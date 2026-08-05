@@ -533,6 +533,8 @@
     "lib/tools/output-file-tool.ts",
     "lib/tools/pinned-memory.ts",
     "lib/tools/plugin-marketplace-tool.ts",
+    "lib/tools/plugin-marketplace-actions.ts",
+    "lib/tools/plugin-marketplace-shared.ts",
     "lib/tools/search-rate-limiter.ts",
     "lib/tools/session-folders-tool.ts",
     "lib/tools/session-permission-wrapper.ts",
