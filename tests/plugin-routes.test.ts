@@ -1559,6 +1559,168 @@ describe("plugin management API", () => {
         fs.rmSync(tmp, { recursive: true, force: true });
       }
     });
+
+    it("rejects a stale legacy Claude install with a conflict and no mutation (finding 9)", async () => {
+      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "hana-marketplace-stale-claude-"));
+      try {
+        const registry = { revision: 7, digest: "b".repeat(64) };
+        const currentSnapshot = {
+          state: "ok",
+          current: {
+            catalogSha256: "c".repeat(64),
+            sourceFingerprint: "d".repeat(64),
+            requestedRef: "main",
+            resolvedRevision: "rev-1",
+          },
+        };
+        // Mirror the real service's _assertClaudeSkillsInstallPlan gate: a
+        // changed source snapshot rejects with PLUGIN_MARKETPLACE_PLAN_STALE
+        // before any skills mutation.
+        const getStatus = vi.fn((_marketplaceId: string) => ({ ...currentSnapshot }));
+        const installClaudePluginSkills = vi.fn(async (pluginId: string, marketplaceId: string, options: any) => {
+          const status: any = getStatus(marketplaceId);
+          const current = status.current || {};
+          const expected = options.expectedSourceSnapshot;
+          if (expected && (
+            status.state !== expected.state
+            || (current.sourceFingerprint || null) !== (expected.sourceFingerprint || null)
+            || (current.catalogSha256 || null) !== (expected.catalogSha256 || null)
+            || (current.requestedRef || null) !== (expected.requestedRef || null)
+            || (current.resolvedRevision || null) !== (expected.resolvedRevision || null)
+          )) {
+            const err: any = new Error("Marketplace source snapshot changed; create a fresh install plan");
+            err.status = 409;
+            err.code = "PLUGIN_MARKETPLACE_PLAN_STALE";
+            throw err;
+          }
+          return {
+            marketplaceId,
+            pluginId,
+            skills: ["wiki-query"],
+            skipped: [],
+            warnings: [],
+            resolvedRevision: current.resolvedRevision || null,
+          };
+        });
+        const service = {
+          assertRegistryWritePrecondition: vi.fn(({ expectedRevision, expectedDigest }) => {
+            if (expectedRevision !== registry.revision || expectedDigest !== registry.digest) {
+              const err: any = new Error("stale registry");
+              err.status = 409;
+              err.code = "PLUGIN_MARKETPLACE_REGISTRY_STALE";
+              throw err;
+            }
+          }),
+          assertRegistryUsableForAcquisition: vi.fn(),
+          resolveInstall: vi.fn((pluginId: string, marketplaceId?: string | null) => ({
+            ok: true,
+            mode: "qualified",
+            row: { marketplaceId: marketplaceId || "llm-wiki", pluginId },
+          })),
+          getCatalogPlugin: vi.fn((pluginId: string, marketplaceId: string) => ({
+            id: pluginId,
+            name: "SkillWiki",
+            version: "1.0.0",
+            marketplaceId,
+            compatibility: {},
+            distribution: null,
+            install: {
+              catalogFormat: "claude",
+              installTarget: "hana-skills",
+              sourceKind: "relative",
+              source: "packages/skillwiki",
+              canInstall: true,
+            },
+          })),
+          getRegistryStatus: vi.fn(() => ({ ...registry, degraded: false })),
+          snapshots: {
+            getStatus,
+          },
+          installClaudePluginSkills,
+        };
+        const engine = mockEngine({ hanakoHome: tmp, plugins: [] });
+        (engine as any).pluginMarketplaceService = service;
+        (engine as any).userSkillsDir = path.join(tmp, "skills");
+        const app = createAppWithOwnerPrincipal(engine);
+
+        const body = {
+          marketplaceId: "llm-wiki",
+          expectedRevision: registry.revision,
+          expectedDigest: registry.digest,
+          expectedSourceSnapshot: {
+            state: "ok",
+            sourceFingerprint: "d".repeat(64),
+            catalogSha256: "c".repeat(64),
+            requestedRef: "main",
+            resolvedRevision: "rev-1",
+          },
+        };
+
+        // 1) Registry-stale facts are rejected by the early precondition check
+        //    before the Claude branch runs: 409 and no install call.
+        const registryStaleRes = await app.request("/api/plugins/marketplace/skillwiki/install", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...body, expectedRevision: 999999 }),
+        });
+        expect(registryStaleRes.status).toBe(409);
+        expect(await registryStaleRes.json()).toMatchObject({
+          code: "PLUGIN_MARKETPLACE_REGISTRY_STALE",
+        });
+        expect(installClaudePluginSkills).not.toHaveBeenCalled();
+
+        // 2) The server-side snapshot moves on → stale source-snapshot facts
+        //    must surface as PLUGIN_MARKETPLACE_PLAN_STALE before any mutation.
+        getStatus.mockReturnValue({
+          state: "ok",
+          current: {
+            catalogSha256: "e".repeat(64),
+            sourceFingerprint: "f".repeat(64),
+            requestedRef: "main",
+            resolvedRevision: "rev-2",
+          },
+        });
+        const snapshotStaleRes = await app.request("/api/plugins/marketplace/skillwiki/install", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        expect(snapshotStaleRes.status).toBe(409);
+        expect(await snapshotStaleRes.json()).toMatchObject({
+          code: "PLUGIN_MARKETPLACE_PLAN_STALE",
+        });
+
+        // 3) Fresh facts are forwarded into installClaudePluginSkills unchanged.
+        getStatus.mockReturnValue(currentSnapshot);
+        const okRes = await app.request("/api/plugins/marketplace/skillwiki/install", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        expect(okRes.status).toBe(200);
+        expect(await okRes.json()).toMatchObject({
+          ok: true,
+          installTarget: "hana-skills",
+          catalogFormat: "claude",
+          marketplaceId: "llm-wiki",
+          pluginId: "skillwiki",
+          skills: ["wiki-query"],
+        });
+        expect(installClaudePluginSkills).toHaveBeenLastCalledWith(
+          "skillwiki",
+          "llm-wiki",
+          expect.objectContaining({
+            userSkillsDir: path.join(tmp, "skills"),
+            isStudioOwner: true,
+            expectedRevision: registry.revision,
+            expectedDigest: registry.digest,
+            expectedSourceSnapshot: body.expectedSourceSnapshot,
+          }),
+        );
+      } finally {
+        fs.rmSync(tmp, { recursive: true, force: true });
+      }
+    });
   });
 
   // ── Source switch: owner plan/execute with real PluginManager hooks (finding 4) ──
