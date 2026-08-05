@@ -351,6 +351,63 @@ describe("skills route", () => {
     }, { agentId });
   });
 
+  it("strips package-owned skill names from skills.enabled on the full-list PUT and keeps only marketplace_overrides canonical (finding 7)", async () => {
+    const agentId = "hana";
+    const agentDir = path.join(tempRoot, agentId);
+    fs.mkdirSync(agentDir, { recursive: true });
+    fs.writeFileSync(path.join(agentDir, "config.yaml"), "agent:\n  name: Hana\n", "utf-8");
+    // Old config: a package-owned skill name still sits in skills.enabled and
+    // there is no marketplace_overrides record yet. The full-list PUT must
+    // converge this config: the package-owned name is dropped from
+    // skills.enabled, and its enabled state lives only in marketplace
+    // override semantics (absence of an opt-out = enabled by default).
+    const agent: any = {
+      id: agentId,
+      config: {
+        skills: {
+          enabled: ["wiki-query"],
+        },
+      },
+    };
+
+    const { createSkillsRoute } = await import("../server/routes/skills.ts");
+    const app = new Hono();
+    const engine = {
+      agentsDir: tempRoot,
+      getAgent: vi.fn(() => agent),
+      getAllSkills: vi.fn(() => [
+        { name: "ordinary", enabled: true },
+        {
+          name: "wiki-query",
+          enabled: true,
+          marketplacePackage: {
+            identity: "skillwiki@llm-wiki",
+            skillName: "wiki-query",
+            explicitlyDisabled: false,
+          },
+        },
+      ]),
+      updateConfig: vi.fn(async (partial) => {
+        agent.config.skills = { ...agent.config.skills, ...partial.skills };
+      }),
+      emitEvent: vi.fn(),
+    };
+    app.route("/api", createSkillsRoute(engine));
+
+    const res = await app.request(`/api/agents/${agentId}/skills`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: ["ordinary", "wiki-query"] }),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, enabled: ["ordinary"] });
+    expect(agent.config.skills.enabled).toEqual(["ordinary"]);
+    expect(agent.config.skills.enabled).not.toContain("wiki-query");
+    // Enabling a package skill through the full-list PUT leaves no opt-out
+    // record: the override map stays canonical (empty object, no entry).
+    expect(agent.config.skills.marketplace_overrides).toEqual({});
+  });
+
   it("does not emit skills-changed when enabled skills validation fails", async () => {
     const agentId = "hana";
     const agentDir = path.join(tempRoot, agentId);
