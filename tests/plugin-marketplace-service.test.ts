@@ -289,6 +289,28 @@ describe("PluginMarketplaceService", () => {
     expect(svc.listSources().some((source) => source.id === "llm-wiki")).toBe(true);
   });
 
+  it("includes the source snapshot on catalog rows for stale-install validation (finding 9)", async () => {
+    const home = makeHome();
+    seedClaudeSource(home);
+    const svc = new PluginMarketplaceService({ hanakoHome: home, env: {} });
+    svc.registry.addSource({
+      id: "llm-wiki",
+      name: "llm-wiki",
+      kind: "git",
+      gitUrl: "https://example.com/llm-wiki.git",
+    });
+
+    const rows = svc.listCatalogRows();
+    const row = rows.plugins.find((r) => r.pluginId === "skillwiki");
+    expect(row).toBeDefined();
+    expect(row.sourceSnapshot).toMatchObject({
+      state: expect.any(String),
+      sourceFingerprint: expect.any(String),
+      catalogSha256: expect.any(String),
+    });
+    expect(row.sourceSnapshot).toEqual(svc.getInstallPlanContext("llm-wiki").sourceSnapshot);
+  });
+
   it("does not resolve installs from a disabled source", () => {
     const home = makeHome();
     seedClaudeSource(home);

@@ -42,6 +42,13 @@ interface MarketplacePlugin {
   sourceAuthority?: 'official' | 'custom' | 'legacy' | 'removed';
   sourceStatus?: string;
   sourceEnabled?: boolean;
+  sourceSnapshot?: {
+    state?: string;
+    sourceFingerprint?: string | null;
+    catalogSha256?: string | null;
+    requestedRef?: string | null;
+    resolvedRevision?: string | null;
+  } | null;
   available?: boolean;
   active?: boolean;
   retained?: boolean;
@@ -291,6 +298,7 @@ function mapCatalogRow(row: any): MarketplacePlugin {
     sourceAuthority: row.sourceAuthority,
     sourceStatus: row.sourceStatus,
     sourceEnabled: row.sourceEnabled,
+    sourceSnapshot: row.sourceSnapshot,
     available: row.available,
     active,
     retained: row.retained,
@@ -706,6 +714,7 @@ export function PluginMarketplaceTab() {
             ? { expectedRevision: marketplace.registry.revision }
             : {}),
           ...(marketplace?.registry?.digest ? { expectedDigest: marketplace.registry.digest } : {}),
+          ...(plugin.sourceSnapshot ? { expectedSourceSnapshot: plugin.sourceSnapshot } : {}),
         }),
       });
       const data = await res.json();
