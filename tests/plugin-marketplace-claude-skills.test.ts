@@ -388,6 +388,123 @@ describe("PluginMarketplaceService.installClaudePluginSkills", () => {
     });
   });
 
+  it("installs with a matching expectedSourceSnapshot and writes skills and record (finding 9)", async () => {
+    const home = makeTemp("svc-snapshot-match-home-");
+    const allowedRoot = path.join(home, "plugin-marketplaces-local");
+    const sourceDir = path.join(allowedRoot, "local-claude");
+    const skillsDir = path.join(home, "skills");
+    fs.mkdirSync(sourceDir, { recursive: true });
+    writeSkill(path.join(sourceDir, "packages", "skills", "hello-safe"), "hello-safe");
+
+    const svc = new PluginMarketplaceService({
+      hanakoHome: home,
+      localAllowedRoot: allowedRoot,
+      env: {},
+    });
+    const parsed = parseMarketplaceCatalogAuto(JSON.stringify({
+      name: "local-claude",
+      owner: { name: "fixture" },
+      plugins: [{ name: "hello-plugin", version: "1.0.0", source: "./packages/skills" }],
+    }), {
+      marketplaceId: "local-claude",
+      sourceKind: "local",
+    });
+    svc.snapshots.publish("local-claude", {
+      sourceId: "local-claude",
+      sourceFingerprint: "f".repeat(64),
+      catalogSha256: parsed.catalogSha256,
+      fetchedAt: new Date().toISOString(),
+      plugins: parsed.plugins,
+    });
+    svc.registry.addSource({
+      id: "local-claude",
+      name: "Local Claude",
+      kind: "local",
+      path: "local-claude",
+    });
+
+    // Client captures the same facts the real gate compares against.
+    const expectedSourceSnapshot = svc.getInstallPlanContext("local-claude").sourceSnapshot;
+
+    const result = await svc.installClaudePluginSkills("hello-plugin", "local-claude", {
+      userSkillsDir: skillsDir,
+      isStudioOwner: true,
+      expectedSourceSnapshot,
+    });
+
+    expect(result).toMatchObject({
+      marketplaceId: "local-claude",
+      pluginId: "hello-plugin",
+      skills: ["hello-safe"],
+      resolvedRevision: null,
+    });
+    expect(fs.existsSync(path.join(skillsDir, "hello-safe", "SKILL.md"))).toBe(true);
+    expect(readClaudeSkillsInstallRecord(home, "local-claude", "hello-plugin")).toMatchObject({
+      packagePath: "packages/skills",
+      resolvedRevision: null,
+      skills: ["hello-safe"],
+    });
+  });
+
+  it("rejects a stale expectedSourceSnapshot with 409 and no skills or record (finding 9)", async () => {
+    const home = makeTemp("svc-snapshot-stale-home-");
+    const allowedRoot = path.join(home, "plugin-marketplaces-local");
+    const sourceDir = path.join(allowedRoot, "local-claude");
+    const skillsDir = path.join(home, "skills");
+    fs.mkdirSync(sourceDir, { recursive: true });
+    writeSkill(path.join(sourceDir, "packages", "skills", "hello-safe"), "hello-safe");
+
+    const svc = new PluginMarketplaceService({
+      hanakoHome: home,
+      localAllowedRoot: allowedRoot,
+      env: {},
+    });
+    const publishCatalog = (version: string) => {
+      const parsed = parseMarketplaceCatalogAuto(JSON.stringify({
+        name: "local-claude",
+        owner: { name: "fixture" },
+        plugins: [{ name: "hello-plugin", version, source: "./packages/skills" }],
+      }), {
+        marketplaceId: "local-claude",
+        sourceKind: "local",
+      });
+      svc.snapshots.publish("local-claude", {
+        sourceId: "local-claude",
+        sourceFingerprint: "f".repeat(64),
+        catalogSha256: parsed.catalogSha256,
+        fetchedAt: new Date().toISOString(),
+        plugins: parsed.plugins,
+      });
+    };
+    publishCatalog("1.0.0");
+    svc.registry.addSource({
+      id: "local-claude",
+      name: "Local Claude",
+      kind: "local",
+      path: "local-claude",
+    });
+
+    // Client captured the v1.0.0 snapshot facts…
+    const expectedSourceSnapshot = svc.getInstallPlanContext("local-claude").sourceSnapshot;
+
+    // …then the source snapshot moved on (new catalog generation) before the
+    // install ran: at least catalogSha256 changes.
+    publishCatalog("2.0.0");
+
+    await expect(svc.installClaudePluginSkills("hello-plugin", "local-claude", {
+      userSkillsDir: skillsDir,
+      isStudioOwner: true,
+      expectedSourceSnapshot,
+    })).rejects.toMatchObject({
+      code: "PLUGIN_MARKETPLACE_PLAN_STALE",
+      status: 409,
+    });
+
+    // No mutation: neither the skill directory nor the install record exist.
+    expect(fs.existsSync(path.join(skillsDir, "hello-safe"))).toBe(false);
+    expect(readClaudeSkillsInstallRecord(home, "local-claude", "hello-plugin")).toBeNull();
+  });
+
   it("rejects a local package root that escapes through a symlink", async () => {
     const home = makeTemp("svc-local-escape-home-");
     const allowedRoot = path.join(home, "plugin-marketplaces-local");
