@@ -19,43 +19,43 @@ export function marketVersion(plugin: MarketplacePlugin): string {
 
 export function marketInstallLabel(plugin: MarketplacePlugin): string {
   if (isSkillsTarget(plugin.installTarget)) {
-    if (plugin.packageInstall?.state === 'installed') return 'Uninstall skills';
-    if (plugin.packageInstall?.state === 'partial') return 'Uninstall remaining skills';
-    if (plugin.packageInstall?.state === 'stale-record') return 'Clear stale installation';
+    if (plugin.packageInstall?.state === 'installed') return t('settings.plugins.marketUninstallSkills');
+    if (plugin.packageInstall?.state === 'partial') return t('settings.plugins.marketUninstallRemainingSkills');
+    if (plugin.packageInstall?.state === 'stale-record') return t('settings.plugins.marketClearStaleInstallation');
   }
-  if (plugin.installTarget === 'native-plugin' && plugin.nativeSettingsLifecycle?.canUninstall) return 'Uninstall';
-  if (plugin.installTarget === 'native-plugin' && plugin.nativeSettingsLifecycle?.canInstall) return 'Install';
-  if (plugin.installTarget === 'unsupported' || (plugin.installable === false && !plugin.nativeSettingsLifecycle?.supported)) return 'Inspect only';
+  if (plugin.installTarget === 'native-plugin' && plugin.nativeSettingsLifecycle?.canUninstall) return t('settings.plugins.marketUninstall');
+  if (plugin.installTarget === 'native-plugin' && plugin.nativeSettingsLifecycle?.canInstall) return t('settings.plugins.marketInstall');
+  if (plugin.installTarget === 'unsupported' || (plugin.installable === false && !plugin.nativeSettingsLifecycle?.supported)) return t('settings.plugins.marketInspectOnly');
   if (plugin.compatible === false || plugin.installAction === 'incompatible') return t('settings.plugins.marketIncompatible');
   if (plugin.installAction === 'downgrade') return t('settings.plugins.marketDowngrade');
   if (plugin.installAction === 'reinstall') return t('settings.plugins.marketReinstall');
   if (plugin.installAction === 'update' || plugin.updateAvailable) return t('settings.plugins.marketUpdate');
   // Trust server installTarget; keep legacy "skills" for older catalog rows mid-upgrade.
   if (isSkillsTarget(plugin.installTarget)) {
-    return t('settings.plugins.marketInstallSkills') || 'Install skills';
+    return t('settings.plugins.marketInstallSkills');
   }
   return t('settings.plugins.marketInstall');
 }
 
 export function marketTargetLabel(target?: string | null): string {
-  if (isSkillsTarget(target)) return 'Hana skills';
-  if (target === 'native-plugin') return 'Native plugin';
-  if (target === 'unsupported') return 'Unsupported';
-  return target || 'Unknown';
+  if (isSkillsTarget(target)) return t('settings.plugins.marketTargetHanaSkills');
+  if (target === 'native-plugin') return t('settings.plugins.marketTargetNativePlugin');
+  if (target === 'unsupported') return t('settings.plugins.marketTargetUnsupported');
+  return target || t('settings.plugins.marketUnknown');
 }
 
 export function marketAdapterLabel(adapter?: string | null): string {
-  if (adapter === 'skill-manager') return 'Skill manager';
-  if (adapter === 'plugin-manager') return 'Plugin manager';
-  if (adapter === 'none') return 'None';
-  return adapter || 'Unknown';
+  if (adapter === 'skill-manager') return t('settings.plugins.marketAdapterSkillManager');
+  if (adapter === 'plugin-manager') return t('settings.plugins.marketAdapterPluginManager');
+  if (adapter === 'none') return t('settings.plugins.marketAdapterNone');
+  return adapter || t('settings.plugins.marketUnknown');
 }
 
 export function marketConfirmationLabel(level?: string | null): string {
-  if (level === 'typed-exact') return 'Typed exact';
-  if (level === 'capability-review') return 'Capability review';
-  if (level === 'inline') return 'Inline';
-  return level || 'Unknown';
+  if (level === 'typed-exact') return t('settings.plugins.marketConfirmationTypedExact');
+  if (level === 'capability-review') return t('settings.plugins.marketConfirmationCapabilityReview');
+  if (level === 'inline') return t('settings.plugins.marketConfirmationInline');
+  return level || t('settings.plugins.marketUnknown');
 }
 
 export function sourceQualifiedId(plugin: MarketplacePlugin): string {
@@ -224,7 +224,7 @@ export function useMarketplaceData(): MarketplaceDataState {
           || capabilityRes.status === 405
           || /not found/i.test(capabilityError)
         ) {
-          const guidance = capabilityData.upgradeGuidance || capabilityData.message || 'Upgrade the connected Hana server to use marketplace sources.';
+          const guidance = capabilityData.upgradeGuidance || capabilityData.message || t('settings.plugins.marketUnsupportedServerGuidance');
           if (gen !== loadGenRef.current) return;
           setMarketplace({
             source: {},
@@ -250,11 +250,11 @@ export function useMarketplaceData(): MarketplaceDataState {
             source: {},
             sources: [],
             plugins: [],
-            warnings: ['The connected Hana server does not advertise plugin marketplace capabilities. Upgrade the server before managing marketplace sources.'],
+            warnings: [t('settings.plugins.marketUnsupportedServerNoCapabilities')],
             capabilities: {
               supported: false,
               code: 'PLUGIN_MARKETPLACE_UNSUPPORTED_SERVER',
-              upgradeGuidance: 'Upgrade the connected Hana server to a build with plugin-marketplace-capabilities.v1.',
+              upgradeGuidance: t('settings.plugins.marketUnsupportedServerUpgrade'),
             },
             access: null,
             registry: null,
@@ -326,7 +326,7 @@ export function useMarketplaceData(): MarketplaceDataState {
         warnings: [
           ...warnings,
           ...(registry?.degraded && registry.diagnostic
-            ? [`Marketplace registry is using the last-known-good state: ${registry.diagnostic}`]
+            ? [t('settings.plugins.marketRegistryDegraded', { diagnostic: registry.diagnostic })]
             : []),
         ],
         capabilities,

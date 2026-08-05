@@ -28,16 +28,31 @@ const marketplaceBadgeClassName = `${styles['skills-source-badge']} ${styles['pl
 function marketVersionStatus(plugin: MarketplacePlugin): string | null {
   if (isSkillsTarget(plugin.installTarget)) {
     if (plugin.packageInstall?.state === 'installed') {
-      return `${plugin.packageInstall.present.length} marketplace skill director${plugin.packageInstall.present.length === 1 ? 'y' : 'ies'} installed`;
+      const count = plugin.packageInstall.present.length;
+      return t('settings.plugins.marketVersionStatusInstalled', {
+        count: String(count),
+        unit: count === 1
+          ? t('settings.plugins.marketSkillDirectory')
+          : t('settings.plugins.marketSkillDirectories'),
+      });
     }
     if (plugin.packageInstall?.state === 'partial') {
-      return `${plugin.packageInstall.present.length} present · ${plugin.packageInstall.missing.length} already missing`;
+      return t('settings.plugins.marketVersionStatusPartial', {
+        present: String(plugin.packageInstall.present.length),
+        missing: String(plugin.packageInstall.missing.length),
+      });
     }
     if (plugin.packageInstall?.state === 'stale-record') {
-      return `${plugin.packageInstall.missing.length} recorded skill director${plugin.packageInstall.missing.length === 1 ? 'y' : 'ies'} already missing`;
+      const count = plugin.packageInstall.missing.length;
+      return t('settings.plugins.marketVersionStatusStale', {
+        count: String(count),
+        unit: count === 1
+          ? t('settings.plugins.marketSkillDirectory')
+          : t('settings.plugins.marketSkillDirectories'),
+      });
     }
   }
-  if (plugin.installTarget === 'unsupported' || (plugin.installable === false && !plugin.nativeSettingsLifecycle?.supported)) return 'Unsupported package';
+  if (plugin.installTarget === 'unsupported' || (plugin.installable === false && !plugin.nativeSettingsLifecycle?.supported)) return t('settings.plugins.marketVersionStatusUnsupported');
   if (plugin.compatible === false || plugin.installAction === 'incompatible') return t('settings.plugins.marketIncompatible');
   if (plugin.installAction === 'downgrade') {
     return t('settings.plugins.marketDowngradeTo', { version: marketVersion(plugin) });
@@ -55,11 +70,11 @@ function marketVersionStatus(plugin: MarketplacePlugin): string | null {
 function inventoryGroups(plugin: MarketplacePlugin): Array<{ key: string; label: string; values: string[] }> {
   const inv = plugin.capabilityInventory || {};
   return [
-    { key: 'skills', label: 'Skills', values: inv.skills || [] },
-    { key: 'agentFacing', label: 'Agent-facing', values: inv.agentFacing || [] },
-    { key: 'serverImpact', label: 'Server impact', values: inv.serverImpact || [] },
-    { key: 'nativePluginContributions', label: 'Native contributions', values: inv.nativePluginContributions || [] },
-    { key: 'unsupportedClaudeComponents', label: 'Unsupported Claude components', values: inv.unsupportedClaudeComponents || [] },
+    { key: 'skills', label: t('settings.plugins.marketInventorySkills'), values: inv.skills || [] },
+    { key: 'agentFacing', label: t('settings.plugins.marketInventoryAgentFacing'), values: inv.agentFacing || [] },
+    { key: 'serverImpact', label: t('settings.plugins.marketInventoryServerImpact'), values: inv.serverImpact || [] },
+    { key: 'nativePluginContributions', label: t('settings.plugins.marketInventoryNativeContributions'), values: inv.nativePluginContributions || [] },
+    { key: 'unsupportedClaudeComponents', label: t('settings.plugins.marketInventoryUnsupportedClaudeComponents'), values: inv.unsupportedClaudeComponents || [] },
   ].filter(group => group.values.length > 0);
 }
 
@@ -148,7 +163,7 @@ export function MarketplacePluginInspector({
               aria-label={t('settings.plugins.skillPackageToggle', {
                 identity: sourceQualifiedId(plugin),
                 name: plugin.name,
-              }) || `Toggle skill package ${sourceQualifiedId(plugin)}`}
+              }) || t('settings.plugins.skillPackageToggleFallback', { identity: sourceQualifiedId(plugin) })}
               title={t('settings.plugins.marketPackageGateTitle')}
               onClick={(e) => {
                 e.stopPropagation();
@@ -208,7 +223,7 @@ export function MarketplacePluginInspector({
         {plugin.installTarget === 'native-plugin' && plugin.nativeSettingsLifecycle && (
           <div className={styles['plugin-marketplace-property-row']}>
             <span>{t('settings.plugins.marketInstallation')}</span>
-            <strong>{plugin.active ? t('settings.plugins.marketInstalled') : t('settings.plugins.marketNotInstalled')} · {plugin.nativeSettingsLifecycle.reason || 'Settings lifecycle unavailable'}</strong>
+            <strong>{plugin.active ? t('settings.plugins.marketInstalled') : t('settings.plugins.marketNotInstalled')} · {plugin.nativeSettingsLifecycle.reason || t('settings.plugins.marketLifecycleUnavailable')}</strong>
           </div>
         )}
         {(plugin.catalogFormat || plugin.sourceStatus) && (
@@ -240,7 +255,7 @@ export function MarketplacePluginInspector({
           <div className={styles['plugin-marketplace-plan']}>
             <span>{t('settings.plugins.marketPackageState')}</span>
             <strong>
-              {plugin.packageInstall?.state || 'not-installed'}
+              {plugin.packageInstall?.state || t('settings.plugins.marketNotInstalled')}
               {plugin.available === false ? ' · ' + t('settings.plugins.marketSourceRemovedUninstallOnly') : ''}
             </strong>
           </div>
@@ -252,14 +267,14 @@ export function MarketplacePluginInspector({
               {packageGateEnabled(
                 plugin,
                 marketplace?.configDiagnostics?.file?.activations,
-              ) ? 'enabled' : 'disabled'}
+              ) ? t('settings.plugins.marketPackageGateEnabled') : t('settings.plugins.marketPackageGateDisabled')}
               {plugin.packageActivation?.state
                 ? ` · ${plugin.packageActivation.state}`
                 : ''}
               {plugin.packageActivation?.reason
                 ? ` · ${plugin.packageActivation.reason}`
                 : ''}
-              {' · global skill-manager gate (not PluginManager)'}
+              {' · ' + t('settings.plugins.marketPackageGateScope')}
             </strong>
           </div>
         )}
@@ -274,7 +289,7 @@ export function MarketplacePluginInspector({
             <span>{t('settings.plugins.marketInstallPlan')}</span>
             <strong>
               {[
-                plugin.installPlan.action || 'install',
+                plugin.installPlan.action || t('settings.plugins.marketActionInstall'),
                 marketTargetLabel(plugin.installPlan.destination || plugin.installTarget),
                 marketAdapterLabel(plugin.installPlan.installAdapter || plugin.installAdapter),
               ].join(' · ')}
