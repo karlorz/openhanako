@@ -454,6 +454,21 @@ export function createChatRoute(engine: any, hub: any, {
     return ss;
   }
 
+  // B1-T1: record the connecting client's host owner principal for a session
+  // so tool approval review can resolve it later. Server-derived only
+  // (wsClient principal / request auth principal — never tool params or
+  // client-authored fields). Only recorded when a real principal is known;
+  // non-owner sessions resolve to all-false via the engine fallback.
+  function recordSessionOwnerPrincipal(sessionPath, { wsClient = null, requestContext = null } = {}) {
+    if (!sessionPath) return;
+    const principal = wsClient?.principal || requestContext?.authPrincipal || null;
+    if (!principal) return;
+    engine.markSessionOwnerPrincipal?.(sessionPath, {
+      isStudioOwner: isStudioOwnerPrincipal(principal) || isLocalOwnerPrincipal(principal),
+      isLocalOwner: isLocalOwnerPrincipal(principal),
+    });
+  }
+
   function getExistingState(sessionPath, { wsClient = null, requestContext = null } = {}) {
     if (!sessionPath) return null;
     const key = sessionStateKey(sessionPath);
@@ -466,16 +481,7 @@ export function createChatRoute(engine: any, hub: any, {
       ss.sessionPath = sessionPath;
       ss.lastAccessed = Date.now();
     }
-    // B1-T1: record the connecting client's host owner principal for this
-    // session so tool approval review can resolve it later. Only recorded when
-    // a real principal is known; non-owner sessions resolve to all-false.
-    const principal = wsClient?.principal || requestContext?.authPrincipal || null;
-    if (principal) {
-      engine.markSessionOwnerPrincipal?.(sessionPath, {
-        isStudioOwner: isStudioOwnerPrincipal(principal) || isLocalOwnerPrincipal(principal),
-        isLocalOwner: isLocalOwnerPrincipal(principal),
-      });
-    }
+    recordSessionOwnerPrincipal(sessionPath, { wsClient, requestContext });
     return ss;
   }
 
@@ -1766,6 +1772,7 @@ export function createChatRoute(engine: any, hub: any, {
             if (msg.type === "abort") {
               const abortTarget = requireWsSessionContext(msg, ws); if (!abortTarget) return;
               const abortPath = abortTarget.sessionPath;
+              recordSessionOwnerPrincipal(abortPath, { wsClient: client, requestContext });
               const abortSs = getState(abortPath);
               const requestedStreamId = typeof msg.streamId === "string" && msg.streamId.trim()
                 ? msg.streamId.trim()
@@ -1951,6 +1958,7 @@ export function createChatRoute(engine: any, hub: any, {
                 return;
               }
               const { sessionId: compactSessionId, sessionPath: compactPath } = compactTarget;
+              recordSessionOwnerPrincipal(compactPath, { wsClient: client, requestContext });
               const requestedMethod = msg.method == null ? null : String(msg.method);
               if (requestedMethod !== null && requestedMethod !== INSTANT_SIMPLE_COMPACTION_METHOD) {
                 wsSend(ws, {
@@ -2048,6 +2056,7 @@ export function createChatRoute(engine: any, hub: any, {
               // 消息不值得先把几 MB base64 量一遍再拒。
               const promptTarget = requireWsSessionContext(msg, ws); if (!promptTarget) return;
               const promptSessionPath = promptTarget.sessionPath;
+              recordSessionOwnerPrincipal(promptSessionPath, { wsClient: client, requestContext });
               // 图片校验：最多 10 张，单张 ≤ 20MB，仅允许常见图片 MIME
               if (msg.images?.length) {
                 const MAX_IMAGES = 10;
