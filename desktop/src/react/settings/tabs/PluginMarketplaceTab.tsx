@@ -1209,19 +1209,35 @@ export function PluginMarketplaceTab() {
                                   disabled={switchingKey === rowKey(selectedPlugin)}
                                   onClick={async (e) => {
                                     e.stopPropagation();
-                                    if (!window.confirm(
-                                      `Switch active source to ${selectedPlugin.marketplaceId}? State and trust stay source-isolated; rollback is automatic on failure.`,
-                                    )) return;
+                                    if (!marketplace?.registry) return;
                                     setSwitchingKey(rowKey(selectedPlugin));
                                     try {
-                                      const res = await hanaFetch(`/api/plugins/${encodeURIComponent(selectedPlugin.id)}/source-switch`, {
+                                      const planRes = await hanaFetch(`/api/plugins/${encodeURIComponent(selectedPlugin.id)}/source-switch/plan`, {
                                         method: 'POST',
                                         headers: { 'Content-Type': 'application/json' },
-                                        body: JSON.stringify({ marketplaceId: selectedPlugin.marketplaceId }),
+                                        body: JSON.stringify({
+                                          marketplaceId: selectedPlugin.marketplaceId,
+                                          expectedRevision: marketplace.registry.revision,
+                                          expectedDigest: marketplace.registry.digest,
+                                        }),
                                       });
-                                      const data = await res.json();
-                                      if (!data.ok) throw new Error(data.error?.message || data.error || 'switch failed');
-                                      showToast('Source switched', 'success');
+                                      const plan = await planRes.json().catch(() => ({}));
+                                      if (plan.error) throw new Error(plan.error);
+                                      if (typeof plan.confirmationText !== 'string' || !plan.confirmationText) return;
+                                      if (!window.confirm(plan.confirmationText)) return;
+                                      const execRes = await hanaFetch(`/api/plugins/${encodeURIComponent(selectedPlugin.id)}/source-switch`, {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({
+                                          marketplaceId: selectedPlugin.marketplaceId,
+                                          planToken: plan.planToken,
+                                          confirmation: plan.confirmationText,
+                                        }),
+                                      });
+                                      const data = await execRes.json().catch(() => ({}));
+                                      if (data.error) throw new Error(data.error?.message || data.error || 'switch failed');
+                                      if (!data.ok) throw new Error('switch failed');
+                                      showToast(t('settings.plugins.marketSourceSwitched'), 'success');
                                       await loadMarketplace();
                                     } catch (err: unknown) {
                                       showToast(err instanceof Error ? err.message : String(err), 'error');
