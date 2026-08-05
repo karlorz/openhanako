@@ -148,6 +148,7 @@ import { hashCacheContractValue } from "../lib/llm/cache-prefix-contract.ts";
 import { resolveReferenceBudgetTokens } from "./session-reminders.ts";
 import { createBridgeTools, registerBridgeCapabilityDelegates } from "./tool-catalog-bridge.ts";
 import { summarizeToolParameters } from "./mcp/manager.ts";
+import type { HostOwnerPrincipal } from "../lib/permission/approval-review-context.ts";
 
 /** Matches the MCP config default; used when no manager config is available. */
 const DEFAULT_TOOL_DEFER_THRESHOLD = 10;
@@ -1466,6 +1467,15 @@ export class HanaEngine {
       updatedAt: record?.updated_at || null,
       resetAt: readCompiledResetAt(path.dirname(agent.summariesDir)),
     };
+  }
+
+  markSessionOwnerPrincipal(sessionPath: string, principal: HostOwnerPrincipal): void {
+    this._sessionCoord?.setSessionOwnerPrincipal?.(sessionPath, principal);
+  }
+
+  async _resolveSessionOwnerPrincipal(sessionPath: string | null): Promise<HostOwnerPrincipal> {
+    const principal = this._sessionCoord?.getSessionOwnerPrincipal?.(sessionPath || "");
+    return principal || { isStudioOwner: false, isLocalOwner: false };
   }
 
   _openSessionManifestStore() {
@@ -3354,6 +3364,8 @@ export class HanaEngine {
         getConfirmStore: () => this._confirmStore,
         getApprovalGateway: () => this._approvalGateway,
         emitEvent: (event, sessionPath) => this._emitEvent(event, sessionPath),
+        resolveSessionOwnerPrincipal: opts.resolveSessionOwnerPrincipal
+          || ((sp: string | null) => this._resolveSessionOwnerPrincipal(sp)),
       }),
       customTools: wrapWithSessionPermission(result.customTools, {
         getSessionPath,
@@ -3371,6 +3383,8 @@ export class HanaEngine {
         getConfirmStore: () => this._confirmStore,
         getApprovalGateway: () => this._approvalGateway,
         emitEvent: (event, sessionPath) => this._emitEvent(event, sessionPath),
+        resolveSessionOwnerPrincipal: opts.resolveSessionOwnerPrincipal
+          || ((sp: string | null) => this._resolveSessionOwnerPrincipal(sp)),
       }),
     };
 
