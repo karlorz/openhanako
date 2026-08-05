@@ -66,6 +66,13 @@ function asText(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : "";
 }
 
+function readHostOwner(args: any[]) {
+  const last = args.length > 0 ? args[args.length - 1] : null;
+  return last && typeof last === "object" && !Array.isArray(last) && Object.prototype.hasOwnProperty.call(last, "hostOwner")
+    ? (last as any).hostOwner
+    : null;
+}
+
 function getEngine(deps: { getEngine?: () => any }) {
   const engine = deps.getEngine?.();
   if (!engine) throw new Error("plugin marketplace tool unavailable: engine not ready");
@@ -517,10 +524,15 @@ export function createPluginMarketplaceTool(deps: {
       deviceId: Type.Optional(Type.String({ description: "Expected bridge device id." })),
       sessionId: Type.Optional(Type.String({ description: "Expected bridge session id." })),
     }),
-    execute: async (_toolCallId: string, params: any = {}) => {
+    execute: async (_toolCallId: string, params: any = {}, ...rest: any[]) => {
       try {
         const engine = getEngine(deps);
         const svc = getMarketplaceService(engine);
+        const hostOwner = readHostOwner(rest);
+        const ownerDenied = () => toolError("studio.owner required for marketplace mutations", {
+          ok: false,
+          code: "PLUGIN_MARKETPLACE_SOURCE_FORBIDDEN",
+        });
         const action = asText(params.action) || "list_catalog";
         const pluginId = asText(params.pluginId);
         const marketplaceId = asText(params.marketplaceId) || null;
@@ -546,6 +558,7 @@ export function createPluginMarketplaceTool(deps: {
         }
 
         if (action === "add_source") {
+          if (hostOwner?.isStudioOwner !== true) return ownerDenied();
           if (!hasRegistryPreconditions(params)) return preconditionsRequired();
           const sourceInput = asText(params.source);
           if (!sourceInput) {
@@ -556,8 +569,8 @@ export function createPluginMarketplaceTool(deps: {
           }
           const descriptor = descriptorFromMarketplaceSourceInput(sourceInput);
           const result = await svc.addSource(descriptor, {
-            isStudioOwner: true,
-            isLocalOwner: descriptor.kind === "local",
+            isStudioOwner: hostOwner?.isStudioOwner === true,
+            isLocalOwner: hostOwner?.isLocalOwner === true,
             ...registryPreconditions(params),
           });
           const details = { ok: true, result, ...serviceCapabilityPayload(svc) };
@@ -565,6 +578,7 @@ export function createPluginMarketplaceTool(deps: {
         }
 
         if (action === "refresh_source" || action === "set_source_enabled" || action === "remove_source") {
+          if (hostOwner?.isStudioOwner !== true) return ownerDenied();
           if (!hasRegistryPreconditions(params)) return preconditionsRequired();
           if (!marketplaceId) {
             return toolError("marketplaceId is required", {
@@ -575,7 +589,7 @@ export function createPluginMarketplaceTool(deps: {
           let result: unknown;
           if (action === "refresh_source") {
             result = await svc.refreshSource(marketplaceId, {
-              isStudioOwner: true,
+              isStudioOwner: hostOwner?.isStudioOwner === true,
               ...registryPreconditions(params),
             });
           } else if (action === "set_source_enabled") {
@@ -583,12 +597,12 @@ export function createPluginMarketplaceTool(deps: {
               return toolError("enabled is required", { ok: false, code: "PLUGIN_MARKETPLACE_ENABLED_REQUIRED" });
             }
             result = svc.setSourceEnabled(marketplaceId, params.enabled, {
-              isStudioOwner: true,
+              isStudioOwner: hostOwner?.isStudioOwner === true,
               ...registryPreconditions(params),
             });
           } else {
             result = svc.removeSource(marketplaceId, {
-              isStudioOwner: true,
+              isStudioOwner: hostOwner?.isStudioOwner === true,
               ...registryPreconditions(params),
             });
           }
@@ -597,6 +611,7 @@ export function createPluginMarketplaceTool(deps: {
         }
 
         if (action === "set_package_enabled") {
+          if (hostOwner?.isStudioOwner !== true) return ownerDenied();
           const identityError = packageIdentityRequired(pluginId, marketplaceId);
           if (identityError) return identityError;
           if (!hasRegistryPreconditions(params)) return preconditionsRequired();
@@ -604,7 +619,7 @@ export function createPluginMarketplaceTool(deps: {
             return toolError("enabled is required", { ok: false, code: "PLUGIN_MARKETPLACE_ENABLED_REQUIRED" });
           }
           const result = svc.setMarketplaceSkillPackageEnabled(pluginId, marketplaceId!, params.enabled, {
-            isStudioOwner: true,
+            isStudioOwner: hostOwner?.isStudioOwner === true,
             ...registryPreconditions(params),
           });
           if (result.changed !== false) await reloadSkillsBestEffort(engine);
@@ -642,6 +657,7 @@ export function createPluginMarketplaceTool(deps: {
         }
 
         if (action === "install") {
+          if (hostOwner?.isStudioOwner !== true) return ownerDenied();
           const identityError = packageIdentityRequired(pluginId, marketplaceId);
           if (identityError) return identityError;
           const planToken = asText(params.planToken);
@@ -687,7 +703,7 @@ export function createPluginMarketplaceTool(deps: {
           }
           const result = await svc.installClaudePluginSkills(pluginId, resolved.marketplaceId, {
             userSkillsDir,
-            isStudioOwner: true,
+            isStudioOwner: hostOwner?.isStudioOwner === true,
             expectedRevision: payload.registry.revision,
             expectedDigest: payload.registry.digest || undefined,
             expectedSourceSnapshot: payload.sourceSnapshot,
@@ -718,6 +734,7 @@ export function createPluginMarketplaceTool(deps: {
             });
           }
           if (action === "uninstall") {
+            if (hostOwner?.isStudioOwner !== true) return ownerDenied();
             if (!hasRegistryPreconditions(params)) return preconditionsRequired();
             if (!asText(params.planToken)) {
               return toolError("planToken is required; call plan_uninstall before uninstall.", {
@@ -750,7 +767,7 @@ export function createPluginMarketplaceTool(deps: {
             pluginId,
             marketplaceId: marketplaceId!,
             userSkillsDir,
-            isStudioOwner: true,
+            isStudioOwner: hostOwner?.isStudioOwner === true,
             ...registryPreconditions(params),
             emitSkillsChanged: () => emitAppEvent(engine, "skills-changed", { agentId: null }),
           });
@@ -770,6 +787,7 @@ export function createPluginMarketplaceTool(deps: {
         }
 
         if (action === "set_activations") {
+          if (hostOwner?.isStudioOwner !== true) return ownerDenied();
           if (!hasRegistryPreconditions(params)) return preconditionsRequired();
           if (!params || !Object.prototype.hasOwnProperty.call(params, "activations")) {
             return toolError("activations is required for set_activations", {
@@ -778,7 +796,7 @@ export function createPluginMarketplaceTool(deps: {
             });
           }
           const result = svc.setControlPlaneActivations(params.activations, {
-            isStudioOwner: true,
+            isStudioOwner: hostOwner?.isStudioOwner === true,
             ...registryPreconditions(params),
           });
           const details = {
@@ -815,6 +833,7 @@ export function createPluginMarketplaceTool(deps: {
         }
 
         if (action === "execute_compat_mutation") {
+          if (hostOwner?.isStudioOwner !== true) return ownerDenied();
           const compatAction = asText(params.compatAction);
           const planToken = asText(params.planToken);
           if (!COMPAT_ACTIONS.includes(compatAction as any) || !planToken) {
@@ -823,7 +842,7 @@ export function createPluginMarketplaceTool(deps: {
           const result = svc.executeClaudeCompatibilityMutation({
             action: compatAction as any,
             planToken,
-            isStudioOwner: true,
+            isStudioOwner: hostOwner?.isStudioOwner === true,
             binding: params.binding,
             bindingId: asText(params.bindingId) || undefined,
             virtualSourceId: asText(params.virtualSourceId) || undefined,

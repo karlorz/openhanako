@@ -604,7 +604,7 @@ describe("ApprovalGateway", () => {
         planToken: "abc123",
         ownerRequired: true,
       },
-    }));
+    }), { hostOwner: { isStudioOwner: true, isLocalOwner: true } });
 
     expect(decision).toMatchObject({
       action: "allow",
@@ -633,7 +633,7 @@ describe("ApprovalGateway", () => {
         expectedDigest: "deadbeef",
         ownerRequired: true,
       },
-    }));
+    }), { hostOwner: { isStudioOwner: true, isLocalOwner: true } });
 
     expect(decision).toMatchObject({
       action: "allow",
@@ -659,10 +659,64 @@ describe("ApprovalGateway", () => {
         marketplaceId: "github-com-karlorz-llm-wiki",
         ownerRequired: true,
       },
-    }));
+    }), { hostOwner: { isStudioOwner: true, isLocalOwner: true } });
 
     // No planToken and no preconditions → falls through to reviewer
     expect(decision.action).toBe("ask_user");
     expect(smallToolModelReviewer).toHaveBeenCalled();
+  });
+
+  it("deterministically denies owner-marked marketplace mutations without a host owner principal (Auto)", async () => {
+    const small = vi.fn(async () => ({ kind: "failure", reasonCode: "reviewer_not_configured", attempts: 0 }));
+    const gateway = createApprovalGateway({ smallToolModelReviewer: small });
+
+    const decision = await gateway.review(request({
+      toolName: "plugin_marketplace",
+      actionName: "install",
+      params: { action: "install", pluginId: "skillwiki", marketplaceId: "oh-plugins-official", planToken: "abc" },
+      sideEffect: {
+        kind: "marketplace_install",
+        ownerRequired: true,
+        pluginId: "skillwiki",
+        marketplaceId: "oh-plugins-official",
+        planToken: "abc",
+      },
+    }), { hostOwner: { isStudioOwner: false, isLocalOwner: false } });
+
+    expect(decision.action).toBe("hard_deny");
+    expect(decision.reasonCode).toBe("marketplace_owner_required");
+    expect(decision.ruleIds).toContain("marketplace-owner-required");
+    expect(small).not.toHaveBeenCalled();
+  });
+
+  it("still deterministically allows plan-validated marketplace installs when the host owner is present", async () => {
+    const gateway = createApprovalGateway({});
+
+    const decision = await gateway.review(request({
+      toolName: "plugin_marketplace",
+      actionName: "install",
+      params: { action: "install", pluginId: "skillwiki", marketplaceId: "oh-plugins-official", planToken: "abc" },
+      sideEffect: {
+        kind: "marketplace_install",
+        ownerRequired: true,
+        pluginId: "skillwiki",
+        marketplaceId: "oh-plugins-official",
+        planToken: "abc",
+      },
+    }), { hostOwner: { isStudioOwner: true, isLocalOwner: true } });
+
+    expect(decision.action).toBe("allow");
+    expect(decision.reviewer).toBe("policy");
+  });
+
+  it("denies owner-marked mutations when the context carries no hostOwner at all", async () => {
+    const gateway = createApprovalGateway({});
+    const decision = await gateway.review(request({
+      toolName: "plugin_marketplace",
+      sideEffect: { ownerRequired: true, pluginId: "p", marketplaceId: "m", planToken: "abc" },
+    }), {});
+    expect(decision.action).toBe("hard_deny");
+    expect(decision.reasonCode).toBe("marketplace_owner_required");
+    expect(decision.ruleIds).toContain("marketplace-owner-required");
   });
 });

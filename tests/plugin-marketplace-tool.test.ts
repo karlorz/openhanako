@@ -4,6 +4,10 @@ import { createPluginMarketplaceTool } from "../lib/tools/plugin-marketplace-too
 
 const MARKETPLACE_ID = "llm-wiki";
 
+// Mirrors the session-permission-wrapper contract: the host owner principal is
+// stamped into the trailing execution-context argument after approval.
+const OWNER_HOST_CTX = { hostOwner: { isStudioOwner: true, isLocalOwner: true } };
+
 function sourceQualifiedId(pluginId: string, marketplaceId = MARKETPLACE_ID) {
   return `${pluginId}@${marketplaceId}`;
 }
@@ -407,14 +411,14 @@ describe("plugin_marketplace Agent tool", () => {
       action: "add_source",
       source: "https://github.com/example/team-market.git",
       ...preconditions,
-    });
+    }, OWNER_HOST_CTX);
     expect(added.isError).toBeUndefined();
     expect(marketplaceService.addSource).toHaveBeenCalledWith(
       expect.objectContaining({ kind: "git", gitUrl: "https://github.com/example/team-market.git" }),
-      { isStudioOwner: true, isLocalOwner: false, ...preconditions },
+      { isStudioOwner: true, isLocalOwner: true, ...preconditions },
     );
 
-    await tool.execute("refresh", { action: "refresh_source", marketplaceId: MARKETPLACE_ID, ...preconditions });
+    await tool.execute("refresh", { action: "refresh_source", marketplaceId: MARKETPLACE_ID, ...preconditions }, OWNER_HOST_CTX);
     expect(marketplaceService.refreshSource).toHaveBeenCalledWith(MARKETPLACE_ID, {
       isStudioOwner: true,
       ...preconditions,
@@ -425,13 +429,13 @@ describe("plugin_marketplace Agent tool", () => {
       marketplaceId: MARKETPLACE_ID,
       enabled: false,
       ...preconditions,
-    });
+    }, OWNER_HOST_CTX);
     expect(marketplaceService.setSourceEnabled).toHaveBeenCalledWith(MARKETPLACE_ID, false, {
       isStudioOwner: true,
       ...preconditions,
     });
 
-    await tool.execute("remove", { action: "remove_source", marketplaceId: MARKETPLACE_ID, ...preconditions });
+    await tool.execute("remove", { action: "remove_source", marketplaceId: MARKETPLACE_ID, ...preconditions }, OWNER_HOST_CTX);
     expect(marketplaceService.removeSource).toHaveBeenCalledWith(MARKETPLACE_ID, {
       isStudioOwner: true,
       ...preconditions,
@@ -446,7 +450,7 @@ describe("plugin_marketplace Agent tool", () => {
       { action: "set_source_enabled", marketplaceId: MARKETPLACE_ID, enabled: false },
       { action: "remove_source", marketplaceId: MARKETPLACE_ID },
     ]) {
-      const result = await tool.execute("missing-preconditions", params);
+      const result = await tool.execute("missing-preconditions", params, OWNER_HOST_CTX);
       expect(result.isError).toBe(true);
       expect(result.details).toMatchObject({ ok: false, code: "PLUGIN_MARKETPLACE_PRECONDITION_REQUIRED" });
     }
@@ -479,7 +483,7 @@ describe("plugin_marketplace Agent tool", () => {
       expectedRevision: 1,
       expectedDigest: "a".repeat(64),
       activations: { runtimePlugins: { unrelated: { enabled: false } } },
-    });
+    }, OWNER_HOST_CTX);
 
     expect(result.isError).toBeUndefined();
     expect(marketplaceService.setMarketplaceSkillPackageEnabled).toHaveBeenCalledWith(
@@ -514,7 +518,7 @@ describe("plugin_marketplace Agent tool", () => {
       enabled: false,
       expectedRevision: 1,
       expectedDigest: "a".repeat(64),
-    });
+    }, OWNER_HOST_CTX);
 
     expect(result.isError).toBeUndefined();
     expect(result.details).toMatchObject({ changed: false, revision: 1 });
@@ -564,7 +568,7 @@ describe("plugin_marketplace Agent tool", () => {
       },
       expectedRevision: 1,
       expectedDigest: "a".repeat(64),
-    });
+    }, OWNER_HOST_CTX);
 
     expect(result.isError).toBeUndefined();
     expect(marketplaceService.setControlPlaneActivations).toHaveBeenCalledWith(
@@ -593,7 +597,7 @@ describe("plugin_marketplace Agent tool", () => {
       action: "set_activations",
       activations: { marketplaceSkillPackages: {} },
       expectedRevision: 1,
-    });
+    }, OWNER_HOST_CTX);
 
     expect(result.isError).toBe(true);
     expect(result.details).toMatchObject({
@@ -630,7 +634,7 @@ describe("plugin_marketplace Agent tool", () => {
       compatAction: "link",
       binding,
       planToken: "compat-plan-token",
-    });
+    }, OWNER_HOST_CTX);
     expect(executed.isError).toBeUndefined();
     expect(marketplaceService.executeClaudeCompatibilityMutation).toHaveBeenCalledWith(expect.objectContaining({
       action: "link",
@@ -697,7 +701,7 @@ describe("plugin_marketplace Agent tool", () => {
       pluginId: "remote-claude",
       marketplaceId: MARKETPLACE_ID,
       planToken,
-    });
+    }, OWNER_HOST_CTX);
 
     expect(result.isError).toBe(true);
     expect(result.details).toMatchObject({
@@ -719,7 +723,7 @@ describe("plugin_marketplace Agent tool", () => {
       pluginId: "native-page",
       marketplaceId: MARKETPLACE_ID,
       planToken,
-    });
+    }, OWNER_HOST_CTX);
 
     expect(result.isError).toBe(true);
     expect(result.details).toMatchObject({
@@ -746,7 +750,7 @@ describe("plugin_marketplace Agent tool", () => {
       action: "install",
       pluginId: "skillwiki",
       marketplaceId: MARKETPLACE_ID,
-    });
+    }, OWNER_HOST_CTX);
     expect(missing.isError).toBe(true);
     expect(missing.details).toMatchObject({
       ok: false,
@@ -758,7 +762,7 @@ describe("plugin_marketplace Agent tool", () => {
       pluginId: "skillwiki",
       marketplaceId: MARKETPLACE_ID,
       planToken: "stale-token",
-    });
+    }, OWNER_HOST_CTX);
     expect(stale.isError).toBe(true);
     expect(stale.details).toMatchObject({
       ok: false,
@@ -791,7 +795,7 @@ describe("plugin_marketplace Agent tool", () => {
       pluginId: "skillwiki",
       marketplaceId: MARKETPLACE_ID,
       planToken,
-    });
+    }, OWNER_HOST_CTX);
 
     expect(result.isError).toBe(true);
     expect(result.details).toMatchObject({
@@ -823,7 +827,7 @@ describe("plugin_marketplace Agent tool", () => {
       pluginId: "skillwiki",
       marketplaceId: MARKETPLACE_ID,
       planToken,
-    });
+    }, OWNER_HOST_CTX);
 
     expect(result.isError).toBe(true);
     expect(result.details).toMatchObject({
@@ -841,7 +845,7 @@ describe("plugin_marketplace Agent tool", () => {
       action: "install",
       pluginId: "skillwiki",
       planToken: "plan-token",
-    });
+    }, OWNER_HOST_CTX);
     expect(result.isError).toBe(true);
     expect(result.details).toMatchObject({ ok: false, code: "PLUGIN_MARKETPLACE_MARKETPLACE_ID_REQUIRED" });
     expect(marketplaceService.resolveInstall).not.toHaveBeenCalled();
@@ -871,7 +875,7 @@ describe("plugin_marketplace Agent tool", () => {
       planToken: "stale-token",
       expectedRevision: 1,
       expectedDigest: "a".repeat(64),
-    });
+    }, OWNER_HOST_CTX);
     expect(stale.isError).toBe(true);
     expect(stale.details).toMatchObject({ ok: false, code: "PLUGIN_MARKETPLACE_PLAN_STALE" });
     expect(marketplaceService.uninstallClaudePluginSkills).not.toHaveBeenCalled();
@@ -883,7 +887,7 @@ describe("plugin_marketplace Agent tool", () => {
       planToken,
       expectedRevision: 1,
       expectedDigest: "a".repeat(64),
-    });
+    }, OWNER_HOST_CTX);
     expect(removed.isError).toBeUndefined();
     expect(marketplaceService.uninstallClaudePluginSkills).toHaveBeenCalledWith(
       "skillwiki",
@@ -912,7 +916,7 @@ describe("plugin_marketplace Agent tool", () => {
       pluginId: "skillwiki",
       marketplaceId: MARKETPLACE_ID,
       planToken,
-    });
+    }, OWNER_HOST_CTX);
 
     expect(result.isError).toBeUndefined();
     expect(marketplaceService.installClaudePluginSkills).toHaveBeenCalledWith(
@@ -942,5 +946,34 @@ describe("plugin_marketplace Agent tool", () => {
       skills: ["skillwiki"],
       resolvedRevision: "abc123",
     });
+  });
+
+  it("refuses owner-only mutations when the host did not stamp hostOwner", async () => {
+    const { tool } = makeTool();
+    const out = await tool.execute("call-1", {
+      action: "add_source",
+      source: "https://example.org/catalog.json",
+      expectedRevision: 1,
+      expectedDigest: "a".repeat(64),
+    });
+    expect(out.isError).toBe(true);
+    expect(out.details).toMatchObject({ ok: false, code: "PLUGIN_MARKETPLACE_SOURCE_FORBIDDEN" });
+  });
+
+  it("passes the host-stamped owner flag into service mutations", async () => {
+    const { tool, marketplaceService } = makeTool();
+    const addSource = vi.spyOn(marketplaceService, "addSource").mockResolvedValue({
+      source: { id: "team-market", name: "Team Market", kind: "git" },
+      revision: 2,
+      digest: "b".repeat(64),
+    });
+    const out = await tool.execute("call-1", {
+      action: "add_source",
+      source: "https://example.org/catalog.json",
+      expectedRevision: 1,
+      expectedDigest: "a".repeat(64),
+    }, null, null, { hostOwner: { isStudioOwner: true, isLocalOwner: true } });
+    expect(out.details.ok).toBe(true);
+    expect(addSource).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ isStudioOwner: true }));
   });
 });
