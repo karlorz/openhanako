@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import {
@@ -34,6 +35,8 @@ export interface ClaudeSkillsInstallRecord {
   packagePath: string;
   resolvedRevision: string | null;
   skills: string[];
+  /** skillName -> sha256 of the installed skill dir, captured at install time (finding 12). */
+  skillDigests?: Record<string, string>;
   warnings?: string[];
   installedAt: string;
 }
@@ -258,6 +261,7 @@ export function writeClaudeSkillsInstallRecord(
     packagePath: record.packagePath,
     resolvedRevision: record.resolvedRevision,
     skills: [...record.skills],
+    ...(record.skillDigests ? { skillDigests: { ...record.skillDigests } } : {}),
     ...(Array.isArray(record.warnings) && record.warnings.length > 0 ? { warnings: [...record.warnings] } : {}),
     installedAt: record.installedAt || new Date().toISOString(),
   };
@@ -419,6 +423,36 @@ export function removeClaudeSkillsInstallRecord(
   }
 }
 
+/**
+ * Deterministic sha256 of a skill directory tree (finding 12).
+ *
+ * Walks the tree in sorted order and hashes, for every regular file:
+ * `relativePosixPath + "\0" + fileBytes + "\0"`. Directories contribute only
+ * through the relative paths of the files they contain; symlinks are never
+ * traversed or hashed. The result is independent of filesystem metadata and
+ * readdir order, so a record written on one machine can be verified elsewhere.
+ */
+export function computeSkillDirSha256(dir: string): string {
+  const hash = crypto.createHash("sha256");
+  const files: string[] = [];
+  const walk = (current: string) => {
+    for (const entry of fs.readdirSync(current, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+      const full = path.join(current, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (entry.isFile()) files.push(full);
+    }
+  };
+  walk(dir);
+  files.sort((a, b) => a.localeCompare(b));
+  for (const file of files) {
+    hash.update(path.relative(dir, file).replace(/\\/g, "/"));
+    hash.update("\0");
+    hash.update(fs.readFileSync(file));
+    hash.update("\0");
+  }
+  return hash.digest("hex");
+}
+
 export function uninstallClaudeSkillsInstallRecord(options: {
   hanakoHome: string;
   marketplaceId: string;
@@ -452,6 +486,24 @@ export function uninstallClaudeSkillsInstallRecord(options: {
     if (!fs.existsSync(skillPath)) {
       alreadyMissing.push(skillName);
       continue;
+    }
+    // Provenance check (finding 12): when the install record carries a digest,
+    // refuse to delete anything that no longer matches it. A digest-read error
+    // fails closed and leaves the record entry unresolved rather than
+    // aborting the whole uninstall.
+    const recordedDigest = record.skillDigests?.[skillName];
+    if (recordedDigest) {
+      let currentDigest: string;
+      try {
+        currentDigest = computeSkillDirSha256(skillPath);
+      } catch (err: any) {
+        failed.push({ name: skillName, error: `provenance check failed: ${err?.message || String(err)}` });
+        continue;
+      }
+      if (currentDigest !== recordedDigest) {
+        failed.push({ name: skillName, error: "provenance mismatch: on-disk skill differs from the install record" });
+        continue;
+      }
     }
     try {
       removeDir(skillPath);

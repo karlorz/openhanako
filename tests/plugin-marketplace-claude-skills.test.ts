@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -35,6 +36,32 @@ function writeSkill(dir: string, name: string, description = "test skill") {
     `---\nname: ${name}\ndescription: ${description}\n---\n\n# ${name}\n`,
     "utf8",
   );
+}
+
+/**
+ * Independent reference implementation of the provenance digest algorithm:
+ * deterministic sha256 over (relative POSIX path + NUL + file bytes + NUL) for
+ * every regular file, with sorted traversal and no symlink traversal.
+ */
+function computeTestSkillDirSha256(dir: string): string {
+  const hash = crypto.createHash("sha256");
+  const files: string[] = [];
+  const walk = (current: string) => {
+    for (const entry of fs.readdirSync(current, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+      const full = path.join(current, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (entry.isFile()) files.push(full);
+    }
+  };
+  walk(dir);
+  files.sort((a, b) => a.localeCompare(b));
+  for (const file of files) {
+    hash.update(path.relative(dir, file).replace(/\\/g, "/"));
+    hash.update("\0");
+    hash.update(fs.readFileSync(file));
+    hash.update("\0");
+  }
+  return hash.digest("hex");
 }
 
 describe("discoverClaudeSkillDirs", () => {
@@ -189,7 +216,7 @@ describe("marketplace Claude skills lifecycle", () => {
       .toBe("stale-record");
   });
 
-  it("deletes all recorded directories including modified skills and clears a stale record", () => {
+  it("falls back to name-based removal for legacy records without digests (compatibility)", () => {
     const home = makeTemp("uninstall-home-");
     const skillsDir = path.join(home, "skills");
     writeRecord(home, ["wiki-query", "wiki-sync"]);
@@ -243,6 +270,109 @@ describe("marketplace Claude skills lifecycle", () => {
     expect(fs.existsSync(outside)).toBe(true);
     expect(readClaudeSkillsInstallRecord(home, "llm-wiki", "skillwiki")?.skills)
       .toEqual(["wiki-sync", "../outside"]);
+  });
+});
+
+describe("provenance-checked uninstall (finding 12)", () => {
+  function writeRecordWithDigests(home: string, skills: Array<[string, string]>) {
+    writeClaudeSkillsInstallRecord(home, {
+      kind: "claude-skills",
+      marketplaceId: "llm-wiki",
+      pluginId: "skillwiki",
+      packagePath: "packages/skills",
+      resolvedRevision: "abc",
+      skills: skills.map(([name]) => name),
+      skillDigests: Object.fromEntries(skills),
+      installedAt: "2026-07-31T00:00:00.000Z",
+    });
+  }
+
+  it("refuses deletion when the on-disk skill differs from the recorded digest and reports partial cleanup", () => {
+    const home = makeTemp("provenance-mismatch-home-");
+    const skillsDir = path.join(home, "skills");
+    writeSkill(path.join(skillsDir, "wiki-skill"), "wiki-skill");
+    writeRecordWithDigests(home, [["wiki-skill", "a".repeat(64)]]);
+    // Modify the on-disk skill dir so its digest differs from the record.
+    fs.writeFileSync(path.join(skillsDir, "wiki-skill", "SKILL.md"), "# changed\n");
+
+    const result = uninstallClaudeSkillsInstallRecord({
+      hanakoHome: home,
+      marketplaceId: "llm-wiki",
+      pluginId: "skillwiki",
+      userSkillsDir: skillsDir,
+    });
+
+    expect(result).toMatchObject({
+      complete: false,
+      deleted: [],
+      alreadyMissing: [],
+      failed: [{
+        name: "wiki-skill",
+        error: "provenance mismatch: on-disk skill differs from the install record",
+      }],
+    });
+    expect(fs.existsSync(path.join(skillsDir, "wiki-skill"))).toBe(true); // untouched
+    // The record is retained and still lists the unresolved skill.
+    expect(readClaudeSkillsInstallRecord(home, "llm-wiki", "skillwiki")?.skills).toEqual(["wiki-skill"]);
+  });
+
+  it("still deletes when the digest matches and reports already-missing for absent dirs", () => {
+    const home = makeTemp("provenance-match-home-");
+    const skillsDir = path.join(home, "skills");
+    writeSkill(path.join(skillsDir, "wiki-query"), "wiki-query");
+    const recordedDigest = computeTestSkillDirSha256(path.join(skillsDir, "wiki-query"));
+    writeRecordWithDigests(home, [
+      ["wiki-query", recordedDigest],
+      ["wiki-sync", "b".repeat(64)], // recorded but never present on disk
+    ]);
+
+    const result = uninstallClaudeSkillsInstallRecord({
+      hanakoHome: home,
+      marketplaceId: "llm-wiki",
+      pluginId: "skillwiki",
+      userSkillsDir: skillsDir,
+    });
+
+    expect(result).toMatchObject({
+      complete: true,
+      deleted: ["wiki-query"],
+      alreadyMissing: ["wiki-sync"],
+      failed: [],
+    });
+    expect(fs.existsSync(path.join(skillsDir, "wiki-query"))).toBe(false);
+    expect(readClaudeSkillsInstallRecord(home, "llm-wiki", "skillwiki")).toBeNull();
+  });
+
+  it("fails closed when the digest cannot be read and leaves the record unresolved", () => {
+    // Permission-based read failure cannot be simulated when running as root.
+    if (typeof process.geteuid === "function" && process.geteuid() === 0) return;
+    const home = makeTemp("provenance-readerr-home-");
+    const skillsDir = path.join(home, "skills");
+    writeSkill(path.join(skillsDir, "wiki-skill"), "wiki-skill");
+    writeRecordWithDigests(home, [
+      ["wiki-skill", computeTestSkillDirSha256(path.join(skillsDir, "wiki-skill"))],
+    ]);
+    // Make the skill dir unreadable so digest computation throws EACCES.
+    fs.chmodSync(path.join(skillsDir, "wiki-skill"), 0o000);
+    try {
+      const result = uninstallClaudeSkillsInstallRecord({
+        hanakoHome: home,
+        marketplaceId: "llm-wiki",
+        pluginId: "skillwiki",
+        userSkillsDir: skillsDir,
+      });
+
+      expect(result).toMatchObject({
+        complete: false,
+        deleted: [],
+        alreadyMissing: [],
+        failed: [{ name: "wiki-skill", error: expect.stringContaining("provenance check failed") }],
+      });
+      expect(fs.existsSync(path.join(skillsDir, "wiki-skill"))).toBe(true);
+      expect(readClaudeSkillsInstallRecord(home, "llm-wiki", "skillwiki")?.skills).toEqual(["wiki-skill"]);
+    } finally {
+      fs.chmodSync(path.join(skillsDir, "wiki-skill"), 0o755);
+    }
   });
 });
 
@@ -332,6 +462,55 @@ describe("PluginMarketplaceService.installClaudePluginSkills", () => {
     const rec = readClaudeSkillsInstallRecord(home, "llm-wiki", "skillwiki");
     expect(rec?.skills.sort()).toEqual(["wiki-query", "wiki-sync"]);
     expect(rec?.warnings).toBeUndefined();
+  });
+
+  it("records per-skill digests at install time (finding 12)", async () => {
+    const home = makeTemp("svc-digest-home-");
+    const allowedRoot = path.join(home, "plugin-marketplaces-local");
+    const sourceDir = path.join(allowedRoot, "local-claude");
+    const skillsDir = path.join(home, "skills");
+    fs.mkdirSync(sourceDir, { recursive: true });
+    writeSkill(path.join(sourceDir, "packages", "skills", "hello-safe"), "hello-safe");
+
+    const svc = new PluginMarketplaceService({
+      hanakoHome: home,
+      localAllowedRoot: allowedRoot,
+      env: {},
+    });
+    const parsed = parseMarketplaceCatalogAuto(JSON.stringify({
+      name: "local-claude",
+      owner: { name: "fixture" },
+      plugins: [{ name: "hello-plugin", version: "1.0.0", source: "./packages/skills" }],
+    }), {
+      marketplaceId: "local-claude",
+      sourceKind: "local",
+    });
+    svc.snapshots.publish("local-claude", {
+      sourceId: "local-claude",
+      sourceFingerprint: "f".repeat(64),
+      catalogSha256: parsed.catalogSha256,
+      fetchedAt: new Date().toISOString(),
+      plugins: parsed.plugins,
+    });
+    svc.registry.addSource({
+      id: "local-claude",
+      name: "Local Claude",
+      kind: "local",
+      path: "local-claude",
+    });
+
+    const result = await svc.installClaudePluginSkills("hello-plugin", "local-claude", {
+      userSkillsDir: skillsDir,
+      isStudioOwner: true,
+    });
+    expect(result.skills).toEqual(["hello-safe"]);
+
+    const rec = readClaudeSkillsInstallRecord(home, "local-claude", "hello-plugin");
+    expect(rec?.skillDigests).toBeDefined();
+    expect(rec?.skillDigests?.["hello-safe"]).toMatch(/^[0-9a-f]{64}$/);
+    // The recorded digest must match an independent computation of the installed dir.
+    expect(rec?.skillDigests?.["hello-safe"])
+      .toBe(computeTestSkillDirSha256(path.join(skillsDir, "hello-safe")));
   });
 
   it("installs a contained relative package from an authorized local marketplace", async () => {

@@ -36,6 +36,7 @@ import {
   computeRuntimePluginActivation,
 } from "./plugin-marketplace-activation.ts";
 import {
+  computeSkillDirSha256,
   listClaudeSkillsInstallRecords,
   readClaudeSkillsInstallRecord,
   reconcileClaudeSkillsInstall,
@@ -1433,6 +1434,7 @@ export class PluginMarketplaceService {
       packagePath,
       resolvedRevision: materialized.resolvedRevision,
       skills: result.installed.map((s) => s.name),
+      skillDigests: Object.fromEntries(result.installed.map((s) => [s.name, computeSkillDirSha256(s.dir)])),
       warnings: result.warnings,
       installedAt: new Date().toISOString(),
     });
