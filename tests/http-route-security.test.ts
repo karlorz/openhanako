@@ -496,6 +496,22 @@ describe("HTTP route security policy", () => {
       .toMatchObject({ allowed: true });
   });
 
+  it("requires Studio owner for source-switch plan and execute routes", async () => {
+    const { authorizeHttpRoute, classifyHttpRoute } = await import("../server/http/route-security.ts");
+    const writer = devicePrincipal(["settings.read", "settings.write"]);
+    const owner = devicePrincipal(["settings.read", "settings.write", "studio.owner"]);
+    for (const path of [
+      "/api/plugins/my-plugin/source-switch",
+      "/api/plugins/my-plugin/source-switch/plan",
+    ]) {
+      expect(classifyHttpRoute({ method: "POST", path })).toMatchObject({ kind: "studio_owner" });
+      expect(authorizeHttpRoute({ method: "POST", path, principal: writer }))
+        .toMatchObject({ allowed: false, error: "studio_owner_required", status: 403 });
+      expect(authorizeHttpRoute({ method: "POST", path, principal: owner }))
+        .toMatchObject({ allowed: true });
+    }
+  });
+
   it("allows settings.read to inventory installed marketplace skill packages", async () => {
     const { authorizeHttpRoute, classifyHttpRoute } = await import("../server/http/route-security.ts");
     for (const path of [

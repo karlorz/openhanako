@@ -137,6 +137,7 @@ export function classifyHttpRoute({ method = "GET", path = "" } = {}) {
   if (isPluginSettingsReadRoute(verb, routePath)) return scoped("settings.read");
   if (isNativeMarketplaceLifecycleRoute(verb, routePath)) return STUDIO_OWNER;
   if (isLegacyMarketplaceInstallRoute(verb, routePath)) return STUDIO_OWNER;
+  if (isSourceSwitchRoute(verb, routePath)) return STUDIO_OWNER;
   if (isPluginSettingsWriteRoute(verb, routePath)) return scoped("settings.write");
   if (isProviderManagementRoute(verb, routePath)) return scoped("providers.manage");
   if (isBridgeManagementRoute(verb, routePath)) return scoped("bridge.manage");
@@ -564,7 +565,6 @@ function isPluginSettingsWriteRoute(verb, routePath) {
     || (verb === "POST" && (
       routePath === "/api/plugins/marketplace/sources"
       || /^\/api\/plugins\/marketplace\/sources\/[^/]+\/refresh$/.test(routePath)
-      || /^\/api\/plugins\/[^/]+\/source-switch$/.test(routePath)
     ))
     || (verb === "DELETE" && (
       /^\/api\/plugins\/marketplace\/sources\/[^/]+$/.test(routePath)
@@ -581,6 +581,12 @@ function isNativeMarketplaceLifecycleRoute(verb, routePath) {
 function isLegacyMarketplaceInstallRoute(verb, routePath) {
   return verb === "POST"
     && /^\/api\/plugins\/marketplace\/[^/]+\/install$/.test(routePath);
+}
+
+function isSourceSwitchRoute(verb, routePath) {
+  return verb === "POST"
+    && (/^\/api\/plugins\/[^/]+\/source-switch$/.test(routePath)
+      || /^\/api\/plugins\/[^/]+\/source-switch\/plan$/.test(routePath));
 }
 
 function isPluginUiReadRoute(verb, routePath) {
