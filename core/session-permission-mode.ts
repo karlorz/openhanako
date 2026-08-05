@@ -273,7 +273,13 @@ function classifyResolvedToolInvocation(mode, toolName, context) {
   if (routineIsHostPreAuthorized) {
     return { action: "allow" };
   }
-  if (mode === SESSION_PERMISSION_MODES.OPERATE) return { action: "allow" };
+  if (mode === SESSION_PERMISSION_MODES.OPERATE) {
+    // Owner-required mutations are never free in operate mode: they must go
+    // through the approval review so the host owner gate can deny non-owner
+    // sessions (B1-T1 plumbing; the full owner gate lands in B1-T3).
+    if (invocation.sideEffect?.ownerRequired === true) return review(toolName);
+    return { action: "allow" };
+  }
   if (mode === SESSION_PERMISSION_MODES.READ_ONLY) return blockedByReadOnly(toolName, context);
   // Codex-style Auto: actions already contained by the current workspace and
   // hard safety policy are routine work, so they continue without a reviewer.

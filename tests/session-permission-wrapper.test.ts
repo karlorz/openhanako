@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createApprovalGateway } from "../lib/approval-gateway.ts";
 import { createAutomationTool } from "../lib/tools/automation-tool.ts";
 import { wrapWithSessionPermission } from "../lib/tools/session-permission-wrapper.ts";
+import type { HostOwnerPrincipal } from "../lib/permission/approval-review-context.ts";
 
 const SESSION_PATH = path.resolve("/tmp/session.jsonl");
 const DIRECT_SESSION_PATH = path.resolve("/tmp/direct-session.jsonl");
@@ -94,6 +95,24 @@ function makeAutomationStore() {
     getJob: vi.fn(() => null),
     listJobs: vi.fn(() => []),
   };
+}
+
+function makeOwnerRequiredMarketplaceTool() {
+  return makeTool("plugin_marketplace", {
+    sessionPermission: {
+      resolveInvocation: () => ({
+        action: "configure",
+        kind: "review",
+        capability: "plugin_marketplace.configure",
+        target: { type: "setting", id: "plugin-marketplace:sources" },
+        sideEffect: { ownerRequired: true, summary: "mutate" },
+      }),
+    },
+    execute: async (_id: string, _params: any, ...rest: any[]) => {
+      const ctx = rest.length ? rest[rest.length - 1] : null;
+      return { ok: true, hostOwner: ctx?.hostOwner || null };
+    },
+  });
 }
 
 describe("session permission wrapper", () => {
@@ -1672,5 +1691,91 @@ describe("session permission wrapper", () => {
 
     expect(result.details.errorCode).toBe("ACTION_BLOCKED_BY_READ_ONLY");
     expect(tool.execute).not.toHaveBeenCalled();
+  });
+
+  it("resolves the host owner principal and denies owner-required mutations without it (auto)", async () => {
+    const review = vi.fn(async (_request: any, context: any) => {
+      if (context.hostOwner?.isStudioOwner !== true) {
+        return { action: "hard_deny", reviewer: "policy", reason: "owner required", reasonCode: "marketplace_owner_required", ruleIds: ["marketplace-owner-required"] };
+      }
+      return { action: "allow", reviewer: "policy", reason: "ok" };
+    });
+    const wrapped = wrapWithSessionPermission([
+      makeOwnerRequiredMarketplaceTool(),
+    ], {
+      getSessionPath: () => "/tmp/session.jsonl",
+      getPermissionMode: () => "auto",
+      getApprovalGateway: () => ({ review }),
+      getSessionIdForPath: () => null,
+      resolveSessionOwnerPrincipal: async (): Promise<HostOwnerPrincipal> => ({ isStudioOwner: false, isLocalOwner: false }),
+      permissionContext: {},
+    });
+    const out = await (wrapped[0] as any).execute("call-1", { action: "add_source", source: "https://example.org/catalog.json", expectedRevision: 1, expectedDigest: "a".repeat(64) });
+    expect(out.isError).toBe(true);
+    expect(out.details.errorCode).toBe("TOOL_APPROVAL_DENIED");
+    expect(out.details.confirmation.status).toBe("blocked");
+    expect(out.details.confirmation.reasonCode).toBe("marketplace_owner_required");
+    expect(review).toHaveBeenCalledTimes(1);
+    expect(review.mock.calls[0][1].hostOwner).toEqual({ isStudioOwner: false, isLocalOwner: false });
+  });
+
+  it("stamps hostOwner into the execution context after an owner-approved mutation (auto)", async () => {
+    const review = vi.fn(async () => ({ action: "allow", reviewer: "policy", reason: "ok" }));
+    const wrapped = wrapWithSessionPermission([
+      makeOwnerRequiredMarketplaceTool(),
+    ], {
+      getSessionPath: () => "/tmp/session.jsonl",
+      getPermissionMode: () => "auto",
+      getApprovalGateway: () => ({ review }),
+      getSessionIdForPath: () => null,
+      resolveSessionOwnerPrincipal: async (): Promise<HostOwnerPrincipal> => ({ isStudioOwner: true, isLocalOwner: true }),
+      permissionContext: {},
+    });
+    const out = await (wrapped[0] as any).execute("call-1", { action: "add_source", source: "https://example.org/catalog.json", expectedRevision: 1, expectedDigest: "a".repeat(64) });
+    expect(out.ok).toBe(true);
+    expect(out.hostOwner).toEqual({ isStudioOwner: true, isLocalOwner: true });
+  });
+
+  it("resolves the host owner principal and denies owner-required mutations without it (operate)", async () => {
+    const review = vi.fn(async (_request: any, context: any) => {
+      if (context.hostOwner?.isStudioOwner !== true) {
+        return { action: "hard_deny", reviewer: "policy", reason: "owner required", reasonCode: "marketplace_owner_required", ruleIds: ["marketplace-owner-required"] };
+      }
+      return { action: "allow", reviewer: "policy", reason: "ok" };
+    });
+    const wrapped = wrapWithSessionPermission([
+      makeOwnerRequiredMarketplaceTool(),
+    ], {
+      getSessionPath: () => "/tmp/session.jsonl",
+      getPermissionMode: () => "operate",
+      getApprovalGateway: () => ({ review }),
+      getSessionIdForPath: () => null,
+      resolveSessionOwnerPrincipal: async (): Promise<HostOwnerPrincipal> => ({ isStudioOwner: false, isLocalOwner: false }),
+      permissionContext: {},
+    });
+    const out = await (wrapped[0] as any).execute("call-1", { action: "add_source", source: "https://example.org/catalog.json", expectedRevision: 1, expectedDigest: "a".repeat(64) });
+    expect(out.isError).toBe(true);
+    expect(out.details.errorCode).toBe("TOOL_APPROVAL_DENIED");
+    expect(out.details.confirmation.status).toBe("blocked");
+    expect(out.details.confirmation.reasonCode).toBe("marketplace_owner_required");
+    expect(review).toHaveBeenCalledTimes(1);
+    expect(review.mock.calls[0][1].hostOwner).toEqual({ isStudioOwner: false, isLocalOwner: false });
+  });
+
+  it("stamps hostOwner into the execution context after an owner-approved mutation (operate)", async () => {
+    const review = vi.fn(async () => ({ action: "allow", reviewer: "policy", reason: "ok" }));
+    const wrapped = wrapWithSessionPermission([
+      makeOwnerRequiredMarketplaceTool(),
+    ], {
+      getSessionPath: () => "/tmp/session.jsonl",
+      getPermissionMode: () => "operate",
+      getApprovalGateway: () => ({ review }),
+      getSessionIdForPath: () => null,
+      resolveSessionOwnerPrincipal: async (): Promise<HostOwnerPrincipal> => ({ isStudioOwner: true, isLocalOwner: true }),
+      permissionContext: {},
+    });
+    const out = await (wrapped[0] as any).execute("call-1", { action: "add_source", source: "https://example.org/catalog.json", expectedRevision: 1, expectedDigest: "a".repeat(64) });
+    expect(out.ok).toBe(true);
+    expect(out.hostOwner).toEqual({ isStudioOwner: true, isLocalOwner: true });
   });
 });

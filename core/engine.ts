@@ -136,6 +136,7 @@ import {
 import { workspaceRootsForSandbox } from "../shared/workspace-scope.ts";
 import { wrapWithCheckpoint } from "../lib/checkpoint-wrapper.ts";
 import { wrapWithSessionPermission } from "../lib/tools/session-permission-wrapper.ts";
+import type { HostOwnerPrincipal } from "../lib/permission/approval-review-context.ts";
 import { filterToolObjectsByAvailability } from "./tool-availability.ts";
 import { TaskRegistry } from "../lib/task-registry.ts";
 import { BrowserManager } from "../lib/browser/browser-manager.ts";
@@ -1234,6 +1235,15 @@ export class HanaEngine {
       moduleLog.warn(`Session manifest lookup failed for ${path.basename(sessionPath || "")}: ${error?.message || error}`);
       return null;
     }
+  }
+
+  markSessionOwnerPrincipal(sessionPath: string, principal: HostOwnerPrincipal): void {
+    this._sessionCoord?.setSessionOwnerPrincipal?.(sessionPath, principal);
+  }
+
+  async _resolveSessionOwnerPrincipal(sessionPath: string | null): Promise<HostOwnerPrincipal> {
+    const principal = this._sessionCoord?.getSessionOwnerPrincipal?.(sessionPath || "");
+    return principal || { isStudioOwner: false, isLocalOwner: false };
   }
 
   _openSessionManifestStore() {
@@ -2960,6 +2970,8 @@ export class HanaEngine {
         getConfirmStore: () => this._confirmStore,
         getApprovalGateway: () => this._approvalGateway,
         emitEvent: (event, sessionPath) => this._emitEvent(event, sessionPath),
+        resolveSessionOwnerPrincipal: opts.resolveSessionOwnerPrincipal
+          || ((sp: string | null) => this._resolveSessionOwnerPrincipal(sp)),
       }),
       customTools: wrapWithSessionPermission(result.customTools, {
         getSessionPath,
@@ -2977,6 +2989,8 @@ export class HanaEngine {
         getConfirmStore: () => this._confirmStore,
         getApprovalGateway: () => this._approvalGateway,
         emitEvent: (event, sessionPath) => this._emitEvent(event, sessionPath),
+        resolveSessionOwnerPrincipal: opts.resolveSessionOwnerPrincipal
+          || ((sp: string | null) => this._resolveSessionOwnerPrincipal(sp)),
       }),
     };
 

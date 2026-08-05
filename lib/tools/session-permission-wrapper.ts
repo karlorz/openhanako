@@ -15,6 +15,7 @@ import {
   prepareStageFilesExecutionParams,
 } from "../permission/safety-policy.ts";
 import { buildApprovalReviewContext } from "../permission/approval-review-context.ts";
+import type { HostOwnerPrincipal } from "../permission/approval-review-context.ts";
 import {
   cloneToolInvocationInput,
   resolveToolInvocationPermission,
@@ -316,6 +317,7 @@ async function executeWithInvocationRevalidation(
   runtimeCtxIndex: number,
   legacySessionPermission: any,
   revalidateAfterWait = true,
+  hostOwner: HostOwnerPrincipal | null = null,
 ) {
   if (revalidateAfterWait) {
     const currentSessionBinding = captureSessionBinding(ctx, deps);
@@ -398,6 +400,7 @@ async function executeWithInvocationRevalidation(
   const executionArgs = [...args];
   executionArgs[1] = preparedExecution.params;
   if (runtimeCtxIndex >= 0) executionArgs[runtimeCtxIndex] = executionCtx;
+  if (hostOwner) executionArgs.push({ ...executionCtx, hostOwner });
   return tool.execute(...executionArgs);
 }
 
@@ -442,6 +445,10 @@ async function askForToolApproval(toolName: any, params: any, sessionPath: any, 
 }
 
 async function reviewToolApproval(toolName: any, params: any, sessionPath: any, deps: any, ctx: any = null, sessionBinding: any = null, invocation: any = null, legacySessionPermission: any = null) {
+  const hostOwner = typeof deps.resolveSessionOwnerPrincipal === "function"
+    ? await deps.resolveSessionOwnerPrincipal(sessionPath)
+    : { isStudioOwner: false, isLocalOwner: false };
+  const ownerRequired = invocation?.sideEffect?.ownerRequired === true;
   const gateway = deps.getApprovalGateway?.() || deps.approvalGateway || null;
   if (!gateway || typeof gateway.review !== "function") {
     return {
@@ -449,6 +456,7 @@ async function reviewToolApproval(toolName: any, params: any, sessionPath: any, 
       status: "ask_user",
       reason: "approval-gateway-unavailable",
       reasonCode: "approval_gateway_unavailable",
+      hostOwner,
     };
   }
   const request = buildToolApprovalGatewayRequest(toolName, params, sessionPath, sessionBinding?.sessionId || sessionPath || "session", ctx, deps, invocation, legacySessionPermission);
@@ -457,8 +465,12 @@ async function reviewToolApproval(toolName: any, params: any, sessionPath: any, 
     ctx,
     sessionPath,
     agentId: request.agentId,
+    hostOwner,
   }));
   if (decision?.action === "allow") {
+    if (ownerRequired) {
+      return { allowed: true, status: "approved", decision, hostOwner };
+    }
     return { allowed: true, status: "approved", decision };
   }
   if (decision?.action === "ask_user") {
@@ -468,6 +480,7 @@ async function reviewToolApproval(toolName: any, params: any, sessionPath: any, 
       decision,
       reason: decision.reason,
       reasonCode: decision.reasonCode,
+      hostOwner,
     };
   }
   return {
@@ -478,6 +491,7 @@ async function reviewToolApproval(toolName: any, params: any, sessionPath: any, 
     reason: decision?.reason
       ? `session permission auto-review: ${decision.reason}`
       : "session permission auto-review denied this action",
+    hostOwner,
   };
 }
 
@@ -631,6 +645,8 @@ export function wrapWithSessionPermission(tools: any[] = [], deps: any = {}) {
               executionCtx,
               runtimeCtxIndex,
               legacySessionPermission,
+              true,
+              review.hostOwner,
             );
           }
           if (review.status !== "ask_user") {
@@ -688,6 +704,12 @@ export function wrapWithSessionPermission(tools: any[] = [], deps: any = {}) {
             },
           });
         }
+        // A human approval never overrides the host owner gate: the tool-side
+        // guard receives the resolved principal and stays denied for non-owner
+        // sessions even when the user confirms the prompt.
+        const hostOwner = typeof deps.resolveSessionOwnerPrincipal === "function"
+          ? await deps.resolveSessionOwnerPrincipal(sessionPath)
+          : null;
         return executeWithInvocationRevalidation(
           tool,
           args,
@@ -700,6 +722,8 @@ export function wrapWithSessionPermission(tools: any[] = [], deps: any = {}) {
           executionCtx,
           runtimeCtxIndex,
           legacySessionPermission,
+          true,
+          hostOwner,
         );
       },
     };

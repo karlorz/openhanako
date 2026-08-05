@@ -39,6 +39,7 @@ import {
 import { AppError } from "../../shared/errors.ts";
 import { errorBus } from "../../shared/error-bus.ts";
 import { createRequestContext } from "../http/boundary.ts";
+import { isLocalOwnerPrincipal, isStudioOwnerPrincipal } from "../http/route-security.ts";
 import { buildDeferredResultInterludeBlock, resolveDeferredReceiverName } from "../deferred-result-interlude.ts";
 import { DEFERRED_RESULT_MESSAGE_TYPE } from "../../lib/deferred-result-notification.ts";
 import {
@@ -487,7 +488,7 @@ export function createChatRoute(engine: any, hub: any, { upgradeWebSocket }: any
     return ss;
   }
 
-  function getExistingState(sessionPath) {
+  function getExistingState(sessionPath, { wsClient = null, requestContext = null } = {}) {
     if (!sessionPath) return null;
     const key = sessionStateKey(sessionPath);
     if (key !== sessionPath && sessionState.has(sessionPath) && !sessionState.has(key)) {
@@ -498,6 +499,16 @@ export function createChatRoute(engine: any, hub: any, { upgradeWebSocket }: any
     if (ss) {
       ss.sessionPath = sessionPath;
       ss.lastAccessed = Date.now();
+    }
+    // B1-T1: record the connecting client's host owner principal for this
+    // session so tool approval review can resolve it later. Only recorded when
+    // a real principal is known; non-owner sessions resolve to all-false.
+    const principal = wsClient?.principal || requestContext?.authPrincipal || null;
+    if (principal) {
+      engine.markSessionOwnerPrincipal?.(sessionPath, {
+        isStudioOwner: isStudioOwnerPrincipal(principal) || isLocalOwnerPrincipal(principal),
+        isLocalOwner: isLocalOwnerPrincipal(principal),
+      });
     }
     return ss;
   }
@@ -1855,7 +1866,7 @@ export function createChatRoute(engine: any, hub: any, { upgradeWebSocket }: any
               const resumeTarget = requireBoundSessionTarget(msg, ws); if (!resumeTarget) return;
               const currentPath = resumeTarget.sessionPath;
               const currentSessionId = resumeTarget.sessionId;
-              const ss = getExistingState(currentPath);
+              const ss = getExistingState(currentPath, { wsClient: client, requestContext });
               const runtimeIsStreaming = typeof engine.isSessionStreaming === "function"
                 ? !!engine.isSessionStreaming(currentPath)
                 : !!ss?.isStreaming;
