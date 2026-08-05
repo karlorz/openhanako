@@ -1,6 +1,6 @@
 # Manage Plugin Skill-Package Page
 
-Date: 2026-07-31  
+Date: 2026-07-31
 Status: Approved design; ready for implementation planning
 
 ## Summary
