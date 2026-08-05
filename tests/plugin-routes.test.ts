@@ -998,6 +998,49 @@ describe("plugin management API", () => {
       expect(await readmeRes.json()).toEqual({ pluginId: "demo", markdown: "# Demo" });
     });
 
+    it("does not fetch remote readmes for private or mapped IPv6 hosts (findings 2-3)", async () => {
+      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "hana-readme-policy-"));
+      try {
+        const fetchImpl = vi.fn(async () => new Response("leak", { status: 200 }));
+        const engine = mockEngine({
+          hanakoHome: tmp,
+          fetch: fetchImpl,
+          plugins: [],
+        });
+        // Multi-source row whose readmeUrl is a hex IPv4-mapped private literal (10.0.0.1).
+        (engine as any).pluginMarketplaceService = {
+          getRemovedMarketplaceSkillsPackage: vi.fn(() => null),
+          resolveInstall: vi.fn((pluginId: string, marketplaceId?: string | null) => ({
+            ok: true,
+            row: { marketplaceId: marketplaceId || "oh-plugins-official", pluginId },
+          })),
+          getCatalogPlugin: vi.fn(() => ({
+            pluginId: "skillwiki",
+            marketplaceId: "oh-plugins-official",
+            readmeUrl: "https://[::ffff:0a00:0001]/readme.md",
+          })),
+        };
+        // No legacy single-source marketplace is configured in this harness; the route
+        // must never fall through to one after the policy rejects the row's readmeUrl.
+        (engine as any).pluginMarketplace = {
+          getReadme: vi.fn(async () => {
+            throw new Error("legacy marketplace not configured");
+          }),
+        };
+        const app = createApp(engine);
+
+        const res = await app.request(
+          "/api/plugins/marketplace/skillwiki/readme?marketplaceId=oh-plugins-official",
+        );
+
+        expect(res.status).toBe(500); // sanitized error, never a fetched body
+        expect(await res.json()).toMatchObject({ error: expect.any(String) });
+        expect(fetchImpl).not.toHaveBeenCalled();
+      } finally {
+        fs.rmSync(tmp, { recursive: true, force: true });
+      }
+    });
+
     it("does not mark marketplace plugins installed when only a same-id dev plugin is loaded", async () => {
       const plugin = {
         id: "demo",
