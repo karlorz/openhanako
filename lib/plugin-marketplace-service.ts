@@ -771,6 +771,7 @@ export class PluginMarketplaceService {
         sourceAuthority: source?.authority || "removed",
         sourceStatus: source?.status || "removed",
         sourceEnabled: sourceAvailable,
+        sourceSnapshot: this.getInstallPlanContext(plugin.marketplaceId).sourceSnapshot,
         active,
         retained,
         available: sourceAvailable,

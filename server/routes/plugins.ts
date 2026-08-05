@@ -1810,9 +1810,16 @@ export function createPluginsRoute(engine: any) {
         }
         try {
           const flags = principalFlags(c);
+          const expectedSourceSnapshot = body.expectedSourceSnapshot
+            && typeof body.expectedSourceSnapshot === "object"
+            ? body.expectedSourceSnapshot
+            : undefined;
           const result = await svc.installClaudePluginSkills(plugin.id, sourceMarketplaceId, {
             userSkillsDir,
             isStudioOwner: flags.isStudioOwner,
+            expectedRevision: typeof body.expectedRevision === "number" ? body.expectedRevision : undefined,
+            expectedDigest: typeof body.expectedDigest === "string" ? body.expectedDigest : undefined,
+            ...(expectedSourceSnapshot ? { expectedSourceSnapshot } : {}),
           });
           try {
             await engine.reloadSkills?.();

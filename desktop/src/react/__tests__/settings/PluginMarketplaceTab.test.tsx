@@ -71,6 +71,13 @@ function catalogPlugin(overrides: Record<string, unknown> = {}) {
     },
     canInstall: true,
     active: false,
+    sourceSnapshot: {
+      state: 'ok',
+      sourceFingerprint: '2'.repeat(64),
+      catalogSha256: '3'.repeat(64),
+      requestedRef: 'main',
+      resolvedRevision: 'rev-1',
+    },
     ...overrides,
   };
 }
@@ -730,6 +737,38 @@ describe('PluginMarketplaceTab inspector rendering', () => {
     expect(await screen.findByRole('button', { name: 'Install skills' })).toBeDisabled();
     expect(mockShowToast).not.toHaveBeenCalledWith(expect.any(String), 'error');
     expect(mockShowToast).not.toHaveBeenCalledWith(expect.any(String), 'success');
+  });
+
+  it('forwards registry and source-snapshot preconditions on the legacy skills install body (finding 9)', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const skills = catalogPlugin();
+    mockHanaFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === '/api/plugins/marketplace/capabilities') return jsonResponse({ supported: true, features: {}, access: { isStudioOwner: true }, registry: { revision: 7, digest: 'a'.repeat(64) } });
+      if (url.startsWith('/api/plugins/marketplace/catalog')) return jsonResponse({ plugins: [skills], sources: [], capabilities: { supported: true, features: {} }, access: { isStudioOwner: true }, registry: { revision: 7, digest: 'a'.repeat(64) } });
+      if (url === '/api/plugins/marketplace/sources') return jsonResponse({ sources: [] });
+      if (url.includes('/readme')) return jsonResponse({ markdown: '' });
+      if (url === '/api/plugins/marketplace/skillwiki/install') {
+        const body = JSON.parse(String(init?.body || '{}'));
+        expect(body).toEqual({
+          allowDowngrade: false,
+          marketplaceId: 'llm-wiki',
+          expectedRevision: 7,
+          expectedDigest: 'a'.repeat(64),
+          expectedSourceSnapshot: skills.sourceSnapshot,
+        });
+        return jsonResponse({ ok: true, installTarget: 'hana-skills', catalogFormat: 'claude', marketplaceId: 'llm-wiki', pluginId: 'skillwiki', skills: ['wiki-query'], skipped: [], warnings: [], resolvedRevision: 'rev-1' });
+      }
+      return jsonResponse({});
+    });
+
+    render(<PluginMarketplaceTab />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Install skills' }));
+
+    await waitFor(() => expect(mockShowToast).toHaveBeenCalledWith(expect.any(String), 'success'));
+    expect(mockHanaFetch).toHaveBeenCalledWith(
+      '/api/plugins/marketplace/skillwiki/install',
+      expect.objectContaining({ method: 'POST' }),
+    );
   });
 
   it('hides package enable toggle when skills package is not-installed', async () => {
