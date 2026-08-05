@@ -34,9 +34,15 @@ export function PluginMarketplaceTab() {
     selectPlugin,
     selectedAgentId,
     setSelectedAgentId,
+    updateMarketplacePlugin,
     rowCount,
   } = useMarketplaceData();
-  const actions = useMarketplaceActions({ marketplace, reload: loadMarketplace, selectedAgentId });
+  const actions = useMarketplaceActions({
+    marketplace,
+    reload: loadMarketplace,
+    selectedAgentId,
+    updateMarketplacePlugin,
+  });
   const [readme, setReadme] = useState('');
   const [readmeLoading, setReadmeLoading] = useState(false);
   const readmeGenRef = React.useRef(0);
