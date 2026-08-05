@@ -20,7 +20,7 @@ import {
   sourceQualifiedId,
   warningMessages,
 } from '../../hooks/useMarketplaceData';
-import { AGENT_ACCESS_BUSY_KEY, type MarketplaceActions } from '../../hooks/useMarketplaceActions';
+import { type MarketplaceActions } from '../../hooks/useMarketplaceActions';
 import styles from '../../Settings.module.css';
 
 const marketplaceBadgeClassName = `${styles['skills-source-badge']} ${styles['plugin-marketplace-badge']}`;
@@ -80,6 +80,9 @@ export function MarketplacePluginInspector({
   const selectedWarnings = warningMessages(plugin);
   const selectedInventoryGroups = inventoryGroups(plugin);
   const pluginBusy = actions.busyKey === rowKey(plugin);
+  // While any action owns the single busy slot, no visible mutation control may
+  // stay enabled: the handler guards would otherwise swallow clicks silently.
+  const anyBusy = actions.busyKey !== null;
 
   return (
     <>
@@ -101,7 +104,7 @@ export function MarketplacePluginInspector({
             type="button"
             className={styles['settings-save-btn-sm']}
             disabled={
-              pluginBusy
+              anyBusy
               || marketplace?.access?.isStudioOwner === false
               || (
                 plugin.installTarget === 'native-plugin'
@@ -141,7 +144,7 @@ export function MarketplacePluginInspector({
                 plugin,
                 marketplace?.configDiagnostics?.file?.activations,
               ) ? ' on' : ''}${pluginBusy ? ' loading' : ''}`}
-              disabled={pluginBusy}
+              disabled={anyBusy}
               aria-label={t('settings.plugins.skillPackageToggle', {
                 identity: sourceQualifiedId(plugin),
                 name: plugin.name,
@@ -161,7 +164,7 @@ export function MarketplacePluginInspector({
             <button
               type="button"
               className={styles['settings-save-btn-sm']}
-              disabled={actions.busyKey === AGENT_ACCESS_BUSY_KEY || marketplace?.access?.isStudioOwner === false || plugin.nativeAgentPluginAccess?.state === 'desired-not-installed'}
+              disabled={anyBusy || marketplace?.access?.isStudioOwner === false || plugin.nativeAgentPluginAccess?.state === 'desired-not-installed'}
               onClick={() => { void actions.toggleNativeAgentAccess(plugin); }}
             >
               {t(plugin.nativeAgentPluginAccess?.enabled ? 'settings.plugins.disableAgentAccess' : 'settings.plugins.enableAgentAccess')}
@@ -170,7 +173,7 @@ export function MarketplacePluginInspector({
           {plugin.marketplaceId && plugin.retained && !plugin.active && (
             <button
               className={styles['settings-save-btn-sm']}
-              disabled={pluginBusy}
+              disabled={anyBusy}
               onClick={(e) => {
                 e.stopPropagation();
                 void actions.switchSource(plugin);

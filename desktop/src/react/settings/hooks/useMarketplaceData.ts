@@ -164,6 +164,8 @@ export interface MarketplaceDataState {
   selectPlugin: (plugin: MarketplacePlugin | null) => void;
   selectedAgentId: string | null;
   setSelectedAgentId: (agentId: string | null) => void;
+  /** Patch every catalog row with the given key and the selected plugin when it matches. */
+  updateMarketplacePlugin: (key: string, patch: (plugin: MarketplacePlugin) => MarketplacePlugin) => void;
   rowCount: number;
 }
 
@@ -364,6 +366,17 @@ export function useMarketplaceData(): MarketplaceDataState {
     void loadMarketplace();
   }, [loadMarketplace]);
 
+  const updateMarketplacePlugin = useCallback((
+    key: string,
+    patch: (plugin: MarketplacePlugin) => MarketplacePlugin,
+  ) => {
+    setMarketplace((prev) => {
+      if (!prev) return prev;
+      return { ...prev, plugins: prev.plugins.map(p => (rowKey(p) === key ? patch(p) : p)) };
+    });
+    setSelectedPlugin((prev) => (prev && rowKey(prev) === key ? patch(prev) : prev));
+  }, []);
+
   return {
     marketplace,
     loading: marketplaceLoading,
@@ -372,6 +385,7 @@ export function useMarketplaceData(): MarketplaceDataState {
     selectPlugin: setSelectedPlugin,
     selectedAgentId,
     setSelectedAgentId,
+    updateMarketplacePlugin,
     rowCount: marketplace?.plugins?.length || 0,
   };
 }
