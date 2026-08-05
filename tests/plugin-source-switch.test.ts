@@ -369,8 +369,9 @@ describe("PluginSourceSwitchCoordinator", () => {
         async restorePrevious() {},
       },
     });
-    const recovered = await coordinator.recoverIncompleteTransactions();
-    expect(recovered).toContain("demo");
+    const outcome = await coordinator.recoverIncompleteTransactions();
+    expect(outcome.recovered).toContain("demo");
+    expect(outcome.failed).toEqual([]);
     expect(records.get("demo")?.transaction).toBeNull();
     expect(records.get("demo")?.activeMarketplaceId).toBe("oh-plugins-official");
   });
