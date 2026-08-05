@@ -2,6 +2,7 @@ import dns from "dns";
 import net from "net";
 import crypto from "crypto";
 import { promisify } from "util";
+import { Agent } from "undici";
 
 export const DEFAULT_MARKETPLACE_MAX_REDIRECTS = 3;
 export const DEFAULT_MARKETPLACE_MAX_BYTES = 2 * 1024 * 1024;
@@ -135,6 +136,7 @@ export interface PinnedHttpsUrl {
 export interface SafeFetchOptions {
   fetchImpl?: typeof fetch;
   lookup?: (hostname: string) => Promise<ResolvedAddress[]>;
+  createDispatcher?: (pinnedAddresses: string[], hostname: string) => unknown;
   maxRedirects?: number;
   maxBytes?: number;
   timeoutMs?: number;
@@ -276,6 +278,37 @@ export async function resolveAndPinPublicHttpsUrl(
   return { url, pinnedAddresses: pinned };
 }
 
+/**
+ * Build a dns.lookup-style callback function that returns only the validated
+ * pinned addresses, so the connection cannot be redirected to a fresh,
+ * unvalidated DNS answer at connect time.
+ */
+export function pinnedLookupFor(
+  pinnedAddresses: string[],
+): (hostname: string, options: any, callback: (err: Error | null, addresses?: Array<{ address: string; family: number }>) => void) => void {
+  const addresses = pinnedAddresses.map((address) => ({
+    address,
+    family: net.isIPv6(address) ? 6 : 4,
+  }));
+  return (_hostname: string, _options: any, callback: (err: Error | null, addresses?: Array<{ address: string; family: number }>) => void) => {
+    callback(null, addresses);
+  };
+}
+
+/**
+ * Create an undici Agent whose connect lookup is pinned to the validated
+ * addresses. The fetch URL keeps the original hostname, so TLS SNI and the
+ * HTTP Host header still derive from it while the connection itself only
+ * ever resolves to the pinned addresses.
+ */
+export function createPinnedDispatcher(pinnedAddresses: string[], _hostname: string): Agent {
+  return new Agent({
+    connect: {
+      lookup: pinnedLookupFor(pinnedAddresses),
+    },
+  });
+}
+
 async function defaultLookup(hostname: string): Promise<ResolvedAddress[]> {
   try {
     const result = await dnsLookup(hostname, { all: true, verbatim: true }) as unknown;
@@ -337,6 +370,13 @@ async function safeFetchBuffer(
   let current = rawUrl;
   for (let hop = 0; hop <= maxRedirects; hop++) {
     const pinned = await resolveAndPinPublicHttpsUrl(current, options);
+    // Bind this hop's connection to the validated addresses: undici derives
+    // TLS SNI and the Host header from the URL hostname while connect.lookup
+    // only ever returns the pinned addresses. A fresh dispatcher is built per
+    // hop so every redirect target is re-resolved and re-pinned.
+    const dispatcher = options.createDispatcher
+      ? options.createDispatcher(pinned.pinnedAddresses, pinned.url.hostname)
+      : createPinnedDispatcher(pinned.pinnedAddresses, pinned.url.hostname);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
@@ -345,6 +385,7 @@ async function safeFetchBuffer(
         redirect: "manual",
         signal: controller.signal,
         headers: { Accept: accept },
+        dispatcher,
       } as RequestInit);
       if (response.status >= 300 && response.status < 400) {
         const location = response.headers.get("location");
