@@ -5,8 +5,11 @@ import {
   assertMarketplaceId,
   assertPluginId,
 } from "./plugin-marketplace-identity.ts";
+import { createModuleLogger } from "./debug-log.ts";
 
 export const PLUGIN_ARTIFACTS_DIR = "plugin-artifacts";
+
+const artifactLog = createModuleLogger("plugin-artifact-store");
 
 export interface RetainArtifactInput {
   marketplaceId: string;
@@ -128,21 +131,41 @@ export class PluginArtifactStore {
     if (!fs.existsSync(this._root)) return [];
     const out: RetainedArtifactInfo[] = [];
     const markets = marketplaceId
-      ? [assertMarketplaceId(marketplaceId)]
+      ? [marketplaceId]
       : fs.readdirSync(this._root, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
 
     for (const market of markets) {
-      const marketDir = path.join(this._root, market);
+      let marketId: string;
+      try {
+        marketId = assertMarketplaceId(market);
+      } catch {
+        artifactLog.warn(`skipping malformed artifact marketplace directory: ${market}`);
+        continue;
+      }
+      const marketDir = path.join(this._root, marketId);
       if (!fs.existsSync(marketDir)) continue;
       const plugins = pluginId
-        ? [assertPluginId(pluginId)]
+        ? [pluginId]
         : fs.readdirSync(marketDir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
       for (const plugin of plugins) {
-        const pluginDir = path.join(marketDir, plugin);
+        let pluginIdValue: string;
+        try {
+          pluginIdValue = assertPluginId(plugin);
+        } catch {
+          artifactLog.warn(`skipping malformed artifact plugin directory: ${marketId}/${plugin}`);
+          continue;
+        }
+        const pluginDir = path.join(marketDir, pluginIdValue);
         if (!fs.existsSync(pluginDir)) continue;
         for (const dig of fs.readdirSync(pluginDir, { withFileTypes: true })) {
           if (!dig.isDirectory()) continue;
-          const info = this.get(market, plugin, dig.name);
+          try {
+            assertArtifactDigest(dig.name);
+          } catch {
+            artifactLog.warn(`skipping malformed artifact digest directory: ${marketId}/${pluginIdValue}/${dig.name}`);
+            continue;
+          }
+          const info = this.get(marketId, pluginIdValue, dig.name);
           if (info) out.push(info);
         }
       }
