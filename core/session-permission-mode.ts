@@ -267,6 +267,18 @@ function classifyResolvedToolInvocation(mode, toolName, context) {
   const invocation = context?.toolInvocation;
   if (!invocation || typeof invocation !== "object") return null;
   if (invocation.kind === "read") return { action: "allow" };
+
+  // Owner-required mutations must always pass through the approval wrapper so
+  // it can resolve and stamp the host principal. Neither a host routine grant
+  // nor a session-scoped capability grant is sufficient for that boundary.
+  const ownerRequired = invocation.sideEffect?.ownerRequired === true;
+  if (ownerRequired) {
+    if (mode === SESSION_PERMISSION_MODES.READ_ONLY) return blockedByReadOnly(toolName, context);
+    return mode === SESSION_PERMISSION_MODES.ASK
+      ? prompt(toolName)
+      : review(toolName);
+  }
+
   const routineIsHostPreAuthorized =
     invocation.kind === "routine"
     && Array.isArray(context?.preAuthorizedRoutineCapabilities)

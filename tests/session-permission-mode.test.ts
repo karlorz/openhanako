@@ -457,5 +457,53 @@ describe("session permission modes", () => {
         },
       })).toMatchObject({ action: "review" });
     });
+
+    it("keeps owner-required mutations on the approval boundary despite matching grants", () => {
+      const ownerRequiredReviewInvocation = {
+        action: "install",
+        kind: "review",
+        capability: "marketplace.install",
+        sideEffect: { ownerRequired: true },
+      };
+      const ownerRequiredRoutineInvocation = {
+        action: "install",
+        kind: "routine",
+        capability: "marketplace.install",
+        sideEffect: { ownerRequired: true },
+      };
+      const cases = [
+        {
+          invocation: ownerRequiredReviewInvocation,
+          grants: { preAuthorizedInvocationCapabilities: ["marketplace.install"] },
+        },
+        {
+          invocation: ownerRequiredRoutineInvocation,
+          grants: { preAuthorizedRoutineCapabilities: ["marketplace.install"] },
+        },
+      ];
+
+      for (const { invocation, grants } of cases) {
+        expect(classifySessionPermission({
+          mode: "auto",
+          toolName: "marketplace",
+          context: { toolInvocation: invocation, ...grants },
+        })).toMatchObject({ action: "review", kind: "tool_action_approval" });
+        expect(classifySessionPermission({
+          mode: "ask",
+          toolName: "marketplace",
+          context: { toolInvocation: invocation, ...grants },
+        })).toMatchObject({ action: "prompt", kind: "tool_action_approval" });
+        expect(classifySessionPermission({
+          mode: "operate",
+          toolName: "marketplace",
+          context: { toolInvocation: invocation, ...grants },
+        })).toMatchObject({ action: "review", kind: "tool_action_approval" });
+        expect(classifySessionPermission({
+          mode: "read_only",
+          toolName: "marketplace",
+          context: { toolInvocation: invocation, ...grants },
+        })).toMatchObject({ action: "deny", code: "ACTION_BLOCKED_BY_READ_ONLY" });
+      }
+    });
   });
 });

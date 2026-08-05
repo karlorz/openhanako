@@ -3201,6 +3201,15 @@ describe("chat route model switch guard", () => {
         if (sessionPath === created.sessionPath) return created.sessionId;
         return null;
       }),
+      getSessionManifest: vi.fn((sessionId) => {
+        if (sessionId === existing.sessionId) {
+          return { currentLocator: { path: existing.sessionPath } };
+        }
+        if (sessionId === created.sessionId) {
+          return { currentLocator: { path: created.sessionPath } };
+        }
+        return null;
+      }),
       isSessionStreaming: vi.fn(() => false),
       isSessionSwitching: vi.fn(() => false),
       steerSession: vi.fn(() => false),

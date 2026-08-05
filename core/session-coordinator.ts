@@ -10,6 +10,7 @@ import fsp from "fs/promises";
 import path from "path";
 import { createAgentSession, SessionManager, estimateTokens, refreshSessionModelFromRegistry } from "../lib/pi-sdk/index.ts";
 import { isSessionJsonlFilename } from "../lib/session-jsonl.ts";
+import type { HostOwnerPrincipal } from "../lib/permission/approval-review-context.ts";
 import { createDefaultSettings } from "./session-defaults.ts";
 import { isDefaultWorkspacePath, restoreDefaultWorkspaceIfMissing } from "../shared/default-workspace.ts";
 import {
@@ -1035,6 +1036,7 @@ export class SessionCoordinator {
   declare _envChangeLedger: any;
   declare _ensureSessionLoadedInFlight: Map<string, Promise<any>>;
   declare _metaQuarantines: Map<string, { metaPath: string; backupPath: string; quarantinedAt: string }>;
+  declare _sessionOwnerPrincipals: Map<string, HostOwnerPrincipal>;
 
   /**
    * @param {object} deps
@@ -1089,6 +1091,22 @@ export class SessionCoordinator {
     // 文件由 listSkippedMetaSources（账本）与 _sessionManifestStoreRecovery
     // 两条独立信号覆盖，不需要这里补历史。
     this._metaQuarantines = new Map();
+    // 会话级 host owner principal（B1-T1）：key 是精确 sessionPath。
+    this._sessionOwnerPrincipals = new Map();
+  }
+
+  setSessionOwnerPrincipal(sessionPath: string, principal: HostOwnerPrincipal): void {
+    if (typeof sessionPath !== "string" || !sessionPath) return;
+    if (!principal || typeof principal !== "object") return;
+    this._sessionOwnerPrincipals.set(sessionPath, {
+      isStudioOwner: principal.isStudioOwner === true,
+      isLocalOwner: principal.isLocalOwner === true,
+    });
+  }
+
+  getSessionOwnerPrincipal(sessionPath: string): HostOwnerPrincipal | null {
+    if (typeof sessionPath !== "string" || !sessionPath) return null;
+    return this._sessionOwnerPrincipals.get(sessionPath) || null;
   }
 
   static _TITLES_TTL = 60_000; // 60 秒
