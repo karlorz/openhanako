@@ -48,10 +48,10 @@ function confirmInstallPlan(plugin: MarketplacePlugin): boolean {
   const level = plugin.confirmationLevel || plugin.installPlan?.confirmationLevel || 'inline';
   const planLines = [
     `${sourceQualifiedId(plugin)}`,
-    `Target: ${marketTargetLabel(plugin.installTarget || plugin.installPlan?.destination)}`,
-    `Adapter: ${marketAdapterLabel(plugin.installAdapter || plugin.installPlan?.installAdapter)}`,
-    `Confirmation: ${marketConfirmationLabel(level)}`,
-    warnings.length ? `Warnings:\n${warnings.map(w => `- ${w}`).join('\n')}` : '',
+    t('settings.plugins.marketPlanTarget', { label: marketTargetLabel(plugin.installTarget || plugin.installPlan?.destination) }),
+    t('settings.plugins.marketPlanAdapter', { label: marketAdapterLabel(plugin.installAdapter || plugin.installPlan?.installAdapter) }),
+    t('settings.plugins.marketPlanConfirmation', { label: marketConfirmationLabel(level) }),
+    warnings.length ? t('settings.plugins.marketPlanWarnings', { list: warnings.map(w => `- ${w}`).join('\n') }) : '',
   ].filter(Boolean);
 
   return window.confirm(t('settings.plugins.marketInstallPlanReview', { details: planLines.join('\n') }));
@@ -61,26 +61,26 @@ function confirmSkillsUninstall(plugin: MarketplacePlugin): boolean {
   const install = plugin.packageInstall;
   if (!install || install.state === 'not-installed') return false;
   const deleteLines = install.present.length
-    ? install.present.map(name => `- shared user skills/${name}/`).join('\n')
-    : '- none; all recorded directories are already missing';
+    ? install.present.map(name => t('settings.plugins.marketSkillsDeleteLine', { name })).join('\n')
+    : t('settings.plugins.marketSkillsNoPresentDirs');
   const missingLines = install.missing.length
     ? install.missing.map(name => `- ${name}/`).join('\n')
-    : '- none';
+    : t('settings.plugins.marketSkillsNoMissingDirs');
   const invalidLines = (install.invalid || []).length
-    ? `\nInvalid record entries will fail closed and will not be used as paths:\n${install.invalid!.map(name => `- ${name}`).join('\n')}`
+    ? '\n' + t('settings.plugins.marketSkillsInvalidEntries', { names: install.invalid!.map(name => `- ${name}`).join('\n') })
     : '';
   return window.confirm([
-    `Uninstall marketplace skills package ${sourceQualifiedId(plugin)}?`,
+    t('settings.plugins.marketSkillsUninstallQuestion', { identity: sourceQualifiedId(plugin) }),
     '',
-    'These shared user-skill directories will be permanently deleted, including later edits:',
+    t('settings.plugins.marketSkillsUninstallPermanentDelete'),
     deleteLines,
     '',
-    'Already-missing recorded directories:',
+    t('settings.plugins.marketSkillsUninstallAlreadyMissingHeading'),
     missingLines,
     invalidLines,
     '',
-    'Native/community plugin directories and Allow Agent plugin dev tools directories, slots, and records are unaffected.',
-    'This package-level action is separate from Manage in Skills.',
+    t('settings.plugins.marketSkillsUninstallUnaffected'),
+    t('settings.plugins.marketSkillsUninstallSeparateFromManage'),
   ].filter(line => line !== '').join('\n'));
 }
 
@@ -122,7 +122,7 @@ export function useMarketplaceActions(input: MarketplaceActionsInput): Marketpla
           version: plan.facts?.version || marketVersion(plugin),
           packageSha256: plan.facts?.packageSha256 || 'unknown',
           trust: plan.facts?.trust || plugin.trust || 'restricted',
-          contributions: (plan.facts?.contributions || []).join(', ') || 'none',
+          contributions: (plan.facts?.contributions || []).join(', ') || t('settings.plugins.marketNone'),
         }));
         if (!confirmed) return;
         const executeRes = await hanaFetch(`/api/plugins/marketplace/${encodeURIComponent(plugin.id)}/native/install/execute`, {
@@ -224,13 +224,13 @@ export function useMarketplaceActions(input: MarketplaceActionsInput): Marketpla
             ? data.failed.map((item: any) => `${item.name}: ${item.error}`)
             : []),
           ...(Array.isArray(data.referenceCleanup?.failedAgents)
-            ? data.referenceCleanup.failedAgents.map((item: any) => `Agent ${item.agentId}: ${item.error}`)
+            ? data.referenceCleanup.failedAgents.map((item: any) => t('settings.plugins.marketSkillsAgentFailure', { agentId: item.agentId, error: item.error }))
             : []),
-          data.activationCleanupError ? `activation cleanup: ${data.activationCleanupError}` : '',
-          data.bundleCleanupError ? `bundle cleanup: ${data.bundleCleanupError}` : '',
-          data.reloadError ? `skill reload: ${data.reloadError}` : '',
+          data.activationCleanupError ? t('settings.plugins.marketSkillsCleanupActivation', { error: data.activationCleanupError }) : '',
+          data.bundleCleanupError ? t('settings.plugins.marketSkillsCleanupBundle', { error: data.bundleCleanupError }) : '',
+          data.reloadError ? t('settings.plugins.marketSkillsCleanupReload', { error: data.reloadError }) : '',
         ].filter(Boolean);
-        const failures = details.join('; ') || 'Some cleanup steps remain unresolved.';
+        const failures = details.join('; ') || t('settings.plugins.marketSkillsCleanupUnresolved');
         showToast(t('settings.plugins.marketSkillsUninstallPartial', { failures }), 'error');
       } else {
         const removedCount = (data.deleted?.length || 0) + (data.alreadyMissing?.length || 0);
@@ -254,14 +254,19 @@ export function useMarketplaceActions(input: MarketplaceActionsInput): Marketpla
       || plugin.capabilityInventory?.serverImpact
       || [];
     const summary = [
-      `${nextEnabled ? 'Enable' : 'Disable'} Agent Plugin Access for ${identity}`,
-      `Agent: ${selectedAgentId}`,
-      'Agent-facing scope: tools, commands, chat cards, and agent-aware surfaces only.',
+      t('settings.plugins.marketAgentAccessSummaryHeading', {
+        action: nextEnabled
+          ? t('settings.plugins.marketAgentAccessEnableVerb')
+          : t('settings.plugins.marketAgentAccessDisableVerb'),
+        identity,
+      }),
+      t('settings.plugins.marketAgentAccessSummaryAgent', { agentId: selectedAgentId }),
+      t('settings.plugins.marketAgentAccessSummaryScope'),
       serverGlobal.length
-        ? `Owner-reviewed server-global capabilities are unchanged: ${serverGlobal.join(', ')}`
-        : 'No server-global capability state will be changed.',
-      `Registry revision: ${marketplace?.registry?.revision ?? 'unknown'}`,
-      `Registry digest: ${marketplace?.registry?.digest || 'unknown'}`,
+        ? t('settings.plugins.marketAgentAccessSummaryServerGlobal', { items: serverGlobal.join(', ') })
+        : t('settings.plugins.marketAgentAccessSummaryNoServerChange'),
+      t('settings.plugins.marketAgentAccessSummaryRevision', { revision: String(marketplace?.registry?.revision ?? 'unknown') }),
+      t('settings.plugins.marketAgentAccessSummaryDigest', { digest: marketplace?.registry?.digest || 'unknown' }),
     ].join('\n');
     if (!window.confirm(t('settings.plugins.marketAgentAccessConfirm', { summary }))) return;
 
@@ -292,7 +297,7 @@ export function useMarketplaceActions(input: MarketplaceActionsInput): Marketpla
         }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || data.error) throw new Error(data.error || 'Agent Plugin Access update failed');
+      if (!res.ok || data.error) throw new Error(data.error || t('settings.plugins.marketAgentAccessUpdateFailed'));
       showToast(t('settings.plugins.marketAgentAccessUpdated', {
         state: nextEnabled ? 'enabled' : 'disabled',
         identity,
@@ -318,7 +323,7 @@ export function useMarketplaceActions(input: MarketplaceActionsInput): Marketpla
     const snapshot = marketplace?.configDiagnostics?.file?.activations;
     if (!snapshot || typeof snapshot !== 'object') {
       showToast(
-        t('settings.saveFailed') + ': missing activations snapshot',
+        t('settings.saveFailed') + ': ' + t('settings.plugins.marketMissingActivationsSnapshot'),
         'error',
       );
       return;
@@ -345,7 +350,7 @@ export function useMarketplaceActions(input: MarketplaceActionsInput): Marketpla
     const reloadActivationSnapshot = async (): Promise<MarketplaceActivationSnapshot> => {
       const res = await hanaFetch('/api/plugins/marketplace/config');
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || data.error) throw new Error(data.error || 'Marketplace config refresh failed');
+      if (!res.ok || data.error) throw new Error(data.error || t('settings.plugins.marketConfigRefreshFailed'));
       return {
         registry: data?.registry && typeof data.registry === 'object' ? data.registry : null,
         activations: data?.configDiagnostics?.file?.activations
@@ -409,8 +414,8 @@ export function useMarketplaceActions(input: MarketplaceActionsInput): Marketpla
         }),
       });
       const data = await execRes.json().catch(() => ({}));
-      if (data.error) throw new Error(data.error?.message || data.error || 'switch failed');
-      if (!data.ok) throw new Error('switch failed');
+      if (data.error) throw new Error(data.error?.message || data.error || t('settings.plugins.marketSourceSwitchFailed'));
+      if (!data.ok) throw new Error(t('settings.plugins.marketSourceSwitchFailed'));
       showToast(t('settings.plugins.marketSourceSwitched'), 'success');
       await reload();
     } catch (err: unknown) {
