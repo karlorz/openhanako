@@ -6,6 +6,7 @@ import { HanaEngine } from "../core/engine.ts";
 import { PluginInstallRecords } from "../lib/plugin-install-records.ts";
 import { PluginArtifactStore } from "../lib/plugin-artifact-store.ts";
 import { PluginSourceSwitchCoordinator } from "../lib/plugin-source-switch.ts";
+import { writeMarketplaceActiveMarker } from "../lib/plugin-marketplace-active-marker.ts";
 
 const root = process.cwd();
 
@@ -176,6 +177,136 @@ describe("boot-time source-switch journal recovery (finding 6)", () => {
     // ...and the on-disk projection is left untouched (candidate still staged).
     const live = JSON.parse(fs.readFileSync(path.join(pluginsDir, "demo", "manifest.json"), "utf8"));
     expect(live.label).toBe("B");
+  });
+
+  it("finalizes a committed journal (records already point at the candidate) without touching the active projection (review finding)", async () => {
+    const home = tempHome();
+    const { pluginsDir, records, artifacts, artB } = makeCrashState(home);
+    // A real staged projection carries the marketplace active marker (written by
+    // _stageActiveProjection); the raw artifact copy in makeCrashState does not,
+    // so write it to mirror the actual on-disk state at commit time.
+    writeMarketplaceActiveMarker(path.join(pluginsDir, "demo"), {
+      marketplaceId: MARKET_B,
+      pluginId: "demo",
+      artifactDigest: DIGEST_B,
+    });
+    // Simulate a crash between retainAndActivate + journal clear: the records
+    // active pointer has already been committed to the candidate (B) — the
+    // state switchSource() leaves when it crashes after writing phase
+    // "committing" and retainAndActivate() but before setTransaction(null).
+    records.retainAndActivate({
+      pluginId: "demo",
+      marketplaceId: MARKET_B,
+      artifactDigest: DIGEST_B,
+      version: "2.0.0",
+      sourceFingerprint: "1".repeat(64),
+      catalogSha256: "2".repeat(64),
+      packageSha256: DIGEST_B,
+      artifactPath: artB.artifactPath,
+      action: "source-switch",
+      result: "ok",
+    });
+    records.setTransaction("demo", {
+      transactionId: "tx-committed",
+      pluginId: "demo",
+      phase: "committing",
+      previous: { marketplaceId: MARKET_A, pluginId: "demo", artifactDigest: DIGEST_A },
+      candidate: { marketplaceId: MARKET_B, pluginId: "demo", artifactDigest: DIGEST_B },
+      startedAt: new Date().toISOString(),
+    });
+
+    const coordinator = makeCoordinator(records, artifacts, pluginsDir);
+    const outcome = await coordinator.recoverIncompleteTransactions();
+
+    // Recovery must finalize the committed transaction, not roll back to A:
+    // the records pointer and the on-disk projection both stay on the candidate.
+    expect(outcome.recovered).toContain("demo");
+    expect(outcome.failed).toEqual([]);
+    expect(records.get("demo")?.transaction).toBeNull();
+    expect(records.get("demo")?.activeMarketplaceId).toBe(MARKET_B);
+    expect(records.get("demo")?.activeArtifactDigest).toBe(DIGEST_B);
+    // The candidate projection (including its marketplace active marker) must
+    // survive recovery untouched.
+    const marker = JSON.parse(
+      fs.readFileSync(path.join(pluginsDir, "demo", ".hana-marketplace.json"), "utf8"),
+    );
+    expect(marker.marketplaceId).toBe(MARKET_B);
+    const live = JSON.parse(fs.readFileSync(path.join(pluginsDir, "demo", "manifest.json"), "utf8"));
+    expect(live.label).toBe("B");
+  });
+
+  it("does not delete a committed first-install projection when the journal has no previous pointer (review finding)", async () => {
+    const home = tempHome();
+    const pluginsDir = path.join(home, "plugins");
+    const artifacts = new PluginArtifactStore({ hanakoHome: home });
+    const records = new PluginInstallRecords({ hanakoHome: home });
+    const artB = seedArtifact(artifacts, home, MARKET_B, DIGEST_B, "B");
+    // First install already committed: records active pointer is the candidate
+    // and the projection is staged, but the journal was not cleared before the
+    // crash (phase "committing", previous: null).
+    records.retainAndActivate({
+      pluginId: "demo",
+      marketplaceId: MARKET_B,
+      artifactDigest: DIGEST_B,
+      version: "2.0.0",
+      sourceFingerprint: "1".repeat(64),
+      catalogSha256: "2".repeat(64),
+      packageSha256: DIGEST_B,
+      artifactPath: artB.artifactPath,
+      action: "install",
+      result: "ok",
+    });
+    fs.mkdirSync(pluginsDir, { recursive: true });
+    fs.cpSync(artB.artifactPath, path.join(pluginsDir, "demo"), { recursive: true });
+    writeMarketplaceActiveMarker(path.join(pluginsDir, "demo"), {
+      marketplaceId: MARKET_B,
+      pluginId: "demo",
+      artifactDigest: DIGEST_B,
+    });
+    records.setTransaction("demo", {
+      transactionId: "tx-first-committed",
+      pluginId: "demo",
+      phase: "committing",
+      previous: null,
+      candidate: { marketplaceId: MARKET_B, pluginId: "demo", artifactDigest: DIGEST_B },
+      startedAt: new Date().toISOString(),
+    });
+
+    const coordinator = makeCoordinator(records, artifacts, pluginsDir);
+    const outcome = await coordinator.recoverIncompleteTransactions();
+
+    expect(outcome.recovered).toContain("demo");
+    expect(outcome.failed).toEqual([]);
+    expect(records.get("demo")?.transaction).toBeNull();
+    expect(records.get("demo")?.activeMarketplaceId).toBe(MARKET_B);
+    // The committed first-install projection must not be deleted.
+    expect(fs.existsSync(path.join(pluginsDir, "demo", "manifest.json"))).toBe(true);
+    const marker = JSON.parse(
+      fs.readFileSync(path.join(pluginsDir, "demo", ".hana-marketplace.json"), "utf8"),
+    );
+    expect(marker.marketplaceId).toBe(MARKET_B);
+  });
+
+  it("still rolls back when the records pointer does not match the journal candidate (crash before commit)", async () => {
+    const home = tempHome();
+    const { pluginsDir, records, artifacts } = makeCrashState(home);
+
+    const coordinator = makeCoordinator(records, artifacts, pluginsDir);
+    const outcome = await coordinator.recoverIncompleteTransactions();
+
+    // makeCrashState commits A as active with the journal still pointing at
+    // candidate B (crash before retainAndActivate): the pre-existing rollback
+    // behavior must be preserved.
+    expect(outcome.recovered).toContain("demo");
+    expect(outcome.failed).toEqual([]);
+    expect(records.get("demo")?.transaction).toBeNull();
+    expect(records.get("demo")?.activeMarketplaceId).toBe(MARKET_A);
+    const marker = JSON.parse(
+      fs.readFileSync(path.join(pluginsDir, "demo", ".hana-marketplace.json"), "utf8"),
+    );
+    expect(marker.marketplaceId).toBe(MARKET_A);
+    const live = JSON.parse(fs.readFileSync(path.join(pluginsDir, "demo", "manifest.json"), "utf8"));
+    expect(live.label).toBe("A");
   });
 });
 

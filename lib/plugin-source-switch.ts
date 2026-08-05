@@ -278,9 +278,14 @@ export class PluginSourceSwitchCoordinator {
 
   /**
    * Recover incomplete journals to the last committed pointer before accepting calls.
-   * Fail-closed: a plugin whose rollback cannot be completed keeps its journal so a
-   * later boot retries, and is reported in `failed` instead of aborting recovery of
-   * the remaining plugins.
+   * A journal whose commit already landed (records active pointer equals the journal
+   * candidate — the crash window after retainAndActivate but before the journal is
+   * cleared) is finalized in place: only the journal is cleared, the committed
+   * active projection is left untouched. Any other journal is rolled back to the
+   * previous committed pointer (or the slot is emptied for a first install that
+   * never committed). Fail-closed: a plugin whose rollback cannot be completed
+   * keeps its journal so a later boot retries, and is reported in `failed` instead
+   * of aborting recovery of the remaining plugins.
    */
   async recoverIncompleteTransactions(): Promise<{ recovered: string[]; failed: Array<{ pluginId: string; error: string }> }> {
     const recovered: string[] = [];
@@ -295,8 +300,21 @@ export class PluginSourceSwitchCoordinator {
     }
     for (const [pluginId, record] of Object.entries(plugins)) {
       if (!record?.transaction) continue;
+      // The commit already landed: switchSource() writes the journal at phase
+      // "committing", then retainAndActivate() moves the records active pointer
+      // to the candidate, then the journal is cleared. A crash in that window
+      // leaves the records pointer equal to the journal candidate, so recovery
+      // must finalize (clear the journal only) rather than roll back.
+      const committed =
+        record.activeMarketplaceId === record.transaction.candidate?.marketplaceId
+        && record.activeArtifactDigest === record.transaction.candidate?.artifactDigest;
       const previous = record.transaction.previous;
       try {
+        if (committed) {
+          this._records.setTransaction(pluginId, null);
+          recovered.push(pluginId);
+          continue;
+        }
         if (previous) {
           await this._rollback(
             pluginId,
