@@ -4,6 +4,7 @@ import path from "path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   assertPublicHttpsUrl,
+  canonicalizeIpAddress,
   isDeniedIpAddress,
   resolveAndPinPublicHttpsUrl,
   safeFetchText,
@@ -75,6 +76,54 @@ describe("network policy", () => {
     }
     expect(isDeniedIpAddress("8.8.8.8")).toBe(false);
     expect(isDeniedIpAddress("2001:4860:4860::8888")).toBe(false);
+  });
+
+  it("rejects hex and dotted IPv4-mapped IPv6 private, loopback, and link-local literals", () => {
+    // Probe values recorded in the review: hex mapped forms must be denied.
+    expect(isDeniedIpAddress("::ffff:0a00:0001")).toBe(true);   // 10.0.0.1
+    expect(isDeniedIpAddress("::ffff:7f00:1")).toBe(true);      // 127.0.0.1
+    expect(isDeniedIpAddress("::ffff:a9fe:a9fe")).toBe(true);   // 169.254.169.254
+    expect(isDeniedIpAddress("::ffff:10.0.0.1")).toBe(true);    // dotted mapped
+    expect(isDeniedIpAddress("::ffff:0808:0808")).toBe(false);  // 8.8.8.8 public
+    expect(isDeniedIpAddress("::ffff:8.8.8.8")).toBe(false);
+  });
+
+  it("rejects NAT64, IPv4-compatible, ULA, link-local, multicast, and unspecified IPv6 forms", () => {
+    for (const bad of [
+      "64:ff9b::1", "64:ff9b:1::2", "2001:20::3", "2001:21::4", // NAT64 well-known
+      "::10.0.0.1", "::a00:1",                                  // IPv4-compatible
+      "fd00::1", "fc00::2",                                     // ULA
+      "fe80::1", "febf::1",                                     // link-local
+      "ff00::1", "ff02::1",                                     // multicast
+      "::", "::1",                                              // unspecified / loopback
+    ]) {
+      expect(isDeniedIpAddress(bad), bad).toBe(true);
+    }
+    expect(isDeniedIpAddress("2001:4860:4860::8888")).toBe(false); // public
+    expect(isDeniedIpAddress("2606:4700:4700::1111")).toBe(false);
+  });
+
+  it("canonicalizes compressed and expanded forms to one stable representation", () => {
+    expect(canonicalizeIpAddress("2001:db8::1")).toBe("2001:0db8:0000:0000:0000:0000:0000:0001");
+    expect(canonicalizeIpAddress("2001:0db8:0:0:0:0:0:1")).toBe("2001:0db8:0000:0000:0000:0000:0000:0001");
+    expect(canonicalizeIpAddress("::ffff:0a00:0001")).toBe("10.0.0.1");
+    expect(canonicalizeIpAddress("::ffff:7f00:1")).toBe("127.0.0.1");
+    expect(() => canonicalizeIpAddress("not-an-ip")).toThrow();
+  });
+
+  it("rejects literal private/mapped hosts inside assertPublicHttpsUrl before any DNS", () => {
+    expect(() => assertPublicHttpsUrl("https://[::ffff:0a00:0001]/catalog.json")).toThrow(/not allowed/);
+    expect(() => assertPublicHttpsUrl("https://[64:ff9b::1]/catalog.json")).toThrow(/not allowed/);
+    expect(assertPublicHttpsUrl("https://[2606:4700:4700::1111]/catalog.json").hostname).toBe("[2606:4700:4700::1111]");
+  });
+
+  it("rejects mixed DNS answers where any canonicalized answer is non-public", async () => {
+    await expect(resolveAndPinPublicHttpsUrl("https://example.org/catalog.json", {
+      lookup: async () => [
+        { address: "93.184.216.34", family: 4 },
+        { address: "::ffff:0a00:0001", family: 6 },
+      ],
+    })).rejects.toThrow(/private or reserved/);
   });
 
   it("pins validated public addresses and rejects mixed private DNS answers", async () => {

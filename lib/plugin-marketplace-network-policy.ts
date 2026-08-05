@@ -12,6 +12,116 @@ export const DEFAULT_ALLOWED_HTTPS_PORTS = new Set([443, 8443]);
 
 const dnsLookup = promisify(dns.lookup);
 
+// Strict dotted-quad IPv4 tail (octets 0-255, no leading zeros — matches net.isIPv6 acceptance).
+const IPV4_QUAD_RE = /^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/;
+const IPV6_GROUP_RE = /^[0-9a-f]{1,4}$/;
+
+/** Convert a trailing dotted-quad IPv4 tail into two 4-digit hex groups, or null. */
+function ipv4QuadToHexGroups(quad: string): string[] | null {
+  if (!IPV4_QUAD_RE.test(quad)) return null;
+  const [a, b, c, d] = quad.split(".").map((octet) => Number(octet));
+  return [
+    ((a << 8) | b).toString(16).padStart(4, "0"),
+    ((c << 8) | d).toString(16).padStart(4, "0"),
+  ];
+}
+
+/** Validate and zero-pad hex groups; returns exactly 8 groups of 4 lowercase hex digits, or null. */
+function normalizeIpv6Groups(groups: string[]): string[] | null {
+  if (groups.length !== 8) return null;
+  const out: string[] = [];
+  for (const group of groups) {
+    if (!IPV6_GROUP_RE.test(group)) return null;
+    out.push(group.padStart(4, "0"));
+  }
+  return out;
+}
+
+/**
+ * Expand any IPv6 textual form (including IPv4-mapped/compatible mixed forms and
+ * zone identifiers) into exactly 8 groups of 4 lowercase hex digits, or null when
+ * the input cannot be parsed into a canonical 8-group address.
+ */
+export function expandIpv6Groups(ip: string): string[] | null {
+  if (!ip || !ip.includes(":")) return null;
+  const value = String(ip).trim().toLowerCase();
+  // Zone identifiers ("fe80::1%eth0") are interface-scope metadata; the address
+  // itself classifies the same with or without the zone, so strip it.
+  const noZone = value.split("%")[0];
+  const parts = noZone.split("::");
+  if (parts.length > 2) return null; // at most one "::" compression
+  if (parts.length === 1) {
+    // No compression: exactly eight groups; the last may be a dotted-quad tail (2 groups).
+    const groups = parts[0].split(":");
+    const last = groups[groups.length - 1];
+    if (last !== undefined && last.includes(".")) {
+      const tail = ipv4QuadToHexGroups(last);
+      if (!tail) return null;
+      if (groups.length - 1 + tail.length !== 8) return null;
+      return normalizeIpv6Groups([...groups.slice(0, -1), ...tail]);
+    }
+    if (groups.length !== 8) return null;
+    return normalizeIpv6Groups(groups);
+  }
+  const [head, tail] = parts;
+  const left = head ? head.split(":") : [];
+  const right = tail ? tail.split(":") : [];
+  // A dotted-quad tail may only appear as the final element, where it occupies two groups.
+  const last = right[right.length - 1];
+  const quadTail = last !== undefined && last.includes(".") ? ipv4QuadToHexGroups(last) : null;
+  if (last !== undefined && last.includes(".") && !quadTail) return null;
+  for (const group of [...left, ...right.slice(0, -1)]) {
+    if (group.includes(".")) return null; // dotted quad anywhere but the tail
+  }
+  const total = left.length + (quadTail ? right.length - 1 + quadTail.length : right.length);
+  if (total >= 8) return null; // "::" must expand to at least one zero group
+  const middle = Array(8 - total).fill("0000");
+  return normalizeIpv6Groups([...left, ...middle, ...(quadTail ? [...right.slice(0, -1), ...quadTail] : right)]);
+}
+
+/** "10.0.0.1" from the low 32 bits of an IPv4-mapped address, or null. */
+export function mappedIpv4FromGroups(groups: string[]): string | null {
+  if (groups.length !== 8) return null;
+  const prefix = groups.slice(0, 5);
+  if (prefix.some((g) => g !== "0000") || groups[5] !== "ffff") return null;
+  const hi = parseInt(groups[6], 16);
+  const lo = parseInt(groups[7], 16);
+  if (!Number.isInteger(hi) || !Number.isInteger(lo) || hi < 0 || lo > 0xffff) return null;
+  return `${hi >> 8}.${hi & 0xff}.${lo >> 8}.${lo & 0xff}`;
+}
+
+/**
+ * Canonical form of an IP literal: dotted-decimal IPv4 (including IPv4-mapped
+ * forms) or 8-group expanded lowercase IPv6. Throws PLUGIN_MARKETPLACE_SOURCE_FORBIDDEN
+ * for NAT64 prefixes, IPv4-compatible forms, and anything unparseable.
+ */
+export function canonicalizeIpAddress(raw: string): string {
+  const value = String(raw).trim().toLowerCase();
+  if (!value) throw policyError("PLUGIN_MARKETPLACE_SOURCE_FORBIDDEN", "IP address is empty");
+  if (net.isIPv4(value)) return value;
+  if (!net.isIPv6(value)) throw policyError("PLUGIN_MARKETPLACE_SOURCE_FORBIDDEN", "Not an IP address");
+  const groups = expandIpv6Groups(value);
+  if (!groups) throw policyError("PLUGIN_MARKETPLACE_SOURCE_FORBIDDEN", "Malformed IPv6 address");
+  const mapped = mappedIpv4FromGroups(groups);
+  if (mapped) return mapped;
+  const expanded = groups.join(":");
+  if (expanded.startsWith("0064:ff9b:")) {
+    throw policyError("PLUGIN_MARKETPLACE_SOURCE_FORBIDDEN", "NAT64 addresses are not allowed");
+  }
+  if (groups[0] === "2001") {
+    const second = parseInt(groups[1], 16);
+    if (second >= 0x20 && second <= 0x2f) {
+      throw policyError("PLUGIN_MARKETPLACE_SOURCE_FORBIDDEN", "NAT64 addresses are not allowed");
+    }
+  }
+  const ipv4Compatible = groups.slice(0, 6).every((g) => g === "0000")
+    && (groups[6] !== "0000" || groups[7] !== "0000");
+  if (ipv4Compatible) {
+    throw policyError("PLUGIN_MARKETPLACE_SOURCE_FORBIDDEN", "IPv4-compatible IPv6 addresses are not allowed");
+  }
+  return expanded;
+}
+
 export interface ResolvedAddress {
   address: string;
   family: number;
@@ -95,16 +205,14 @@ export function assertPublicHttpsUrl(
 
 export function isDeniedIpAddress(address: string): boolean {
   if (!address) return true;
-  let ip = address.trim().toLowerCase();
-  if (ip.startsWith("::ffff:")) {
-    const mapped = ip.slice("::ffff:".length);
-    if (net.isIPv4(mapped)) {
-      return isDeniedIpv4(mapped);
-    }
+  let canonical: string;
+  try {
+    canonical = canonicalizeIpAddress(address);
+  } catch {
+    return true;
   }
-  if (net.isIPv4(ip)) return isDeniedIpv4(ip);
-  if (net.isIPv6(ip)) return isDeniedIpv6(ip);
-  return true;
+  if (canonical.includes(".")) return isDeniedIpv4(canonical);
+  return isDeniedIpv6(canonical);
 }
 
 function isDeniedIpv4(ip: string): boolean {
@@ -124,16 +232,14 @@ function isDeniedIpv4(ip: string): boolean {
   return false;
 }
 
-function isDeniedIpv6(ip: string): boolean {
-  // Normalize compressed forms via URL parsing trick is unreliable; use simple prefixes.
-  if (ip === "::" || ip === "::1") return true;
-  if (ip.startsWith("fc") || ip.startsWith("fd")) return true; // unique local
-  if (ip.startsWith("fe8") || ip.startsWith("fe9") || ip.startsWith("fea") || ip.startsWith("feb")) {
-    return true; // link-local fe80::/10
-  }
-  // IPv4-mapped handled by caller.
-  // Discard/unspecified-ish
-  if (ip === "0:0:0:0:0:0:0:0" || ip === "0:0:0:0:0:0:0:1") return true;
+function isDeniedIpv6(expanded: string): boolean {
+  const groups = expanded.split(":");
+  const first = parseInt(groups[0], 16);
+  if (expanded === "0000:0000:0000:0000:0000:0000:0000:0000") return true; // ::
+  if (expanded === "0000:0000:0000:0000:0000:0000:0000:0001") return true; // ::1
+  if ((first & 0xfe00) === 0xfc00) return true; // ULA fc00::/7
+  if (first >= 0xfe80 && first <= 0xfebf) return true; // link-local fe80::/10
+  if ((first & 0xff00) === 0xff00) return true; // multicast ff00::/8
   return false;
 }
 
