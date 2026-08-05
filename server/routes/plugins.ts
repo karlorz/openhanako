@@ -41,7 +41,7 @@ import {
 import { isSecureHttpRequest } from "../http/transport-context.ts";
 import { PluginMarketplaceService } from "../../lib/plugin-marketplace-service.ts";
 import { descriptorFromMarketplaceSourceInput } from "../../lib/plugin-marketplace-sources.ts";
-import { PluginSourceSwitchCoordinator } from "../../lib/plugin-source-switch.ts";
+import { PluginSourceSwitchCoordinator, createInProcessQuiesceHandle } from "../../lib/plugin-source-switch.ts";
 import { PluginInstallRecords } from "../../lib/plugin-install-records.ts";
 import { PluginArtifactStore } from "../../lib/plugin-artifact-store.ts";
 import { inspectMarketplacePackage } from "../../lib/plugin-marketplace-inspector.ts";
@@ -1508,43 +1508,103 @@ export function createPluginsRoute(engine: any) {
     }
   });
 
-  route.post("/plugins/:pluginId/source-switch", async (c) => {
+  route.post("/plugins/:pluginId/source-switch/plan", async (c) => {
+    const flags = principalFlags(c);
     const body = await c.req.json().catch(() => ({}));
-    const pluginId = c.req.param("pluginId");
     try {
-      const records = new PluginInstallRecords({ hanakoHome: engine.hanakoHome });
-      const artifacts = new PluginArtifactStore({ hanakoHome: engine.hanakoHome });
-      const pluginsDir = path.join(engine.hanakoHome, "plugins");
-      const coordinator = new PluginSourceSwitchCoordinator({
-        records,
-        artifacts,
-        pluginsDir,
-        runtime: {
-          async unloadActive(id) {
-            await engine.pluginManager?.disablePlugin?.(id)?.catch?.(() => {});
-          },
-          async activateCandidate(input) {
-            // Re-scan/load after active projection swap when plugin manager is present.
-            await engine.pluginManager?.installPlugin?.(input.artifactPath)?.catch?.(() => {});
-            await engine.pluginManager?.enablePlugin?.(input.pluginId)?.catch?.(() => {});
-          },
-          async healthCheck() {
-            return true;
-          },
-        },
-      });
-      const result = await coordinator.switchSource({
-        pluginId,
+      const plan = getNativeMarketplaceLifecycle().planSourceSwitch({
+        pluginId: c.req.param("pluginId"),
         marketplaceId: body.marketplaceId,
-        artifactDigest: body.artifactDigest,
-        version: body.version,
+        ...(typeof body.artifactDigest === "string" ? { artifactDigest: body.artifactDigest } : {}),
+        isStudioOwner: flags.isStudioOwner,
+        ...expectedRegistryPreconditionsFromBody(body),
       });
-      return c.json(result, result.ok ? 200 : 409);
+      return c.json(plan);
     } catch (err: any) {
-      return c.json({
-        error: err.message,
-        code: err.code || "PLUGIN_SOURCE_SWITCH_HEALTH_FAILED",
-      }, err.status || 500);
+      return c.json({ error: err.message, code: err.code }, err.status || 500);
+    }
+  });
+
+  route.post("/plugins/:pluginId/source-switch", async (c) => {
+    const flags = principalFlags(c);
+    const body = await c.req.json().catch(() => ({}));
+    try {
+      const outcome = await getNativeMarketplaceLifecycle().executeSourceSwitch({
+        planToken: body.planToken,
+        confirmation: body.confirmation,
+        isStudioOwner: flags.isStudioOwner,
+      }, async (facts) => {
+        const records = new PluginInstallRecords({ hanakoHome: engine.hanakoHome });
+        const artifacts = new PluginArtifactStore({ hanakoHome: engine.hanakoHome });
+        const pluginsDir = path.join(engine.hanakoHome, "plugins");
+        const coordinator = new PluginSourceSwitchCoordinator({
+          records,
+          artifacts,
+          pluginsDir,
+          quiesce: createInProcessQuiesceHandle(),
+          runtime: {
+            async unloadActive(id) {
+              await engine.pluginManager?.disablePlugin?.(id);
+            },
+            async activateCandidate(input) {
+              const entry = await engine.pluginManager?.installPlugin?.(input.artifactPath, {
+                source: "community",
+                marketplaceInstall: {
+                  marketplaceId: input.marketplaceId,
+                  pluginId: input.pluginId,
+                  artifactDigest: input.artifactDigest,
+                },
+              });
+              if (!entry) {
+                throw Object.assign(new Error("PluginManager did not load the switched source"), {
+                  code: "PLUGIN_SOURCE_SWITCH_HEALTH_FAILED",
+                });
+              }
+              await engine.pluginManager?.enablePlugin?.(input.pluginId);
+              await engine.syncPluginExtensions?.();
+            },
+            async healthCheck(input) {
+              const entry = engine.pluginManager?.findPluginEntry?.({ id: input.pluginId, source: "community" });
+              if (!entry || entry.status !== "loaded") return false;
+              if (entry.hasLifecycle && entry.activationState !== "activated") return false;
+              const marker = readMarketplaceActiveMarker(entry.pluginDir, input.pluginId);
+              if (!marker) return false;
+              return marker.marketplaceId === input.marketplaceId && marker.artifactDigest === input.artifactDigest;
+            },
+            async restorePrevious(input) {
+              const entry = await engine.pluginManager?.installPlugin?.(input.artifactPath, {
+                source: "community",
+                marketplaceInstall: {
+                  marketplaceId: input.marketplaceId,
+                  pluginId: input.pluginId,
+                  artifactDigest: input.artifactDigest,
+                },
+              });
+              if (!entry) {
+                throw Object.assign(new Error("Rollback: PluginManager did not reload the previous source"), {
+                  code: "PLUGIN_SOURCE_SWITCH_ROLLBACK_FAILED",
+                });
+              }
+              await engine.syncPluginExtensions?.();
+            },
+          },
+        });
+        const result = await coordinator.switchSource({
+          pluginId: facts.pluginId,
+          marketplaceId: facts.marketplaceId,
+          ...(facts.artifactDigest ? { artifactDigest: facts.artifactDigest } : {}),
+        });
+        if (!result.ok) {
+          const err: any = new Error(result.error?.message || "source switch failed");
+          err.code = result.error?.code || "PLUGIN_SOURCE_SWITCH_HEALTH_FAILED";
+          err.status = 409;
+          throw err;
+        }
+        return result;
+      });
+      return c.json({ ok: true, identity: outcome.plan.identity, ...outcome.result });
+    } catch (err: any) {
+      return c.json({ error: err.message, code: err.code }, err.status || 409);
     }
   });
 
