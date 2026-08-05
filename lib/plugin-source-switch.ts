@@ -278,34 +278,45 @@ export class PluginSourceSwitchCoordinator {
 
   /**
    * Recover incomplete journals to the last committed pointer before accepting calls.
+   * Fail-closed: a plugin whose rollback cannot be completed keeps its journal so a
+   * later boot retries, and is reported in `failed` instead of aborting recovery of
+   * the remaining plugins.
    */
-  async recoverIncompleteTransactions(): Promise<string[]> {
-    // Install records do not enumerate easily; recovery is per known plugin via get + journal.
-    // Callers pass plugin ids or we scan the records file.
+  async recoverIncompleteTransactions(): Promise<{ recovered: string[]; failed: Array<{ pluginId: string; error: string }> }> {
     const recovered: string[] = [];
+    const failed: Array<{ pluginId: string; error: string }> = [];
     const recordsPath = (this._records as any)._path as string;
-    if (!fs.existsSync(recordsPath)) return recovered;
+    if (!fs.existsSync(recordsPath)) return { recovered, failed };
     let plugins: Record<string, any> = {};
     try {
       plugins = JSON.parse(fs.readFileSync(recordsPath, "utf8")).plugins || {};
     } catch {
-      return recovered;
+      return { recovered, failed };
     }
     for (const [pluginId, record] of Object.entries(plugins)) {
       if (!record?.transaction) continue;
       const previous = record.transaction.previous;
-      if (previous) {
-        await this._rollback(
-          pluginId,
-          previous.marketplaceId,
-          previous.artifactDigest,
-          record,
-        );
+      try {
+        if (previous) {
+          await this._rollback(
+            pluginId,
+            previous.marketplaceId,
+            previous.artifactDigest,
+            record,
+          );
+        } else {
+          const activeDir = path.join(this._pluginsDir, pluginId);
+          fs.rmSync(activeDir, { recursive: true, force: true });
+        }
+        this._records.setTransaction(pluginId, null);
+        recovered.push(pluginId);
+      } catch (err: any) {
+        // Fail closed: keep the journal so a later boot retries; surface diagnostics.
+        const code = err?.code ? `${err.code}: ` : "";
+        failed.push({ pluginId, error: `${code}${err?.message || String(err)}` });
       }
-      this._records.setTransaction(pluginId, null);
-      recovered.push(pluginId);
     }
-    return recovered;
+    return { recovered, failed };
   }
 
   _writeJournal(pluginId: string, journal: PluginSwitchJournal) {
