@@ -2,7 +2,9 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { afterEach, describe, expect, it } from "vitest";
+import { PluginArtifactStore, PLUGIN_ARTIFACTS_DIR } from "../lib/plugin-artifact-store.ts";
 import {
+  MARKETPLACE_SNAPSHOT_CACHE_DIR,
   MarketplaceSnapshotStore,
   type MarketplaceSnapshot,
 } from "../lib/plugin-marketplace-snapshots.ts";
@@ -59,6 +61,12 @@ function buildSnapshot(sourceId: string, catalog: unknown, fingerprint = "f".rep
     fetchedAt: new Date().toISOString(),
     plugins: parsed.plugins,
   };
+}
+
+function writePackage(dir: string, content = "pkg") {
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, "manifest.json"), JSON.stringify({ id: "demo", content }), "utf8");
+  return dir;
 }
 
 describe("strict marketplace catalog schema", () => {
@@ -318,5 +326,56 @@ describe("MarketplaceSnapshotStore", () => {
       marketplaceId: "team-plugins",
       id: "demo",
     });
+  });
+
+  it("skips and diagnoses a stray cache directory instead of failing the listing (finding 11)", () => {
+    const home = makeHome();
+    const store = new MarketplaceSnapshotStore({ hanakoHome: home });
+    fs.mkdirSync(path.join(home, MARKETPLACE_SNAPSHOT_CACHE_DIR, "stray-partial-dir!!"), { recursive: true });
+    expect(store.listCurrentPlugins()).toEqual([]);
+  });
+
+  it("keeps valid snapshot rows when a stray cache directory is present (finding 11)", () => {
+    const home = makeHome();
+    const store = new MarketplaceSnapshotStore({ hanakoHome: home });
+    store.publish("team-plugins", buildSnapshot("team-plugins", sampleCatalog()));
+    fs.mkdirSync(path.join(home, MARKETPLACE_SNAPSHOT_CACHE_DIR, "stray-partial-dir!!"), { recursive: true });
+    const rows = store.listCurrentPlugins();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      marketplaceId: "team-plugins",
+      id: "demo",
+    });
+  });
+});
+
+describe("PluginArtifactStore tolerant listing", () => {
+  it("skips malformed artifact directories in listRetained and isSourceInUse (finding 11)", () => {
+    const home = makeHome();
+    const store = new PluginArtifactStore({ hanakoHome: home });
+    fs.mkdirSync(path.join(home, PLUGIN_ARTIFACTS_DIR, "bad market!!", "some-plugin", "deadbeef"), { recursive: true });
+    fs.mkdirSync(path.join(home, PLUGIN_ARTIFACTS_DIR, "good-market", "bad plugin!!", "deadbeef"), { recursive: true });
+    expect(store.isSourceInUse("good-market")).toBe(false);
+    expect(store.listRetained()).toEqual([]);
+  });
+
+  it("keeps valid artifact rows while skipping malformed artifact directories (finding 11)", () => {
+    const home = makeHome();
+    const store = new PluginArtifactStore({ hanakoHome: home });
+    store.retain({
+      marketplaceId: "good-market",
+      pluginId: "demo",
+      artifactDigest: "a".repeat(64),
+      version: "1.0.0",
+      sourceFingerprint: "1".repeat(64),
+      catalogSha256: "2".repeat(64),
+      packageSha256: "a".repeat(64),
+      packageDir: writePackage(path.join(home, "pkg"), "a"),
+    });
+    fs.mkdirSync(path.join(home, PLUGIN_ARTIFACTS_DIR, "bad market!!"), { recursive: true });
+    fs.mkdirSync(path.join(home, PLUGIN_ARTIFACTS_DIR, "good-market", "bad plugin!!"), { recursive: true });
+    fs.mkdirSync(path.join(home, PLUGIN_ARTIFACTS_DIR, "good-market", "demo", "not-a-digest!!"), { recursive: true });
+    expect(store.isSourceInUse("good-market")).toBe(true);
+    expect(store.listRetained()).toHaveLength(1);
   });
 });

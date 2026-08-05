@@ -3,8 +3,11 @@ import path from "path";
 import { assertMarketplaceId } from "./plugin-marketplace-identity.ts";
 import type { TaggedMarketplacePlugin } from "./plugin-marketplace-schema.ts";
 import { atomicWriteSync } from "../shared/safe-fs.ts";
+import { createModuleLogger } from "./debug-log.ts";
 
 export const MARKETPLACE_SNAPSHOT_CACHE_DIR = "plugin-marketplace-cache";
+
+const snapshotLog = createModuleLogger("plugin-marketplace-snapshots");
 
 export interface MarketplaceSnapshot {
   sourceId: string;
@@ -139,7 +142,13 @@ export class MarketplaceSnapshotStore {
     const rows: TaggedMarketplacePlugin[] = [];
     for (const entry of fs.readdirSync(this._root, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue;
-      const status = this.getStatus(entry.name);
+      let status: MarketplaceSourceStatus;
+      try {
+        status = this.getStatus(entry.name);
+      } catch {
+        snapshotLog.warn(`skipping malformed snapshot cache directory: ${entry.name}`);
+        continue;
+      }
       if (status.state === "ok" || status.state === "stale" || status.state === "refreshing") {
         if (status.current?.plugins) {
           rows.push(...status.current.plugins.map((p) => structuredClone(p)));
