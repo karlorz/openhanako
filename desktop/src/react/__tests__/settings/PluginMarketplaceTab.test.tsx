@@ -1009,4 +1009,54 @@ describe('PluginMarketplaceTab inspector rendering', () => {
     // Package gate status still visible for inspection
     expect(screen.getByText(/Package gate/)).toBeInTheDocument();
   });
+
+  it('runs source switch through plan then execute with registry preconditions', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const planText = 'Switch skillwiki@llm-wiki from custom to llm-wiki? State and trust stay source-isolated.';
+    const retained = catalogPlugin({
+      retained: true,
+      active: false,
+      canInstall: false,
+    });
+    mockHanaFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === '/api/plugins/marketplace/capabilities') {
+        return jsonResponse({ supported: true, features: {}, access: { isStudioOwner: true }, registry: { revision: 7, digest: 'a'.repeat(64) } });
+      }
+      if (url.startsWith('/api/plugins/marketplace/catalog')) {
+        return jsonResponse({ plugins: [retained], sources: [], capabilities: { supported: true, features: {} }, access: { isStudioOwner: true }, registry: { revision: 7, digest: 'a'.repeat(64) } });
+      }
+      if (url === '/api/plugins/marketplace/sources') return jsonResponse({ sources: [] });
+      if (url === '/api/plugins/skillwiki/source-switch/plan') {
+        expect(init?.method).toBe('POST');
+        expect(JSON.parse(String(init?.body))).toEqual({
+          marketplaceId: 'llm-wiki',
+          expectedRevision: 7,
+          expectedDigest: 'a'.repeat(64),
+        });
+        return jsonResponse({ planToken: 'signed-plan-token', confirmationText: planText });
+      }
+      if (url === '/api/plugins/skillwiki/source-switch') {
+        expect(init?.method).toBe('POST');
+        expect(JSON.parse(String(init?.body))).toEqual({
+          marketplaceId: 'llm-wiki',
+          planToken: 'signed-plan-token',
+          confirmation: planText,
+        });
+        return jsonResponse({ ok: true });
+      }
+      if (url.includes('/readme')) return jsonResponse({ markdown: '' });
+      return jsonResponse({});
+    });
+
+    render(<PluginMarketplaceTab />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Switch source' }));
+
+    await waitFor(() => expect(confirmSpy).toHaveBeenCalledWith(planText));
+    await waitFor(() => expect(mockShowToast).toHaveBeenCalledWith('settings.plugins.marketSourceSwitched', 'success'));
+    const switchCalls = mockHanaFetch.mock.calls.filter(([path]) => String(path).includes('/source-switch'));
+    expect(switchCalls.map(([path]) => path)).toEqual([
+      '/api/plugins/skillwiki/source-switch/plan',
+      '/api/plugins/skillwiki/source-switch',
+    ]);
+  });
 });
