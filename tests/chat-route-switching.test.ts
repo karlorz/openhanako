@@ -3064,3 +3064,152 @@ describe("chat route model switch guard", () => {
     handlers.onClose({}, ws);
   });
 });
+
+describe("host owner principal recording (B1-T1)", () => {
+  it("records the host owner principal on the first prompt binding", async () => {
+    let createHandlers;
+    const upgradeWebSocket = vi.fn((factory) => {
+      createHandlers = factory;
+      return () => new Response(null);
+    });
+    const hub = {
+      subscribe: vi.fn(),
+      send: vi.fn(async () => {}),
+    };
+    const engine = {
+      agentName: "Hana",
+      abortAllStreaming: vi.fn(async () => {}),
+      getSessionByPath: vi.fn(() => ({ entries: [] })),
+      getSessionIdForPath: vi.fn(() => "sess_owner_first"),
+      isSessionStreaming: vi.fn(() => false),
+      isSessionSwitching: vi.fn(() => false),
+      steerSession: vi.fn(() => false),
+      slashDispatcher: null,
+      markSessionOwnerPrincipal: vi.fn(),
+    };
+
+    createChatRoute(engine, hub, { upgradeWebSocket });
+    const handlers = createHandlers({
+      authPrincipal: {
+        kind: "local_user",
+        userId: "u1",
+        connectionKind: "local",
+        credentialKind: "loopback_token",
+      },
+    });
+    const ws = { readyState: 1, send: vi.fn() };
+    handlers.onOpen({}, ws);
+    handlers.onMessage({
+      data: JSON.stringify({
+        type: "prompt",
+        text: "hello owner",
+        sessionPath: "/tmp/owner-first.jsonl",
+      }),
+    }, ws);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(engine.markSessionOwnerPrincipal).toHaveBeenCalledWith("/tmp/owner-first.jsonl", {
+      isStudioOwner: true,
+      isLocalOwner: true,
+    });
+    expect(hub.send).toHaveBeenCalledTimes(1);
+  });
+
+  it("records a non-owner principal as all-false on prompt binding", async () => {
+    let createHandlers;
+    const upgradeWebSocket = vi.fn((factory) => {
+      createHandlers = factory;
+      return () => new Response(null);
+    });
+    const hub = {
+      subscribe: vi.fn(),
+      send: vi.fn(async () => {}),
+    };
+    const engine = {
+      agentName: "Hana",
+      abortAllStreaming: vi.fn(async () => {}),
+      getSessionByPath: vi.fn(() => ({ entries: [] })),
+      getSessionIdForPath: vi.fn(() => "sess_owner_nonowner"),
+      isSessionStreaming: vi.fn(() => false),
+      isSessionSwitching: vi.fn(() => false),
+      steerSession: vi.fn(() => false),
+      slashDispatcher: null,
+      markSessionOwnerPrincipal: vi.fn(),
+    };
+
+    createChatRoute(engine, hub, { upgradeWebSocket });
+    // A real HTTP request context: authPrincipal comes from the request, so
+    // the ws client is NOT assumed to be a local owner.
+    const handlers = createHandlers({
+      req: { method: "GET", url: "http://hana.local/ws" },
+      get: (key) => key === "authPrincipal"
+        ? { kind: "device", deviceId: "d1", scopes: ["chat.write"] }
+        : null,
+    });
+    const ws = { readyState: 1, send: vi.fn() };
+    handlers.onOpen({}, ws);
+    handlers.onMessage({
+      data: JSON.stringify({
+        type: "prompt",
+        text: "hello from a device",
+        sessionPath: "/tmp/owner-nonowner.jsonl",
+      }),
+    }, ws);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(engine.markSessionOwnerPrincipal).toHaveBeenCalledWith("/tmp/owner-nonowner.jsonl", {
+      isStudioOwner: false,
+      isLocalOwner: false,
+    });
+    expect(engine.markSessionOwnerPrincipal.mock.calls[0][1].isStudioOwner).toBe(false);
+  });
+
+  it("records the host owner principal on the abort session-state path too", async () => {
+    let createHandlers;
+    const upgradeWebSocket = vi.fn((factory) => {
+      createHandlers = factory;
+      return () => new Response(null);
+    });
+    const hub = {
+      subscribe: vi.fn(),
+      send: vi.fn(async () => {}),
+      abort: vi.fn(async () => true),
+    };
+    const engine = {
+      agentName: "Hana",
+      abortAllStreaming: vi.fn(async () => {}),
+      getSessionByPath: vi.fn(() => ({ entries: [] })),
+      getSessionIdForPath: vi.fn(() => "sess_owner_abort"),
+      isSessionStreaming: vi.fn(() => false),
+      isSessionSwitching: vi.fn(() => false),
+      steerSession: vi.fn(() => false),
+      slashDispatcher: null,
+      markSessionOwnerPrincipal: vi.fn(),
+    };
+
+    createChatRoute(engine, hub, { upgradeWebSocket });
+    const handlers = createHandlers({
+      authPrincipal: {
+        kind: "local_user",
+        userId: "u1",
+        connectionKind: "local",
+        credentialKind: "loopback_token",
+      },
+    });
+    const ws = { readyState: 1, send: vi.fn() };
+    handlers.onOpen({}, ws);
+    handlers.onMessage({
+      data: JSON.stringify({
+        type: "abort",
+        sessionPath: "/tmp/owner-abort.jsonl",
+      }),
+    }, ws);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(engine.markSessionOwnerPrincipal).toHaveBeenCalledWith("/tmp/owner-abort.jsonl", {
+      isStudioOwner: true,
+      isLocalOwner: true,
+    });
+    expect(hub.abort).toHaveBeenCalledWith("/tmp/owner-abort.jsonl", expect.objectContaining({ reason: "user_abort" }));
+  });
+});

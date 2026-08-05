@@ -488,6 +488,21 @@ export function createChatRoute(engine: any, hub: any, { upgradeWebSocket }: any
     return ss;
   }
 
+  // B1-T1: record the connecting client's host owner principal for a session
+  // so tool approval review can resolve it later. Server-derived only
+  // (wsClient principal / request auth principal — never tool params or
+  // client-authored fields). Only recorded when a real principal is known;
+  // non-owner sessions resolve to all-false via the engine fallback.
+  function recordSessionOwnerPrincipal(sessionPath, { wsClient = null, requestContext = null } = {}) {
+    if (!sessionPath) return;
+    const principal = wsClient?.principal || requestContext?.authPrincipal || null;
+    if (!principal) return;
+    engine.markSessionOwnerPrincipal?.(sessionPath, {
+      isStudioOwner: isStudioOwnerPrincipal(principal) || isLocalOwnerPrincipal(principal),
+      isLocalOwner: isLocalOwnerPrincipal(principal),
+    });
+  }
+
   function getExistingState(sessionPath, { wsClient = null, requestContext = null } = {}) {
     if (!sessionPath) return null;
     const key = sessionStateKey(sessionPath);
@@ -500,16 +515,7 @@ export function createChatRoute(engine: any, hub: any, { upgradeWebSocket }: any
       ss.sessionPath = sessionPath;
       ss.lastAccessed = Date.now();
     }
-    // B1-T1: record the connecting client's host owner principal for this
-    // session so tool approval review can resolve it later. Only recorded when
-    // a real principal is known; non-owner sessions resolve to all-false.
-    const principal = wsClient?.principal || requestContext?.authPrincipal || null;
-    if (principal) {
-      engine.markSessionOwnerPrincipal?.(sessionPath, {
-        isStudioOwner: isStudioOwnerPrincipal(principal) || isLocalOwnerPrincipal(principal),
-        isLocalOwner: isLocalOwnerPrincipal(principal),
-      });
-    }
+    recordSessionOwnerPrincipal(sessionPath, { wsClient, requestContext });
     return ss;
   }
 
@@ -1787,6 +1793,7 @@ export function createChatRoute(engine: any, hub: any, { upgradeWebSocket }: any
             if (msg.type === "abort") {
               const abortTarget = requireBoundSessionTarget(msg, ws); if (!abortTarget) return;
               const abortPath = abortTarget.sessionPath;
+              recordSessionOwnerPrincipal(abortPath, { wsClient: client, requestContext });
               const abortSs = getState(abortPath);
               const requestedStreamId = typeof msg.streamId === "string" && msg.streamId.trim()
                 ? msg.streamId.trim()
@@ -1963,6 +1970,7 @@ export function createChatRoute(engine: any, hub: any, { upgradeWebSocket }: any
                 return;
               }
               const { sessionId: compactSessionId, sessionPath: compactPath } = compactTarget;
+              recordSessionOwnerPrincipal(compactPath, { wsClient: client, requestContext });
               const compactResult = (status, details: Record<string, any> = {}) => wsSend(ws, {
                 type: "compaction_result",
                 sessionId: compactSessionId,
@@ -2082,6 +2090,7 @@ export function createChatRoute(engine: any, hub: any, { upgradeWebSocket }: any
               // Phase 2: 客户端可指定 sessionPath，否则用焦点 session
               const promptTarget = requireBoundSessionTarget(msg, ws); if (!promptTarget) return;
               const promptSessionPath = promptTarget.sessionPath;
+              recordSessionOwnerPrincipal(promptSessionPath, { wsClient: client, requestContext });
               if (isDeletedAgentSessionPath(promptSessionPath)) {
                 rejectDeletedAgentSession(ws, promptSessionPath);
                 return;
