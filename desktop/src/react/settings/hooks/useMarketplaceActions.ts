@@ -40,6 +40,7 @@ export interface MarketplaceActionsInput {
   marketplace: MarketplacePayload | null;
   reload: (opts?: { silent?: boolean }) => Promise<void>;
   selectedAgentId: string | null;
+  updateMarketplacePlugin: (key: string, patch: (plugin: MarketplacePlugin) => MarketplacePlugin) => void;
 }
 
 function confirmInstallPlan(plugin: MarketplacePlugin): boolean {
@@ -84,7 +85,7 @@ function confirmSkillsUninstall(plugin: MarketplacePlugin): boolean {
 }
 
 export function useMarketplaceActions(input: MarketplaceActionsInput): MarketplaceActions {
-  const { marketplace, reload, selectedAgentId } = input;
+  const { marketplace, reload, selectedAgentId, updateMarketplacePlugin } = input;
   const showToast = useSettingsStore(s => s.showToast);
   const [busyKey, setBusyKey] = useState<string | null>(null);
 
@@ -323,6 +324,23 @@ export function useMarketplaceActions(input: MarketplaceActionsInput): Marketpla
       return;
     }
 
+    const applyOptimistic = (nextEnabled: boolean) => {
+      updateMarketplacePlugin(rowKey(plugin), (p) => ({
+        ...p,
+        packageActivation: {
+          ...(p.packageActivation || {}),
+          identity,
+          kind: 'marketplace-skill-package',
+          enabled: nextEnabled,
+          state: nextEnabled ? 'enabled' : 'disabled',
+          recorded: true,
+          requested: nextEnabled,
+          reason: nextEnabled ? null : 'marketplace skill package activation is disabled',
+        },
+      }));
+    };
+
+    applyOptimistic(enable);
     setBusyKey(rowKey(plugin));
     const reloadActivationSnapshot = async (): Promise<MarketplaceActivationSnapshot> => {
       const res = await hanaFetch('/api/plugins/marketplace/config');
@@ -347,6 +365,7 @@ export function useMarketplaceActions(input: MarketplaceActionsInput): Marketpla
         result = await writeMarketplaceSkillPackageToggle(await reloadActivationSnapshot(), identity, enable);
         if (result === 'stale') {
           await reload({ silent: true });
+          applyOptimistic(!enable);
           showToast(t('settings.plugins.marketplaceChangedRetry'), 'error');
           return;
         }
@@ -354,6 +373,7 @@ export function useMarketplaceActions(input: MarketplaceActionsInput): Marketpla
       showToast(t('settings.autoSaved'), 'success');
       await reload({ silent: true });
     } catch (err: unknown) {
+      applyOptimistic(!enable);
       showToast(t('settings.saveFailed') + ': ' + (err instanceof Error ? err.message : String(err)), 'error');
     } finally {
       setBusyKey(null);
