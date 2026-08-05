@@ -128,6 +128,9 @@ describe('MarketplacePluginInspector busy semantics', () => {
         'settings.plugins.disableAgentAccess': 'Disable Agent Access',
         'settings.plugins.marketSwitchSource': 'Switch source',
         'settings.plugins.marketPackageGateTitle': 'Package enable (global skill-manager gate)',
+        'settings.plugins.marketUninstallSkills': 'Uninstall skills',
+        'settings.plugins.marketUninstall': 'Uninstall',
+        'settings.plugins.marketInstall': 'Install',
       };
       const template = labels[key];
       if (template === undefined) return key;
