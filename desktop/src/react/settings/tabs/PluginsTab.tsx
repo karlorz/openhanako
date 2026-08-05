@@ -729,6 +729,7 @@ export function PluginsTab() {
 
       {configPlugin && (
         <PluginConfigEditor
+          key={configPlugin.id}
           plugin={configPlugin}
           onClose={closeConfigEditor}
           onSaved={handleConfigSaved}
