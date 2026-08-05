@@ -1,11 +1,12 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   assertPublicHttpsUrl,
   canonicalizeIpAddress,
   isDeniedIpAddress,
+  pinnedLookupFor,
   resolveAndPinPublicHttpsUrl,
   safeFetchText,
   safeFetchBytes,
@@ -195,6 +196,60 @@ describe("network policy", () => {
         maxBytes: 10,
       }),
     ).rejects.toThrow(/limit|bytes|body/i);
+  });
+
+  it("binds the fetch to the validated addresses via a pinned dispatcher (no fresh DNS at connect)", async () => {
+    const fetchImpl = vi.fn(async (_url: string, _init: any) => new Response("ok", { status: 200 }));
+    const createDispatcher = vi.fn((pinned: string[], hostname: string) => ({ pinned, hostname }));
+    const body = await safeFetchText("https://example.org/catalog.json", {
+      fetchImpl,
+      lookup: async () => [{ address: "93.184.216.34", family: 4 }],
+      createDispatcher,
+    });
+    expect(body).toBe("ok");
+    expect(createDispatcher).toHaveBeenCalledWith(["93.184.216.34"], "example.org");
+    const [calledUrl, init] = fetchImpl.mock.calls[0];
+    expect(calledUrl).toBe("https://example.org/catalog.json"); // hostname preserved → SNI + Host intact
+    expect(init.dispatcher).toEqual({ pinned: ["93.184.216.34"], hostname: "example.org" });
+  });
+
+  it("re-pins and revalidates each redirect hop with a fresh dispatcher", async () => {
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(new Response(null, { status: 302, headers: { location: "https://cdn.example.org/catalog.json" } }))
+      .mockResolvedValueOnce(new Response("final", { status: 200 }));
+    const createDispatcher = vi.fn((_pinned: string[], _hostname: string) => ({ kind: "pinned" }));
+    const body = await safeFetchText("https://example.org/catalog.json", {
+      fetchImpl,
+      lookup: async (hostname: string) =>
+        hostname === "example.org"
+          ? [{ address: "93.184.216.34", family: 4 }]
+          : [{ address: "2606:4700:4700::1111", family: 6 }],
+      createDispatcher,
+    });
+    expect(body).toBe("final");
+    expect(createDispatcher).toHaveBeenNthCalledWith(1, ["93.184.216.34"], "example.org");
+    expect(createDispatcher).toHaveBeenNthCalledWith(2, ["2606:4700:4700::1111"], "cdn.example.org");
+  });
+
+  it("aborts the fetch when a redirect target fails re-pinning", async () => {
+    const fetchImpl = vi.fn(async () => new Response(null, { status: 302, headers: { location: "https://private-hop.example.org/catalog.json" } }));
+    await expect(safeFetchText("https://example.org/catalog.json", {
+      fetchImpl,
+      lookup: async (hostname: string) =>
+        hostname === "example.org"
+          ? [{ address: "93.184.216.34", family: 4 }]
+          : [{ address: "10.0.0.1", family: 4 }],
+    })).rejects.toThrow(/private or reserved/);
+  });
+
+  it("builds a lookup that returns only the validated pinned addresses", () => {
+    const lookup = pinnedLookupFor(["93.184.216.34", "2606:4700:4700::1111"]);
+    const callback = vi.fn();
+    lookup("ignored.example.org", { family: 0 }, callback as any);
+    expect(callback).toHaveBeenCalledWith(null, [
+      { address: "93.184.216.34", family: 4 },
+      { address: "2606:4700:4700::1111", family: 6 },
+    ]);
   });
 
   it("fetches bounded release bytes and verifies the exact sha256", async () => {
