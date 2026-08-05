@@ -62,7 +62,29 @@ const REVIEWER_FAILURE_REASON = "Automatic approval review could not produce a v
 const REVIEWER_UNAVAILABLE_REASON = "Automatic approval reviewer unavailable.";
 const MAX_REVIEWER_REASON_LENGTH = 240;
 
-function deterministicDecision(request: any = {}) {
+const MARKETPLACE_OWNER_REQUIRED_RULE = "marketplace-owner-required";
+
+function isOwnerRequiredMutation(request: any = {}) {
+  return request?.sideEffect?.ownerRequired === true
+    || request?.sideEffect?.kind === "marketplace_install"
+    || request?.sideEffect?.kind === "marketplace_uninstall";
+}
+
+function ownerDenial(request: any) {
+  return {
+    action: "hard_deny",
+    reviewer: "policy",
+    reason: "Marketplace mutation requires studio.owner; the host principal is not an owner.",
+    reasonCode: "marketplace_owner_required",
+    risk: "high",
+    ruleIds: [MARKETPLACE_OWNER_REQUIRED_RULE],
+  };
+}
+
+function deterministicDecision(request: any = {}, context: any = {}) {
+  if (isOwnerRequiredMutation(request) && context?.hostOwner?.isStudioOwner !== true) {
+    return ownerDenial(request);
+  }
   if (isDeferredMutationDraft(request)) {
     return policyAllow(request, "Tool action only creates a draft; persistent writes require explicit confirmation.", "automation-draft-no-write");
   }
@@ -472,7 +494,7 @@ export function createApprovalGateway({
 } = {}) {
   return {
     async review(request, context = {}) {
-      const policyDecision = deterministicDecision(request);
+      const policyDecision = deterministicDecision(request, context);
       if (policyDecision) return policyDecision;
 
       const reviewerInput = buildReviewerInput(request, context);
