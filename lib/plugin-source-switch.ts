@@ -9,6 +9,7 @@ import {
 import type { PluginInstallRecords, PluginSwitchJournal } from "./plugin-install-records.ts";
 import type { PluginArtifactStore } from "./plugin-artifact-store.ts";
 import { marketplacePluginKey } from "./plugin-trust-store.ts";
+import { writeMarketplaceActiveMarker } from "./plugin-marketplace-active-marker.ts";
 
 export type PluginSwitchPhase =
   | "preparing"
@@ -186,7 +187,7 @@ export class PluginSourceSwitchCoordinator {
 
       // Materialize active projection plugins/<pluginId>
       const activeDir = path.join(this._pluginsDir, pluginId);
-      await this._stageActiveProjection(artifactPath, activeDir);
+      await this._stageActiveProjection(artifactPath, activeDir, { marketplaceId, pluginId, artifactDigest });
 
       const pluginKey = marketplacePluginKey(marketplaceId, pluginId);
       await this._runtime.activateCandidate({
@@ -311,14 +312,21 @@ export class PluginSourceSwitchCoordinator {
     this._records.setTransaction(pluginId, journal);
   }
 
-  async _stageActiveProjection(artifactPath: string, activeDir: string) {
+  async _stageActiveProjection(
+    artifactPath: string,
+    activeDir: string,
+    marketplace: { marketplaceId: string; pluginId: string; artifactDigest: string },
+  ) {
     const parent = path.dirname(activeDir);
     fs.mkdirSync(parent, { recursive: true });
     const tmp = `${activeDir}.switch-tmp-${process.pid}-${Date.now()}`;
     fs.rmSync(tmp, { recursive: true, force: true });
     fs.cpSync(artifactPath, tmp, { recursive: true });
-    // Drop meta file from active projection if present
+    // Drop the retained-artifact meta file from the active projection.
     fs.rmSync(path.join(tmp, ".hana-artifact.json"), { force: true });
+    // Write the marketplace active marker so PluginManager trust resolution
+    // stays source-qualified (finding 5).
+    writeMarketplaceActiveMarker(tmp, marketplace);
     fs.rmSync(activeDir, { recursive: true, force: true });
     fs.renameSync(tmp, activeDir);
   }
@@ -333,6 +341,8 @@ export class PluginSourceSwitchCoordinator {
       // No previous committed source: leave slot empty
       const activeDir = path.join(this._pluginsDir, pluginId);
       fs.rmSync(activeDir, { recursive: true, force: true });
+      // Remove any stale marker so trust resolution cannot pin a dead source.
+      fs.rmSync(path.join(activeDir, ".hana-marketplace.json"), { force: true });
       return;
     }
     const artifact = this._artifacts.get(previousMarket, pluginId, previousDigest)
@@ -344,7 +354,11 @@ export class PluginSourceSwitchCoordinator {
       });
     }
     const activeDir = path.join(this._pluginsDir, pluginId);
-    await this._stageActiveProjection(artifactPath, activeDir);
+    await this._stageActiveProjection(artifactPath, activeDir, {
+      marketplaceId: previousMarket,
+      pluginId,
+      artifactDigest: previousDigest,
+    });
     const pluginKey = marketplacePluginKey(previousMarket, pluginId);
     if (this._runtime.restorePrevious) {
       await this._runtime.restorePrevious({
