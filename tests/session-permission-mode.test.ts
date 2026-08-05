@@ -73,6 +73,40 @@ describe("session permission modes", () => {
     expect(classifySessionPermission({ mode: "operate", toolName: "browser", context: browserClick })).toEqual({ action: "allow" });
   });
 
+  it("routes ownerRequired invocations to review in Operate mode instead of allowing directly", () => {
+    const invocation = {
+      action: "configure",
+      kind: "review",
+      capability: "plugin_marketplace.configure",
+      target: { type: "setting", id: "plugin-marketplace:sources" },
+      sideEffect: { ownerRequired: true, summary: "mutate" },
+    };
+    const decision = classifySessionPermission({
+      mode: "operate",
+      toolName: "plugin_marketplace",
+      params: { action: "add_source" },
+      context: { toolInvocation: invocation },
+    });
+    expect(decision.action).toBe("review");
+  });
+
+  it("keeps direct Operate allow for non-owner-required review invocations", () => {
+    const invocation = {
+      action: "configure",
+      kind: "review",
+      capability: "plugin_marketplace.configure",
+      target: { type: "setting", id: "plugin-marketplace:sources" },
+      sideEffect: { summary: "mutate" },
+    };
+    const decision = classifySessionPermission({
+      mode: "operate",
+      toolName: "plugin_marketplace",
+      params: { action: "refresh_source" },
+      context: { toolInvocation: invocation },
+    });
+    expect(decision.action).toBe("allow");
+  });
+
   it("classifies terminal inspection, close, and host PTY actions by their real boundary", () => {
     const terminalRead = {
       toolInvocation: { action: "read", kind: "read", capability: "terminal.read" },
