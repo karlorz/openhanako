@@ -7,6 +7,7 @@ import { PluginInstallRecords } from "../lib/plugin-install-records.ts";
 import {
   PluginSourceSwitchCoordinator,
   createInProcessQuiesceHandle,
+  type SwitchRuntimeHooks,
 } from "../lib/plugin-source-switch.ts";
 
 const tempDirs: string[] = [];
@@ -39,6 +40,67 @@ function seedArtifact(store: PluginArtifactStore, home: string, market: string, 
     packageSha256: digest,
     packageDir: pkg,
   });
+}
+
+/**
+ * Shared harness: seeds artifacts A and B (A committed active, B retained),
+ * and returns a coordinator wired to them plus the backing stores/dirs.
+ */
+function makeCoordinator(runtime: Partial<SwitchRuntimeHooks> = {}): {
+  coordinator: PluginSourceSwitchCoordinator;
+  records: PluginInstallRecords;
+  artifacts: PluginArtifactStore;
+  pluginsDir: string;
+  artA: ReturnType<typeof seedArtifact>;
+  artB: ReturnType<typeof seedArtifact>;
+} {
+  const home = makeHome();
+  const pluginsDir = path.join(home, "plugins");
+  const artifacts = new PluginArtifactStore({ hanakoHome: home });
+  const records = new PluginInstallRecords({ hanakoHome: home });
+  const artA = seedArtifact(artifacts, home, "oh-plugins-official", DIGEST_A, "A");
+  const artB = seedArtifact(artifacts, home, "team-plugins", DIGEST_B, "B");
+  for (const [marketplaceId, artifactDigest, artifactPath] of [
+    ["oh-plugins-official", DIGEST_A, artA.artifactPath],
+    ["team-plugins", DIGEST_B, artB.artifactPath],
+  ] as const) {
+    records.retainAndActivate({
+      pluginId: "demo",
+      marketplaceId,
+      artifactDigest,
+      version: "1.0.0",
+      sourceFingerprint: "1".repeat(64),
+      catalogSha256: "2".repeat(64),
+      packageSha256: artifactDigest,
+      artifactPath,
+      action: "install",
+      result: "ok",
+    });
+  }
+  // Reactivate A as the committed active source (B stays retained as candidate).
+  records.retainAndActivate({
+    pluginId: "demo",
+    marketplaceId: "oh-plugins-official",
+    artifactDigest: DIGEST_A,
+    version: "1.0.0",
+    sourceFingerprint: "1".repeat(64),
+    catalogSha256: "2".repeat(64),
+    packageSha256: DIGEST_A,
+    artifactPath: artA.artifactPath,
+    action: "install",
+    result: "ok",
+  });
+  const coordinator = new PluginSourceSwitchCoordinator({
+    records,
+    artifacts,
+    pluginsDir,
+    runtime: {
+      async unloadActive() {},
+      async activateCandidate() {},
+      ...runtime,
+    },
+  });
+  return { coordinator, records, artifacts, pluginsDir, artA, artB };
 }
 
 describe("PluginSourceSwitchCoordinator", () => {
@@ -311,5 +373,101 @@ describe("PluginSourceSwitchCoordinator", () => {
     expect(recovered).toContain("demo");
     expect(records.get("demo")?.transaction).toBeNull();
     expect(records.get("demo")?.activeMarketplaceId).toBe("oh-plugins-official");
+  });
+
+  it("writes the marketplace active marker into the staged projection and restores it on rollback (finding 5)", async () => {
+    let healthy = true;
+    const { coordinator, pluginsDir } = makeCoordinator({
+      async healthCheck() { return healthy; },
+    });
+    const markerPath = path.join(pluginsDir, "demo", ".hana-marketplace.json");
+
+    // Successful switch A -> B (both retained): the staged projection carries
+    // the candidate's exact marketplaceId/pluginId/artifactDigest.
+    const ok = await coordinator.switchSource({
+      pluginId: "demo",
+      marketplaceId: "team-plugins",
+      artifactDigest: DIGEST_B,
+    });
+    expect(ok.ok).toBe(true);
+    expect(JSON.parse(fs.readFileSync(markerPath, "utf8"))).toMatchObject({
+      schemaVersion: 1,
+      marketplaceId: "team-plugins",
+      pluginId: "demo",
+      artifactDigest: DIGEST_B,
+    });
+
+    // Failed switch back to A: rollback re-stages the previous committed
+    // source (B) and restores its marker identity.
+    healthy = false;
+    const failed = await coordinator.switchSource({
+      pluginId: "demo",
+      marketplaceId: "oh-plugins-official",
+      artifactDigest: DIGEST_A,
+    });
+    expect(failed.ok).toBe(false);
+    expect(failed.error?.code).toBe("PLUGIN_SOURCE_SWITCH_HEALTH_FAILED");
+    expect(JSON.parse(fs.readFileSync(markerPath, "utf8"))).toMatchObject({
+      schemaVersion: 1,
+      marketplaceId: "team-plugins",
+      pluginId: "demo",
+      artifactDigest: DIGEST_B,
+    });
+  });
+
+  it("never leaves a .hana-artifact.json inside the active projection after a switch (finding 5)", async () => {
+    const { coordinator, pluginsDir } = makeCoordinator();
+    const result = await coordinator.switchSource({
+      pluginId: "demo",
+      marketplaceId: "team-plugins",
+      artifactDigest: DIGEST_B,
+    });
+    expect(result.ok).toBe(true);
+    // Retained artifacts carry .hana-artifact.json meta; the active projection must not.
+    expect(fs.existsSync(path.join(pluginsDir, "demo", ".hana-artifact.json"))).toBe(false);
+    // Sanity: the projection itself is live and carries the trust marker.
+    expect(fs.existsSync(path.join(pluginsDir, "demo", "manifest.json"))).toBe(true);
+    expect(fs.existsSync(path.join(pluginsDir, "demo", ".hana-marketplace.json"))).toBe(true);
+  });
+
+  it("clears stale marker state when rolling back with no previous source (finding 5)", async () => {
+    const home = makeHome();
+    const pluginsDir = path.join(home, "plugins");
+    const artifacts = new PluginArtifactStore({ hanakoHome: home });
+    const records = new PluginInstallRecords({ hanakoHome: home });
+    seedArtifact(artifacts, home, "team-plugins", DIGEST_B, "B");
+    // Stale active projection from an earlier aborted attempt: no committed
+    // source exists on record, but a marker was left behind.
+    const activeDir = path.join(pluginsDir, "demo");
+    fs.mkdirSync(activeDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(activeDir, ".hana-marketplace.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        marketplaceId: "oh-plugins-official",
+        pluginId: "demo",
+        artifactDigest: DIGEST_A,
+      }),
+      "utf8",
+    );
+
+    const coordinator = new PluginSourceSwitchCoordinator({
+      records,
+      artifacts,
+      pluginsDir,
+      runtime: {
+        async unloadActive() {},
+        async activateCandidate() {},
+        async healthCheck() { return false; },
+      },
+    });
+    const result = await coordinator.switchSource({
+      pluginId: "demo",
+      marketplaceId: "team-plugins",
+      artifactDigest: DIGEST_B,
+    });
+    expect(result.ok).toBe(false);
+    expect(fs.existsSync(activeDir)).toBe(false);
+    expect(fs.existsSync(path.join(activeDir, ".hana-marketplace.json"))).toBe(false);
   });
 });
