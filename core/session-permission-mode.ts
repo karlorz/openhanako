@@ -274,9 +274,9 @@ function classifyResolvedToolInvocation(mode, toolName, context) {
     return { action: "allow" };
   }
   if (mode === SESSION_PERMISSION_MODES.OPERATE) {
-    // Owner-required mutations are never free in operate mode: they must go
-    // through the approval review so the host owner gate can deny non-owner
-    // sessions (B1-T1 plumbing; the full owner gate lands in B1-T3).
+    // Owner-required mutations are never free in operate mode: route them
+    // through the approval review, where the gateway's host-owner gate denies
+    // non-owner sessions and lets the studio owner through.
     if (invocation.sideEffect?.ownerRequired === true) return review(toolName);
     return { action: "allow" };
   }
