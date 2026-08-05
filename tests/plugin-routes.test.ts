@@ -1849,6 +1849,102 @@ describe("plugin management API", () => {
       }
     });
 
+    it("fails with 409 when the loaded candidate lacks a matching marketplace marker, and restores the previous source (finding 4)", async () => {
+      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "hana-source-switch-health-"));
+      try {
+        const service = makeNativeMarketplaceService(tmp);
+        // Installation itself succeeds and returns a loaded, activated entry,
+        // but the loaded entry's pluginDir carries no .hana-marketplace.json
+        // marker — the route's real healthCheck must reject the candidate and
+        // the coordinator must roll back to the previous marketplace-a source.
+        const pmLoadDir = path.join(tmp, "pm-load", "my-plugin");
+        const loadedEntry = () => ({
+          id: "my-plugin",
+          status: "loaded",
+          hasLifecycle: true,
+          activationState: "activated",
+          pluginDir: pmLoadDir,
+        });
+        const installPlugin = vi.fn(async () => loadedEntry());
+        const engine = mockEngine({
+          hanakoHome: tmp,
+          pm: {
+            getUserPluginsDir: () => path.join(tmp, "plugins"),
+            installPlugin,
+            findPluginEntry: ({ id, source }: any) => (source === "community" ? loadedEntry() : null),
+            listPlugins: () => [],
+          },
+        });
+        (engine as any).pluginMarketplaceService = service;
+        const app = createAppWithOwnerPrincipal(engine);
+
+        const planRes = await app.request("/api/plugins/my-plugin/source-switch/plan", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            marketplaceId: "marketplace-b",
+            expectedRevision: service.registry.revision,
+            expectedDigest: service.registry.digest,
+          }),
+        });
+        expect(planRes.status).toBe(200);
+        const plan = await planRes.json();
+
+        const execRes = await app.request("/api/plugins/my-plugin/source-switch", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            marketplaceId: "marketplace-b",
+            planToken: plan.planToken,
+            confirmation: plan.confirmationText,
+          }),
+        });
+        expect(execRes.status).toBe(409);
+        expect(await execRes.json()).toMatchObject({
+          code: "PLUGIN_SOURCE_SWITCH_HEALTH_FAILED",
+          error: "Candidate health check failed",
+        });
+        // Candidate install succeeded (call 1); rollback then re-staged the
+        // previous marketplace-a source through PluginManager (call 2).
+        expect(installPlugin).toHaveBeenCalledTimes(2);
+        expect(installPlugin).toHaveBeenNthCalledWith(1,
+          expect.stringContaining(path.join("plugins", "my-plugin")),
+          expect.objectContaining({
+            source: "community",
+            marketplaceInstall: {
+              marketplaceId: "marketplace-b",
+              pluginId: "my-plugin",
+              artifactDigest: service.digestB,
+            },
+          }),
+        );
+        expect(installPlugin).toHaveBeenNthCalledWith(2,
+          expect.stringContaining(path.join("plugins", "my-plugin")),
+          expect.objectContaining({
+            source: "community",
+            marketplaceInstall: {
+              marketplaceId: "marketplace-a",
+              pluginId: "my-plugin",
+              artifactDigest: service.digestA,
+            },
+          }),
+        );
+        // Rollback leaves the prior marker/projection in place: the active
+        // projection on disk still carries the marketplace-a marker and the
+        // install records still point at marketplace-a as active.
+        const restagedMarker = JSON.parse(
+          fs.readFileSync(path.join(tmp, "plugins", "my-plugin", ".hana-marketplace.json"), "utf8"),
+        );
+        expect(restagedMarker).toMatchObject({ marketplaceId: "marketplace-a", artifactDigest: service.digestA });
+        expect(service.records.get("my-plugin")).toMatchObject({
+          activeMarketplaceId: "marketplace-a",
+          activeArtifactDigest: service.digestA,
+        });
+      } finally {
+        fs.rmSync(tmp, { recursive: true, force: true });
+      }
+    });
+
     it("refuses source-switch plan/execute without a studio owner principal", async () => {
       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "hana-source-switch-owner-"));
       try {
