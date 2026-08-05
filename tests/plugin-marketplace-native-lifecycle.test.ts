@@ -270,4 +270,3 @@ describe("PluginMarketplaceNativeLifecycle", () => {
     expect(executed.result).toEqual({ switched: older });
   });
 });
-

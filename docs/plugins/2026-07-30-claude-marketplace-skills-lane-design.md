@@ -1,8 +1,8 @@
 # Design: Claude Code marketplace browse + skills-lane install (Hana)
 
-**Date:** 2026-07-30  
-**Status:** draft for human review (not yet implemented under this doc)  
-**Branch context:** `dev` (karlorz/openhanako)  
+**Date:** 2026-07-30
+**Status:** draft for human review (not yet implemented under this doc)
+**Branch context:** `dev` (karlorz/openhanako)
 **Related:** multi-source marketplace Approach 1 (`2026-07-29-native-multi-marketplace-support`), `lib/plugin-marketplace-detect.ts` (catalog detect only)
 
 ## 1. Problem statement
@@ -35,8 +35,8 @@ So: **host/connection/owner messaging** and **true Claude install** must both be
 
 ### Success bar (approved: P2 + Approach A)
 
-1. Browse Claude marketplace catalogs in Hana multi-source UI/API.  
-2. Install Claude plugin packages as **Hana user/agent skills** (skills-lane), not as deep Hana runtime plugins.  
+1. Browse Claude marketplace catalogs in Hana multi-source UI/API.
+2. Install Claude plugin packages as **Hana user/agent skills** (skills-lane), not as deep Hana runtime plugins.
 3. Prove end-to-end on **local** connection for `https://github.com/karlorz/llm-wiki` → catalog `skillwiki` + `vault-sync` → install skills from relative package trees.
 
 ## 2. Goals and non-goals
@@ -225,10 +225,10 @@ UI:
 
 **Follow-ups (explicitly deferred):**
 
-- Install for `git-subdir` / github object sources  
-- Claude agents/hooks/MCP mapping  
-- Deep Hana plugin runtime for Claude packages  
-- Boot-seed official snapshot / remote upgrade of sg01  
+- Install for `git-subdir` / github object sources
+- Claude agents/hooks/MCP mapping
+- Deep Hana plugin runtime for Claude packages
+- Boot-seed official snapshot / remote upgrade of sg01
 
 ## 10. Decisions log
 
