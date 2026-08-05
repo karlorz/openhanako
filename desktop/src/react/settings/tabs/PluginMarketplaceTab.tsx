@@ -365,7 +365,7 @@ function confirmInstallPlan(plugin: MarketplacePlugin): boolean {
     warnings.length ? `Warnings:\n${warnings.map(w => `- ${w}`).join('\n')}` : '',
   ].filter(Boolean);
 
-  return window.confirm(`Review this install plan before continuing:\n\n${planLines.join('\n')}\n\nThe connected server owner must approve this mutation.`);
+  return window.confirm(t('settings.plugins.marketInstallPlanReview', { details: planLines.join('\n') }));
 }
 
 function confirmSkillsUninstall(plugin: MarketplacePlugin): boolean {
@@ -826,11 +826,11 @@ export function PluginMarketplaceTab() {
       `Registry revision: ${marketplace?.registry?.revision ?? 'unknown'}`,
       `Registry digest: ${marketplace?.registry?.digest || 'unknown'}`,
     ].join('\n');
-    if (!window.confirm(`${summary}\n\nConfirm this exact source-qualified access change?`)) return;
+    if (!window.confirm(t('settings.plugins.marketAgentAccessConfirm', { summary }))) return;
 
     const snapshot = marketplace?.configDiagnostics?.file?.activations;
     if (!snapshot || typeof snapshot !== 'object') {
-      showToast('Marketplace config is missing activations snapshot; reload before changing Agent Plugin Access.', 'error');
+      showToast(t('settings.plugins.marketAgentAccessSummaryMissing'), 'error');
       return;
     }
     const activations = structuredClone(snapshot);
@@ -856,7 +856,10 @@ export function PluginMarketplaceTab() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data.error) throw new Error(data.error || 'Agent Plugin Access update failed');
-      showToast(`Agent Plugin Access ${nextEnabled ? 'enabled' : 'disabled'} for ${identity}`, 'success');
+      showToast(t('settings.plugins.marketAgentAccessUpdated', {
+        state: nextEnabled ? 'enabled' : 'disabled',
+        identity,
+      }), 'success');
       await loadMarketplace({ silent: true });
     } catch (err: unknown) {
       showToast(err instanceof Error ? err.message : String(err), 'error');
@@ -996,8 +999,8 @@ export function PluginMarketplaceTab() {
           <div className={styles['plugin-marketplace-summary-main']}>
             <div className={styles['plugin-marketplace-scope-heading']}>
               <div>
-                <h3 id="marketplace-server-scope">Server runtime &amp; sources</h3>
-                <p>One server-owned registry and shared catalog for every connected desktop and Agent.</p>
+                <h3 id="marketplace-server-scope">{t('settings.plugins.marketServerRuntimeSources')}</h3>
+                <p>{t('settings.plugins.marketSummaryScope')}</p>
               </div>
               <span className={styles['skills-source-badge']}>
                 {marketplace?.capabilities?.supported === false ? 'Unsupported server' : t('settings.plugins.marketSupportedServer')}
@@ -1013,13 +1016,13 @@ export function PluginMarketplaceTab() {
           </div>
           <div className={styles['plugin-marketplace-summary-agent']} aria-labelledby="marketplace-agent-scope">
             <label className={styles['plugin-marketplace-agent-select']}>
-              <span id="marketplace-agent-scope">Selected-Agent Plugin Access</span>
+              <span id="marketplace-agent-scope">{t('settings.plugins.marketSummaryAgentAccess')}</span>
               <select
                 value={selectedAgentId || ''}
                 onChange={(event) => setSelectedAgentId(event.target.value || null)}
-                aria-label="Agent for native plugin access"
+                aria-label={t('settings.plugins.marketAgentForNativeAccess')}
               >
-                {!selectedAgentId && <option value="">Select an Agent</option>}
+                {!selectedAgentId && <option value="">{t('settings.plugins.marketSummarySelectAgent')}</option>}
                 {agents.map(agent => <option key={agent.id} value={agent.id}>{agent.name || agent.id}</option>)}
               </select>
             </label>
@@ -1102,7 +1105,7 @@ export function PluginMarketplaceTab() {
                             )}
                             {plugin.retained && !plugin.active && (
                               <span className={marketplaceBadgeClassName}>
-                                retained
+                                {t('settings.plugins.marketRetainedBadge')}
                               </span>
                             )}
                             {plugin.updateAvailable && (
@@ -1174,7 +1177,7 @@ export function PluginMarketplaceTab() {
                                   className={styles['settings-save-btn-sm']}
                                   onClick={() => set({ activeTab: 'skills' })}
                                 >
-                                  Manage in Skills
+                                  {t('settings.plugins.skillPackageManageInSkills')}
                                 </button>
                               )}
                               {isInstalledSkillsPackage(selectedPlugin)
@@ -1254,7 +1257,7 @@ export function PluginMarketplaceTab() {
                                     }
                                   }}
                                 >
-                                  Switch source
+                                  {t('settings.plugins.marketSwitchSource')}
                                 </button>
                               )}
                             </div>
@@ -1322,7 +1325,7 @@ export function PluginMarketplaceTab() {
                             )}
                             {isInstalledSkillsPackage(selectedPlugin) && (
                               <div className={styles['plugin-marketplace-plan']}>
-                                <span>Package gate</span>
+                                <span>{t('settings.plugins.marketPackageGate')}</span>
                                 <strong>
                                   {packageGateEnabled(
                                     selectedPlugin,
@@ -1340,13 +1343,13 @@ export function PluginMarketplaceTab() {
                             )}
                             {isSkillsTarget(selectedPlugin.installTarget) && (
                               <div className={styles['plugin-marketplace-plan']}>
-                                <span>Activation route</span>
-                                <strong>Skills Settings / Agent Skill Toggles (not Native Plugins)</strong>
+                                <span>{t('settings.plugins.marketActivationRoute')}</span>
+                                <strong>{t('settings.plugins.marketActivationRouteValue')}</strong>
                               </div>
                             )}
                             {selectedPlugin.installPlan && (
                               <div className={styles['plugin-marketplace-plan']}>
-                                <span>Install Plan</span>
+                                <span>{t('settings.plugins.marketInstallPlan')}</span>
                                 <strong>
                                   {[
                                     selectedPlugin.installPlan.action || 'install',
@@ -1412,33 +1415,33 @@ export function PluginMarketplaceTab() {
 
         {marketplace && marketplace.capabilities?.supported !== false && (
           <details className={styles['plugin-marketplace-advanced']}>
-            <summary>Claude compatibility &amp; advanced JSON configuration</summary>
+            <summary>{t('settings.plugins.marketAdvancedJsonConfig')}</summary>
             <div className={styles['plugin-marketplace-advanced-body']}>
               <section aria-labelledby="marketplace-json-config">
-                <h3 id="marketplace-json-config">Configuration-as-code diagnostics</h3>
+                <h3 id="marketplace-json-config">{t('settings.plugins.marketConfigAsCodeDiagnostics')}</h3>
                 <p className={styles['settings-form-hint']}>
                   Advanced owner/operator view only. Use normal source and access controls for routine changes; direct JSON edits are revision-checked and keep the last-known-good state when invalid.
                 </p>
                 <div className={styles['plugin-marketplace-inspector']}>
                   <div className={styles['plugin-marketplace-property-row']}>
-                    <span>Status</span>
+                    <span>{t('settings.plugins.marketConfigStatus')}</span>
                     <strong>{marketplace.configDiagnostics?.degraded ? 'Invalid edit · last-known-good active' : 'Valid'}</strong>
                   </div>
                   <div className={styles['plugin-marketplace-property-row']}>
-                    <span>Server-local path</span>
+                    <span>{t('settings.plugins.marketServerLocalPath')}</span>
                     <code translate="no">{marketplace.configDiagnostics?.path || marketplace.registry?.path || 'Unavailable'}</code>
                   </div>
                   <div className={styles['plugin-marketplace-property-row']}>
-                    <span>Last valid revision</span>
+                    <span>{t('settings.plugins.marketLastValidRevision')}</span>
                     <strong>{marketplace.configDiagnostics?.summary?.revision ?? marketplace.registry?.revision ?? '—'}</strong>
                   </div>
                   <div className={styles['plugin-marketplace-property-row']}>
-                    <span>Digest</span>
+                    <span>{t('settings.plugins.marketDigest')}</span>
                     <code translate="no">{marketplace.configDiagnostics?.digest || marketplace.registry?.digest || '—'}</code>
                   </div>
                   {configDiagnostics.length > 0 && (
                     <div className={styles['plugin-marketplace-warnings']} role="status">
-                      <span>Diagnostics &amp; repair guidance</span>
+                      <span>{t('settings.plugins.marketDiagnosticsRepairGuidance')}</span>
                       <ul>
                         {configDiagnostics.map((diagnostic, index) => (
                           <li key={`${diagnostic.code || 'diagnostic'}-${index}`}>
@@ -1452,12 +1455,12 @@ export function PluginMarketplaceTab() {
               </section>
 
               <section aria-labelledby="marketplace-claude-bindings">
-                <h3 id="marketplace-claude-bindings">Claude compatibility bindings</h3>
+                <h3 id="marketplace-claude-bindings">{t('settings.plugins.marketClaudeCompatBindings')}</h3>
                 <p className={styles['settings-form-hint']}>
                   Live, mirror, and snapshot bindings read only explicitly authorized paths. Secret-bearing settings, hooks, MCP/LSP, commands, binaries, lifecycle scripts, monitors, and permission policy are excluded before state is stored or shown.
                 </p>
                 {compatibilityBindings.length === 0 ? (
-                  <p className={styles['settings-muted-note']}>No compatibility bindings configured.</p>
+                  <p className={styles['settings-muted-note']}>{t('settings.plugins.marketNoCompatBindings')}</p>
                 ) : (
                   <div className={styles['plugin-marketplace-binding-list']}>
                     {compatibilityBindings.map(item => (
@@ -1478,7 +1481,7 @@ export function PluginMarketplaceTab() {
                           </div>
                         ))}
                         <div className={styles['plugin-marketplace-property-row']}>
-                          <span>Last-valid digest</span>
+                          <span>{t('settings.plugins.marketLastValidDigest')}</span>
                           <code translate="no">{item.state?.digest || '—'}</code>
                         </div>
                         {item.diagnostic && (
@@ -1489,7 +1492,7 @@ export function PluginMarketplaceTab() {
                         )}
                         {(item.state?.warnings || []).length > 0 && (
                           <div className={styles['plugin-marketplace-warnings']} role="status">
-                            <span>Sanitized exclusions</span>
+                            <span>{t('settings.plugins.marketSanitizedExclusions')}</span>
                             <ul>
                               {item.state!.warnings!.map((warning, index) => (
                                 <li key={`${warning.code || warning.category}-${index}`}>{warning.message || warning.code}</li>
