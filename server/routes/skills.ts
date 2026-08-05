@@ -548,10 +548,8 @@ export function createSkillsRoute(engine) {
         const visibleSet = new Set(skills.map(s => s.name));
         const filtered = enabled.filter(name => visibleSet.has(name));
         const config = readAgentConfig(id);
-        const rawEnabled = Array.isArray(config?.skills?.enabled) ? config.skills.enabled : [];
         const ordinaryEnabled = filtered.filter(name => !skillByName.get(name)?.marketplacePackage);
-        const packageNames = rawEnabled.filter(name => skillByName.get(name)?.marketplacePackage);
-        const nextEnabled = [...new Set([...ordinaryEnabled, ...packageNames])];
+        const nextEnabled = [...new Set(ordinaryEnabled)];
         let marketplaceOverrides;
         for (const name of filtered) {
           const skill = skillByName.get(name);
