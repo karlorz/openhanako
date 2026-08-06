@@ -270,3 +270,11 @@ exact fixture identities.
 8. For remote path confusion, remember that catalog/local/compatibility paths belong to the server and may be redacted on the client.
 
 External repositories used in verification are fixtures only. They are not Hana product defaults, allowlist entries, dependencies, or required handbook examples.
+
+## PR #4 review status (2026-08-05)
+
+The read-only review of [karlorz/openhanako PR #4](https://github.com/karlorz/openhanako/pull/4), exact range `992e640e550741b9d46534b105f6a445ab6d8a7b..6d424bff7aa2ed2d2420449c59f09e29523b085f`, is **request changes / not merge-ready**. See [`docs/plugins/2026-08-05-pr4-marketplace-review.md`](2026-08-05-pr4-marketplace-review.md) for the complete severity-ranked findings, fork/upstream relation tables, and verification evidence.
+
+The review confirms the intended ordinary boundaries: native Hana plugins remain owned by `PluginManager`; Claude marketplace packages remain Hana skills; source-qualified marketplace state, full activation snapshots, package gates, and the dedicated skill uninstall route remain the canonical contracts. It also records unresolved blockers in the Agent owner gate, public-HTTPS address validation, and native source-switch authority/provenance/recovery. No upstream issue is claimed as fixed by overlap, and the fork's LAN/auth, build-identity, sync-policy, installer, and sg01 operational behavior remains fork-owned.
+
+The report's isolated server smoke runs are explicitly recorded as unavailable rather than passing: the pre-existing dev launcher overwrites an injected `HANA_HOME`, and the harness could not observe an isolated `server-info.json`. Do not use the report as evidence of a successful live marketplace lifecycle until fresh isolated runs pass.
