@@ -4935,7 +4935,17 @@
         },
         {
           "root": "server-bootstrap",
+          "from": "lib/plugin-marketplace-snapshots.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
           "from": "lib/plugin-install-records.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
+          "from": "lib/plugin-artifact-store.ts",
           "kind": "import-statement"
         },
         {
@@ -5021,6 +5031,11 @@
         {
           "root": "server-bootstrap",
           "from": "core/first-run.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
+          "from": "server/routes/plugins-marketplace.ts",
           "kind": "import-statement"
         },
         {
@@ -5229,7 +5244,7 @@
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by core/migrations.ts (import-statement); core/plugin-config.ts (import-statement); lib/desk/cron-store.ts (import-statement); +81 more importer(s)."
+      "reason": "Reached via esbuild source module graph, imported by core/migrations.ts (import-statement); core/plugin-config.ts (import-statement); lib/desk/cron-store.ts (import-statement); +84 more importer(s)."
     },
     {
       "path": "lib/default-models.json",
@@ -5665,11 +5680,16 @@
         },
         {
           "root": "server-bootstrap",
+          "from": "server/routes/plugins-marketplace.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
           "from": "server/routes/plugins.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by lib/pi-sdk/search-tools.ts (import-statement); lib/skills/skill-package-installer.ts (import-statement); server/routes/plugins.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by lib/pi-sdk/search-tools.ts (import-statement); lib/skills/skill-package-installer.ts (import-statement); server/routes/plugins-marketplace.ts (import-statement); +1 more importer(s)."
     },
     {
       "path": "lib/file-history/file-history-service.ts",
@@ -7577,11 +7597,16 @@
         },
         {
           "root": "server-bootstrap",
-          "from": "server/routes/plugins.ts",
+          "from": "core/engine.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
+          "from": "server/routes/plugins-marketplace.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by lib/plugin-marketplace-service.ts (import-statement); server/routes/plugins.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by lib/plugin-marketplace-service.ts (import-statement); core/engine.ts (import-statement); server/routes/plugins-marketplace.ts (import-statement)."
     },
     {
       "path": "lib/plugin-format-guard.ts",
@@ -7606,11 +7631,16 @@
       "provenance": [
         {
           "root": "server-bootstrap",
+          "from": "server/routes/plugins-marketplace.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
           "from": "server/routes/plugins.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by server/routes/plugins.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by server/routes/plugins-marketplace.ts (import-statement); server/routes/plugins.ts (import-statement)."
     },
     {
       "path": "lib/plugin-install-records.ts",
@@ -7628,11 +7658,11 @@
         },
         {
           "root": "server-bootstrap",
-          "from": "server/routes/plugins.ts",
+          "from": "server/routes/plugins-marketplace.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by lib/plugin-marketplace-service.ts (import-statement); core/engine.ts (import-statement); server/routes/plugins.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by lib/plugin-marketplace-service.ts (import-statement); core/engine.ts (import-statement); server/routes/plugins-marketplace.ts (import-statement)."
     },
     {
       "path": "lib/plugin-marketplace-activation.ts",
@@ -7640,7 +7670,7 @@
       "provenance": [
         {
           "root": "server-bootstrap",
-          "from": "lib/plugin-marketplace-service.ts",
+          "from": "lib/plugin-marketplace-catalog.ts",
           "kind": "import-statement"
         },
         {
@@ -7649,7 +7679,7 @@
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by lib/plugin-marketplace-service.ts (import-statement); core/engine.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by lib/plugin-marketplace-catalog.ts (import-statement); core/engine.ts (import-statement)."
     },
     {
       "path": "lib/plugin-marketplace-active-marker.ts",
@@ -7662,14 +7692,36 @@
         },
         {
           "root": "server-bootstrap",
+          "from": "lib/plugin-source-switch.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
+          "from": "server/routes/plugins-marketplace.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
           "from": "server/routes/plugins.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by core/plugin-manager.ts (import-statement); server/routes/plugins.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by core/plugin-manager.ts (import-statement); lib/plugin-source-switch.ts (import-statement); server/routes/plugins-marketplace.ts (import-statement); +1 more importer(s)."
     },
     {
       "path": "lib/plugin-marketplace-adapters.ts",
+      "inputType": "source-graph",
+      "provenance": [
+        {
+          "root": "server-bootstrap",
+          "from": "lib/plugin-marketplace-service.ts",
+          "kind": "import-statement"
+        }
+      ],
+      "reason": "Reached via esbuild source module graph, imported by lib/plugin-marketplace-service.ts (import-statement)."
+    },
+    {
+      "path": "lib/plugin-marketplace-catalog.ts",
       "inputType": "source-graph",
       "provenance": [
         {
@@ -7686,6 +7738,11 @@
       "provenance": [
         {
           "root": "server-bootstrap",
+          "from": "lib/plugin-marketplace-catalog.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
           "from": "lib/plugin-marketplace-service.ts",
           "kind": "import-statement"
         },
@@ -7700,7 +7757,7 @@
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by lib/plugin-marketplace-service.ts (import-statement); lib/plugin-marketplace-service.ts (dynamic-import); core/engine.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by lib/plugin-marketplace-catalog.ts (import-statement); lib/plugin-marketplace-service.ts (import-statement); lib/plugin-marketplace-service.ts (dynamic-import); +1 more importer(s)."
     },
     {
       "path": "lib/plugin-marketplace-detect.ts",
@@ -7797,11 +7854,6 @@
         },
         {
           "root": "server-bootstrap",
-          "from": "lib/plugin-marketplace-resolve.ts",
-          "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
           "from": "lib/plugin-install-records.ts",
           "kind": "import-statement"
         },
@@ -7812,12 +7864,22 @@
         },
         {
           "root": "server-bootstrap",
+          "from": "lib/plugin-marketplace-claude-skills.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
+          "from": "lib/plugin-marketplace-resolve.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
           "from": "lib/plugin-marketplace-activation.ts",
           "kind": "import-statement"
         },
         {
           "root": "server-bootstrap",
-          "from": "lib/plugin-marketplace-claude-skills.ts",
+          "from": "lib/plugin-marketplace-catalog.ts",
           "kind": "import-statement"
         },
         {
@@ -7832,7 +7894,7 @@
         },
         {
           "root": "server-bootstrap",
-          "from": "lib/tools/plugin-marketplace-tool.ts",
+          "from": "lib/tools/plugin-marketplace-shared.ts",
           "kind": "import-statement"
         },
         {
@@ -7841,7 +7903,7 @@
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by lib/plugin-marketplace-active-marker.ts (import-statement); lib/plugin-trust-store.ts (import-statement); lib/marketplace-skill-preferences.ts (import-statement); +15 more importer(s)."
+      "reason": "Reached via esbuild source module graph, imported by lib/plugin-marketplace-active-marker.ts (import-statement); lib/plugin-trust-store.ts (import-statement); lib/marketplace-skill-preferences.ts (import-statement); +16 more importer(s)."
     },
     {
       "path": "lib/plugin-marketplace-inspector.ts",
@@ -7849,12 +7911,12 @@
       "provenance": [
         {
           "root": "server-bootstrap",
-          "from": "lib/plugin-marketplace-service.ts",
+          "from": "lib/plugin-marketplace-catalog.ts",
           "kind": "import-statement"
         },
         {
           "root": "server-bootstrap",
-          "from": "lib/tools/plugin-marketplace-tool.ts",
+          "from": "lib/tools/plugin-marketplace-shared.ts",
           "kind": "import-statement"
         },
         {
@@ -7864,11 +7926,11 @@
         },
         {
           "root": "server-bootstrap",
-          "from": "server/routes/plugins.ts",
+          "from": "server/routes/plugins-marketplace.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by lib/plugin-marketplace-service.ts (import-statement); lib/tools/plugin-marketplace-tool.ts (import-statement); lib/plugin-marketplace-native-lifecycle.ts (import-statement); +1 more importer(s)."
+      "reason": "Reached via esbuild source module graph, imported by lib/plugin-marketplace-catalog.ts (import-statement); lib/tools/plugin-marketplace-shared.ts (import-statement); lib/plugin-marketplace-native-lifecycle.ts (import-statement); +1 more importer(s)."
     },
     {
       "path": "lib/plugin-marketplace-native-lifecycle.ts",
@@ -7876,11 +7938,11 @@
       "provenance": [
         {
           "root": "server-bootstrap",
-          "from": "server/routes/plugins.ts",
+          "from": "server/routes/plugins-marketplace.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by server/routes/plugins.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by server/routes/plugins-marketplace.ts (import-statement)."
     },
     {
       "path": "lib/plugin-marketplace-network-policy.ts",
@@ -7913,12 +7975,12 @@
         },
         {
           "root": "server-bootstrap",
-          "from": "server/routes/plugins.ts",
+          "from": "server/routes/plugins-marketplace.ts",
           "kind": "import-statement"
         },
         {
           "root": "server-bootstrap",
-          "from": "server/routes/plugins.ts",
+          "from": "server/routes/plugins-marketplace.ts",
           "kind": "dynamic-import"
         }
       ],
@@ -7947,11 +8009,11 @@
       "provenance": [
         {
           "root": "server-bootstrap",
-          "from": "lib/plugin-marketplace-service.ts",
+          "from": "lib/plugin-marketplace-catalog.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by lib/plugin-marketplace-service.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by lib/plugin-marketplace-catalog.ts (import-statement)."
     },
     {
       "path": "lib/plugin-marketplace-schema.ts",
@@ -7971,7 +8033,7 @@
       "provenance": [
         {
           "root": "server-bootstrap",
-          "from": "lib/tools/plugin-marketplace-tool.ts",
+          "from": "lib/tools/plugin-marketplace-shared.ts",
           "kind": "import-statement"
         },
         {
@@ -7981,11 +8043,11 @@
         },
         {
           "root": "server-bootstrap",
-          "from": "server/routes/plugins.ts",
+          "from": "server/routes/plugins-marketplace.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by lib/tools/plugin-marketplace-tool.ts (import-statement); core/engine.ts (import-statement); server/routes/plugins.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by lib/tools/plugin-marketplace-shared.ts (import-statement); core/engine.ts (import-statement); server/routes/plugins-marketplace.ts (import-statement)."
     },
     {
       "path": "lib/plugin-marketplace-skill-runtime.ts",
@@ -7993,21 +8055,21 @@
       "provenance": [
         {
           "root": "server-bootstrap",
+          "from": "lib/tools/plugin-marketplace-shared.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
           "from": "lib/plugin-marketplace-skill-uninstall.ts",
           "kind": "import-statement"
         },
         {
           "root": "server-bootstrap",
-          "from": "lib/tools/plugin-marketplace-tool.ts",
-          "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
-          "from": "server/routes/plugins.ts",
+          "from": "server/routes/plugins-marketplace.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by lib/plugin-marketplace-skill-uninstall.ts (import-statement); lib/tools/plugin-marketplace-tool.ts (import-statement); server/routes/plugins.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by lib/tools/plugin-marketplace-shared.ts (import-statement); lib/plugin-marketplace-skill-uninstall.ts (import-statement); server/routes/plugins-marketplace.ts (import-statement)."
     },
     {
       "path": "lib/plugin-marketplace-skill-uninstall.ts",
@@ -8015,16 +8077,16 @@
       "provenance": [
         {
           "root": "server-bootstrap",
-          "from": "lib/tools/plugin-marketplace-tool.ts",
+          "from": "lib/tools/plugin-marketplace-actions.ts",
           "kind": "import-statement"
         },
         {
           "root": "server-bootstrap",
-          "from": "server/routes/plugins.ts",
+          "from": "server/routes/plugins-marketplace.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by lib/tools/plugin-marketplace-tool.ts (import-statement); server/routes/plugins.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by lib/tools/plugin-marketplace-actions.ts (import-statement); server/routes/plugins-marketplace.ts (import-statement)."
     },
     {
       "path": "lib/plugin-marketplace-snapshots.ts",
@@ -8054,16 +8116,21 @@
         },
         {
           "root": "server-bootstrap",
-          "from": "lib/tools/plugin-marketplace-tool.ts",
+          "from": "lib/tools/plugin-marketplace-shared.ts",
           "kind": "import-statement"
         },
         {
           "root": "server-bootstrap",
-          "from": "server/routes/plugins.ts",
+          "from": "lib/tools/plugin-marketplace-actions.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
+          "from": "server/routes/plugins-marketplace.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by lib/plugin-marketplace-resolve.ts (import-statement); lib/plugin-marketplace-service.ts (import-statement); lib/tools/plugin-marketplace-tool.ts (import-statement); +1 more importer(s)."
+      "reason": "Reached via esbuild source module graph, imported by lib/plugin-marketplace-resolve.ts (import-statement); lib/plugin-marketplace-service.ts (import-statement); lib/tools/plugin-marketplace-shared.ts (import-statement); +2 more importer(s)."
     },
     {
       "path": "lib/plugin-marketplace.ts",
@@ -8076,26 +8143,14 @@
         },
         {
           "root": "server-bootstrap",
-          "from": "server/routes/plugins.ts",
+          "from": "server/routes/plugins-marketplace.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by lib/plugin-marketplace-sources.ts (import-statement); server/routes/plugins.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by lib/plugin-marketplace-sources.ts (import-statement); server/routes/plugins-marketplace.ts (import-statement)."
     },
     {
       "path": "lib/plugin-source-switch.ts",
-      "inputType": "source-graph",
-      "provenance": [
-        {
-          "root": "server-bootstrap",
-          "from": "server/routes/plugins.ts",
-          "kind": "import-statement"
-        }
-      ],
-      "reason": "Reached via esbuild source module graph, imported by server/routes/plugins.ts (import-statement)."
-    },
-    {
-      "path": "lib/plugin-trust-store.ts",
       "inputType": "source-graph",
       "provenance": [
         {
@@ -8105,16 +8160,33 @@
         },
         {
           "root": "server-bootstrap",
+          "from": "server/routes/plugins-marketplace.ts",
+          "kind": "import-statement"
+        }
+      ],
+      "reason": "Reached via esbuild source module graph, imported by core/engine.ts (import-statement); server/routes/plugins-marketplace.ts (import-statement)."
+    },
+    {
+      "path": "lib/plugin-trust-store.ts",
+      "inputType": "source-graph",
+      "provenance": [
+        {
+          "root": "server-bootstrap",
           "from": "lib/plugin-source-switch.ts",
           "kind": "import-statement"
         },
         {
           "root": "server-bootstrap",
-          "from": "server/routes/plugins.ts",
+          "from": "core/engine.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
+          "from": "server/routes/plugins-marketplace.ts",
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by core/engine.ts (import-statement); lib/plugin-source-switch.ts (import-statement); server/routes/plugins.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by lib/plugin-source-switch.ts (import-statement); core/engine.ts (import-statement); server/routes/plugins-marketplace.ts (import-statement)."
     },
     {
       "path": "lib/plugin-versioning.ts",
@@ -10417,6 +10489,35 @@
       "reason": "Reached via esbuild source module graph, imported by core/agent.ts (import-statement)."
     },
     {
+      "path": "lib/tools/plugin-marketplace-actions.ts",
+      "inputType": "source-graph",
+      "provenance": [
+        {
+          "root": "server-bootstrap",
+          "from": "lib/tools/plugin-marketplace-tool.ts",
+          "kind": "import-statement"
+        }
+      ],
+      "reason": "Reached via esbuild source module graph, imported by lib/tools/plugin-marketplace-tool.ts (import-statement)."
+    },
+    {
+      "path": "lib/tools/plugin-marketplace-shared.ts",
+      "inputType": "source-graph",
+      "provenance": [
+        {
+          "root": "server-bootstrap",
+          "from": "lib/tools/plugin-marketplace-actions.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
+          "from": "lib/tools/plugin-marketplace-tool.ts",
+          "kind": "import-statement"
+        }
+      ],
+      "reason": "Reached via esbuild source module graph, imported by lib/tools/plugin-marketplace-actions.ts (import-statement); lib/tools/plugin-marketplace-tool.ts (import-statement)."
+    },
+    {
       "path": "lib/tools/plugin-marketplace-tool.ts",
       "inputType": "source-graph",
       "provenance": [
@@ -10628,6 +10729,16 @@
         },
         {
           "root": "server-bootstrap",
+          "from": "lib/tools/plugin-marketplace-shared.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
+          "from": "lib/tools/plugin-marketplace-actions.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
           "from": "lib/tools/plugin-marketplace-tool.ts",
           "kind": "import-statement"
         },
@@ -10667,7 +10778,7 @@
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by lib/tools/browser-tool.ts (import-statement); lib/tools/computer-use-tool.ts (import-statement); lib/tools/plugin-marketplace-tool.ts (import-statement); +7 more importer(s)."
+      "reason": "Reached via esbuild source module graph, imported by lib/tools/browser-tool.ts (import-statement); lib/tools/computer-use-tool.ts (import-statement); lib/tools/plugin-marketplace-shared.ts (import-statement); +9 more importer(s)."
     },
     {
       "path": "lib/tools/tool-session.ts",
@@ -109995,7 +110106,12 @@
       "provenance": [
         {
           "root": "server-bootstrap",
-          "from": "lib/tools/plugin-marketplace-tool.ts",
+          "from": "lib/tools/plugin-marketplace-shared.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
+          "from": "lib/tools/plugin-marketplace-actions.ts",
           "kind": "import-statement"
         },
         {
@@ -110005,7 +110121,7 @@
         },
         {
           "root": "server-bootstrap",
-          "from": "server/routes/plugins.ts",
+          "from": "server/routes/plugins-marketplace.ts",
           "kind": "import-statement"
         },
         {
@@ -110039,7 +110155,7 @@
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by lib/tools/plugin-marketplace-tool.ts (import-statement); lib/tools/update-settings-tool.ts (import-statement); server/routes/plugins.ts (import-statement); +6 more importer(s)."
+      "reason": "Reached via esbuild source module graph, imported by lib/tools/plugin-marketplace-shared.ts (import-statement); lib/tools/plugin-marketplace-actions.ts (import-statement); lib/tools/update-settings-tool.ts (import-statement); +7 more importer(s)."
     },
     {
       "path": "server/block-extractors.ts",
@@ -110504,6 +110620,11 @@
       "provenance": [
         {
           "root": "server-bootstrap",
+          "from": "server/routes/plugins-marketplace.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
           "from": "server/routes/plugins.ts",
           "kind": "import-statement"
         },
@@ -110520,6 +110641,11 @@
         {
           "root": "server-bootstrap",
           "from": "server/routes/mobile-workbench.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
+          "from": "server/routes/chat.ts",
           "kind": "import-statement"
         },
         {
@@ -110548,7 +110674,7 @@
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by server/routes/plugins.ts (import-statement); server/http/request-principal.ts (import-statement); server/http/capability-guard.ts (import-statement); +6 more importer(s)."
+      "reason": "Reached via esbuild source module graph, imported by server/routes/plugins-marketplace.ts (import-statement); server/routes/plugins.ts (import-statement); server/http/request-principal.ts (import-statement); +8 more importer(s)."
     },
     {
       "path": "server/http/security-audit.ts",
@@ -110969,9 +111095,26 @@
       "reason": "Reached via esbuild source module graph, imported by server/composition/open-root.ts (import-statement)."
     },
     {
+      "path": "server/routes/plugins-marketplace.ts",
+      "inputType": "source-graph",
+      "provenance": [
+        {
+          "root": "server-bootstrap",
+          "from": "server/routes/plugins.ts",
+          "kind": "import-statement"
+        }
+      ],
+      "reason": "Reached via esbuild source module graph, imported by server/routes/plugins.ts (import-statement)."
+    },
+    {
       "path": "server/routes/plugins.ts",
       "inputType": "source-graph",
       "provenance": [
+        {
+          "root": "server-bootstrap",
+          "from": "server/routes/plugins-marketplace.ts",
+          "kind": "import-statement"
+        },
         {
           "root": "server-bootstrap",
           "from": "server/composition/open-root.ts",
@@ -110983,7 +111126,7 @@
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by server/composition/open-root.ts (import-statement); server/index.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by server/routes/plugins-marketplace.ts (import-statement); server/composition/open-root.ts (import-statement); server/index.ts (import-statement)."
     },
     {
       "path": "server/routes/preferences.ts",
@@ -113786,9 +113929,9 @@
     }
   ],
   "stats": {
-    "totalFiles": 9682,
+    "totalFiles": 9686,
     "byInputType": {
-      "source-graph": 704,
+      "source-graph": 708,
       "runtime-asset": 11,
       "nft-runtime-trace": 8967
     }
