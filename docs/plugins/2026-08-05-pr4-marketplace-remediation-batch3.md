@@ -114,6 +114,75 @@ Extracted modules remain focused: `useMarketplaceData.ts` 377, `useMarketplaceAc
 - Remaining review notes are Minor and recorded in the SDD ledger: pre-existing Marketplace bridge/skills-uninstall copy outside the approved localization scope, cosmetic logger/manifest-order notes, and soft line-target/unused-interface notes.
 - Existing Marketplace test files remained unchanged where the task contracts required them to remain frozen.
 
+## Final merge-ready gates
+
+The post-remediation final gates were completed on 2026-08-05 without changing
+GitHub, the PR, `dev`, `main`, remote branches, or `sg01`:
+
+### Isolated real-entry Marketplace lifecycle smokes
+
+Both disposable real-entry homes completed the full lifecycle in both
+permission modes:
+
+```text
+list_sources → add_source → refresh_source → source toggles
+→ catalog/inspect → plan_install/install → inventory
+→ package toggles → plan_uninstall/uninstall → remove_source
+```
+
+- Home A: `/tmp/hana-marketplace-probe-YxHFpP`, port `14613`.
+- Home B: `/tmp/hana-marketplace-probe-b-qShiPY`, port `14612`.
+- `auto`: automatic-review evidence was recorded for owner-reviewed mutations.
+- `operate`: the same lifecycle completed without reviewer confirmations.
+- Both runs verified persisted permission/access metadata, no active source, installed package, or skill residue, activation restoration, and unchanged native PluginManager inventory. The smoke harness intentionally retains source snapshot/cache generations as non-installed acquisition evidence; those cache directories are not active source, package, or skill state. Both temporary servers were stopped and ports `14612`/`14613` were free afterward.
+
+### Late smoke-task reconciliation
+
+A later standalone invocation of `node scripts/hana-agent-marketplace-smoke.mjs` exited with code 1 because it was run after the isolated server had already stopped; the disposable home had no live `server-info.json` to connect to. This was a harness-lifecycle/setup failure, not a Marketplace lifecycle result. The server was relaunched on port `14612`, and the smoke was rerun fresh on 2026-08-05. The rerun exited 0 and returned `ok: true` for both `auto` and `operate`, with all 15 ordered actions, owner-review/access evidence, cleanup, activation restoration, and native-inventory preservation verified. The retained Marketplace cache directories were classified as expected non-installed snapshot evidence rather than residue.
+
+### Attended macOS desktop smoke
+
+The freshly installed local `/Applications/HanaAgent.app` was exercised
+against a disposable isolated `HANA_HOME` through the packaged UI:
+
+1. Added a temporary server-local Marketplace source through Settings →
+   Plugins.
+2. Opened Plugin Marketplace, inspected the Claude-compatible package, and
+   installed it through the displayed install plan confirmation.
+3. Verified the installed package appeared under Manage Plugins as a **Hana
+   skills** row with the source-qualified identity and enabled global gate.
+4. Toggled the package off and verified the row reported **disabled globally**.
+5. Toggled it back on and verified the row reported **enabled**.
+6. Uninstalled the package through Manage Plugins using the displayed uninstall
+   plan confirmation.
+7. Removed the temporary Marketplace source and verified Manage Plugins again
+   showed **No plugins installed** while the native PluginManager inventory
+   remained empty and the native folder/ZIP dropzone remained visible.
+
+The temporary skill directory and package record were absent after uninstall;
+the temporary source was removed before shutdown. Native HyperFrames remained a
+catalog-only native PluginManager package and was not installed or mutated.
+
+### Final source/tests/build evidence
+
+- Final Marketplace/security/skill/desktop/engine regression suite: **35 files, 643 tests passed**.
+- `npm run typecheck`: passed.
+- `git diff --check`: passed.
+- `npm run lint`: exit 0, 0 errors; repository warning debt remains non-blocking.
+- `npm run build:client`: passed.
+- `npm run build:server`: passed.
+- `SKIP_NOTARIZE=true npm run install:local`: passed.
+- `codesign --verify --deep --strict --verbose=2 /Applications/HanaAgent.app`:
+  passed.
+- Installed bundle metadata reported `channel: local`, source repository
+  `karlorz/openhanako`, and the intended local build SHA.
+
+A final local diff review covered the four remediation code/test files and this
+evidence section after the fresh test/build/install gates; no actionable defect
+was found. Two delegated read-only review workers were cancelled after
+exceeding their bounded runtime without producing a verdict. No integration
+action is authorized by this evidence.
+
 ## Scope and safety statement
 
 - No GitHub, pull request, remote branch, `dev`, `main`, or `sg01` state was changed.
