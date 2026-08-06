@@ -904,6 +904,7 @@ export const PERSISTENT_STORES: readonly StoreDescriptor[] = Object.freeze([
     siteRules: [
       ...rules(["lib/plugin-install-backups.ts", "lib/plugin-install-records.ts", "lib/plugin-artifact-store.ts", "lib/plugin-trust-store.ts", "lib/plugin-marketplace-sources.ts", "lib/plugin-marketplace-snapshots.ts", "lib/plugin-marketplace-git-cache.ts", "lib/plugin-marketplace-claude-skills.ts", "lib/plugin-marketplace-active-marker.ts", "lib/claude-compatibility.ts", "lib/plugin-source-switch.ts"], "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state."),
       ...rules(["server/routes/plugins.ts"], "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.", ["mkdir", "copy-file", "rename", "remove-path"], "(?:userPluginsDir|pluginSrc|stagedDir|targetDir|pluginDir|extractDir|tmpTarget)"),
+      ...rules(["server/routes/plugins-marketplace.ts"], "Removes an installed plugin directory during marketplace uninstall.", ["remove-path"], "pluginDir"),
     ],
   }),
   defineStore({
@@ -1336,11 +1337,11 @@ export const PERSISTENT_STORES: readonly StoreDescriptor[] = Object.freeze([
   }),
   defineStore({
     id: "plugin-download-cache",
-    ownerModule: "server/routes/plugins.ts",
+    ownerModule: "server/routes/plugins-marketplace.ts",
     pathPatterns: ["plugin-install-sources/{pluginId}/{version}"],
     pathKind: "tree",
     format: "binary-cache",
-    schemaSource: directorySource("server/routes/plugins.ts", "verified plugin release ZIP naming by pluginId/version and expected sha256"),
+    schemaSource: directorySource("server/routes/plugins-marketplace.ts", "verified plugin release ZIP naming by pluginId/version and expected sha256"),
     openEntry: ["downloadMarketplacePluginRelease"],
     firstPossibleOpenPhase: "runtime_ready",
     firstPossibleWritePhase: "runtime_ready",
@@ -1349,7 +1350,7 @@ export const PERSISTENT_STORES: readonly StoreDescriptor[] = Object.freeze([
     restorePolicy: "Re-verify sha256 before reuse, otherwise delete and redownload.",
     affectedByEpochMigration: false,
     identityContract: "pluginId/version identify the source generation; ZIP path is a verified cache locator.",
-    siteRules: rules(["server/routes/plugins.ts"], "Caches a sha256-verified plugin release package.", ["mkdir", "write-file"], "(?:downloadsDir|packagePath)"),
+    siteRules: rules(["server/routes/plugins-marketplace.ts"], "Caches a sha256-verified plugin release package.", ["mkdir", "write-file"], "(?:downloadsDir|packagePath)"),
   }),
 ]);
 
@@ -1468,6 +1469,15 @@ export const PERSISTENCE_EXEMPTIONS: readonly PersistenceExemption[] = Object.fr
     "2026-10-31",
     ["remove-path"],
     "cleanupPath",
+  ),
+  exemption(
+    "marketplace-retain-temp-extract-cleanup",
+    "server/routes/plugins-marketplace.ts",
+    "server/routes/plugins-marketplace.ts",
+    "OS temp extraction directory used to unpack a verified plugin release ZIP before artifact retainment; deleted in the finally block and never persisted under HANA_HOME.",
+    "2026-10-31",
+    ["remove-path"],
+    "extractDir",
   ),
   exemption(
     "in-memory-confirm-registry",

@@ -476,6 +476,17 @@
       "sourceFile": "core/local-user-account.ts"
     },
     {
+      "expiresOn": "2026-10-31",
+      "id": "marketplace-retain-temp-extract-cleanup",
+      "kinds": [
+        "remove-path"
+      ],
+      "linePattern": "extractDir",
+      "ownerModule": "server/routes/plugins-marketplace.ts",
+      "reason": "OS temp extraction directory used to unpack a verified plugin release ZIP before artifact retainment; deleted in the finally block and never persisted under HANA_HOME.",
+      "sourceFile": "server/routes/plugins-marketplace.ts"
+    },
+    {
       "expiresOn": "2027-01-31",
       "id": "sandbox-command-output",
       "kinds": [
@@ -668,7 +679,7 @@
     ],
     "version": 3
   },
-  "payloadFingerprint": "sha256:f15555bc5d1a546e1dbae4a6ee7c99a9f1f5164efad480ac31feaa552b6bba99",
+  "payloadFingerprint": "sha256:8eeb5c27adf360fd8691351b8d231117a0efd94ece790068d1bff7a4b2b5c00f",
   "registry": [
     {
       "affectedByEpochMigration": true,
@@ -2018,7 +2029,7 @@
       "openEntry": [
         "downloadMarketplacePluginRelease"
       ],
-      "ownerModule": "server/routes/plugins.ts",
+      "ownerModule": "server/routes/plugins-marketplace.ts",
       "pathExclusions": [],
       "pathKind": "tree",
       "pathPattern": "plugin-install-sources/{pluginId}/{version}",
@@ -2031,12 +2042,12 @@
       "schemaContract": {
         "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs.",
         "kind": "protocol",
-        "source": "server/routes/plugins.ts"
+        "source": "server/routes/plugins-marketplace.ts"
       },
       "schemaSource": {
         "contract": "verified plugin release ZIP naming by pluginId/version and expected sha256",
         "kind": "directory-contract",
-        "module": "server/routes/plugins.ts"
+        "module": "server/routes/plugins-marketplace.ts"
       }
     },
     {
@@ -3132,8 +3143,8 @@
   ],
   "review": {
     "classification": "compatible",
-    "compatibilityReason": "Registers the marketplace active-marker and plugin temp-extraction persistence sites under the installed-plugins store while preserving the existing config and installed-plugin store schemas and byte interpretation.",
-    "payloadFingerprint": "sha256:f15555bc5d1a546e1dbae4a6ee7c99a9f1f5164efad480ac31feaa552b6bba99"
+    "compatibilityReason": "Preserves the existing data epoch and persisted byte interpretation while repointing plugin-download-cache ownership after marketplace route decomposition and registering the marketplace uninstall and temporary-extraction cleanup persistence sites.",
+    "payloadFingerprint": "sha256:8eeb5c27adf360fd8691351b8d231117a0efd94ece790068d1bff7a4b2b5c00f"
   },
   "schemas": [
     {
@@ -3462,8 +3473,8 @@
     {
       "contract": "verified plugin release ZIP naming by pluginId/version and expected sha256",
       "kind": "directory-contract",
-      "module": "server/routes/plugins.ts",
-      "sourceHash": "sha256:6dc1fdbaccbc29b39d00a3d245a18c9886404d09aa930c81ca666875a24fc0fd",
+      "module": "server/routes/plugins-marketplace.ts",
+      "sourceHash": "sha256:5bd9262fcd23fd60c49bb70e528425c02e1f1161f9d869472586f745797ddbae",
       "storeId": "plugin-download-cache"
     },
     {
@@ -3554,7 +3565,7 @@
         {
           "contract": "core/session-coordinator.ts Hana metadata extensions",
           "module": "core/session-coordinator.ts",
-          "sourceHash": "sha256:befa6ed5ba569b898bb16394be922eba2a5e511bc0407fb73f4265fb0ef99c0f"
+          "sourceHash": "sha256:291a514e737ea1d628aa554a7f58bad4962c4abc71996d575b4f7789c1473343"
         },
         {
           "contract": "core/session-jsonl-file.ts repair contract",
@@ -8272,7 +8283,23 @@
     {
       "exemptionId": null,
       "kind": "remove-path",
+      "ordinal": 0,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-source-switch.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
       "ordinal": 1,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-source-switch.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "ordinal": 2,
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
       "sourceFile": "lib/plugin-source-switch.ts",
       "storeId": "installed-plugins"
@@ -9503,6 +9530,38 @@
     },
     {
       "exemptionId": null,
+      "kind": "mkdir",
+      "ordinal": 0,
+      "reason": "Caches a sha256-verified plugin release package.",
+      "sourceFile": "server/routes/plugins-marketplace.ts",
+      "storeId": "plugin-download-cache"
+    },
+    {
+      "exemptionId": "marketplace-retain-temp-extract-cleanup",
+      "kind": "remove-path",
+      "ordinal": 0,
+      "reason": "OS temp extraction directory used to unpack a verified plugin release ZIP before artifact retainment; deleted in the finally block and never persisted under HANA_HOME.",
+      "sourceFile": "server/routes/plugins-marketplace.ts",
+      "storeId": null
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "ordinal": 0,
+      "reason": "Removes an installed plugin directory during marketplace uninstall.",
+      "sourceFile": "server/routes/plugins-marketplace.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "write-file",
+      "ordinal": 0,
+      "reason": "Caches a sha256-verified plugin release package.",
+      "sourceFile": "server/routes/plugins-marketplace.ts",
+      "storeId": "plugin-download-cache"
+    },
+    {
+      "exemptionId": null,
       "kind": "copy-file",
       "ordinal": 0,
       "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
@@ -9513,14 +9572,6 @@
       "exemptionId": null,
       "kind": "mkdir",
       "ordinal": 0,
-      "reason": "Caches a sha256-verified plugin release package.",
-      "sourceFile": "server/routes/plugins.ts",
-      "storeId": "plugin-download-cache"
-    },
-    {
-      "exemptionId": null,
-      "kind": "mkdir",
-      "ordinal": 0,
       "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
       "sourceFile": "server/routes/plugins.ts",
       "storeId": "installed-plugins"
@@ -9550,28 +9601,12 @@
       "storeId": "installed-plugins"
     },
     {
-      "exemptionId": null,
-      "kind": "remove-path",
-      "ordinal": 0,
-      "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
-      "sourceFile": "server/routes/plugins.ts",
-      "storeId": "installed-plugins"
-    },
-    {
       "exemptionId": "conditional-plugin-install-cleanup",
       "kind": "remove-path",
       "ordinal": 1,
       "reason": "One bounded cleanup list contains both HANA_HOME .installing staging and operating-system extraction temp; flow-sensitive attribution must replace this exact conditional site.",
       "sourceFile": "server/routes/plugins.ts",
       "storeId": null
-    },
-    {
-      "exemptionId": null,
-      "kind": "remove-path",
-      "ordinal": 1,
-      "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
-      "sourceFile": "server/routes/plugins.ts",
-      "storeId": "installed-plugins"
     },
     {
       "exemptionId": null,
@@ -9588,14 +9623,6 @@
       "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
       "sourceFile": "server/routes/plugins.ts",
       "storeId": "installed-plugins"
-    },
-    {
-      "exemptionId": null,
-      "kind": "write-file",
-      "ordinal": 0,
-      "reason": "Caches a sha256-verified plugin release package.",
-      "sourceFile": "server/routes/plugins.ts",
-      "storeId": "plugin-download-cache"
     },
     {
       "exemptionId": null,

@@ -1382,7 +1382,7 @@
     },
     {
       "id": "plugin-download-cache",
-      "ownerModule": "server/routes/plugins.ts",
+      "ownerModule": "server/routes/plugins-marketplace.ts",
       "pathPattern": "plugin-install-sources/{pluginId}/{version}",
       "pathPatterns": [
         "plugin-install-sources/{pluginId}/{version}"
@@ -1392,12 +1392,12 @@
       "format": "binary-cache",
       "schemaSource": {
         "kind": "directory-contract",
-        "module": "server/routes/plugins.ts",
+        "module": "server/routes/plugins-marketplace.ts",
         "contract": "verified plugin release ZIP naming by pluginId/version and expected sha256"
       },
       "schemaContract": {
         "kind": "protocol",
-        "source": "server/routes/plugins.ts",
+        "source": "server/routes/plugins-marketplace.ts",
         "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs."
       },
       "openEntry": [
@@ -7641,6 +7641,24 @@
     {
       "sourceFile": "lib/plugin-source-switch.ts",
       "kind": "remove-path",
+      "excerpt": "fs.rmSync(activeDir, { recursive: true, force: true })",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null,
+      "ordinal": 2
+    },
+    {
+      "sourceFile": "lib/plugin-source-switch.ts",
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(path.join(activeDir, \".hana-marketplace.json\"), { force: true })",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null,
+      "ordinal": 0
+    },
+    {
+      "sourceFile": "lib/plugin-source-switch.ts",
+      "kind": "remove-path",
       "excerpt": "fs.rmSync(path.join(tmp, \".hana-artifact.json\"), { force: true })",
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
       "storeId": "installed-plugins",
@@ -9034,20 +9052,47 @@
       "ordinal": 0
     },
     {
-      "sourceFile": "server/routes/plugins.ts",
-      "kind": "copy-file",
-      "excerpt": "fs.cpSync(pluginSrc, tmpTarget, { recursive: true })",
-      "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
+      "sourceFile": "server/routes/plugins-marketplace.ts",
+      "kind": "mkdir",
+      "excerpt": "fs.mkdirSync(downloadsDir, { recursive: true })",
+      "reason": "Caches a sha256-verified plugin release package.",
+      "storeId": "plugin-download-cache",
+      "exemptionId": null,
+      "ordinal": 0
+    },
+    {
+      "sourceFile": "server/routes/plugins-marketplace.ts",
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(extractDir, { recursive: true, force: true })",
+      "reason": "OS temp extraction directory used to unpack a verified plugin release ZIP before artifact retainment; deleted in the finally block and never persisted under HANA_HOME.",
+      "storeId": null,
+      "exemptionId": "marketplace-retain-temp-extract-cleanup",
+      "ordinal": 0
+    },
+    {
+      "sourceFile": "server/routes/plugins-marketplace.ts",
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(pluginDir, { recursive: true, force: true })",
+      "reason": "Removes an installed plugin directory during marketplace uninstall.",
       "storeId": "installed-plugins",
       "exemptionId": null,
       "ordinal": 0
     },
     {
-      "sourceFile": "server/routes/plugins.ts",
-      "kind": "mkdir",
-      "excerpt": "fs.mkdirSync(downloadsDir, { recursive: true })",
+      "sourceFile": "server/routes/plugins-marketplace.ts",
+      "kind": "write-file",
+      "excerpt": "fs.writeFileSync(packagePath, body)",
       "reason": "Caches a sha256-verified plugin release package.",
       "storeId": "plugin-download-cache",
+      "exemptionId": null,
+      "ordinal": 0
+    },
+    {
+      "sourceFile": "server/routes/plugins.ts",
+      "kind": "copy-file",
+      "excerpt": "fs.cpSync(pluginSrc, tmpTarget, { recursive: true })",
+      "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
+      "storeId": "installed-plugins",
       "exemptionId": null,
       "ordinal": 0
     },
@@ -9081,29 +9126,11 @@
     {
       "sourceFile": "server/routes/plugins.ts",
       "kind": "remove-path",
-      "excerpt": "fs.rmSync(extractDir, { recursive: true, force: true })",
-      "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
-      "storeId": "installed-plugins",
-      "exemptionId": null,
-      "ordinal": 0
-    },
-    {
-      "sourceFile": "server/routes/plugins.ts",
-      "kind": "remove-path",
       "excerpt": "fs.rmSync(pluginDir, { recursive: true, force: true })",
       "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
       "storeId": "installed-plugins",
       "exemptionId": null,
       "ordinal": 0
-    },
-    {
-      "sourceFile": "server/routes/plugins.ts",
-      "kind": "remove-path",
-      "excerpt": "fs.rmSync(pluginDir, { recursive: true, force: true })",
-      "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
-      "storeId": "installed-plugins",
-      "exemptionId": null,
-      "ordinal": 1
     },
     {
       "sourceFile": "server/routes/plugins.ts",
@@ -9129,15 +9156,6 @@
       "excerpt": "fs.renameSync(stagedDir, targetDir)",
       "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
       "storeId": "installed-plugins",
-      "exemptionId": null,
-      "ordinal": 0
-    },
-    {
-      "sourceFile": "server/routes/plugins.ts",
-      "kind": "write-file",
-      "excerpt": "fs.writeFileSync(packagePath, body)",
-      "reason": "Caches a sha256-verified plugin release package.",
-      "storeId": "plugin-download-cache",
       "exemptionId": null,
       "ordinal": 0
     },
@@ -10525,6 +10543,17 @@
         "secret-write"
       ],
       "linePattern": "(?:path[.]dirname\\(filePath\\)|writeSecretFileSync\\(filePath)"
+    },
+    {
+      "id": "marketplace-retain-temp-extract-cleanup",
+      "ownerModule": "server/routes/plugins-marketplace.ts",
+      "sourceFile": "server/routes/plugins-marketplace.ts",
+      "reason": "OS temp extraction directory used to unpack a verified plugin release ZIP before artifact retainment; deleted in the finally block and never persisted under HANA_HOME.",
+      "expiresOn": "2026-10-31",
+      "kinds": [
+        "remove-path"
+      ],
+      "linePattern": "extractDir"
     },
     {
       "id": "sandbox-command-output",
