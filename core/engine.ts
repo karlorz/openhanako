@@ -2791,7 +2791,7 @@ export class HanaEngine {
       if (!tool?.execute) return tool;
       return {
         ...tool,
-        execute: (toolCallId, params, signalOrRuntimeCtx, onUpdate, piCtx) => {
+        execute: (toolCallId, params, signalOrRuntimeCtx, onUpdate, piCtx, ...rest) => {
           const { ctx: runtimeCtx } = normalizeToolRuntimeContext(signalOrRuntimeCtx, piCtx);
           const runtimeSessionPath = runtimeCtx?.sessionPath
             || getToolSessionPath(runtimeCtx)
@@ -2810,14 +2810,14 @@ export class HanaEngine {
             agentId,
             ...executionScope,
           };
-          return tool.execute(toolCallId, params, signalOrRuntimeCtx, onUpdate, mergedCtx);
+          return tool.execute(toolCallId, params, signalOrRuntimeCtx, onUpdate, mergedCtx, ...rest);
         },
       };
     };
     const runtimeCustomTools = ct.map(withRuntimeContext);
     const wrappedPluginTools = pluginTools.map(t => ({
       ...t,
-      execute: (toolCallId, params, signalOrRuntimeCtx, onUpdate, piCtx) => {
+      execute: (toolCallId, params, signalOrRuntimeCtx, onUpdate, piCtx, ...rest) => {
         const { ctx: runtimeCtx } = normalizeToolRuntimeContext(signalOrRuntimeCtx, piCtx);
         const runtimeSessionPath = runtimeCtx?.sessionPath
           || getToolSessionPath(runtimeCtx)
@@ -2836,7 +2836,7 @@ export class HanaEngine {
           agentId,
           ...executionScope,
         };
-        return t.execute(toolCallId, params, signalOrRuntimeCtx, onUpdate, mergedCtx);
+        return t.execute(toolCallId, params, signalOrRuntimeCtx, onUpdate, mergedCtx, ...rest);
       },
     }));
     const pluginDevTools = this._pluginDevService && this._prefs.getPluginDevToolsEnabled?.() === true

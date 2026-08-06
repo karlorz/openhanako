@@ -1031,4 +1031,59 @@ describe("HanaEngine.buildTools", () => {
       "plugin_dev_run_scenario",
     ]));
   });
+
+  it("forwards the owner approval context through plugin tool runtime wrappers", async () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-build-tools-owner-context-"));
+    const agentDir = path.join(tmpDir, "agents", "focus");
+    const sessionPath = path.join(tmpDir, "sessions", "owner.jsonl");
+    const pluginTool = {
+      name: "plugin_marketplace",
+      sessionPermission: {
+        resolveInvocation: () => ({
+          action: "configure",
+          kind: "review",
+          capability: "plugin_marketplace.configure",
+          target: { type: "setting", id: "plugin-marketplace:sources" },
+          sideEffect: { ownerRequired: true, summary: "mutate" },
+        }),
+      },
+      execute: vi.fn(async (_toolCallId, _params, ...args) => ({
+        hostOwner: args.at(-1)?.hostOwner || null,
+      })),
+    };
+    const engine = Object.create(HanaEngine.prototype);
+    const agent = { id: "focus", agentDir, config: {}, tools: [] };
+    engine.hanakoHome = tmpDir;
+    engine.getAgent = vi.fn(() => agent);
+    engine._pluginManager = { getAllTools: () => [pluginTool] };
+    engine._pluginDevService = null;
+    engine._prefs = { getFileBackup: () => ({ enabled: false }) };
+    engine._readPreferences = () => ({ sandbox: true });
+    engine._approvalGateway = {
+      review: vi.fn(async () => ({ action: "allow", reviewer: "policy", reason: "owner" })),
+    };
+    engine._confirmStore = null;
+    engine._emitEvent = vi.fn();
+    engine._agentMgr = { agent };
+
+    const { customTools } = engine.buildTools(tmpDir, [], {
+      agentDir,
+      workspace: tmpDir,
+      getPermissionMode: () => "auto",
+      getSessionPath: () => sessionPath,
+      getSessionRef: () => ({ sessionId: "session-owner", sessionPath }),
+      getSessionIdForPath: () => "session-owner",
+      resolveSessionOwnerPrincipal: async () => ({ isStudioOwner: true, isLocalOwner: true }),
+    });
+    const tool = customTools.find((candidate) => candidate.name === "plugin_marketplace");
+    expect(tool).toBeDefined();
+
+    const result = await tool.execute("call-owner-context", { action: "add_source" }, null, null, {
+      sessionId: "session-owner",
+      sessionPath,
+    });
+
+    expect(result.hostOwner).toEqual({ isStudioOwner: true, isLocalOwner: true });
+    expect(pluginTool.execute).toHaveBeenCalledOnce();
+  });
 });
