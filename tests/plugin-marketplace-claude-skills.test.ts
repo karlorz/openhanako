@@ -344,8 +344,10 @@ describe("provenance-checked uninstall (finding 12)", () => {
   });
 
   it("fails closed when the digest cannot be read and leaves the record unresolved", () => {
-    // Permission-based read failure cannot be simulated when running as root.
+    // Permission-based read failure cannot be simulated when running as root
+    // or on Windows (chmod 0o000 does not prevent reads on NTFS).
     if (typeof process.geteuid === "function" && process.geteuid() === 0) return;
+    if (process.platform === "win32") return;
     const home = makeTemp("provenance-readerr-home-");
     const skillsDir = path.join(home, "skills");
     writeSkill(path.join(skillsDir, "wiki-skill"), "wiki-skill");
@@ -371,7 +373,9 @@ describe("provenance-checked uninstall (finding 12)", () => {
       expect(fs.existsSync(path.join(skillsDir, "wiki-skill"))).toBe(true);
       expect(readClaudeSkillsInstallRecord(home, "llm-wiki", "skillwiki")?.skills).toEqual(["wiki-skill"]);
     } finally {
-      fs.chmodSync(path.join(skillsDir, "wiki-skill"), 0o755);
+      if (fs.existsSync(path.join(skillsDir, "wiki-skill"))) {
+        fs.chmodSync(path.join(skillsDir, "wiki-skill"), 0o755);
+      }
     }
   });
 });
