@@ -441,6 +441,17 @@
       "sourceFile": "core/local-user-account.ts"
     },
     {
+      "expiresOn": "2026-10-31",
+      "id": "marketplace-retain-temp-extract-cleanup",
+      "kinds": [
+        "remove-path"
+      ],
+      "linePattern": "extractDir",
+      "ownerModule": "server/routes/plugins-marketplace.ts",
+      "reason": "OS temp extraction directory used to unpack a verified plugin release ZIP before artifact retainment; deleted in the finally block and never persisted under HANA_HOME.",
+      "sourceFile": "server/routes/plugins-marketplace.ts"
+    },
+    {
       "expiresOn": "2027-01-31",
       "id": "sandbox-command-output",
       "kinds": [
@@ -627,7 +638,7 @@
     ],
     "version": 2
   },
-  "payloadFingerprint": "sha256:efb484001e8cc09c8779cd13774f2188b5f0d47b69a31d9067bb8fd4966723c3",
+  "payloadFingerprint": "sha256:0deb7d797ea919c0a950b2d99b35fc9fd4811257a663f4bbfe0107864d11d578",
   "registry": [
     {
       "affectedByEpochMigration": true,
@@ -1776,7 +1787,7 @@
       "openEntry": [
         "downloadMarketplacePluginRelease"
       ],
-      "ownerModule": "server/routes/plugins.ts",
+      "ownerModule": "server/routes/plugins-marketplace.ts",
       "pathExclusions": [],
       "pathKind": "tree",
       "pathPattern": "plugin-install-sources/{pluginId}/{version}",
@@ -1789,12 +1800,12 @@
       "schemaContract": {
         "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs.",
         "kind": "protocol",
-        "source": "server/routes/plugins.ts"
+        "source": "server/routes/plugins-marketplace.ts"
       },
       "schemaSource": {
         "contract": "verified plugin release ZIP naming by pluginId/version and expected sha256",
         "kind": "directory-contract",
-        "module": "server/routes/plugins.ts"
+        "module": "server/routes/plugins-marketplace.ts"
       }
     },
     {
@@ -2889,8 +2900,8 @@
   ],
   "review": {
     "classification": "compatible",
-    "compatibilityReason": "Registers the marketplace active-marker and plugin temp-extraction persistence sites under the installed-plugins store while preserving the existing config and installed-plugin store schemas and byte interpretation.",
-    "payloadFingerprint": "sha256:efb484001e8cc09c8779cd13774f2188b5f0d47b69a31d9067bb8fd4966723c3"
+    "compatibilityReason": "Updates plugin-download-cache store ownership from server/routes/plugins.ts to server/routes/plugins-marketplace.ts after marketplace route decomposition, and registers the marketplace uninstall and temp-extract cleanup persistence sites.",
+    "payloadFingerprint": "sha256:0deb7d797ea919c0a950b2d99b35fc9fd4811257a663f4bbfe0107864d11d578"
   },
   "schemas": [
     {
@@ -3149,8 +3160,8 @@
     {
       "contract": "verified plugin release ZIP naming by pluginId/version and expected sha256",
       "kind": "directory-contract",
-      "module": "server/routes/plugins.ts",
-      "sourceHash": "sha256:022c1060ed96830fa3bed7ef11a8a2d74dd64b18558a056e8b91710d4c775a38",
+      "module": "server/routes/plugins-marketplace.ts",
+      "sourceHash": "sha256:7c978c77af83987ed5014d8d5addc50838b258190a081900a7ef7731cad1a734",
       "storeId": "plugin-download-cache"
     },
     {
@@ -3241,7 +3252,7 @@
         {
           "contract": "core/session-coordinator.ts Hana metadata extensions",
           "module": "core/session-coordinator.ts",
-          "sourceHash": "sha256:912be12d5c355c97d225122f89f9e79ba374e32fe19aa87ce0baafb8c3b917ba"
+          "sourceHash": "sha256:d3fd39bce195be9fb182278f74c08342b9b9ea35d65a550ad47cc1adf06a0490"
         },
         {
           "contract": "core/session-jsonl-file.ts repair contract",
@@ -3871,7 +3882,7 @@
     {
       "exemptionId": null,
       "kind": "mkdir",
-      "line": 321,
+      "line": 324,
       "reason": "Creates the channel root.",
       "sourceFile": "core/engine.ts",
       "storeId": "channels"
@@ -3879,7 +3890,7 @@
     {
       "exemptionId": null,
       "kind": "persistent-store-constructor",
-      "line": 367,
+      "line": 370,
       "reason": "Constructs the preferences owner.",
       "sourceFile": "core/engine.ts",
       "storeId": "user-preferences"
@@ -3887,7 +3898,7 @@
     {
       "exemptionId": null,
       "kind": "persistent-store-constructor",
-      "line": 368,
+      "line": 371,
       "reason": "Constructs draft/project stores.",
       "sourceFile": "core/engine.ts",
       "storeId": "session-drafts-and-projects"
@@ -3895,7 +3906,7 @@
     {
       "exemptionId": null,
       "kind": "persistent-store-constructor",
-      "line": 386,
+      "line": 389,
       "reason": "Constructs draft/project stores.",
       "sourceFile": "core/engine.ts",
       "storeId": "session-drafts-and-projects"
@@ -3903,7 +3914,7 @@
     {
       "exemptionId": null,
       "kind": "persistent-store-constructor",
-      "line": 619,
+      "line": 622,
       "reason": "Constructs the plugin task registry.",
       "sourceFile": "core/engine.ts",
       "storeId": "plugin-task-registry"
@@ -3911,7 +3922,7 @@
     {
       "exemptionId": null,
       "kind": "persistent-store-constructor",
-      "line": 1242,
+      "line": 1254,
       "reason": "Constructs the manifest store during engine construction.",
       "sourceFile": "core/engine.ts",
       "storeId": "session-manifest-sqlite"
@@ -3919,7 +3930,7 @@
     {
       "exemptionId": null,
       "kind": "persistent-store-constructor",
-      "line": 1263,
+      "line": 1275,
       "reason": "Constructs the manifest store during engine construction.",
       "sourceFile": "core/engine.ts",
       "storeId": "session-manifest-sqlite"
@@ -3927,7 +3938,7 @@
     {
       "exemptionId": null,
       "kind": "mkdir",
-      "line": 2322,
+      "line": 2334,
       "reason": "Creates the user skill root.",
       "sourceFile": "core/engine.ts",
       "storeId": "skill-state"
@@ -3935,7 +3946,7 @@
     {
       "exemptionId": null,
       "kind": "remove-path",
-      "line": 2508,
+      "line": 2520,
       "reason": "Deletes an expired legacy ephemeral session JSONL locator.",
       "sourceFile": "core/engine.ts",
       "storeId": "session-jsonl"
@@ -3943,7 +3954,7 @@
     {
       "exemptionId": null,
       "kind": "mkdir",
-      "line": 2562,
+      "line": 2602,
       "reason": "Creates the plugin development source root.",
       "sourceFile": "core/engine.ts",
       "storeId": "plugin-development-state"
@@ -5407,7 +5418,7 @@
     {
       "exemptionId": null,
       "kind": "remove-path",
-      "line": 2748,
+      "line": 2766,
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
       "sourceFile": "core/session-coordinator.ts",
       "storeId": "session-jsonl"
@@ -5415,7 +5426,7 @@
     {
       "exemptionId": null,
       "kind": "mkdir",
-      "line": 2896,
+      "line": 2914,
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
       "sourceFile": "core/session-coordinator.ts",
       "storeId": "session-jsonl"
@@ -5423,7 +5434,7 @@
     {
       "exemptionId": null,
       "kind": "remove-path",
-      "line": 3173,
+      "line": 3191,
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
       "sourceFile": "core/session-coordinator.ts",
       "storeId": "session-jsonl"
@@ -5431,7 +5442,7 @@
     {
       "exemptionId": null,
       "kind": "mkdir",
-      "line": 3217,
+      "line": 3235,
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
       "sourceFile": "core/session-coordinator.ts",
       "storeId": "session-jsonl"
@@ -5439,7 +5450,7 @@
     {
       "exemptionId": null,
       "kind": "copy-file",
-      "line": 3219,
+      "line": 3237,
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
       "sourceFile": "core/session-coordinator.ts",
       "storeId": "session-jsonl"
@@ -5447,7 +5458,7 @@
     {
       "exemptionId": null,
       "kind": "remove-path",
-      "line": 3333,
+      "line": 3351,
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
       "sourceFile": "core/session-coordinator.ts",
       "storeId": "session-jsonl"
@@ -5455,7 +5466,7 @@
     {
       "exemptionId": null,
       "kind": "remove-path",
-      "line": 3338,
+      "line": 3356,
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
       "sourceFile": "core/session-coordinator.ts",
       "storeId": "session-jsonl"
@@ -5463,7 +5474,7 @@
     {
       "exemptionId": null,
       "kind": "remove-path",
-      "line": 4151,
+      "line": 4169,
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
       "sourceFile": "core/session-coordinator.ts",
       "storeId": "session-jsonl"
@@ -5471,7 +5482,7 @@
     {
       "exemptionId": null,
       "kind": "remove-path",
-      "line": 4252,
+      "line": 4270,
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
       "sourceFile": "core/session-coordinator.ts",
       "storeId": "session-jsonl"
@@ -5479,7 +5490,7 @@
     {
       "exemptionId": null,
       "kind": "write-file",
-      "line": 6651,
+      "line": 6669,
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
       "sourceFile": "core/session-coordinator.ts",
       "storeId": "session-jsonl"
@@ -5487,7 +5498,7 @@
     {
       "exemptionId": null,
       "kind": "write-file",
-      "line": 6759,
+      "line": 6777,
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
       "sourceFile": "core/session-coordinator.ts",
       "storeId": "session-jsonl"
@@ -5495,7 +5506,7 @@
     {
       "exemptionId": null,
       "kind": "write-file",
-      "line": 7091,
+      "line": 7109,
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
       "sourceFile": "core/session-coordinator.ts",
       "storeId": "session-jsonl"
@@ -5503,7 +5514,7 @@
     {
       "exemptionId": null,
       "kind": "remove-path",
-      "line": 7100,
+      "line": 7118,
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
       "sourceFile": "core/session-coordinator.ts",
       "storeId": "session-jsonl"
@@ -5511,7 +5522,7 @@
     {
       "exemptionId": null,
       "kind": "write-file",
-      "line": 7122,
+      "line": 7140,
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
       "sourceFile": "core/session-coordinator.ts",
       "storeId": "session-jsonl"
@@ -5519,7 +5530,7 @@
     {
       "exemptionId": null,
       "kind": "mkdir",
-      "line": 7132,
+      "line": 7150,
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
       "sourceFile": "core/session-coordinator.ts",
       "storeId": "session-jsonl"
@@ -5527,7 +5538,7 @@
     {
       "exemptionId": null,
       "kind": "rename",
-      "line": 7197,
+      "line": 7215,
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
       "sourceFile": "core/session-coordinator.ts",
       "storeId": "session-jsonl"
@@ -5535,7 +5546,7 @@
     {
       "exemptionId": null,
       "kind": "write-file",
-      "line": 7237,
+      "line": 7255,
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
       "sourceFile": "core/session-coordinator.ts",
       "storeId": "session-jsonl"
@@ -5543,7 +5554,7 @@
     {
       "exemptionId": null,
       "kind": "mkdir",
-      "line": 7311,
+      "line": 7329,
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
       "sourceFile": "core/session-coordinator.ts",
       "storeId": "session-jsonl"
@@ -5551,7 +5562,7 @@
     {
       "exemptionId": null,
       "kind": "write-file",
-      "line": 7312,
+      "line": 7330,
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
       "sourceFile": "core/session-coordinator.ts",
       "storeId": "session-jsonl"
@@ -5559,7 +5570,7 @@
     {
       "exemptionId": null,
       "kind": "mkdir",
-      "line": 7487,
+      "line": 7505,
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
       "sourceFile": "core/session-coordinator.ts",
       "storeId": "session-jsonl"
@@ -5567,7 +5578,7 @@
     {
       "exemptionId": null,
       "kind": "rename",
-      "line": 7488,
+      "line": 7506,
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
       "sourceFile": "core/session-coordinator.ts",
       "storeId": "session-jsonl"
@@ -5575,7 +5586,7 @@
     {
       "exemptionId": null,
       "kind": "rename",
-      "line": 7504,
+      "line": 7522,
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
       "sourceFile": "core/session-coordinator.ts",
       "storeId": "session-jsonl"
@@ -5583,7 +5594,7 @@
     {
       "exemptionId": null,
       "kind": "remove-path",
-      "line": 7596,
+      "line": 7614,
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
       "sourceFile": "core/session-coordinator.ts",
       "storeId": "session-jsonl"
@@ -5591,7 +5602,7 @@
     {
       "exemptionId": null,
       "kind": "remove-path",
-      "line": 7607,
+      "line": 7625,
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
       "sourceFile": "core/session-coordinator.ts",
       "storeId": "session-jsonl"
@@ -5599,7 +5610,7 @@
     {
       "exemptionId": null,
       "kind": "mkdir",
-      "line": 7612,
+      "line": 7630,
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
       "sourceFile": "core/session-coordinator.ts",
       "storeId": "session-jsonl"
@@ -7423,22 +7434,6 @@
     {
       "exemptionId": null,
       "kind": "mkdir",
-      "line": 79,
-      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
-      "sourceFile": "lib/plugin-artifact-store.ts",
-      "storeId": "installed-plugins"
-    },
-    {
-      "exemptionId": null,
-      "kind": "remove-path",
-      "line": 81,
-      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
-      "sourceFile": "lib/plugin-artifact-store.ts",
-      "storeId": "installed-plugins"
-    },
-    {
-      "exemptionId": null,
-      "kind": "copy-file",
       "line": 82,
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
       "sourceFile": "lib/plugin-artifact-store.ts",
@@ -7447,14 +7442,6 @@
     {
       "exemptionId": null,
       "kind": "remove-path",
-      "line": 83,
-      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
-      "sourceFile": "lib/plugin-artifact-store.ts",
-      "storeId": "installed-plugins"
-    },
-    {
-      "exemptionId": null,
-      "kind": "rename",
       "line": 84,
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
       "sourceFile": "lib/plugin-artifact-store.ts",
@@ -7462,16 +7449,8 @@
     },
     {
       "exemptionId": null,
-      "kind": "write-file",
-      "line": 101,
-      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
-      "sourceFile": "lib/plugin-artifact-store.ts",
-      "storeId": "installed-plugins"
-    },
-    {
-      "exemptionId": null,
-      "kind": "write-file",
-      "line": 120,
+      "kind": "copy-file",
+      "line": 85,
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
       "sourceFile": "lib/plugin-artifact-store.ts",
       "storeId": "installed-plugins"
@@ -7479,7 +7458,39 @@
     {
       "exemptionId": null,
       "kind": "remove-path",
-      "line": 168,
+      "line": 86,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-artifact-store.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "rename",
+      "line": 87,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-artifact-store.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "write-file",
+      "line": 104,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-artifact-store.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "write-file",
+      "line": 123,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-artifact-store.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 191,
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
       "sourceFile": "lib/plugin-artifact-store.ts",
       "storeId": "installed-plugins"
@@ -7599,7 +7610,7 @@
     {
       "exemptionId": null,
       "kind": "mkdir",
-      "line": 253,
+      "line": 256,
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
       "sourceFile": "lib/plugin-marketplace-claude-skills.ts",
       "storeId": "installed-plugins"
@@ -7607,7 +7618,7 @@
     {
       "exemptionId": null,
       "kind": "write-file",
-      "line": 264,
+      "line": 268,
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
       "sourceFile": "lib/plugin-marketplace-claude-skills.ts",
       "storeId": "installed-plugins"
@@ -7615,7 +7626,7 @@
     {
       "exemptionId": null,
       "kind": "remove-path",
-      "line": 413,
+      "line": 417,
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
       "sourceFile": "lib/plugin-marketplace-claude-skills.ts",
       "storeId": "installed-plugins"
@@ -7623,7 +7634,7 @@
     {
       "exemptionId": null,
       "kind": "remove-path",
-      "line": 416,
+      "line": 420,
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
       "sourceFile": "lib/plugin-marketplace-claude-skills.ts",
       "storeId": "installed-plugins"
@@ -7631,7 +7642,7 @@
     {
       "exemptionId": null,
       "kind": "remove-path",
-      "line": 441,
+      "line": 475,
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
       "sourceFile": "lib/plugin-marketplace-claude-skills.ts",
       "storeId": "installed-plugins"
@@ -7751,7 +7762,7 @@
     {
       "exemptionId": null,
       "kind": "mkdir",
-      "line": 63,
+      "line": 66,
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
       "sourceFile": "lib/plugin-marketplace-snapshots.ts",
       "storeId": "installed-plugins"
@@ -7759,14 +7770,6 @@
     {
       "exemptionId": null,
       "kind": "mkdir",
-      "line": 67,
-      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
-      "sourceFile": "lib/plugin-marketplace-snapshots.ts",
-      "storeId": "installed-plugins"
-    },
-    {
-      "exemptionId": null,
-      "kind": "atomic-write",
       "line": 70,
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
       "sourceFile": "lib/plugin-marketplace-snapshots.ts",
@@ -7774,8 +7777,16 @@
     },
     {
       "exemptionId": null,
+      "kind": "atomic-write",
+      "line": 73,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-marketplace-snapshots.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
       "kind": "mkdir",
-      "line": 190,
+      "line": 199,
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
       "sourceFile": "lib/plugin-marketplace-snapshots.ts",
       "storeId": "installed-plugins"
@@ -7783,7 +7794,7 @@
     {
       "exemptionId": null,
       "kind": "atomic-write",
-      "line": 191,
+      "line": 200,
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
       "sourceFile": "lib/plugin-marketplace-snapshots.ts",
       "storeId": "installed-plugins"
@@ -7806,8 +7817,16 @@
     },
     {
       "exemptionId": null,
+      "kind": "remove-path",
+      "line": 327,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-source-switch.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
       "kind": "mkdir",
-      "line": 316,
+      "line": 350,
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
       "sourceFile": "lib/plugin-source-switch.ts",
       "storeId": "installed-plugins"
@@ -7815,7 +7834,7 @@
     {
       "exemptionId": null,
       "kind": "remove-path",
-      "line": 318,
+      "line": 352,
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
       "sourceFile": "lib/plugin-source-switch.ts",
       "storeId": "installed-plugins"
@@ -7823,7 +7842,7 @@
     {
       "exemptionId": null,
       "kind": "copy-file",
-      "line": 319,
+      "line": 353,
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
       "sourceFile": "lib/plugin-source-switch.ts",
       "storeId": "installed-plugins"
@@ -7831,7 +7850,7 @@
     {
       "exemptionId": null,
       "kind": "remove-path",
-      "line": 321,
+      "line": 355,
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
       "sourceFile": "lib/plugin-source-switch.ts",
       "storeId": "installed-plugins"
@@ -7839,7 +7858,7 @@
     {
       "exemptionId": null,
       "kind": "remove-path",
-      "line": 322,
+      "line": 359,
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
       "sourceFile": "lib/plugin-source-switch.ts",
       "storeId": "installed-plugins"
@@ -7847,7 +7866,7 @@
     {
       "exemptionId": null,
       "kind": "rename",
-      "line": 323,
+      "line": 360,
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
       "sourceFile": "lib/plugin-source-switch.ts",
       "storeId": "installed-plugins"
@@ -7855,7 +7874,15 @@
     {
       "exemptionId": null,
       "kind": "remove-path",
-      "line": 335,
+      "line": 372,
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "sourceFile": "lib/plugin-source-switch.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 374,
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
       "sourceFile": "lib/plugin-source-switch.ts",
       "storeId": "installed-plugins"
@@ -9079,7 +9106,39 @@
     {
       "exemptionId": null,
       "kind": "mkdir",
-      "line": 419,
+      "line": 115,
+      "reason": "Caches a sha256-verified plugin release package.",
+      "sourceFile": "server/routes/plugins-marketplace.ts",
+      "storeId": "plugin-download-cache"
+    },
+    {
+      "exemptionId": null,
+      "kind": "write-file",
+      "line": 117,
+      "reason": "Caches a sha256-verified plugin release package.",
+      "sourceFile": "server/routes/plugins-marketplace.ts",
+      "storeId": "plugin-download-cache"
+    },
+    {
+      "exemptionId": "marketplace-retain-temp-extract-cleanup",
+      "kind": "remove-path",
+      "line": 616,
+      "reason": "OS temp extraction directory used to unpack a verified plugin release ZIP before artifact retainment; deleted in the finally block and never persisted under HANA_HOME.",
+      "sourceFile": "server/routes/plugins-marketplace.ts",
+      "storeId": null
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "line": 702,
+      "reason": "Removes an installed plugin directory during marketplace uninstall.",
+      "sourceFile": "server/routes/plugins-marketplace.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "mkdir",
+      "line": 381,
       "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
       "sourceFile": "server/routes/plugins.ts",
       "storeId": "installed-plugins"
@@ -9087,7 +9146,7 @@
     {
       "exemptionId": null,
       "kind": "copy-file",
-      "line": 440,
+      "line": 402,
       "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
       "sourceFile": "server/routes/plugins.ts",
       "storeId": "installed-plugins"
@@ -9095,7 +9154,7 @@
     {
       "exemptionId": "conditional-plugin-install-cleanup",
       "kind": "remove-path",
-      "line": 447,
+      "line": 409,
       "reason": "One bounded cleanup list contains both HANA_HOME .installing staging and operating-system extraction temp; flow-sensitive attribution must replace this exact conditional site.",
       "sourceFile": "server/routes/plugins.ts",
       "storeId": null
@@ -9103,7 +9162,7 @@
     {
       "exemptionId": null,
       "kind": "remove-path",
-      "line": 492,
+      "line": 454,
       "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
       "sourceFile": "server/routes/plugins.ts",
       "storeId": "installed-plugins"
@@ -9111,7 +9170,7 @@
     {
       "exemptionId": null,
       "kind": "remove-path",
-      "line": 557,
+      "line": 519,
       "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
       "sourceFile": "server/routes/plugins.ts",
       "storeId": "installed-plugins"
@@ -9119,7 +9178,7 @@
     {
       "exemptionId": null,
       "kind": "rename",
-      "line": 558,
+      "line": 520,
       "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
       "sourceFile": "server/routes/plugins.ts",
       "storeId": "installed-plugins"
@@ -9127,47 +9186,15 @@
     {
       "exemptionId": "conditional-plugin-install-cleanup",
       "kind": "remove-path",
-      "line": 590,
+      "line": 552,
       "reason": "One bounded cleanup list contains both HANA_HOME .installing staging and operating-system extraction temp; flow-sensitive attribution must replace this exact conditional site.",
       "sourceFile": "server/routes/plugins.ts",
       "storeId": null
     },
     {
       "exemptionId": null,
-      "kind": "mkdir",
-      "line": 679,
-      "reason": "Caches a sha256-verified plugin release package.",
-      "sourceFile": "server/routes/plugins.ts",
-      "storeId": "plugin-download-cache"
-    },
-    {
-      "exemptionId": null,
-      "kind": "write-file",
-      "line": 681,
-      "reason": "Caches a sha256-verified plugin release package.",
-      "sourceFile": "server/routes/plugins.ts",
-      "storeId": "plugin-download-cache"
-    },
-    {
-      "exemptionId": null,
       "kind": "remove-path",
-      "line": 1404,
-      "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
-      "sourceFile": "server/routes/plugins.ts",
-      "storeId": "installed-plugins"
-    },
-    {
-      "exemptionId": null,
-      "kind": "remove-path",
-      "line": 1490,
-      "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
-      "sourceFile": "server/routes/plugins.ts",
-      "storeId": "installed-plugins"
-    },
-    {
-      "exemptionId": null,
-      "kind": "remove-path",
-      "line": 2004,
+      "line": 909,
       "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
       "sourceFile": "server/routes/plugins.ts",
       "storeId": "installed-plugins"

@@ -1180,7 +1180,7 @@
     },
     {
       "id": "plugin-download-cache",
-      "ownerModule": "server/routes/plugins.ts",
+      "ownerModule": "server/routes/plugins-marketplace.ts",
       "pathPattern": "plugin-install-sources/{pluginId}/{version}",
       "pathPatterns": [
         "plugin-install-sources/{pluginId}/{version}"
@@ -1190,12 +1190,12 @@
       "format": "binary-cache",
       "schemaSource": {
         "kind": "directory-contract",
-        "module": "server/routes/plugins.ts",
+        "module": "server/routes/plugins-marketplace.ts",
         "contract": "verified plugin release ZIP naming by pluginId/version and expected sha256"
       },
       "schemaContract": {
         "kind": "protocol",
-        "source": "server/routes/plugins.ts",
+        "source": "server/routes/plugins-marketplace.ts",
         "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs."
       },
       "openEntry": [
@@ -2802,7 +2802,7 @@
     },
     {
       "sourceFile": "core/engine.ts",
-      "line": 321,
+      "line": 324,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(this.channelsDir, { recursive: true })",
       "reason": "Creates the channel root.",
@@ -2811,7 +2811,7 @@
     },
     {
       "sourceFile": "core/engine.ts",
-      "line": 367,
+      "line": 370,
       "kind": "persistent-store-constructor",
       "excerpt": "new PreferencesManager({ userDir: this.userDir, agentsDir: this.agentsDir })",
       "reason": "Constructs the preferences owner.",
@@ -2820,7 +2820,7 @@
     },
     {
       "sourceFile": "core/engine.ts",
-      "line": 368,
+      "line": 371,
       "kind": "persistent-store-constructor",
       "excerpt": "new InputDraftsStore({ hanakoHome: this.hanakoHome })",
       "reason": "Constructs draft/project stores.",
@@ -2829,7 +2829,7 @@
     },
     {
       "sourceFile": "core/engine.ts",
-      "line": 386,
+      "line": 389,
       "kind": "persistent-store-constructor",
       "excerpt": "new SessionProjectCatalogStore({ userDir: this.userDir })",
       "reason": "Constructs draft/project stores.",
@@ -2838,7 +2838,7 @@
     },
     {
       "sourceFile": "core/engine.ts",
-      "line": 619,
+      "line": 622,
       "kind": "persistent-store-constructor",
       "excerpt": "new TaskRegistry({ persistencePath: path.join(this.hanakoHome, \".ephemeral\", \"plugin-tasks.json\"), getSessionIdForPath: (sessionPath) => this.getSessionIdForPath(sessionPath), })",
       "reason": "Constructs the plugin task registry.",
@@ -2847,7 +2847,7 @@
     },
     {
       "sourceFile": "core/engine.ts",
-      "line": 1242,
+      "line": 1254,
       "kind": "persistent-store-constructor",
       "excerpt": "new SessionManifestStore({ dbPath })",
       "reason": "Constructs the manifest store during engine construction.",
@@ -2856,7 +2856,7 @@
     },
     {
       "sourceFile": "core/engine.ts",
-      "line": 1263,
+      "line": 1275,
       "kind": "persistent-store-constructor",
       "excerpt": "new SessionManifestStore({ dbPath })",
       "reason": "Constructs the manifest store during engine construction.",
@@ -2865,7 +2865,7 @@
     },
     {
       "sourceFile": "core/engine.ts",
-      "line": 2322,
+      "line": 2334,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(skillsDir, { recursive: true })",
       "reason": "Creates the user skill root.",
@@ -2874,7 +2874,7 @@
     },
     {
       "sourceFile": "core/engine.ts",
-      "line": 2508,
+      "line": 2520,
       "kind": "remove-path",
       "excerpt": "fs.unlinkSync(filePath)",
       "reason": "Deletes an expired legacy ephemeral session JSONL locator.",
@@ -2883,7 +2883,7 @@
     },
     {
       "sourceFile": "core/engine.ts",
-      "line": 2562,
+      "line": 2602,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(pluginDevSourcesDir, { recursive: true })",
       "reason": "Creates the plugin development source root.",
@@ -4530,7 +4530,7 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
-      "line": 2748,
+      "line": 2766,
       "kind": "remove-path",
       "excerpt": "fsp.rm(sessionPath, { force: true })",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
@@ -4539,7 +4539,7 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
-      "line": 2896,
+      "line": 2914,
       "kind": "mkdir",
       "excerpt": "fsp.mkdir(targetSessionDir, { recursive: true })",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
@@ -4548,7 +4548,7 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
-      "line": 3173,
+      "line": 3191,
       "kind": "remove-path",
       "excerpt": "fsp.rm(targetSessionPath, { force: true })",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
@@ -4557,7 +4557,7 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
-      "line": 3217,
+      "line": 3235,
       "kind": "mkdir",
       "excerpt": "fsp.mkdir(journalDir, { recursive: true })",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
@@ -4566,7 +4566,7 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
-      "line": 3219,
+      "line": 3237,
       "kind": "copy-file",
       "excerpt": "fsp.copyFile(sourceJournalPath, targetJournalPath, fs.constants.COPYFILE_EXCL)",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
@@ -4575,7 +4575,7 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
-      "line": 3333,
+      "line": 3351,
       "kind": "remove-path",
       "excerpt": "fsp.rm(journalPath, { force: true })",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
@@ -4584,7 +4584,7 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
-      "line": 3338,
+      "line": 3356,
       "kind": "remove-path",
       "excerpt": "fsp.rmdir(sessionDir)",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
@@ -4593,7 +4593,7 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
-      "line": 4151,
+      "line": 4169,
       "kind": "remove-path",
       "excerpt": "fsp.rm(childSessionPath, { force: true })",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
@@ -4602,7 +4602,7 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
-      "line": 4252,
+      "line": 4270,
       "kind": "remove-path",
       "excerpt": "fsp.rm(createdSessionPath, { force: true })",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
@@ -4611,7 +4611,7 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
-      "line": 6651,
+      "line": 6669,
       "kind": "write-file",
       "excerpt": "fsp.writeFile(titlePath, JSON.stringify(titles, null, 2), \"utf-8\")",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
@@ -4620,7 +4620,7 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
-      "line": 6759,
+      "line": 6777,
       "kind": "write-file",
       "excerpt": "fsp.writeFile(titlePath, JSON.stringify(titles, null, 2), \"utf-8\")",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
@@ -4629,7 +4629,7 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
-      "line": 7091,
+      "line": 7109,
       "kind": "write-file",
       "excerpt": "fsp.writeFile(metaPath, JSON.stringify(meta, null, 2))",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
@@ -4638,7 +4638,7 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
-      "line": 7100,
+      "line": 7118,
       "kind": "remove-path",
       "excerpt": "fsp.rm(this._sessionMetaPayloadAbsolutePath(metaPath, ref.path), { force: true })",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
@@ -4647,7 +4647,7 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
-      "line": 7122,
+      "line": 7140,
       "kind": "write-file",
       "excerpt": "fsp.writeFile(metaPath, JSON.stringify(compactedMeta, null, 2))",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
@@ -4656,7 +4656,7 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
-      "line": 7132,
+      "line": 7150,
       "kind": "mkdir",
       "excerpt": "fsp.mkdir(path.dirname(metaPath), { recursive: true })",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
@@ -4665,7 +4665,7 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
-      "line": 7197,
+      "line": 7215,
       "kind": "rename",
       "excerpt": "fsp.rename(metaPath, backupPath)",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
@@ -4674,7 +4674,7 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
-      "line": 7237,
+      "line": 7255,
       "kind": "write-file",
       "excerpt": "fsp.writeFile(metaPath, JSON.stringify(budgeted, null, 2))",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
@@ -4683,7 +4683,7 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
-      "line": 7311,
+      "line": 7329,
       "kind": "mkdir",
       "excerpt": "fsp.mkdir(path.dirname(absPath), { recursive: true })",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
@@ -4692,7 +4692,7 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
-      "line": 7312,
+      "line": 7330,
       "kind": "write-file",
       "excerpt": "fsp.writeFile(absPath, encoded, \"utf-8\")",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
@@ -4701,7 +4701,7 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
-      "line": 7487,
+      "line": 7505,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(agent.sessionDir, { recursive: true })",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
@@ -4710,7 +4710,7 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
-      "line": 7488,
+      "line": 7506,
       "kind": "rename",
       "excerpt": "fs.renameSync(oldPath, newPath)",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
@@ -4719,7 +4719,7 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
-      "line": 7504,
+      "line": 7522,
       "kind": "rename",
       "excerpt": "fs.renameSync(newPath, oldPath)",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
@@ -4728,7 +4728,7 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
-      "line": 7596,
+      "line": 7614,
       "kind": "remove-path",
       "excerpt": "fs.unlinkSync(sp)",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
@@ -4737,7 +4737,7 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
-      "line": 7607,
+      "line": 7625,
       "kind": "remove-path",
       "excerpt": "fs.unlinkSync(candidate)",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
@@ -4746,7 +4746,7 @@
     },
     {
       "sourceFile": "core/session-coordinator.ts",
-      "line": 7612,
+      "line": 7630,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(sessionDir, { recursive: true })",
       "reason": "Creates, repairs, archives, restores, or appends session JSONL locators.",
@@ -6798,7 +6798,7 @@
     },
     {
       "sourceFile": "lib/plugin-artifact-store.ts",
-      "line": 79,
+      "line": 82,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(path.dirname(dest), { recursive: true })",
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
@@ -6807,7 +6807,7 @@
     },
     {
       "sourceFile": "lib/plugin-artifact-store.ts",
-      "line": 81,
+      "line": 84,
       "kind": "remove-path",
       "excerpt": "fs.rmSync(tmp, { recursive: true, force: true })",
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
@@ -6816,7 +6816,7 @@
     },
     {
       "sourceFile": "lib/plugin-artifact-store.ts",
-      "line": 82,
+      "line": 85,
       "kind": "copy-file",
       "excerpt": "fs.cpSync(input.packageDir, tmp, { recursive: true })",
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
@@ -6825,7 +6825,7 @@
     },
     {
       "sourceFile": "lib/plugin-artifact-store.ts",
-      "line": 83,
+      "line": 86,
       "kind": "remove-path",
       "excerpt": "fs.rmSync(dest, { recursive: true, force: true })",
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
@@ -6834,7 +6834,7 @@
     },
     {
       "sourceFile": "lib/plugin-artifact-store.ts",
-      "line": 84,
+      "line": 87,
       "kind": "rename",
       "excerpt": "fs.renameSync(tmp, dest)",
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
@@ -6843,7 +6843,7 @@
     },
     {
       "sourceFile": "lib/plugin-artifact-store.ts",
-      "line": 101,
+      "line": 104,
       "kind": "write-file",
       "excerpt": "fs.writeFileSync(metaPath, `${JSON.stringify(info, null, 2)}\\n`, \"utf8\")",
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
@@ -6852,7 +6852,7 @@
     },
     {
       "sourceFile": "lib/plugin-artifact-store.ts",
-      "line": 120,
+      "line": 123,
       "kind": "write-file",
       "excerpt": "fs.writeFileSync( path.join(info.artifactPath, \".hana-artifact.json\"), `${JSON.stringify(info, null, 2)}\\n`, \"utf8\", )",
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
@@ -6861,7 +6861,7 @@
     },
     {
       "sourceFile": "lib/plugin-artifact-store.ts",
-      "line": 168,
+      "line": 191,
       "kind": "remove-path",
       "excerpt": "fs.rmSync(dest, { recursive: true, force: true })",
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
@@ -6996,7 +6996,7 @@
     },
     {
       "sourceFile": "lib/plugin-marketplace-claude-skills.ts",
-      "line": 253,
+      "line": 256,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(path.dirname(filePath), { recursive: true })",
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
@@ -7005,7 +7005,7 @@
     },
     {
       "sourceFile": "lib/plugin-marketplace-claude-skills.ts",
-      "line": 264,
+      "line": 268,
       "kind": "write-file",
       "excerpt": "fs.writeFileSync(filePath, JSON.stringify(payload, null, 2) + \"\\n\", \"utf8\")",
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
@@ -7014,7 +7014,7 @@
     },
     {
       "sourceFile": "lib/plugin-marketplace-claude-skills.ts",
-      "line": 413,
+      "line": 417,
       "kind": "remove-path",
       "excerpt": "fs.rmSync(filePath, { force: true })",
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
@@ -7023,7 +7023,7 @@
     },
     {
       "sourceFile": "lib/plugin-marketplace-claude-skills.ts",
-      "line": 416,
+      "line": 420,
       "kind": "remove-path",
       "excerpt": "fs.rmdirSync(sourceDir)",
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
@@ -7032,7 +7032,7 @@
     },
     {
       "sourceFile": "lib/plugin-marketplace-claude-skills.ts",
-      "line": 441,
+      "line": 475,
       "kind": "remove-path",
       "excerpt": "fs.rmSync(dir, { recursive: true, force: true })",
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
@@ -7167,7 +7167,7 @@
     },
     {
       "sourceFile": "lib/plugin-marketplace-snapshots.ts",
-      "line": 63,
+      "line": 66,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(sourceDir, { recursive: true })",
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
@@ -7176,7 +7176,7 @@
     },
     {
       "sourceFile": "lib/plugin-marketplace-snapshots.ts",
-      "line": 67,
+      "line": 70,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(generationDir, { recursive: true })",
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
@@ -7185,7 +7185,7 @@
     },
     {
       "sourceFile": "lib/plugin-marketplace-snapshots.ts",
-      "line": 70,
+      "line": 73,
       "kind": "atomic-write",
       "excerpt": "atomicWriteSync(snapshotPath, `${JSON.stringify(snapshot, null, 2)}\\n`)",
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
@@ -7194,7 +7194,7 @@
     },
     {
       "sourceFile": "lib/plugin-marketplace-snapshots.ts",
-      "line": 190,
+      "line": 199,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(dir, { recursive: true })",
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
@@ -7203,7 +7203,7 @@
     },
     {
       "sourceFile": "lib/plugin-marketplace-snapshots.ts",
-      "line": 191,
+      "line": 200,
       "kind": "atomic-write",
       "excerpt": "atomicWriteSync(this._metaPath(sourceId), `${JSON.stringify(meta, null, 2)}\\n`)",
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
@@ -7230,7 +7230,16 @@
     },
     {
       "sourceFile": "lib/plugin-source-switch.ts",
-      "line": 316,
+      "line": 327,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(activeDir, { recursive: true, force: true })",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/plugin-source-switch.ts",
+      "line": 350,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(parent, { recursive: true })",
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
@@ -7239,7 +7248,7 @@
     },
     {
       "sourceFile": "lib/plugin-source-switch.ts",
-      "line": 318,
+      "line": 352,
       "kind": "remove-path",
       "excerpt": "fs.rmSync(tmp, { recursive: true, force: true })",
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
@@ -7248,7 +7257,7 @@
     },
     {
       "sourceFile": "lib/plugin-source-switch.ts",
-      "line": 319,
+      "line": 353,
       "kind": "copy-file",
       "excerpt": "fs.cpSync(artifactPath, tmp, { recursive: true })",
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
@@ -7257,7 +7266,7 @@
     },
     {
       "sourceFile": "lib/plugin-source-switch.ts",
-      "line": 321,
+      "line": 355,
       "kind": "remove-path",
       "excerpt": "fs.rmSync(path.join(tmp, \".hana-artifact.json\"), { force: true })",
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
@@ -7266,7 +7275,7 @@
     },
     {
       "sourceFile": "lib/plugin-source-switch.ts",
-      "line": 322,
+      "line": 359,
       "kind": "remove-path",
       "excerpt": "fs.rmSync(activeDir, { recursive: true, force: true })",
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
@@ -7275,7 +7284,7 @@
     },
     {
       "sourceFile": "lib/plugin-source-switch.ts",
-      "line": 323,
+      "line": 360,
       "kind": "rename",
       "excerpt": "fs.renameSync(tmp, activeDir)",
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
@@ -7284,9 +7293,18 @@
     },
     {
       "sourceFile": "lib/plugin-source-switch.ts",
-      "line": 335,
+      "line": 372,
       "kind": "remove-path",
       "excerpt": "fs.rmSync(activeDir, { recursive: true, force: true })",
+      "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "lib/plugin-source-switch.ts",
+      "line": 374,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(path.join(activeDir, \".hana-marketplace.json\"), { force: true })",
       "reason": "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state.",
       "storeId": "installed-plugins",
       "exemptionId": null
@@ -8660,8 +8678,44 @@
       "exemptionId": "external-desk-workspace-roots"
     },
     {
+      "sourceFile": "server/routes/plugins-marketplace.ts",
+      "line": 115,
+      "kind": "mkdir",
+      "excerpt": "fs.mkdirSync(downloadsDir, { recursive: true })",
+      "reason": "Caches a sha256-verified plugin release package.",
+      "storeId": "plugin-download-cache",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "server/routes/plugins-marketplace.ts",
+      "line": 117,
+      "kind": "write-file",
+      "excerpt": "fs.writeFileSync(packagePath, body)",
+      "reason": "Caches a sha256-verified plugin release package.",
+      "storeId": "plugin-download-cache",
+      "exemptionId": null
+    },
+    {
+      "sourceFile": "server/routes/plugins-marketplace.ts",
+      "line": 616,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(extractDir, { recursive: true, force: true })",
+      "reason": "OS temp extraction directory used to unpack a verified plugin release ZIP before artifact retainment; deleted in the finally block and never persisted under HANA_HOME.",
+      "storeId": null,
+      "exemptionId": "marketplace-retain-temp-extract-cleanup"
+    },
+    {
+      "sourceFile": "server/routes/plugins-marketplace.ts",
+      "line": 702,
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(pluginDir, { recursive: true, force: true })",
+      "reason": "Removes an installed plugin directory during marketplace uninstall.",
+      "storeId": "installed-plugins",
+      "exemptionId": null
+    },
+    {
       "sourceFile": "server/routes/plugins.ts",
-      "line": 419,
+      "line": 381,
       "kind": "mkdir",
       "excerpt": "fs.mkdirSync(userPluginsDir, { recursive: true })",
       "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
@@ -8670,7 +8724,7 @@
     },
     {
       "sourceFile": "server/routes/plugins.ts",
-      "line": 440,
+      "line": 402,
       "kind": "copy-file",
       "excerpt": "fs.cpSync(pluginSrc, tmpTarget, { recursive: true })",
       "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
@@ -8679,7 +8733,7 @@
     },
     {
       "sourceFile": "server/routes/plugins.ts",
-      "line": 447,
+      "line": 409,
       "kind": "remove-path",
       "excerpt": "fs.rmSync(cleanupPath, { recursive: true, force: true })",
       "reason": "One bounded cleanup list contains both HANA_HOME .installing staging and operating-system extraction temp; flow-sensitive attribution must replace this exact conditional site.",
@@ -8688,7 +8742,7 @@
     },
     {
       "sourceFile": "server/routes/plugins.ts",
-      "line": 492,
+      "line": 454,
       "kind": "remove-path",
       "excerpt": "fs.rmSync(targetDir, { recursive: true, force: true })",
       "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
@@ -8697,7 +8751,7 @@
     },
     {
       "sourceFile": "server/routes/plugins.ts",
-      "line": 557,
+      "line": 519,
       "kind": "remove-path",
       "excerpt": "fs.rmSync(targetDir, { recursive: true, force: true })",
       "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
@@ -8706,7 +8760,7 @@
     },
     {
       "sourceFile": "server/routes/plugins.ts",
-      "line": 558,
+      "line": 520,
       "kind": "rename",
       "excerpt": "fs.renameSync(stagedDir, targetDir)",
       "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
@@ -8715,7 +8769,7 @@
     },
     {
       "sourceFile": "server/routes/plugins.ts",
-      "line": 590,
+      "line": 552,
       "kind": "remove-path",
       "excerpt": "fs.rmSync(cleanupPath, { recursive: true, force: true })",
       "reason": "One bounded cleanup list contains both HANA_HOME .installing staging and operating-system extraction temp; flow-sensitive attribution must replace this exact conditional site.",
@@ -8724,43 +8778,7 @@
     },
     {
       "sourceFile": "server/routes/plugins.ts",
-      "line": 679,
-      "kind": "mkdir",
-      "excerpt": "fs.mkdirSync(downloadsDir, { recursive: true })",
-      "reason": "Caches a sha256-verified plugin release package.",
-      "storeId": "plugin-download-cache",
-      "exemptionId": null
-    },
-    {
-      "sourceFile": "server/routes/plugins.ts",
-      "line": 681,
-      "kind": "write-file",
-      "excerpt": "fs.writeFileSync(packagePath, body)",
-      "reason": "Caches a sha256-verified plugin release package.",
-      "storeId": "plugin-download-cache",
-      "exemptionId": null
-    },
-    {
-      "sourceFile": "server/routes/plugins.ts",
-      "line": 1404,
-      "kind": "remove-path",
-      "excerpt": "fs.rmSync(extractDir, { recursive: true, force: true })",
-      "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
-      "storeId": "installed-plugins",
-      "exemptionId": null
-    },
-    {
-      "sourceFile": "server/routes/plugins.ts",
-      "line": 1490,
-      "kind": "remove-path",
-      "excerpt": "fs.rmSync(pluginDir, { recursive: true, force: true })",
-      "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
-      "storeId": "installed-plugins",
-      "exemptionId": null
-    },
-    {
-      "sourceFile": "server/routes/plugins.ts",
-      "line": 2004,
+      "line": 909,
       "kind": "remove-path",
       "excerpt": "fs.rmSync(pluginDir, { recursive: true, force: true })",
       "reason": "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.",
@@ -10035,6 +10053,17 @@
         "atomic-write"
       ],
       "linePattern": "(?:path[.]dirname\\(filePath\\)|atomicWriteSync\\(filePath)"
+    },
+    {
+      "id": "marketplace-retain-temp-extract-cleanup",
+      "ownerModule": "server/routes/plugins-marketplace.ts",
+      "sourceFile": "server/routes/plugins-marketplace.ts",
+      "reason": "OS temp extraction directory used to unpack a verified plugin release ZIP before artifact retainment; deleted in the finally block and never persisted under HANA_HOME.",
+      "expiresOn": "2026-10-31",
+      "kinds": [
+        "remove-path"
+      ],
+      "linePattern": "extractDir"
     },
     {
       "id": "sandbox-command-output",
