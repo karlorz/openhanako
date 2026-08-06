@@ -81,6 +81,19 @@ export type {
   ManagePluginsSkillPackageState,
 };
 
+function pruneEmptySkillActivationMaps(activations: MarketplaceControlPlaneActivations): void {
+  for (const kind of ["marketplaceSkills", "marketplaceSkillPackages"] as const) {
+    const map = activations[kind];
+    if (map && Object.keys(map).length === 0) delete activations[kind];
+  }
+  const agentOverrides = activations.agentSkillOverrides;
+  if (!agentOverrides) return;
+  for (const [agentId, entries] of Object.entries(agentOverrides)) {
+    if (entries && Object.keys(entries).length === 0) delete agentOverrides[agentId];
+  }
+  if (Object.keys(agentOverrides).length === 0) delete activations.agentSkillOverrides;
+}
+
 /**
  * Orchestrates multi-source registry + snapshots + resolution for HTTP/UI.
  */
@@ -738,6 +751,7 @@ export class PluginMarketplaceService {
     }
     let activationCleanupError: string | null = null;
     if (changed) {
+      pruneEmptySkillActivationMaps(activations);
       try {
         this.registry.setControlPlaneActivations(activations, {
           expectedRevision: options.expectedRevision,
