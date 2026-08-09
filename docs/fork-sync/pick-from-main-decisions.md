@@ -1,19 +1,21 @@
-# Pick-from-main decisions (2026-07-28)
+# Pick-from-main decisions (2026-08-10)
 
 > **Machine-readable source of truth:** `docs/fork-sync/pick-from-main-decisions.yml`
 > (loaded by `scripts/sync-upstream.mjs`). Keep this human table aligned when editing.
 
-Baseline (updated 2026-07-28 after the attended stable sync): `dev` rebased
-onto stable **`v0.421.24`**, package **`0.421.24`**, at upstream SHA
-`e87769a070d12803247e5cc619dacf5814fe1f52`. Dashboard pick-from-main still forbids cosmetic
-force-adopt; residual PR #1 conflicts are expected under permanent-fork dual-profile.
-Pre-rebase backup: `backup/dev-before-stable-v0.421.24-20260728` @ `a21ffcb5`.
+Baseline (updated 2026-08-10 after the attended stable rebase): local `dev`
+contains stable **`v0.446.6`**, package **`0.446.6`**, at upstream SHA
+`5f08a4f30203abb61dafac7dbb7ab92d11c23efa`. Dashboard pick-from-main still
+forbids cosmetic force-adopt. The local-only plan is conflict-free, but its
+remote comparison still sees stale unpublished `origin/dev`; that is a
+publication opportunity, not a remaining rebase.
+Pre-rebase backup: `backup/dev-before-stable-v0.446.6-20260810` @ `95b23b08`.
 
 ## Objective honesty
 
 | Wish | Decision |
 |------|----------|
-| 0 conflicts | **Infeasible now** without abandoning permanent fork product or rebasing onto prerelease main |
+| 0 conflicts | Observed in the local-only plan; it does not authorize a dashboard write or remove the permanent-fork policy |
 | Green/mergeable PR #1 | **Forbidden** — permanent draft dashboard; never merge/auto-merge/close as merge vehicle |
 | Pick from main tip | **Allowed only** for policy-safe take-main paths that do not import prerelease digests/package version or break fork dual-profile |
 
@@ -30,10 +32,10 @@ Pre-rebase backup: `backup/dev-before-stable-v0.421.24-20260728` @ `a21ffcb5`.
 | `core/session-turn-actions.ts` | take-main | **wait-stable** | Trial adopt from main failed: imports missing `session-operation-lock.ts` and other main-only modules — requires full train package, not single-file pick |
 | `desktop/main.cjs` | human-review | **preserve-fork** | Probe + dual-profile boot orchestration; already isolated helpers |
 | `desktop/src/shared/launch-integrity.cjs` | take-main | **wait-stable** | Main is seed-only; fork retains legacy-raw install surface validation |
-| `package.json` | defer-to-stable-production-sync | **wait-stable** | Live package **`0.421.24`** after the attended stable sync; dashboard must not pre-bump toward an unreleased main tip for cosmetics — further package identity only via attended sync/release |
+| `package.json` | defer-to-stable-production-sync | **wait-stable** | Upstream-owned package **`0.446.6`** after the completed stable rebase; dashboard must not write or pre-bump toward a later main tip for cosmetics — further package identity only via attended sync/release |
 | `package-lock.json` | (paired with package) | **wait-stable** | Same as package.json |
-| `release-digest.v1.json` | take-main | **wait-stable** | Keep the attended `v0.421.24` digest; policy forbids copying a later unreleased main digest into dev |
-| `release-digest.v2.json` | take-main | **wait-stable** | Keep v2 aligned with `v0.421.24`; same stable digest-family policy |
+| `release-digest.v1.json` | take-main | **wait-stable** | Keep the attended `v0.446.6` digest; policy forbids copying a later unreleased main digest into dev |
+| `release-digest.v2.json` | take-main | **wait-stable** | Keep v2 aligned with `v0.446.6`; same stable digest-family policy |
 | `scripts/build-server.mjs` | preserve-both | **preserve-fork** | Compatibility-manifest / build-info packaging |
 | `scripts/fix-modules.cjs` | take-main | **wait-stable** | Fork carries explicit legacy-raw validation path required by dual-profile |
 | `server/index.ts` | preserve-both | **preserve-fork** | Feature contracts / build-info advertisement |
@@ -45,11 +47,13 @@ Pre-rebase backup: `backup/dev-before-stable-v0.421.24-20260728` @ `a21ffcb5`.
 
 ## Expected residual conflicts
 
-Dashboard may still list packaging/digest dual-profile paths as CONFLICTING after
-`v0.421.24`. Residual conflict count is re-read from live `--conflict-plan`;
-absolute zero conflicts remains infeasible without abandoning permanent-fork
-dual-profile. The next **stable** production sync waits for a published
-non-prerelease newer than `v0.421.24`.
+The completed `v0.446.6` rebase currently has zero conflicts in
+`--conflict-plan --json --local-only`, which reports
+`stableSyncAvailable: false` and `prUpdated: false`. `origin/dev` remains
+unpublished, but that is a fork-publication concern—not another local rebase.
+Dashboard paths remain protected from cosmetic force-adoption; the next
+**stable** production sync waits for a published non-prerelease newer than
+`v0.446.6`.
 
 ## PR #1
 
