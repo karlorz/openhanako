@@ -140,6 +140,7 @@ export function classifyHttpRoute({ method = "GET", path = "" } = {}) {
   if (isNativeMarketplaceLifecycleRoute(verb, routePath)) return STUDIO_OWNER;
   if (isLegacyMarketplaceInstallRoute(verb, routePath)) return STUDIO_OWNER;
   if (isSourceSwitchRoute(verb, routePath)) return STUDIO_OWNER;
+  if (isMarketplaceRetentionDeleteRoute(verb, routePath)) return STUDIO_OWNER;
   if (isPluginSettingsWriteRoute(verb, routePath)) return scoped("settings.write");
   if (isProviderManagementRoute(verb, routePath)) return scoped("providers.manage");
   if (isBridgeManagementRoute(verb, routePath)) return scoped("bridge.manage");
@@ -640,6 +641,12 @@ function isSourceSwitchRoute(verb, routePath) {
   return verb === "POST"
     && (/^\/api\/plugins\/[^/]+\/source-switch$/.test(routePath)
       || /^\/api\/plugins\/[^/]+\/source-switch\/plan$/.test(routePath));
+}
+
+function isMarketplaceRetentionDeleteRoute(verb, routePath) {
+  return verb === "DELETE"
+    && (/^\/api\/plugins\/[^/]+\/artifacts\/[^/]+\/[^/]+$/.test(routePath)
+      || /^\/api\/plugins\/[^/]+\/state\/[^/]+$/.test(routePath));
 }
 
 function isPluginUiReadRoute(verb, routePath) {

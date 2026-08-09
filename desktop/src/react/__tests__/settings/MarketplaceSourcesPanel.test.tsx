@@ -37,6 +37,16 @@ describe('MarketplaceSourcesPanel product states', () => {
         'settings.plugins.marketSourceRefreshAll': 'Reload source list',
         'settings.plugins.marketSourceRefreshNamed': `Refresh ${params?.id || ''}`.trim(),
         'settings.plugins.marketSourceRemoveNamed': `Remove marketplace source ${params?.id || ''}`.trim(),
+        'settings.plugins.marketSourceRefreshAction': 'Refresh',
+        'settings.plugins.marketSourceRemoveAction': 'Remove',
+        'settings.plugins.marketSourceTechnicalDetails': 'Technical details',
+        'settings.plugins.marketSourceLocation': 'Location',
+        'settings.plugins.marketSourceGitRef': 'Git ref',
+        'settings.plugins.marketSourceIndexPath': 'Index path',
+        'settings.plugins.marketSourceResolvedRevision': 'Resolved revision',
+        'settings.plugins.marketSourceCatalogDigest': 'Catalog digest',
+        'settings.plugins.marketSourceFetchedAt': 'Fetched at',
+        'settings.plugins.marketSourceDiagnostics': 'Diagnostics',
         'settings.plugins.marketSourceStatusOk': 'OK',
         'settings.plugins.marketSourceStatusError': 'Error',
         'settings.plugins.marketSourceStatusStale': 'Stale',
@@ -50,6 +60,7 @@ describe('MarketplaceSourcesPanel product states', () => {
         'settings.plugins.marketSourceExampleCatalog': 'https://example.com/marketplace.json',
         'settings.plugins.marketSourceExampleGit': 'https://github.com/org/catalog',
         'settings.plugins.marketSourceExampleLocal': '/path/to/marketplace',
+        'settings.plugins.marketSourceExamplesLabel': 'Marketplace source examples',
         'settings.plugins.marketSourceDetectedCatalog': 'Detected: HTTPS catalog',
         'settings.plugins.marketSourceDetectedGit': 'Detected: public HTTPS Git repository',
         'settings.plugins.marketSourceDetectedLocal': 'Detected: server-local path',
@@ -92,14 +103,23 @@ describe('MarketplaceSourcesPanel product states', () => {
     const sourceList = document.querySelector('[class*="marketplace-sources-list"]');
     expect(sourceList).toBeInTheDocument();
     expect(sourceList?.querySelectorAll('[class*="marketplace-source-row"]')).toHaveLength(2);
-    expect(screen.getByText('https://github.com/example-org/hana-market · refs/tags/v1.2.0 · catalog/marketplace.json')).toBeInTheDocument();
+    expect(screen.getAllByText('Technical details')).toHaveLength(2);
+    const sourceDetails = document.querySelectorAll('details');
+    expect(sourceDetails).toHaveLength(2);
+    expect(sourceDetails[0]).not.toHaveAttribute('open');
+    fireEvent.click(sourceDetails[0].querySelector('summary')!);
+    expect(sourceDetails[0]).toHaveAttribute('open');
+    expect(sourceDetails[0]).toHaveTextContent('Location: https://github.com/example-org/hana-market');
+    expect(sourceDetails[0]).toHaveTextContent('Git ref: refs/tags/v1.2.0');
+    expect(sourceDetails[0]).toHaveTextContent('Index path: catalog/marketplace.json');
     expect(screen.getByText('3 packages')).toBeInTheDocument();
     expect(screen.getByText('Disabled')).toBeInTheDocument();
-    expect(screen.getByText('[server-local path redacted]')).toBeInTheDocument();
-    expect(screen.getByText('Catalog validation failed')).toBeInTheDocument();
+    fireEvent.click(sourceDetails[1].querySelector('summary')!);
+    expect(sourceDetails[1]).toHaveTextContent('Location: [server-local path redacted]');
+    expect(sourceDetails[1]).toHaveTextContent('Diagnostics: Catalog validation failed');
   });
 
-  it('uses the existing bare icon language for mutable source actions', async () => {
+  it('uses visible localized labels for mutable source actions', async () => {
     mockHanaFetch.mockResolvedValue(response({
       access: { isStudioOwner: true },
       registry: { revision: 9, digest: 'a'.repeat(64), degraded: false },
@@ -126,23 +146,25 @@ describe('MarketplaceSourcesPanel product states', () => {
 
     const refresh = screen.getByRole('button', { name: 'Refresh team-git' });
     expect(refresh).toHaveAttribute('title', 'Refresh team-git');
-    expect(refresh.className).toMatch(/settings-icon-btn/);
-    expect(refresh.className).toMatch(/plugin-action-icon/);
+    expect(refresh).toHaveTextContent('Refresh');
+    expect(refresh.className).toMatch(/pv-add-form-btn/);
+    expect(refresh.className).toMatch(/plugin-labeled-action/);
     expect(refresh.className).not.toMatch(/skill-card-delete/);
     expect(refresh.parentElement?.className).toMatch(/marketplace-source-actions/);
 
     const remove = screen.getByRole('button', { name: 'Remove marketplace source team-git' });
     expect(remove).toHaveAttribute('title', 'Remove marketplace source team-git');
-    expect(remove.className).toMatch(/settings-icon-btn/);
-    expect(remove.className).toMatch(/plugin-action-icon/);
+    expect(remove).toHaveTextContent('Remove');
+    expect(remove.className).toMatch(/pv-add-form-btn/);
+    expect(remove.className).toMatch(/plugin-labeled-action/);
     expect(remove.className).toMatch(/plugin-action-danger/);
     expect(remove.className).not.toMatch(/skill-card-delete/);
 
     const toggle = screen.getByRole('button', { name: 'Disable team-git' });
     expect(toggle).toHaveAttribute('title', 'Disable team-git');
-    expect(toggle.className).toMatch(/hana-toggle/);
-    expect(toggle.className).toMatch(/on/);
-    expect(toggle.className).not.toMatch(/pv-add-form-btn/);
+    expect(toggle).toHaveTextContent('Disable');
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    expect(toggle.className).toMatch(/pv-add-form-btn/);
 
     expect(Array.from(refresh.parentElement?.children || [])).toEqual([
       refresh,
@@ -174,6 +196,10 @@ describe('MarketplaceSourcesPanel product states', () => {
       }
       if (url === '/api/plugins/marketplace/sources/team-git/refresh') {
         expect(init?.method).toBe('POST');
+        expect(JSON.parse(String(init?.body))).toEqual({
+          expectedRevision: 9,
+          expectedDigest: 'a'.repeat(64),
+        });
         return response({ ok: true });
       }
       if (url === '/api/plugins/marketplace/sources/team-git?expectedRevision=9&expectedDigest=' + 'a'.repeat(64)) {
@@ -206,6 +232,46 @@ describe('MarketplaceSourcesPanel product states', () => {
       url: '/api/plugins/marketplace/sources/team-git?expectedRevision=9&expectedDigest=' + 'a'.repeat(64),
       method: 'DELETE',
     });
+  });
+
+  it('refreshes the source snapshot and retries a stale source refresh once', async () => {
+    let loads = 0;
+    const refreshBodies: unknown[] = [];
+    mockHanaFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === '/api/plugins/marketplace/sources' && !init?.method) {
+        loads += 1;
+        const fresh = loads > 1;
+        return response({
+          access: { isStudioOwner: true },
+          registry: {
+            revision: fresh ? 12 : 11,
+            digest: (fresh ? 'c' : 'b').repeat(64),
+            degraded: false,
+          },
+          sources: [{ id: 'team', name: 'Team', authority: 'custom', enabled: true, mutable: true }],
+        });
+      }
+      if (url === '/api/plugins/marketplace/sources/team/refresh') {
+        refreshBodies.push(JSON.parse(String(init?.body)));
+        return refreshBodies.length === 1
+          ? response({
+              error: 'Marketplace registry revision conflict',
+              code: 'PLUGIN_MARKETPLACE_REGISTRY_STALE',
+            }, 409)
+          : response({ ok: true });
+      }
+      return response({});
+    });
+
+    render(<MarketplaceSourcesPanel />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Refresh team' }));
+
+    await waitFor(() => expect(refreshBodies).toHaveLength(2));
+    expect(refreshBodies).toEqual([
+      { expectedRevision: 11, expectedDigest: 'b'.repeat(64) },
+      { expectedRevision: 12, expectedDigest: 'c'.repeat(64) },
+    ]);
+    expect(mockShowToast).toHaveBeenCalledWith('settings.plugins.marketSourceRefreshed', 'success');
   });
 
   it('does not expose source mutation icons for immutable rows', async () => {
@@ -448,5 +514,33 @@ describe('MarketplaceSourcesPanel product states', () => {
     expect(reads).toBe(2);
     await waitFor(() => expect(latestCallback).toHaveBeenCalledExactlyOnceWith([{ id: 'team', name: 'Team', authority: 'custom', enabled: true, mutable: true }]));
     expect(firstCallback).not.toHaveBeenCalled();
+  });
+
+  it('keeps a failed Add Source dialog open with its input and inline error', async () => {
+    mockHanaFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === '/api/plugins/marketplace/sources' && !init?.method) {
+        return response({
+          access: { isStudioOwner: true },
+          registry: { revision: 7, digest: 'a'.repeat(64), degraded: false },
+          sources: [],
+        });
+      }
+      if (url === '/api/plugins/marketplace/sources' && init?.method === 'POST') {
+        return response({ error: 'This source already exists.' }, 409);
+      }
+      return response({});
+    });
+
+    render(<MarketplaceSourcesPanel />);
+    await screen.findByText('settings.plugins.marketSourceEmpty');
+    fireEvent.click(screen.getByRole('button', { name: 'Add source' }));
+    const sourceInput = screen.getByRole('textbox', { name: 'Source' });
+    fireEvent.change(sourceInput, { target: { value: 'https://example.com/marketplace.json' } });
+    fireEvent.submit(sourceInput.closest('form')!);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('This source already exists.');
+    expect(screen.getByRole('dialog', { name: 'Add Marketplace Source' })).toBeInTheDocument();
+    expect(sourceInput).toHaveValue('https://example.com/marketplace.json');
+    expect(mockShowToast).toHaveBeenCalledWith('This source already exists.', 'error');
   });
 });

@@ -653,7 +653,7 @@ Declare in `manifest.json` under `contributes.configuration` using JSON Schema:
 }
 ```
 
-Read/write config via `ctx.config.get(key)` / `ctx.config.set(key, value)`, persisted in `plugin-data/{pluginId}/config.json`.
+Read/write config through `ctx.config.get(key)` / `ctx.config.set(key, value)`. Ordinary fields persist in `config.json`; schema fields marked `sensitive: true` are physically separated into `secrets.json`. Settings and API responses redact non-empty sensitive values as `********`, while server-side `ctx.config` returns the merged real value. Legacy sensitive fields found in `config.json` migrate on first read. Marketplace-native plugins use source-qualified roots: `plugin-data/<marketplaceId>/<pluginId>/config.json` and `plugin-secrets/<marketplaceId>/<pluginId>/secrets.json`; global, per-Agent, and per-session values remain separate.
 
 ### Page (Plugin Page) ⚡ full-access
 
@@ -1190,7 +1190,9 @@ The "Open plugin marketplace" button in Settings -> Plugins opens a marketplace 
 Before any mutation, inspect the resolved destination and adapter. A
 `hana-skills` + `skill-manager` package installs through SkillManager and
 appears in Manage Plugins with a **Hana skills badge**. Its global
-**Marketplace package gate** is separate from each **Agent Skill Toggle**.
+**Package** setting is separate from each **Agent preference**; **Effective
+availability** reports the result after both layers and source state are
+applied.
 A `native-plugin` + `plugin-manager` package belongs to PluginManager. Studio
 owners can install and uninstall native Marketplace packages from Settings
 through the signed plan/execute lifecycle; Agent-driven native installation is
@@ -1202,7 +1204,7 @@ control and does not toggle an installed package.
 |------|----------|
 | Catalog row | `{marketplaceId, pluginId}` (optional `pluginId@marketplaceId`) |
 | Retained artifact | `{marketplaceId, pluginId, artifactDigest}` |
-| Persistent state / trust | source-qualified (`plugin-data/<marketplaceId>/<pluginId>/`, trust grants per artifact) |
+| Persistent state / trust | source-qualified (`plugin-data`, `plugin-secrets`, `plugin-backups`, retained `plugin-artifacts`, and trust grants per exact artifact) |
 | Legacy native runtime slot | bare `pluginId` — **one active source per plugin per server** |
 
 Default official catalog:
@@ -1210,6 +1212,11 @@ Default official catalog:
 ```text
 https://raw.githubusercontent.com/liliMozi/OH-Plugins/main/marketplace.json
 ```
+
+Engine boot starts official snapshot acquisition asynchronously and does not
+wait for the network. Fetch/offline failure is non-fatal: an existing durable
+source snapshot remains readable as `stale` last-known-good state, and an
+interrupted persisted `refreshing` marker is retried after restart.
 
 Source management APIs:
 
@@ -1220,6 +1227,8 @@ Source management APIs:
 - `GET /api/plugins/marketplace/catalog` — composite rows with source badges and active/retained state
 - `POST /api/plugins/marketplace/:id/install` — legacy native compatibility path; it is Studio-owner-only, rejects native Marketplace packages in favor of the signed Settings plan/execute lifecycle, and cannot bypass that boundary with release metadata. Agent workflows do not use it for `hana-skills`
 - `POST /api/plugins/:pluginId/source-switch` — transactional switch to another retained marketplace source
+- `DELETE /api/plugins/:pluginId/artifacts/:marketplaceId/:artifactDigest` — delete one exact inactive retained artifact/record/trust grant while preserving plugin state
+- `DELETE /api/plugins/:pluginId/state/:marketplaceId` — purge exact inactive source state; requires `<pluginId>@<marketplaceId> state purge` and preserves retained artifacts, install/history records, snapshots, registry, other sources, legacy state, and the active projection
 
 Settings → Plugin marketplace includes **Add source** (URL / local server path / public Git), per-source refresh/remove, composite rows, and **Switch source**. Fresh bare install uses **official-wins**; multiple non-official matches require an explicit marketplace pin. Switching never copies state, secrets, or trust across sources. Remote sources are **public credential-free HTTPS only** in v1.
 
@@ -1228,7 +1237,7 @@ Legacy env overrides remain available as a **read-only legacy overlay** (not off
 - `HANA_PLUGIN_MARKETPLACE_FILE=/path/to/marketplace.json`
 - `HANA_PLUGIN_MARKETPLACE_URL=https://.../marketplace.json`
 
-Without either environment variable, Hana first tries `${HANA_HOME}/plugin-marketplace/marketplace.json` for local development. If it does not exist, Hana reads the official `OH-Plugins` URL. The marketplace index shape matches the `OH-Plugins` repository:
+Those environment variables are a read-only legacy overlay. The older single-catalog compatibility implementation may also try `${HANA_HOME}/plugin-marketplace/marketplace.json`; the modern multi-source service does not treat that file as an implicit custom source. Its compiled authority is the official `OH-Plugins` source plus explicitly registered durable sources. The marketplace index shape matches the `OH-Plugins` repository:
 
 ```json
 {
@@ -1270,7 +1279,7 @@ The marketplace UI shows the package list and README in a wider settings subpage
 
 Marketplace version management uses `versions[]` as the long-term contract: each item declares `version`, that version's `compatibility.minAppVersion`, and its own `distribution`. If `versions[]` is absent, Hana treats the root-level `version` / `compatibility` / `distribution` as a single version entry. The client chooses the highest SemVer version compatible with the current app, while exposing `latestVersion`, `selectedVersion`, `installedVersion`, `updateAvailable`, `downgrade`, `reinstall`, `compatible`, `installAction`, and `canInstall` for UI state.
 
-If an installed legacy native version is newer than the highest compatible marketplace version, the action is marked as `downgrade` and install requires explicit `allowDowngrade: true`. Native drag-and-drop / local path installs also reject implicit downgrades. Native compatibility updates back up under `${HANA_HOME}/plugin-backups/<marketplaceId>/<pluginId>/` when marketplace-qualified (legacy bare `${HANA_HOME}/plugin-backups/<pluginId>/` still works). Native installs are recorded in `${HANA_HOME}/plugin-installs.json` and retained under `${HANA_HOME}/plugin-artifacts/...`. Hana skill packages use SkillManager inventory, the global package gate, and the dedicated Marketplace skill uninstall lifecycle instead.
+If an installed legacy native version is newer than the highest compatible marketplace version, the action is marked as `downgrade` and install requires explicit `allowDowngrade: true`. Native drag-and-drop / local path installs also reject implicit downgrades. Native compatibility updates back up under `${HANA_HOME}/plugin-backups/<marketplaceId>/<pluginId>/` when marketplace-qualified (legacy bare `${HANA_HOME}/plugin-backups/<pluginId>/` still works). Native installs are recorded in `${HANA_HOME}/plugin-installs.json` and retained under `${HANA_HOME}/plugin-artifacts/...`. Hana skill packages use SkillManager inventory, the global **Package** setting, and the dedicated Marketplace skill uninstall lifecycle instead.
 
 ## Forward Compatibility
 

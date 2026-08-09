@@ -128,6 +128,15 @@ describe('MarketplacePluginInspector busy semantics', () => {
         'settings.plugins.disableAgentAccess': 'Disable Agent Access',
         'settings.plugins.marketSwitchSource': 'Switch source',
         'settings.plugins.marketPackageGateTitle': 'Package enable (global skill-manager gate)',
+        'settings.plugins.skillPackageEnable': 'Enable',
+        'settings.plugins.skillPackageDisable': 'Disable',
+        'settings.plugins.skillPackageLayerPackage': 'Package',
+        'settings.plugins.skillPackageLayerAgentPreference': 'Agent preference',
+        'settings.plugins.skillPackageLayerEffectiveAvailability': 'Effective availability',
+        'settings.plugins.skillPackageLayerAvailable': 'Available',
+        'settings.plugins.skillPackageLayerUnavailable': 'Unavailable',
+        'settings.plugins.marketPackageGateEnabled': 'enabled',
+        'settings.plugins.marketPackageGateDisabled': 'disabled',
         'settings.plugins.marketUninstallSkills': 'Uninstall skills',
         'settings.plugins.marketUninstall': 'Uninstall',
         'settings.plugins.marketInstall': 'Install',
@@ -212,5 +221,11 @@ describe('MarketplacePluginInspector busy semantics', () => {
     const toggle = screen.getByRole('button', { name: 'Toggle skill package skillwiki@llm-wiki' });
     expect(toggle.className).toMatch(/loading/);
     expect(toggle).toBeDisabled();
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    expect(toggle).toHaveTextContent('Disable');
+    expect(screen.getByText('Package')).toBeInTheDocument();
+    expect(screen.getByText('Agent preference')).toBeInTheDocument();
+    expect(screen.getByText('Effective availability')).toBeInTheDocument();
+    expect(screen.getByText('Available')).toBeInTheDocument();
   });
 });

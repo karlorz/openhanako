@@ -44,6 +44,12 @@ function SkillPackageStatusBadge({ status }: { status: MarketplaceSkillPackageSt
   );
 }
 
+function effectivePackageLabel(status: MarketplaceSkillPackageStatus): string {
+  if (status === 'enabled') return t('settings.plugins.skillPackageLayerAvailable');
+  if (status === 'partial') return t('settings.plugins.skillPackageLayerPartial');
+  return t('settings.plugins.skillPackageLayerUnavailable');
+}
+
 export function ManagePluginsSkillPackagesPanel(props: {
   rows: ManagePluginsSkillPackageRow[];
   meta: SkillPackageInventoryMeta;
@@ -112,27 +118,37 @@ export function ManagePluginsSkillPackagesPanel(props: {
                 </span>
               )}
               <span className={styles['skills-list-desc']}>
-                {status === 'disabled'
-                  ? t('settings.plugins.skillPackageDisabledPreservesPreferences')
-                  : t('settings.plugins.skillPackageDefaultOn')}
+                {t('settings.plugins.skillPackageLayerPackage')}: {' '}
+                {pkg.packageEnabled
+                  ? t('settings.plugins.marketPackageGateEnabled')
+                  : t('settings.plugins.marketPackageGateDisabled')}
+              </span>
+              <span className={styles['skills-list-desc']}>
+                {t('settings.plugins.skillPackageLayerAgentPreference')}: {' '}
+                {t('settings.plugins.skillPackageLayerPreferencesPreserved')}
+              </span>
+              <span className={styles['skills-list-desc']}>
+                {t('settings.plugins.skillPackageLayerEffectiveAvailability')}: {' '}
+                {effectivePackageLabel(status)}
               </span>
             </div>
 
             <div className={styles['skills-list-actions']} style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
               <button
                 type="button"
-                className={`${styles['settings-icon-btn']} ${styles['plugin-action-icon']}`}
+                className={`${styles['pv-add-form-btn']} ${styles['plugin-labeled-action']}`}
                 disabled={pkg.actions?.canOpenSkills === false || pkg.skillCount <= 0}
                 aria-label={t('settings.plugins.skillPackageOpenSkills', { name: pkg.name })}
                 title={t('settings.plugins.skillPackageOpenSkills', { name: pkg.name })}
                 onClick={() => onOpen(pkg.identity)}
               >
                 <BrowseIcon />
+                <span>{t('settings.plugins.skillPackageManageInSkills')}</span>
               </button>
               {canUninstall && (
                 <button
                   type="button"
-                  className={`${styles['settings-icon-btn']} ${styles['plugin-action-icon']} ${styles['plugin-action-danger']}`}
+                  className={`${styles['pv-add-form-btn']} ${styles['plugin-labeled-action']} ${styles['plugin-action-danger']}`}
                   aria-label={t('settings.plugins.skillPackageUninstallConfirm', {
                     identity: pkg.identity,
                     name: pkg.name,
@@ -146,16 +162,22 @@ export function ManagePluginsSkillPackagesPanel(props: {
                   onClick={() => onUninstall(pkg)}
                 >
                   <RemoveIcon />
+                  <span>{t('settings.plugins.skillPackageRemove')}</span>
                 </button>
               )}
               {canToggle && (
                 <button
                   type="button"
-                  className={`hana-toggle${pkg.packageEnabled ? ' on' : ''}${busyIdentity === pkg.identity ? ' loading' : ''}`}
+                  className={`${styles['pv-add-form-btn']} ${styles['plugin-labeled-action']} ${busyIdentity === pkg.identity ? 'loading' : ''}`}
                   disabled={busyIdentity === pkg.identity}
+                  aria-pressed={pkg.packageEnabled}
                   aria-label={t('settings.plugins.skillPackageToggle', { identity: pkg.identity, name: pkg.name })}
                   onClick={() => onToggle(pkg, !pkg.packageEnabled)}
-                />
+                >
+                  {pkg.packageEnabled
+                    ? t('settings.plugins.skillPackageDisable')
+                    : t('settings.plugins.skillPackageEnable')}
+                </button>
               )}
             </div>
           </div>

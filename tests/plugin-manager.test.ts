@@ -1049,6 +1049,74 @@ describe("configuration", () => {
     expect(pm.getPlugin("secret-cfg").ctx.config.get("apiKey")).toBe("secret-value");
   });
 
+  it("isolates marketplace-qualified data and secrets when the active source changes", async () => {
+    const dir = path.join(pluginsDir, "marketplace-config");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "manifest.json"), JSON.stringify({
+      id: "marketplace-config",
+      name: "Marketplace Config",
+      version: "1.0.0",
+      contributes: { configuration: { properties: {
+        mode: { type: "string" },
+        apiKey: { type: "string", sensitive: true },
+      } } },
+    }));
+    writeMarketplaceActiveMarker(dir, {
+      marketplaceId: "team-plugins",
+      pluginId: "marketplace-config",
+      artifactDigest: "a".repeat(64),
+    });
+    const secretsDir = path.join(tmpHome, "plugin-secrets");
+    const pm = new PluginManager({
+      pluginsDir,
+      dataDir,
+      secretsDir,
+      bus: await makeBus(),
+    } as any);
+    pm.scan();
+    await pm.loadAll();
+
+    pm.setConfig("marketplace-config", { mode: "team", apiKey: "team-secret" });
+
+    const entry = pm.getPlugin("marketplace-config");
+    expect(entry.ctx.dataDir).toBe(path.join(dataDir, "team-plugins", "marketplace-config"));
+    expect(entry.ctx.config.get("apiKey")).toBe("team-secret");
+    expect(fs.readFileSync(
+      path.join(dataDir, "team-plugins", "marketplace-config", "config.json"),
+      "utf-8",
+    )).not.toContain("team-secret");
+    expect(JSON.parse(fs.readFileSync(
+      path.join(secretsDir, "team-plugins", "marketplace-config", "secrets.json"),
+      "utf-8",
+    ))).toMatchObject({ global: { apiKey: "team-secret" } });
+    expect(fs.existsSync(path.join(dataDir, "marketplace-config", "config.json"))).toBe(false);
+
+    writeMarketplaceActiveMarker(dir, {
+      marketplaceId: "backup-plugins",
+      pluginId: "marketplace-config",
+      artifactDigest: "b".repeat(64),
+    });
+    const switchedPm = new PluginManager({
+      pluginsDir,
+      dataDir,
+      secretsDir,
+      bus: await makeBus(),
+    } as any);
+    switchedPm.scan();
+    await switchedPm.loadAll();
+
+    expect(switchedPm.getConfig("marketplace-config")?.values).toEqual({});
+    switchedPm.setConfig("marketplace-config", { mode: "backup", apiKey: "backup-secret" });
+    expect(JSON.parse(fs.readFileSync(
+      path.join(secretsDir, "backup-plugins", "marketplace-config", "secrets.json"),
+      "utf-8",
+    ))).toMatchObject({ global: { apiKey: "backup-secret" } });
+    expect(JSON.parse(fs.readFileSync(
+      path.join(secretsDir, "team-plugins", "marketplace-config", "secrets.json"),
+      "utf-8",
+    ))).toMatchObject({ global: { apiKey: "team-secret" } });
+  });
+
   it("forks per-session config for loaded and disabled plugins without sharing child writes", async () => {
     for (const [id, disabled] of [["loaded-cfg", false], ["disabled-cfg", true]] as const) {
       const dir = path.join(pluginsDir, id);

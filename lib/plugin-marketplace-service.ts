@@ -374,16 +374,16 @@ export class PluginMarketplaceService {
     }
     return listed.map((source) => {
       const status = this.snapshots.getStatus(source.id);
+      const current = status.state === "ok" || status.state === "stale" || status.state === "refreshing"
+        ? status.current
+        : null;
       return {
         ...source,
         catalogCount: catalogCounts.get(source.id) || 0,
         status: status.state,
-        catalogSha256: status.state === "ok" || status.state === "stale" || status.state === "refreshing"
-          ? status.current?.catalogSha256 || null
-          : null,
-        fetchedAt: status.state === "ok" || status.state === "stale" || status.state === "refreshing"
-          ? status.current?.fetchedAt || null
-          : null,
+        catalogSha256: current?.catalogSha256 || null,
+        fetchedAt: current?.fetchedAt || null,
+        resolvedRevision: current?.resolvedRevision || null,
         refreshError: status.state === "stale" || status.state === "error"
           ? sanitizeAcquisitionError(
             { message: status.refreshError.message, code: status.refreshError.code } as any,
@@ -811,7 +811,11 @@ export class PluginMarketplaceService {
       return this.snapshots.getStatus(OFFICIAL_MARKETPLACE_ID);
     }
     const status = this.snapshots.getStatus(OFFICIAL_MARKETPLACE_ID);
-    if (status.state === "ok" || status.state === "stale" || status.state === "refreshing") {
+    if (
+      status.state === "ok"
+      || status.state === "stale"
+      || (status.state === "refreshing" && this._officialSeedPromise)
+    ) {
       return status;
     }
     if (!this._officialSeedPromise) {

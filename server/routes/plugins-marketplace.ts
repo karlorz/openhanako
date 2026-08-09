@@ -10,7 +10,10 @@ import {
 import { PluginMarketplaceService } from "../../lib/plugin-marketplace-service.ts";
 import { descriptorFromMarketplaceSourceInput } from "../../lib/plugin-marketplace-sources.ts";
 import { PluginSourceSwitchCoordinator, createInProcessQuiesceHandle } from "../../lib/plugin-source-switch.ts";
-import { PluginInstallRecords } from "../../lib/plugin-install-records.ts";
+import {
+  LEGACY_UNQUALIFIED_MARKETPLACE_ID,
+  PluginInstallRecords,
+} from "../../lib/plugin-install-records.ts";
 import { PluginArtifactStore } from "../../lib/plugin-artifact-store.ts";
 import {
   createPluginInstallBackup,
@@ -21,9 +24,18 @@ import { emitAppEvent } from "../app-events.ts";
 import { uninstallMarketplaceSkillPackage } from "../../lib/plugin-marketplace-skill-uninstall.ts";
 import { refreshMarketplaceSkillRuntime } from "../../lib/plugin-marketplace-skill-runtime.ts";
 import { safeFetchBytes } from "../../lib/plugin-marketplace-network-policy.ts";
-import { PluginTrustStore } from "../../lib/plugin-trust-store.ts";
+import {
+  marketplacePluginDataDir,
+  marketplacePluginSecretsDir,
+  PluginTrustStore,
+} from "../../lib/plugin-trust-store.ts";
 import { PluginMarketplaceNativeLifecycle } from "../../lib/plugin-marketplace-native-lifecycle.ts";
 import { readMarketplaceActiveMarker } from "../../lib/plugin-marketplace-active-marker.ts";
+import {
+  assertArtifactDigest,
+  assertMarketplaceId,
+  assertPluginId,
+} from "../../lib/plugin-marketplace-identity.ts";
 import { isLocalOwnerPrincipal, isStudioOwnerPrincipal } from "../http/route-security.ts";
 import { createModuleLogger } from "../../lib/debug-log.ts";
 import {
@@ -59,6 +71,56 @@ function readLiveOrReconciledInstallRecord(engine: any, pm: any, pluginId: strin
     return null;
   }
   return record;
+}
+
+function readActiveMarketplaceMarker(engine: any, pm: any, pluginId: string) {
+  const entryDir = pm?.findPluginEntry?.({ id: pluginId, source: "community" })?.pluginDir || null;
+  const fallbackDir = defaultCommunityPluginDir(pm, pluginId)
+    || path.join(engine.hanakoHome, "plugins", safePathSegment(pluginId, pluginId));
+  for (const pluginDir of new Set([entryDir, fallbackDir].filter(Boolean))) {
+    const marker = readMarketplaceActiveMarker(pluginDir as string, pluginId);
+    if (marker) return marker;
+  }
+  return null;
+}
+
+function validateExactManagedDeletionTarget(rootDir: string, targetDir: string): string {
+  const root = path.resolve(rootDir);
+  const target = path.resolve(targetDir);
+  const relative = path.relative(root, target);
+  if (!relative || relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+    throw createPluginRouteError(
+      "Marketplace deletion path is outside its managed root",
+      409,
+      "PLUGIN_MARKETPLACE_STATE_PATH_UNSAFE",
+    );
+  }
+
+  let current = root;
+  for (const segment of ["", ...relative.split(path.sep)]) {
+    if (segment) current = path.join(current, segment);
+    if (!fs.existsSync(current)) continue;
+    if (fs.lstatSync(current).isSymbolicLink()) {
+      throw createPluginRouteError(
+        "Marketplace deletion refuses symlinked managed paths",
+        409,
+        "PLUGIN_MARKETPLACE_STATE_PATH_UNSAFE",
+      );
+    }
+  }
+  return target;
+}
+
+function removeValidatedRuntimeStateDirectory(runtimeStateDir: string): boolean {
+  if (!fs.existsSync(runtimeStateDir)) return false;
+  fs.rmSync(runtimeStateDir, { recursive: true, force: true });
+  return true;
+}
+
+function removeValidatedInstallBackupDirectory(installBackupDir: string): boolean {
+  if (!fs.existsSync(installBackupDir)) return false;
+  fs.rmSync(installBackupDir, { recursive: true, force: true });
+  return true;
 }
 
 async function downloadMarketplaceRelease({ engine, plugin }: { engine: any; plugin: any }) {
@@ -817,6 +879,172 @@ export function createMarketplaceRoutes(engine: any): Hono {
       return c.json({ ok: true, identity: outcome.plan.identity, ...outcome.result });
     } catch (err: any) {
       return c.json({ error: err.message, code: err.code }, err.status || 409);
+    }
+  });
+
+  route.delete("/plugins/:pluginId/artifacts/:marketplaceId/:artifactDigest", (c) => {
+    const flags = principalFlags(c);
+    if (!flags.isStudioOwner) {
+      return c.json({
+        error: "studio.owner required to delete retained Marketplace artifacts",
+        code: "PLUGIN_MARKETPLACE_ARTIFACT_DELETE_FORBIDDEN",
+      }, 403);
+    }
+
+    try {
+      const pluginId = assertPluginId(c.req.param("pluginId"));
+      const marketplaceId = assertMarketplaceId(c.req.param("marketplaceId"));
+      const artifactDigest = assertArtifactDigest(c.req.param("artifactDigest"));
+      if (marketplaceId === LEGACY_UNQUALIFIED_MARKETPLACE_ID) {
+        throw createPluginRouteError(
+          "Legacy-unqualified artifacts cannot be removed through a Marketplace-qualified route",
+          409,
+          "PLUGIN_MARKETPLACE_LEGACY_STATE_PRESERVED",
+        );
+      }
+
+      const svc = getMarketplaceService(engine);
+      const record = svc.records.get(pluginId);
+      const activeMarker = readActiveMarketplaceMarker(engine, engine.pluginManager, pluginId);
+      const isActiveRecord = record?.activeMarketplaceId === marketplaceId
+        && record?.activeArtifactDigest === artifactDigest;
+      const isActiveMarker = activeMarker?.marketplaceId === marketplaceId
+        && activeMarker?.artifactDigest === artifactDigest;
+      if (isActiveRecord || isActiveMarker) {
+        throw createPluginRouteError(
+          "Cannot delete the active retained Marketplace artifact",
+          409,
+          "PLUGIN_MARKETPLACE_ARTIFACT_ACTIVE",
+        );
+      }
+
+      const retained = record?.retained?.[marketplaceId]?.[artifactDigest] || null;
+      const artifact = svc.artifacts.get(marketplaceId, pluginId, artifactDigest);
+      if (!retained || !artifact) {
+        throw createPluginRouteError(
+          "Retained Marketplace artifact not found",
+          404,
+          "PLUGIN_MARKETPLACE_ARTIFACT_NOT_FOUND",
+        );
+      }
+      const artifactRoot = path.join(engine.hanakoHome, "plugin-artifacts");
+      const artifactPath = svc.artifacts.artifactPath(marketplaceId, pluginId, artifactDigest);
+      if (
+        artifact.marketplaceId !== marketplaceId
+        || artifact.pluginId !== pluginId
+        || artifact.artifactDigest !== artifactDigest
+        || path.resolve(artifact.artifactPath) !== path.resolve(artifactPath)
+      ) {
+        throw createPluginRouteError(
+          "Retained Marketplace artifact metadata does not match its exact identity",
+          409,
+          "PLUGIN_MARKETPLACE_ARTIFACT_IDENTITY_MISMATCH",
+        );
+      }
+      validateExactManagedDeletionTarget(artifactRoot, artifactPath);
+
+      const recordRemoved = svc.records.removeRetainedArtifact(pluginId, marketplaceId, artifactDigest);
+      const artifactRemoved = svc.artifacts.remove({ marketplaceId, pluginId, artifactDigest });
+      const trustStore = new PluginTrustStore({ hanakoHome: engine.hanakoHome });
+      const trustRevoked = trustStore.revoke(marketplaceId, pluginId, artifactDigest);
+      return c.json({
+        ok: true,
+        pluginId,
+        marketplaceId,
+        artifactDigest,
+        recordRemoved,
+        artifactRemoved,
+        trustRevoked,
+        statePreserved: true,
+      });
+    } catch (err: any) {
+      return c.json({
+        error: err?.message || String(err),
+        code: err?.code || "PLUGIN_MARKETPLACE_ARTIFACT_DELETE_FAILED",
+      }, err?.status || 400);
+    }
+  });
+
+  route.delete("/plugins/:pluginId/state/:marketplaceId", async (c) => {
+    const flags = principalFlags(c);
+    if (!flags.isStudioOwner) {
+      return c.json({
+        error: "studio.owner required to purge Marketplace source state",
+        code: "PLUGIN_MARKETPLACE_STATE_PURGE_FORBIDDEN",
+      }, 403);
+    }
+
+    const body = await c.req.json().catch(() => ({}));
+    try {
+      const pluginId = assertPluginId(c.req.param("pluginId"));
+      const marketplaceId = assertMarketplaceId(c.req.param("marketplaceId"));
+      if (marketplaceId === LEGACY_UNQUALIFIED_MARKETPLACE_ID) {
+        throw createPluginRouteError(
+          "Legacy-unqualified plugin state is preserved",
+          409,
+          "PLUGIN_MARKETPLACE_LEGACY_STATE_PRESERVED",
+        );
+      }
+
+      const expectedConfirmation = `${pluginId}@${marketplaceId} state purge`;
+      if (body?.confirmation !== expectedConfirmation) {
+        throw createPluginRouteError(
+          `Confirmation must exactly match: ${expectedConfirmation}`,
+          409,
+          "PLUGIN_MARKETPLACE_CONFIRMATION_MISMATCH",
+        );
+      }
+
+      const svc = getMarketplaceService(engine);
+      const record = svc.records.get(pluginId);
+      const activeMarker = readActiveMarketplaceMarker(engine, engine.pluginManager, pluginId);
+      if (record?.activeMarketplaceId === marketplaceId || activeMarker?.marketplaceId === marketplaceId) {
+        throw createPluginRouteError(
+          "Cannot purge state for the active Marketplace source",
+          409,
+          "PLUGIN_MARKETPLACE_STATE_ACTIVE",
+        );
+      }
+
+      const dataRoot = path.join(engine.hanakoHome, "plugin-data");
+      const secretsRoot = path.join(engine.hanakoHome, "plugin-secrets");
+      const backupsRoot = path.join(engine.hanakoHome, "plugin-backups");
+      const stateTargets = {
+        data: marketplacePluginDataDir(dataRoot, marketplaceId, pluginId),
+        secrets: marketplacePluginSecretsDir(secretsRoot, marketplaceId, pluginId),
+        backups: path.join(backupsRoot, marketplaceId, pluginId),
+      };
+
+      // Validate all targets before the first destructive write so an unsafe
+      // symlink or containment failure cannot leave a partially purged source.
+      validateExactManagedDeletionTarget(dataRoot, stateTargets.data);
+      validateExactManagedDeletionTarget(secretsRoot, stateTargets.secrets);
+      validateExactManagedDeletionTarget(backupsRoot, stateTargets.backups);
+
+      const deleted = {
+        data: removeValidatedRuntimeStateDirectory(stateTargets.data),
+        secrets: removeValidatedRuntimeStateDirectory(stateTargets.secrets),
+        backups: removeValidatedInstallBackupDirectory(stateTargets.backups),
+      };
+      const trustGrantsRevoked = new PluginTrustStore({ hanakoHome: engine.hanakoHome })
+        .revokeMarketplacePlugin(marketplaceId, pluginId);
+
+      return c.json({
+        ok: true,
+        pluginId,
+        marketplaceId,
+        confirmation: expectedConfirmation,
+        deleted,
+        trustGrantsRevoked,
+        artifactsPreserved: true,
+        installHistoryPreserved: true,
+        legacyStatePreserved: true,
+      });
+    } catch (err: any) {
+      return c.json({
+        error: err?.message || String(err),
+        code: err?.code || "PLUGIN_MARKETPLACE_STATE_PURGE_FAILED",
+      }, err?.status || 400);
     }
   });
 

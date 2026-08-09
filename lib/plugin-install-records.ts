@@ -358,20 +358,27 @@ export class PluginInstallRecords {
     return structuredClone(compatFields(next));
   }
 
-  removeRetainedArtifact(pluginId: string, marketplaceId: string, artifactDigest: string) {
+  removeRetainedArtifact(pluginId: string, marketplaceId: string, artifactDigest: string): boolean {
     const id = assertPluginId(pluginId);
     const market = assertMarketplaceId(marketplaceId);
     const digest = assertArtifactDigest(artifactDigest);
     const file = this._read();
     const record = file.plugins[id];
-    if (!record?.retained?.[market]?.[digest]) return;
+    if (!record?.retained?.[market]?.[digest]) return false;
     if (record.activeMarketplaceId === market && record.activeArtifactDigest === digest) {
-      throw new Error("Cannot remove the active retained artifact");
+      const err = new Error("Cannot remove the active retained artifact") as Error & {
+        code: string;
+        status: number;
+      };
+      err.code = "PLUGIN_MARKETPLACE_ARTIFACT_ACTIVE";
+      err.status = 409;
+      throw err;
     }
     delete record.retained[market][digest];
     if (Object.keys(record.retained[market]).length === 0) delete record.retained[market];
     file.plugins[id] = record;
     this._write(file);
+    return true;
   }
 
   isSourceInUse(marketplaceId: string): boolean {

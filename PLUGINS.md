@@ -637,7 +637,9 @@ UniversalMediaManager 统一任务、占位、轮询、SessionFile 回填
 }
 ```
 
-配置通过 `ctx.config.get(key)` / `ctx.config.set(key, value)` 读写，持久化在 `plugin-data/{pluginId}/config.json`。旧插件没有 schema 时仍可自由读写平铺 key；声明了 schema 的插件会按字段类型、`enum` 和 `scope` 校验。
+配置通过 `ctx.config.get(key)` / `ctx.config.set(key, value)` 读写。普通字段保存在 `config.json`；声明了 `sensitive: true` 的字段物理隔离到 `secrets.json`，不会继续和普通配置混写。设置/API 读取时敏感值显示为 `********`，但服务器侧插件代码通过 `ctx.config` 得到的是合并后的真实逻辑值。旧版 `config.json` 中误存的敏感字段会在首次读取时迁移到 secrets 文件，再从普通配置中移除。
+
+普通社区插件默认使用 `plugin-data/{pluginId}/config.json` 和对应 secrets 根；Marketplace 原生插件使用来源限定路径：`plugin-data/<marketplaceId>/<pluginId>/config.json` 与 `plugin-secrets/<marketplaceId>/<pluginId>/secrets.json`。`global`、`per-agent`、`per-session` 三种 scope 继续彼此隔离；session fork/discard 操作的是合并逻辑状态，不会把不同 Agent 或 session 的 secrets 合并。旧插件没有 schema 时仍可自由读写平铺 key；声明了 schema 的插件会按字段类型、`enum` 和 `scope` 校验。
 
 字段支持：
 
@@ -646,7 +648,7 @@ UniversalMediaManager 统一任务、占位、轮询、SessionFile 回填
 - `title` / `description`
 - `enum`
 - `scope`: `global` / `per-agent` / `per-session`
-- `sensitive`: 设置 API 返回时显示为 `********`
+- `sensitive`: 物理写入独立 `secrets.json`；设置/API 返回时显示为 `********`，服务器侧 `ctx.config` 返回真实值
 - `ui`: 自动设置页的控件提示
 - `reloadRequired`
 
@@ -1258,22 +1260,28 @@ const schedules = await this.ctx.bus.request("task:list-schedules", {
 
 **重启恢复**：Hana 持久化任务与 schedule 元数据，不持久化插件函数。插件需要在 `onload()` 时重新注册 `task:register-handler`，然后调用 `task:list` 查询 `status: "recovering"` 的本插件任务，按自己的业务存储恢复或失败它们。
 
-### 官方插件市场
+### 插件市场（多来源）
 
-设置 → 插件里的「打开插件市场」会进入独立的市场子页，该页面读取 `/api/plugins/marketplace`。Hana 采用 Obsidian 式官方社区插件目录：第三方开发者把插件提交到 `OH-Plugins`，用户只浏览、安装、启用、禁用，不管理市场源。
+设置 → 插件 → Plugin Marketplace 使用**连接中的 Hana 服务器**所拥有的来源注册表、目录快照和安装状态。桌面端不会建立第二套注册表，也不会把 Mac 上的路径解释成远端服务器路径。支持的来源类型是：
 
-默认官方目录：
+- URL：公开 HTTPS `marketplace.json`；
+- local：位于服务器配置允许根目录内的本地目录或 index；
+- Git：公开、无凭据的 HTTPS 仓库，可指定 branch/tag/commit ref 和 index path。
+
+远端 v1 来源不接受 SSH/SCP、URL 用户名/密码、私有/回环地址或任意桌面本地路径。服务器本地路径只对 loopback local-owner 可添加，远端客户端看到的是脱敏信息。`OH-Plugins` 仍是编译进 Hana 的官方 authority，来源 ID 为 `oh-plugins-official`，始终启用且不可移除：
 
 ```text
 https://raw.githubusercontent.com/liliMozi/OH-Plugins/main/marketplace.json
 ```
 
-开发调试仍可用环境变量覆盖：
+启动时 Hana 会异步触发官方快照 seed，不阻塞服务器启动。抓取或离线失败是非致命的：已有的持久化来源快照继续以 `stale`/last-known-good 状态可读，错误诊断会保留；进程崩溃遗留的 `refreshing` 标记会在下次启动重试。自定义注册表本身的 degraded fallback 只使用当前进程已经读到的最后有效内容，不应被描述成另一份独立持久化注册表备份。
+
+环境变量只保留为**只读旧版兼容 overlay**，不是官方 authority，也不是现代可写来源注册表：
 
 - `HANA_PLUGIN_MARKETPLACE_FILE=/path/to/marketplace.json`
 - `HANA_PLUGIN_MARKETPLACE_URL=https://.../marketplace.json`
 
-没有配置环境变量时，Hana 会先尝试读取 `${HANA_HOME}/plugin-marketplace/marketplace.json`（本地开发覆盖），如果不存在则读取官方 `OH-Plugins` URL。市场 index 的基本形状与 `OH-Plugins` 仓库一致：
+旧版单目录 `/api/plugins/marketplace` 兼容实现仍可读取 `${HANA_HOME}/plugin-marketplace/marketplace.json`；多来源服务不把这个文件当作默认自定义来源。市场 index 的基本形状与 `OH-Plugins` 仓库一致：
 
 ```json
 {
@@ -1311,11 +1319,37 @@ https://raw.githubusercontent.com/liliMozi/OH-Plugins/main/marketplace.json
 }
 ```
 
-市场 UI 会在设置主区域内展示更宽的插件列表和 README 单页视图，点击插件后读取 `/api/plugins/marketplace/:id/readme` 展示 README。`distribution.kind: "release"` 会下载 zip、校验 `sha256`，再安装到用户插件目录。`distribution.kind: "source"` 仅用于本地开发文件市场，因为 source path 必须能在本机解析成目录。
+来源写操作需要 `studio.owner`，并携带当前 registry revision 和 digest。刷新会带上这两个 precondition；若第一次因 stale 冲突失败，设置 UI 会重新读取注册表并只重试一次。新增来源失败时对话框保持打开、保留输入，并显示行内错误。来源技术信息默认折叠，展开后显示 location、ref、index path、`resolvedRevision`、catalog digest、fetched time 和诊断。Refresh、Remove、Enable/Disable、Manage in Skills 等操作使用可见的本地化文字；状态开关同时暴露 `aria-pressed`。
+
+目录中的每个包都以 `{marketplaceId, pluginId}`（显示形式可为 `pluginId@marketplaceId`）标识。原生包可为多个来源保留 artifact，但每个 `pluginId` 在服务器运行时只允许一个 active Marketplace source；切换来源必须显式执行 source-switch，不能按裸 ID 静默覆盖。来源切换不会复制以下状态：
+
+```text
+plugin-data/<marketplaceId>/<pluginId>/
+plugin-secrets/<marketplaceId>/<pluginId>/
+plugin-backups/<marketplaceId>/<pluginId>/
+plugin-artifacts/<marketplaceId>/<pluginId>/<artifactDigest>/
+trust grant: <marketplaceId>:<pluginId>:<artifactDigest>
+```
+
+普通配置仍写 `config.json`；schema 中 `sensitive: true` 的字段写独立 `secrets.json`，设置/API 只返回 `********`，服务器侧 `ctx.config` 返回真实值。不同来源、Agent、session 的配置和 secrets 不互相继承。
+
+Marketplace 解析后有两种不同安装目标：
+
+- `native-plugin` + `plugin-manager`：由原生 `PluginManager` 管理。Studio owner 通过设置中的 signed plan/execute 生命周期安装、卸载或切换；Agent 驱动的原生安装仍不支持。
+- `hana-skills` + `skill-manager`：Claude-compatible 包按 **Hana skills** 安装，永远不会进入 `${HANA_HOME}/plugins` 或 `PluginManager`。安装后在设置 → 插件 → 管理插件显示 Hana skills badge；卸载必须使用 `DELETE /api/plugins/marketplace/:id/skills`，不能使用原生插件 DELETE。
+
+技能包 UI 把三个层次分开显示：**Package**（全局 skill-manager package gate）、**Agent preference**（某个 Agent 的技能偏好）和 **Effective availability**（两者合并后的实际可用性）。缺少 package activation 记录表示安装后默认启用；关闭 package 不会删除 per-Agent 偏好。Manage in Skills 进入现有 Skills 生命周期。
+
+原生保留物和状态有两个精确、不可互换的删除边界：
+
+- `DELETE /api/plugins/:pluginId/artifacts/:marketplaceId/:artifactDigest` 只删除指定的非 active retained artifact、对应 retained record 和精确 trust grant；插件 data/secrets/backups 必须保留。
+- `DELETE /api/plugins/:pluginId/state/:marketplaceId` 只清理指定非 active 来源的 data、secrets、backups 以及该来源/插件的全部 digest trust grants。确认文字必须精确为 `<pluginId>@<marketplaceId> state purge`。它必须保留 retained artifacts、`plugin-installs.json` active/retained/history、catalog snapshots、source registry、其他来源、legacy-unqualified 路径和 active runtime projection；重复 purge 是幂等的。
+
+市场 UI 会在设置主区域内展示来源、复合目录、README 和安装状态。`distribution.kind: "release"` 会下载 zip、校验 `sha256`，再进入受审核的安装生命周期。`distribution.kind: "source"` 只适用于服务器可解析且受 containment 检查的本地来源。
 
 市场版本管理以 `versions[]` 为长期契约：每一项声明 `version`、该版本的 `compatibility.minAppVersion` 和对应的 `distribution`。没有 `versions[]` 时，Hana 会把根级 `version` / `compatibility` / `distribution` 视为单版本条目。客户端会按 SemVer 选择“当前 app 能运行的最高版本”，同时保留 `latestVersion`、`selectedVersion`、`installedVersion`、`updateAvailable`、`downgrade`、`reinstall`、`compatible`、`installAction` 和 `canInstall` 给 UI 展示。
 
-如果已安装版本高于当前 app 可兼容的最高市场版本，安装动作会被标记为 `downgrade`，必须显式传 `allowDowngrade: true` 才能继续。拖拽 / 本地路径安装同样会阻止隐式降级。更新安装会先备份旧目录到 `${HANA_HOME}/plugin-backups/<pluginId>/`，新版本加载失败时恢复旧目录并重新加载；成功后 `${HANA_HOME}/plugin-installs.json` 会记录来源、版本、release URL 和 sha256，供后续市场状态判断。
+如果已安装版本高于当前 app 可兼容的最高市场版本，安装动作会被标记为 `downgrade`，必须显式传 `allowDowngrade: true` 才能继续。拖拽 / 本地路径安装同样会阻止隐式降级。来源限定的 Marketplace 更新会先备份到 `${HANA_HOME}/plugin-backups/<marketplaceId>/<pluginId>/`，新版本加载失败时恢复旧目录并重新加载；legacy 非来源限定调用仍保留裸 `${HANA_HOME}/plugin-backups/<pluginId>/` 兼容路径。成功后 `${HANA_HOME}/plugin-installs.json` 会记录 active pointer、retained artifacts 和 lifecycle history，供后续市场状态判断。
 
 ## 前向兼容
 

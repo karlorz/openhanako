@@ -102,6 +102,28 @@ export function SkillRow({
             {t('settings.skills.marketplacePackageSource', { identity: marketplacePackage.identity })}
           </span>
         )}
+        {marketplacePackage && (
+          <>
+            <span className={styles['skills-list-desc']}>
+              {t('settings.plugins.skillPackageLayerPackage')}: {' '}
+              {marketplacePackage.packageEnabled === false
+                ? t('settings.plugins.marketPackageGateDisabled')
+                : t('settings.plugins.marketPackageGateEnabled')}
+            </span>
+            <span className={styles['skills-list-desc']}>
+              {t('settings.plugins.skillPackageLayerAgentPreference')}: {' '}
+              {skill.enabled
+                ? t('settings.plugins.marketPackageGateEnabled')
+                : t('settings.plugins.marketPackageGateDisabled')}
+            </span>
+            <span className={styles['skills-list-desc']}>
+              {t('settings.plugins.skillPackageLayerEffectiveAvailability')}: {' '}
+              {effectiveEnabled
+                ? t('settings.plugins.skillPackageLayerAvailable')
+                : t('settings.plugins.skillPackageLayerUnavailable')}
+            </span>
+          </>
+        )}
         {marketplaceHint && (
           <span className={styles['skills-list-desc']} data-inactive-reason={skill.inactiveReason || undefined}>
             {marketplaceHint}
@@ -126,9 +148,12 @@ export function SkillRow({
         )}
         {onToggle && (
           <button
-            className={`hana-toggle${effectiveEnabled ? ' on' : ''}${packageDisabled ? ' disabled' : ''}`}
+            className={marketplacePackage
+              ? `${styles['pv-add-form-btn']} ${styles['plugin-labeled-action']}`
+              : `hana-toggle${effectiveEnabled ? ' on' : ''}${packageDisabled ? ' disabled' : ''}`}
             type="button"
             disabled={packageDisabled}
+            aria-pressed={effectiveEnabled}
             title={packageDisabled
               ? (marketplaceHint || t('settings.skills.marketplaceInactivePackage'))
               : effectiveEnabled ? t('settings.skills.toggleDisable') : t('settings.skills.toggleEnable')}
@@ -136,7 +161,13 @@ export function SkillRow({
               ? t('settings.skills.toggleDisableNamed', { name: skill.name })
               : t('settings.skills.toggleEnableNamed', { name: skill.name })}
             onClick={(e) => { e.stopPropagation(); onToggle(skill.name, !effectiveEnabled); }}
-          />
+          >
+            {marketplacePackage
+              ? effectiveEnabled
+                ? t('settings.plugins.skillPackageDisable')
+                : t('settings.plugins.skillPackageEnable')
+              : null}
+          </button>
         )}
       </div>
     </div>

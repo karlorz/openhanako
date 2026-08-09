@@ -116,16 +116,39 @@ function MarketplaceSkillRow({ skill, pkg, pending, onToggle }: MarketplaceSkill
           </span>
         )}
         <span className={styles['skills-list-desc']}>{skill.description || ''}</span>
+        <span className={styles['skills-list-desc']}>
+          {t('settings.plugins.skillPackageLayerPackage')}: {' '}
+          {pkg.packageEnabled
+            ? t('settings.plugins.marketPackageGateEnabled')
+            : t('settings.plugins.marketPackageGateDisabled')}
+        </span>
+        <span className={styles['skills-list-desc']}>
+          {t('settings.plugins.skillPackageLayerAgentPreference')}: {' '}
+          {skill.enabled
+            ? t('settings.plugins.marketPackageGateEnabled')
+            : t('settings.plugins.marketPackageGateDisabled')}
+        </span>
+        <span className={styles['skills-list-desc']}>
+          {t('settings.plugins.skillPackageLayerEffectiveAvailability')}: {' '}
+          {enabled
+            ? t('settings.plugins.skillPackageLayerAvailable')
+            : t('settings.plugins.skillPackageLayerUnavailable')}
+        </span>
       </div>
       <div className={styles['skills-list-actions']}>
         <button
           type="button"
-          className={`hana-toggle${enabled ? ' on' : ''}${disabled ? ' disabled' : ''}`}
+          className={`${styles['pv-add-form-btn']} ${styles['plugin-labeled-action']}`}
           disabled={disabled}
+          aria-pressed={enabled}
           aria-label={toggleLabel}
           title={disabled && !writable ? t('settings.plugins.skillPackagePageReadOnly') : toggleLabel}
           onClick={() => onToggle(skill, !enabled)}
-        />
+        >
+          {enabled
+            ? t('settings.plugins.skillPackageDisable')
+            : t('settings.plugins.skillPackageEnable')}
+        </button>
       </div>
     </div>
   );
@@ -374,15 +397,44 @@ export function MarketplaceSkillPackagePage({
               </span>
             </div>
             <p>{packageAvailabilityMessage(pkg)}</p>
+            <span className={styles['skills-list-desc']}>
+              {t('settings.plugins.skillPackageLayerPackage')}: {' '}
+              {pkg.packageEnabled
+                ? t('settings.plugins.marketPackageGateEnabled')
+                : t('settings.plugins.marketPackageGateDisabled')}
+            </span>
+            <span className={styles['skills-list-desc']}>
+              {t('settings.plugins.skillPackageLayerAgentPreference')}: {' '}
+              {selectedAgentId
+                ? t('settings.plugins.skillPackagePageSummary', {
+                    installed: String(membership.skills.length),
+                    enabled: String(membership.enabledCount),
+                    disabled: String(membership.disabledCount),
+                  })
+                : t('settings.plugins.skillPackageManageInSkills')}
+            </span>
+            <span className={styles['skills-list-desc']}>
+              {t('settings.plugins.skillPackageLayerEffectiveAvailability')}: {' '}
+              {controlsLocked
+                ? t('settings.plugins.skillPackageLayerUnavailable')
+                : marketplaceSkillPackageStatus(pkg) === 'partial'
+                  ? t('settings.plugins.skillPackageLayerPartial')
+                  : t('settings.plugins.skillPackageLayerAvailable')}
+            </span>
           </div>
           {isStudioOwner && (
             <button
               type="button"
-              className={`hana-toggle${pkg.packageEnabled && !packageSourceBlocked(pkg) ? ' on' : ''}`}
+              className={`${styles['pv-add-form-btn']} ${styles['plugin-labeled-action']}`}
               disabled={!canTogglePackage}
+              aria-pressed={pkg.packageEnabled && !packageSourceBlocked(pkg)}
               aria-label={t('settings.plugins.skillPackageToggle', { identity: pkg.identity, name: pkg.name })}
               onClick={() => void togglePackage()}
-            />
+            >
+              {pkg.packageEnabled
+                ? t('settings.plugins.skillPackageDisable')
+                : t('settings.plugins.skillPackageEnable')}
+            </button>
           )}
         </div>
       </SettingsSection>

@@ -117,7 +117,7 @@ export function AddMarketplaceSourceDialog({ open = true, onClose, onSubmit }: A
         <p className={dialogStyles.help}>
           {t('settings.plugins.marketSourceDialogHelp')}
         </p>
-        <ul className={dialogStyles.examples} aria-label="Marketplace source examples">
+        <ul className={dialogStyles.examples} aria-label={t('settings.plugins.marketSourceExamplesLabel')}>
           <li>{t('settings.plugins.marketSourceExampleCatalog')}</li>
           <li>{t('settings.plugins.marketSourceExampleGit')}</li>
           <li>{t('settings.plugins.marketSourceExampleLocal')}</li>

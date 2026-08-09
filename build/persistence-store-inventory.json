@@ -1454,12 +1454,12 @@
       "firstPossibleOpenPhase": "engine_construct",
       "firstPossibleWritePhase": "runtime_ready",
       "epochPolicy": "epoch-managed",
-      "checkpointPolicy": "Checkpoint by marketplace-qualified plugin identity and declared migrationVersion; never infer one schema for plugin-data/**.",
-      "restorePolicy": "Restore only when the same marketplaceId+pluginId and a compatible manifest/migrationVersion are available. Incomplete switch journals recover to the last committed active pointer.",
+      "checkpointPolicy": "Checkpoint plugin-data and plugin-secrets by marketplace-qualified plugin identity and declared migrationVersion; never infer one schema for all plugin-owned state.",
+      "restorePolicy": "Restore plugin-data and plugin-secrets only when the same marketplaceId+pluginId and a compatible manifest/migrationVersion are available. Incomplete switch journals recover to the last committed active pointer.",
       "affectedByEpochMigration": true,
       "bootstrapSafety": null,
       "preCoordinatorReadProjection": null,
-      "identityContract": "Marketplace plugins own plugin-data/{marketplaceId}/{pluginId}; bare pluginId paths remain legacy/unqualified until migrated. Active runtime projection is bare plugins/{pluginId}.",
+      "identityContract": "Marketplace plugins own plugin-data/{marketplaceId}/{pluginId} and plugin-secrets/{marketplaceId}/{pluginId}; bare pluginId data paths remain legacy/unqualified until migrated. Active runtime projection is bare plugins/{pluginId}.",
       "exemption": {
         "reason": "Dynamic plugin schemas must be registered by pluginId and migrationVersion before a coordinated data migration consumes them.",
         "expiresOn": "2026-12-31"
@@ -4283,8 +4283,26 @@
     },
     {
       "sourceFile": "core/plugin-config.ts",
+      "kind": "mkdir",
+      "excerpt": "fs.mkdirSync(secretsDir, { recursive: true, mode: 0o700 })",
+      "reason": "Writes the plugin configuration file for the active pluginId.",
+      "storeId": "plugin-runtime-data",
+      "exemptionId": null,
+      "ordinal": 0
+    },
+    {
+      "sourceFile": "core/plugin-config.ts",
       "kind": "secret-write",
       "excerpt": "writeSecretFileSync(configPath, `${JSON.stringify(next, null, 2)}\\n`)",
+      "reason": "Writes the plugin configuration file for the active pluginId.",
+      "storeId": "plugin-runtime-data",
+      "exemptionId": null,
+      "ordinal": 0
+    },
+    {
+      "sourceFile": "core/plugin-config.ts",
+      "kind": "secret-write",
+      "excerpt": "writeSecretFileSync(secretsPath, `${JSON.stringify(secrets, null, 2)}\\n`)",
       "reason": "Writes the plugin configuration file for the active pluginId.",
       "storeId": "plugin-runtime-data",
       "exemptionId": null,
@@ -9072,9 +9090,27 @@
     {
       "sourceFile": "server/routes/plugins-marketplace.ts",
       "kind": "remove-path",
-      "excerpt": "fs.rmSync(pluginDir, { recursive: true, force: true })",
-      "reason": "Removes an installed plugin directory during marketplace uninstall.",
+      "excerpt": "fs.rmSync(installBackupDir, { recursive: true, force: true })",
+      "reason": "Removes an installed plugin directory or a marketplace-qualified install backup during uninstall or exact state purge.",
       "storeId": "installed-plugins",
+      "exemptionId": null,
+      "ordinal": 0
+    },
+    {
+      "sourceFile": "server/routes/plugins-marketplace.ts",
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(pluginDir, { recursive: true, force: true })",
+      "reason": "Removes an installed plugin directory or a marketplace-qualified install backup during uninstall or exact state purge.",
+      "storeId": "installed-plugins",
+      "exemptionId": null,
+      "ordinal": 0
+    },
+    {
+      "sourceFile": "server/routes/plugins-marketplace.ts",
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(runtimeStateDir, { recursive: true, force: true })",
+      "reason": "Removes marketplace-qualified plugin data or secrets during exact source-state purge.",
+      "storeId": "plugin-runtime-data",
       "exemptionId": null,
       "ordinal": 0
     },

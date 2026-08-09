@@ -184,7 +184,7 @@ describe('PluginsTab skill package inventory', () => {
         'settings.plugins.skillPackagePageSourceBlocked': 'Source unavailable; preferences preserved.',
         'settings.plugins.skillPackagePageSourceBlockedLabel': 'source unavailable',
         'settings.plugins.skillPackagePageDisabledHint': 'Disabled globally; preferences preserved.',
-        'settings.plugins.skillPackagePageAvailabilityHint': 'Package gate hint',
+        'settings.plugins.skillPackagePageAvailabilityHint': 'Package availability hint',
         'settings.plugins.skillPackagePagePartialHint': 'Partially installed.',
         'settings.plugins.skillPackagePageStaleHint': 'Stale install record.',
         'settings.plugins.skillPackagePagePreferencesPreserved': 'Preferences are preserved while unavailable.',
@@ -201,6 +201,16 @@ describe('PluginsTab skill package inventory', () => {
         'settings.plugins.skillPackagePageNoSkills': 'No package skills for this Agent.',
         'settings.plugins.skillPackagePageLoadError': 'Failed to load package skills',
         'settings.plugins.skillPackagePageStaleReturn': 'Package no longer installed.',
+        'settings.plugins.skillPackageLayerPackage': 'Package',
+        'settings.plugins.skillPackageLayerAgentPreference': 'Agent preference',
+        'settings.plugins.skillPackageLayerEffectiveAvailability': 'Effective availability',
+        'settings.plugins.skillPackageLayerAvailable': 'available',
+        'settings.plugins.skillPackageLayerUnavailable': 'unavailable',
+        'settings.plugins.skillPackageLayerPartial': 'partially available',
+        'settings.plugins.skillPackageEnable': 'Enable',
+        'settings.plugins.skillPackageDisable': 'Disable',
+        'settings.plugins.marketPackageGateEnabled': 'enabled',
+        'settings.plugins.marketPackageGateDisabled': 'disabled',
         'settings.skills.toggleDisableNamed': `Disable ${params?.name || ''}`.trim(),
         'settings.skills.toggleEnableNamed': `Enable ${params?.name || ''}`.trim(),
         'settings.skills.marketplaceInactiveAgent': 'Disabled for this Agent; preference preserved.',
@@ -266,9 +276,14 @@ describe('PluginsTab skill package inventory', () => {
     const openSkills = screen.getByRole('button', { name: 'Open skills for SkillWiki' });
     expect(openSkills).toBeInTheDocument();
     expect(openSkills).toHaveAttribute('title', 'Open skills for SkillWiki');
-    expect(openSkills.className).toMatch(/settings-icon-btn/);
-    expect(openSkills.className).toMatch(/plugin-action-icon/);
+    expect(openSkills).toHaveTextContent('Manage in Skills');
+    expect(openSkills.className).toMatch(/pv-add-form-btn/);
+    expect(openSkills.className).toMatch(/plugin-labeled-action/);
     expect(openSkills.className).not.toMatch(/skill-card-delete/);
+
+    const toggle = screen.getByRole('button', { name: 'Toggle package skillwiki@llm-wiki' });
+    expect(toggle).toHaveTextContent('Disable');
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('makes the marketplace teaser row navigate from its body and keeps a bare browse affordance', async () => {
@@ -595,6 +610,18 @@ describe('PluginsTab skill package inventory', () => {
     expect(await screen.findByText('Package availability')).toBeInTheDocument();
     expect(screen.getByText('wiki-query')).toBeInTheDocument();
     expect(screen.queryByText('local-only')).not.toBeInTheDocument();
+    const layerText = Array.from(document.querySelectorAll('[class*="skills-list-desc"]'))
+      .map((node) => node.textContent?.replace(/\s+/g, ' ').trim());
+    expect(layerText).toContain('Package: enabled');
+    expect(layerText.some((text) => text?.startsWith('Agent preference:'))).toBe(true);
+    expect(layerText).toContain('Effective availability: available');
+
+    const packageToggle = screen.getByRole('button', { name: 'Toggle package skillwiki@llm-wiki' });
+    expect(packageToggle).toHaveTextContent('Disable');
+    expect(packageToggle).toHaveAttribute('aria-pressed', 'true');
+    const skillToggle = screen.getByRole('button', { name: 'Disable wiki-query' });
+    expect(skillToggle).toHaveTextContent('Disable');
+    expect(skillToggle).toHaveAttribute('aria-pressed', 'true');
 
     const openMarketplace = screen.getByRole('button', { name: 'Open marketplace' });
     expect(openMarketplace).toHaveAttribute('title', 'Open marketplace');

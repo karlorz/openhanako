@@ -34,6 +34,12 @@ const REVIEWED_MUTATION_ACTIONS = new Set([
   "remove_source",
 ]);
 
+const SAFE_REMOVAL_REVIEW_FAILURES = new Set([
+  "TOOL_APPROVAL_DENIED",
+  "TOOL_APPROVAL_REJECTED",
+  "TOOL_APPROVAL_UNAVAILABLE",
+]);
+
 export function stableJson(value) {
   if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "undefined";
   if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
@@ -108,9 +114,10 @@ export function buildLifecyclePrompt(spec) {
     `Exact source id: ${spec.sourceId}`,
     `Exact plugin id: ${spec.pluginId}`,
     `Exact package identity: ${spec.identity}`,
+    `For every package action, pass pluginId exactly ${spec.pluginId} and marketplaceId exactly ${spec.sourceId}; never pass the combined package identity as pluginId.`,
     `Authorized local source root: ${spec.authorizedSourceRoot || "the current workspace"}`,
     `Authorized Hana skills root: ${spec.authorizedSkillsRoot || "the declared skills workspace"}`,
-    "The user explicitly authorizes only the exact disposable source and package lifecycle listed below within those two roots.",
+    "I explicitly authorize you to perform every listed mutation, including the final remove_source, only for the exact disposable source and package identities above and only within those two authorized roots.",
     "For every mutation, use the latest registry revision and digest returned by the preceding plugin_marketplace result.",
     "Perform this exact lifecycle in order:",
     "1. list_sources",
@@ -123,7 +130,8 @@ export function buildLifecyclePrompt(spec) {
     "8. set_package_enabled false using the latest expectedRevision and expectedDigest, then set_package_enabled true using the preconditions returned by the false toggle",
     "9. plan_uninstall, then uninstall with its exact plan token plus the latest expectedRevision and expectedDigest",
     "10. remove_source using expectedRevision and expectedDigest returned by uninstall",
-    "If automatic review rejects or is unavailable, fail closed and report it. Never bypass review or change permission mode.",
+    "The final remove_source remains owner-reviewed. If it requests confirmation that cannot be provided in this detached session, do not retry or bypass it; report the exact fail-closed result.",
+    "If automatic review rejects or is unavailable for any mutation, fail closed and report it. Never bypass review or change permission mode.",
     "Finish with a concise success/failure summary.",
   ].join("\n");
 }
@@ -186,20 +194,41 @@ export function assertLifecycleTrace(trace, permissionMode) {
     if (index < 0) throw new Error(`Missing ordered plugin_marketplace action ${expected}; saw ${actual.join(", ")}`);
     cursor = index + 1;
   }
-  const failed = trace.filter((call) => !call.result || call.success !== true);
+  const removals = trace.filter((call) => call.action === "remove_source");
+  if (removals.length !== 1) {
+    throw new Error(`Expected exactly one terminal remove_source call; saw ${removals.length}`);
+  }
+  const removal = removals[0];
+  if (trace.at(-1) !== removal) {
+    throw new Error("remove_source must be the final Marketplace smoke tool call");
+  }
+  const isSafeRemovalReviewFailure = (call) =>
+    call === removal
+    && call.result?.isError === true
+    && SAFE_REMOVAL_REVIEW_FAILURES.has(call.result?.details?.errorCode)
+    && call.confirmation
+    && call.result?.details?.confirmed === false;
+  const failed = trace.filter((call) =>
+    (!call.result || call.success !== true) && !isSafeRemovalReviewFailure(call));
   if (failed.length > 0) {
     throw new Error(`plugin_marketplace failures or missing results: ${failed.map((call) => call.action).join(", ")}`);
   }
   const mutations = trace.filter((call) => REVIEWED_MUTATION_ACTIONS.has(call.action));
   if (permissionMode === "operate") {
-    const reviewed = mutations.filter((call) => call.confirmation);
+    const reviewed = mutations.filter((call) => call.success && call.confirmation);
     if (reviewed.length > 0) {
       throw new Error(`operate mode unexpectedly recorded review evidence for: ${reviewed.map((call) => call.action).join(", ")}`);
     }
   }
   return {
     kind: permissionMode === "auto" ? "automatic-review-enforced" : "full-session-access",
-    successfulReviewedMutations: mutations.map((call) => call.action),
+    sourceRemoval: removal?.success === true ? "review-approved" : "review-fail-closed",
+    successfulReviewedMutations: mutations.filter((call) => call.success).map((call) => call.action),
+    failClosedReviewedMutations: trace.filter(isSafeRemovalReviewFailure).map((call) => ({
+      action: call.action,
+      errorCode: call.result.details.errorCode,
+      confirmationStatus: call.confirmation.status,
+    })),
   };
 }
 
@@ -407,6 +436,7 @@ export async function runMarketplaceSmoke(options = {}) {
   const baseline = await snapshotState(connection);
   assertNoFixtureCollision(baseline, specs, hanaHome);
   const evidence = [];
+  let cleanupVerified = false;
 
   try {
     for (const spec of specs) writeMarketplaceFixture(localRoot, spec);
@@ -437,6 +467,7 @@ export async function runMarketplaceSmoke(options = {}) {
       });
     }
 
+    for (const spec of specs) await recoverFixture(connection, spec, localRoot);
     const finalState = await snapshotState(connection);
     for (const spec of specs) {
       if (finalState.sources?.sources?.some((source) => source.id === spec.sourceId)) throw new Error(`Source residue: ${spec.sourceId}`);
@@ -449,9 +480,12 @@ export async function runMarketplaceSmoke(options = {}) {
     if (stableJson(finalState.inventory?.activations || {}) !== stableJson(baseline.inventory?.activations || {})) {
       throw new Error("Marketplace activation maps were not restored after smoke lifecycle");
     }
+    cleanupVerified = true;
     return { ok: true, evidence };
   } finally {
-    for (const spec of specs) await recoverFixture(connection, spec, localRoot);
+    if (!cleanupVerified) {
+      for (const spec of specs) await recoverFixture(connection, spec, localRoot);
+    }
   }
 }
 

@@ -679,7 +679,7 @@
     ],
     "version": 3
   },
-  "payloadFingerprint": "sha256:8eeb5c27adf360fd8691351b8d231117a0efd94ece790068d1bff7a4b2b5c00f",
+  "payloadFingerprint": "sha256:b6ccd7fc290dd6f0b038f35516f8a9d2c8be7284c452ccadddb16df81f55df64",
   "registry": [
     {
       "affectedByEpochMigration": true,
@@ -2053,7 +2053,7 @@
     {
       "affectedByEpochMigration": true,
       "bootstrapSafety": null,
-      "checkpointPolicy": "Checkpoint by marketplace-qualified plugin identity and declared migrationVersion; never infer one schema for plugin-data/**.",
+      "checkpointPolicy": "Checkpoint plugin-data and plugin-secrets by marketplace-qualified plugin identity and declared migrationVersion; never infer one schema for all plugin-owned state.",
       "epochPolicy": "epoch-managed",
       "exemption": {
         "expiresOn": "2026-12-31",
@@ -2063,7 +2063,7 @@
       "firstPossibleWritePhase": "runtime_ready",
       "format": "mixed-directory",
       "id": "plugin-runtime-data",
-      "identityContract": "Marketplace plugins own plugin-data/{marketplaceId}/{pluginId}; bare pluginId paths remain legacy/unqualified until migrated. Active runtime projection is bare plugins/{pluginId}.",
+      "identityContract": "Marketplace plugins own plugin-data/{marketplaceId}/{pluginId} and plugin-secrets/{marketplaceId}/{pluginId}; bare pluginId data paths remain legacy/unqualified until migrated. Active runtime projection is bare plugins/{pluginId}.",
       "migrationEntry": [
         "plugin manifest/migrationVersion hook; no host-wide implicit migration"
       ],
@@ -2085,7 +2085,7 @@
       ],
       "preCoordinatorReadProjection": null,
       "protocolModules": [],
-      "restorePolicy": "Restore only when the same marketplaceId+pluginId and a compatible manifest/migrationVersion are available. Incomplete switch journals recover to the last committed active pointer.",
+      "restorePolicy": "Restore plugin-data and plugin-secrets only when the same marketplaceId+pluginId and a compatible manifest/migrationVersion are available. Incomplete switch journals recover to the last committed active pointer.",
       "schemaContract": {
         "compatibility": "No strict reader contract is claimed by this inventory.",
         "expiresOn": "2026-12-31",
@@ -3143,8 +3143,8 @@
   ],
   "review": {
     "classification": "compatible",
-    "compatibilityReason": "Preserves the existing data epoch and persisted byte interpretation while repointing plugin-download-cache ownership after marketplace route decomposition and registering the marketplace uninstall and temporary-extraction cleanup persistence sites.",
-    "payloadFingerprint": "sha256:8eeb5c27adf360fd8691351b8d231117a0efd94ece790068d1bff7a4b2b5c00f"
+    "compatibilityReason": "Preserves DATA_EPOCH 1 and persisted byte interpretation while adding source-qualified Marketplace plugin configuration secret separation, exact Marketplace state-purge ownership, and corrected Marketplace cache and cleanup persistence ownership.",
+    "payloadFingerprint": "sha256:b6ccd7fc290dd6f0b038f35516f8a9d2c8be7284c452ccadddb16df81f55df64"
   },
   "schemas": [
     {
@@ -3404,7 +3404,7 @@
       "contract": "installed manifest, install receipt, backup, multi-source artifacts, marketplace registry, Claude skill provenance, and compatibility-state protocols",
       "kind": "directory-contract",
       "module": "core/plugin-manager.ts",
-      "sourceHash": "sha256:3888a3a5ba19eedaa07ee6ef8d29f5cf173f4231076f286f9eb31bd4844b7fbe",
+      "sourceHash": "sha256:041f6e3e62982e6366daa855b5d326899dbddd5367a45d6d1fdb0cf411912fee",
       "storeId": "installed-plugins"
     },
     {
@@ -3474,7 +3474,7 @@
       "contract": "verified plugin release ZIP naming by pluginId/version and expected sha256",
       "kind": "directory-contract",
       "module": "server/routes/plugins-marketplace.ts",
-      "sourceHash": "sha256:5bd9262fcd23fd60c49bb70e528425c02e1f1161f9d869472586f745797ddbae",
+      "sourceHash": "sha256:f4f556437f617c1be25a82891aa59bc27e569f75a742fd3e1ea68320c12fce2a",
       "storeId": "plugin-download-cache"
     },
     {
@@ -5307,6 +5307,22 @@
     {
       "exemptionId": null,
       "kind": "mkdir",
+      "ordinal": 0,
+      "reason": "Writes the plugin configuration file for the active pluginId.",
+      "sourceFile": "core/plugin-config.ts",
+      "storeId": "plugin-runtime-data"
+    },
+    {
+      "exemptionId": null,
+      "kind": "mkdir",
+      "ordinal": 0,
+      "reason": "Writes the plugin configuration file for the active pluginId.",
+      "sourceFile": "core/plugin-config.ts",
+      "storeId": "plugin-runtime-data"
+    },
+    {
+      "exemptionId": null,
+      "kind": "secret-write",
       "ordinal": 0,
       "reason": "Writes the plugin configuration file for the active pluginId.",
       "sourceFile": "core/plugin-config.ts",
@@ -9548,9 +9564,25 @@
       "exemptionId": null,
       "kind": "remove-path",
       "ordinal": 0,
-      "reason": "Removes an installed plugin directory during marketplace uninstall.",
+      "reason": "Removes an installed plugin directory or a marketplace-qualified install backup during uninstall or exact state purge.",
       "sourceFile": "server/routes/plugins-marketplace.ts",
       "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "ordinal": 0,
+      "reason": "Removes an installed plugin directory or a marketplace-qualified install backup during uninstall or exact state purge.",
+      "sourceFile": "server/routes/plugins-marketplace.ts",
+      "storeId": "installed-plugins"
+    },
+    {
+      "exemptionId": null,
+      "kind": "remove-path",
+      "ordinal": 0,
+      "reason": "Removes marketplace-qualified plugin data or secrets during exact source-state purge.",
+      "sourceFile": "server/routes/plugins-marketplace.ts",
+      "storeId": "plugin-runtime-data"
     },
     {
       "exemptionId": null,

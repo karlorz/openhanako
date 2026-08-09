@@ -18,7 +18,7 @@ This is a permanent personal fork unless upstream accepts equivalent fixes. See 
 
 Use release-tag syncs from upstream, not continuous upstream `main` tracking. Preserve local fixes by behavior and tests, not by blindly preferring either side during conflicts.
 
-Current state (2026-07-27 closeout): package version remains **`0.416.51`**. Host **sg01** runs prerelease **`v0.416.51-karlorz.8`** (`8345b01a…`) with packaged `hana` CLI green (`.7` externalize fix carried forward), Caddy public Mobile **`https://hana.karldigi.dev`**, `HANA_SECURE_COOKIES=1`, Tailscale **`http://100.125.173.118:14500`** preserved. Mobile session-loss recovery first **PASS** on HTTP `.3`; HTTPS/WSS/PWA Track D **PASS** under operator-approved Playwright mobile browser boundary (physical install/OS lifecycle deferred non-blocking). Ops: `docs/ops/sg01-https-caddy-14500-boundary.md`. PR #1 remains permanent draft never-merge. **Open follow-ups:** optional physical I1–I5 / real-phone OS lifecycle; optional host `enp0s6` DROP defense-in-depth after OCI console confirmation; vault push when attended. Vault work under `projects/openhanako/work/2026-07-26-mobile-pwa-session-loss-recovery/` and `2026-07-27-*`.
+Current pre-sync state (2026-08-09): `dev` package and lockfile remain **`0.421.24`**, synchronized through upstream stable **`v0.421.24`**. The next stable production target is **`v0.444.1`**. **`train-beta-26` / `v0.446.6` is a prerelease review candidate only**, not the stable target. Approved Marketplace/runtime/UI/skill-truth pre-work is intentionally present in the local dirty working tree. This pre-work stage has not started a sync or rebase and has not changed package/lockfile versions, created a tag/release, published or deployed anything, mutated permanent draft PR #1, or contacted sg01.
 
 ## Core Terms
 
@@ -64,14 +64,29 @@ Provider catalog model object fields (Settings → Providers → edit model) are
   - `scripts/sign-local.cjs`
   - `.github/workflows/build.yml`
   - `.github/workflows/ci.yml`
-- Marketplace skill packages / Manage Plugins:
+- Marketplace native/runtime, skill packages, and Manage Plugins:
   - `docs/plugins/marketplace-handbook.md`
+  - `core/plugin-config.ts` (ordinary/secrets split and scoped migration)
+  - `core/plugin-manager.ts` (source-qualified native data/secrets roots)
+  - `lib/plugin-install-records.ts` (active and retained artifact identity)
+  - `lib/plugin-trust-store.ts` (source/digest-qualified trust)
+  - `lib/plugin-marketplace-service.ts` (source snapshots, boot seed, installed skill inventory)
   - `lib/plugin-marketplace-activation.ts` (`marketplaceSkillPackages` gate)
-  - `lib/plugin-marketplace-service.ts` (`listInstalledSkillPackages`)
-  - `server/routes/plugins.ts` (`GET …/installed-skill-packages`)
+  - `server/routes/plugins-marketplace.ts`
+    - `GET /api/plugins/marketplace/installed-skill-packages`
+    - `DELETE /api/plugins/:pluginId/artifacts/:marketplaceId/:artifactDigest`
+    - `DELETE /api/plugins/:pluginId/state/:marketplaceId`
+    - `DELETE /api/plugins/marketplace/:id/skills`
   - `core/skill-manager.ts` (package gate resolver)
   - `desktop/src/react/settings/tabs/PluginsTab.tsx`
   - `desktop/src/react/settings/tabs/PluginMarketplaceTab.tsx`
+  - `desktop/src/react/settings/components/MarketplaceSourcesPanel.tsx`
+  - `desktop/src/react/settings/tabs/skills/SkillRow.tsx`
+  - `tests/plugin-marketplace-retention-routes.test.ts`
+  - `tests/plugin-marketplace-official-seed.test.ts`
+  - `tests/plugin-config.test.ts`
+  - `tests/plugin-manager.test.ts`
+  - `tests/agent-platform-prompt.test.ts`
   - SkillWiki: `projects/openhanako/work/2026-07-31-manage-plugins-marketplace-skill-packages/`
 
 ## Verification Expectations
@@ -102,14 +117,40 @@ For Manage Plugins / marketplace skill-package changes, additionally run:
 
 ```bash
 npx vitest run tests/plugin-marketplace-*.test.ts \
+  tests/plugin-marketplace.test.ts \
   tests/http-route-security.test.ts \
   tests/skill-manager.test.ts \
   tests/skills-route.test.ts \
+  tests/plugin-config.test.ts \
+  tests/plugin-manager.test.ts \
+  tests/plugin-trust-store.test.ts \
+  tests/plugin-routes.test.ts \
+  tests/agent-platform-prompt.test.ts \
+  desktop/src/react/__tests__/settings/AddMarketplaceSourceDialog.test.tsx \
+  desktop/src/react/__tests__/settings/MarketplaceSourcesPanel.test.tsx \
   desktop/src/react/__tests__/settings/PluginMarketplaceTab.test.tsx \
-  desktop/src/react/__tests__/settings/PluginsTab.test.tsx
+  desktop/src/react/__tests__/settings/PluginsTab.test.tsx \
+  desktop/src/react/__tests__/settings/marketplace/ManagePluginsSkillPackagesPanel.test.tsx \
+  desktop/src/react/__tests__/settings/marketplace/MarketplacePluginInspector.busy.test.tsx \
+  desktop/src/react/settings/tabs/skills/__tests__/SkillRow.test.tsx \
+  tests/i18n-locale-parity.test.ts \
+  tests/react-locale-coverage.test.ts
 ```
 
-Manual smoke: install a Hana-skill package → row under Manage Plugins → package enable off/on (global gate) → uninstall via Manage Plugins or Marketplace; native plugins and dropzone remain PluginManager-only.
+Then run `npm run typecheck` and `git diff --check`.
+
+Local packaged manual smoke for Marketplace pre-work:
+
+1. Confirm the official source is visible and startup remains usable offline.
+2. Submit a failing Add Source request; verify the dialog remains open, input is preserved, and the error is inline. Then add a valid disposable source.
+3. Verify technical details start collapsed and expand to location/ref/index/revision/digest/fetched-time/diagnostics.
+4. Verify visible localized **Refresh**, **Remove**, **Enable/Disable**, and **Manage in Skills** actions; pressed controls expose state.
+5. Install a Hana-skill package and confirm the Manage Plugins Hana skills row.
+6. Verify the explicit **Package**, **Agent preference**, and **Effective availability** layers; turn the package off/on, open Manage in Skills, and turn one skill off/on for a selected Agent.
+7. Uninstall the skill package through its dedicated lifecycle.
+8. Confirm native HyperFrames inventory/toggle and the native PluginManager dropzone are unchanged.
+
+This 2026-08-09 pre-sync goal is local-only. Do not run the remote sg01 smoke, deployment, upgrade, or release flow as part of this pre-work closeout. The remote checklist below applies to an attended sync/release stage that explicitly includes sg01.
 
 Manual smoke for the remote server:
 
