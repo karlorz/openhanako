@@ -120,6 +120,20 @@ describe("upstream issue tracker", () => {
     expect(draft).toContain("scoped resource URL synthesis");
   });
 
+  it("keeps newly found adjacent Vision and plugin iframe issues distinct from fork fixes", () => {
+    const vision = TRACKED_FIXES.find((item) => item.id === "vision-capability-settings-sot");
+    const iframe = TRACKED_FIXES.find((item) => item.id === "plugin-iframe-remote-credential-query-leak");
+
+    expect(vision.relatedIssues).toContainEqual(
+      expect.objectContaining({ number: 2252, state: "OPEN" }),
+    );
+    expect(renderDraftIssue(vision)).toContain("adjacent but not a duplicate");
+    expect(iframe.relatedIssues).toContainEqual(
+      expect.objectContaining({ number: 2367, state: "OPEN" }),
+    );
+    expect(renderDraftIssue(iframe)).toContain("not the remote query-token exposure");
+  });
+
   it("filters unrelated fuzzy GitHub search matches", () => {
     const fix = TRACKED_FIXES.find((item) => item.id === "lan-csp-ws-auth");
 

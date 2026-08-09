@@ -11,6 +11,7 @@ Commits: `7370276c`
 Related upstream issues:
 
 - #1493: https://github.com/liliMozi/openhanako/issues/1493
+- #2367: https://github.com/liliMozi/openhanako/issues/2367
 - #1546: https://github.com/liliMozi/openhanako/issues/1546
 
 ## Summary
@@ -31,6 +32,7 @@ After LAN query-token support, the desktop plugin surface URL builder can place 
 ## Related issues
 
 - #1493 covers missing credentials for local plugin iframe surfaces.
+- #2367 is an adjacent local-loopback missing-credential report, not the remote query-token exposure described here.
 - #1546 is an older plugin iframe loading bug.
 - #1749 covers the LAN query-token/CSP/WebSocket regression boundary.
 

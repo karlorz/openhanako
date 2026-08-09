@@ -400,6 +400,12 @@ export const TRACKED_FIXES = [
         relation: "umbrella: custom provider model capabilities/context edits do not reliably take effect",
       },
       {
+        number: 2252,
+        url: "https://github.com/liliMozi/openhanako/issues/2252",
+        state: "OPEN",
+        relation: "adjacent: Vision Bridge adapter failure for google-generative-ai, not the picker/catalog source-of-truth regression",
+      },
+      {
         number: 538,
         url: "https://github.com/liliMozi/openhanako/issues/538",
         state: "OPEN",
@@ -429,6 +435,7 @@ export const TRACKED_FIXES = [
       "Root cause: Settings UI could show Vision ON from dictionary/reference while provider catalog lacked image; runtime Vision auxiliary filters projected input only.",
       "Do not treat known-model-fallbacks.json as day-to-day correctness path; optional catalog convenience only.",
       "Hybrid Save: materialize true capabilities always; materialize false only when catalog already had the field or the user toggled (preserves Ollama inference).",
+      "Upstream #2252 is an adjacent Vision Bridge adapter failure, not a duplicate of this picker/catalog persistence fix.",
     ],
     draft: {
       file: "vision-capability-settings-sot.md",
@@ -439,6 +446,8 @@ export const TRACKED_FIXES = [
         "The Vision auxiliary model dropdown only lists models whose runtime projection has `input` including `\"image\"`. For custom OpenAI-compatible providers, a model can appear Vision-capable in the model edit panel (dictionary/reference merge) while the provider catalog still has a bare string id. Saving without re-toggling Vision did not persist `image: true`, so the model never appeared in Vision auxiliary until the user toggled Vision off and on and saved again.",
         "",
         "This is a Settings catalog vs dictionary precedence bug, not a missing hard-coded fallback entry. `known-model-fallbacks.json` may stay outdated; user-edited provider model fields must remain the durable source of truth.",
+        "",
+        "Upstream #2252 is adjacent but not a duplicate: it concerns a missing Vision Bridge adapter for `google-generative-ai`, while this draft concerns whether a configured image-capable model is persisted and appears in the picker.",
         "",
         "## Expected",
         "",
@@ -608,6 +617,12 @@ export const TRACKED_FIXES = [
         relation: "local plugin iframe missing credentials",
       },
       {
+        number: 2367,
+        url: "https://github.com/liliMozi/openhanako/issues/2367",
+        state: "OPEN",
+        relation: "adjacent: local-loopback plugin surface has no credential; not the remote device-credential query leak",
+      },
+      {
         number: 1546,
         url: "https://github.com/liliMozi/openhanako/issues/1546",
         state: "CLOSED",
@@ -617,6 +632,7 @@ export const TRACKED_FIXES = [
     notes: [
       "No exact upstream issue found in the 2026-06-16 search.",
       "This is related to iframe auth, but it is not a duplicate of the local-loopback missing credential issue.",
+      "Upstream #2367 documents that adjacent local-loopback omission; retain the remote query-leak analysis as a distinct security issue.",
     ],
     draft: {
       file: "plugin-iframe-remote-credential-query-leak.md",
@@ -640,6 +656,7 @@ export const TRACKED_FIXES = [
         "## Related issues",
         "",
         "- #1493 covers missing credentials for local plugin iframe surfaces.",
+        "- #2367 is an adjacent local-loopback missing-credential report, not the remote query-token exposure described here.",
         "- #1546 is an older plugin iframe loading bug.",
         "- #1749 covers the LAN query-token/CSP/WebSocket regression boundary.",
         "",

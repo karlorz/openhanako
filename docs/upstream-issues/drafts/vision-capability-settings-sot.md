@@ -11,6 +11,7 @@ Commits: `a98f86a9`
 Related upstream issues:
 
 - #1904: https://github.com/liliMozi/openhanako/issues/1904
+- #2252: https://github.com/liliMozi/openhanako/issues/2252
 - #538: https://github.com/liliMozi/openhanako/issues/538
 - #594: https://github.com/liliMozi/openhanako/issues/594
 - #1854: https://github.com/liliMozi/openhanako/issues/1854
@@ -21,6 +22,8 @@ Related upstream issues:
 The Vision auxiliary model dropdown only lists models whose runtime projection has `input` including `"image"`. For custom OpenAI-compatible providers, a model can appear Vision-capable in the model edit panel (dictionary/reference merge) while the provider catalog still has a bare string id. Saving without re-toggling Vision did not persist `image: true`, so the model never appeared in Vision auxiliary until the user toggled Vision off and on and saved again.
 
 This is a Settings catalog vs dictionary precedence bug, not a missing hard-coded fallback entry. `known-model-fallbacks.json` may stay outdated; user-edited provider model fields must remain the durable source of truth.
+
+Upstream #2252 is adjacent but not a duplicate: it concerns a missing Vision Bridge adapter for `google-generative-ai`, while this draft concerns whether a configured image-capable model is persisted and appears in the picker.
 
 ## Expected
 
