@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  FORK_REPOSITORY,
+  PERMANENT_DASHBOARD_PR,
+  UPSTREAM_REPOSITORY,
+} from "../scripts/guard-agent-github-mutation.mjs";
+
+import {
   assertPrereleaseMutateAllowed,
   buildConflictPlan,
   buildPrBodyWithDashboard,
@@ -33,7 +39,15 @@ describe("sync-upstream rule engine", () => {
     expect(rules.releaseTarget.prereleaseFlag).toBe("--include-prerelease");
     expect(rules.conflictRules.divergingFiles).toContain("core/server-auth.ts");
     expect(rules.criticalFileClasses).toContain("lan_connect_auth");
+    expect(rules.issueTracking.states).toContain("local-verified");
     expect(rules.issueTracking.states).toContain("tracked/no-upstream-issue");
+    expect(rules.issueTracking.agentSubmission).toBe("never");
+    expect(rules.agentGithubBoundary.upstreamAgentAccess).toBe("read-only");
+    expect(rules.agentGithubBoundary.forkSocialMutation).toBe("human-only");
+    expect(rules.agentGithubBoundary.draftApprovalGrantsSubmissionAuthority).toBe(false);
+    expect(UPSTREAM_REPOSITORY).toBe(rules.agentGithubBoundary.upstreamRepository.toLowerCase());
+    expect(FORK_REPOSITORY).toBe(rules.agentGithubBoundary.forkRepository.toLowerCase());
+    expect(PERMANENT_DASHBOARD_PR).toBe(String(rules.agentGithubBoundary.permanentDashboardException.prNumber));
   });
 
   it("selects stable upstream releases by default", () => {

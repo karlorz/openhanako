@@ -18,7 +18,7 @@ This is a permanent personal fork unless upstream accepts equivalent fixes. See 
 
 Use release-tag syncs from upstream, not continuous upstream `main` tracking. Preserve local fixes by behavior and tests, not by blindly preferring either side during conflicts.
 
-Current pre-sync state (2026-08-09): `dev` package and lockfile remain **`0.421.24`**, synchronized through upstream stable **`v0.421.24`**. The next stable production target is **`v0.444.1`**. **`train-beta-26` / `v0.446.6` is a prerelease review candidate only**, not the stable target. Approved Marketplace/runtime/UI/skill-truth pre-work is intentionally present in the local dirty working tree. This pre-work stage has not started a sync or rebase and has not changed package/lockfile versions, created a tag/release, published or deployed anything, mutated permanent draft PR #1, or contacted sg01.
+Current pre-sync state (2026-08-10): `dev` package and lockfile remain **`0.421.24`**, synchronized through upstream stable **`v0.421.24`**. The next stable production target is **`v0.446.6`** at `5f08a4f30203abb61dafac7dbb7ab92d11c23efa`; the separate **`train-beta-26`** prerelease label points to that same commit but does not replace the stable-tag production path. Approved Marketplace/runtime/UI/skill-truth pre-work is committed locally as `0dd015358cd38dce44482d90783f7cbf98b9a445`, and the coding-agent GitHub boundary pre-work is completed before the attended rebase. No sync or rebase has started, package/lockfile versions and release digests remain unchanged, and no tag/release, deployment, sg01 contact, or permanent PR #1 mutation has occurred in this stage.
 
 ## Core Terms
 
@@ -33,6 +33,14 @@ Current pre-sync state (2026-08-09): `dev` package and lockfile remain **`0.421.
 - **Server-owned path**: a path originating from HanaAgent workspace/session UI; it already belongs to the active server and must not be re-uploaded.
 - **Optimistic attachment**: transient UI attachment before server echo; may carry inline base64 bytes for immediate preview.
 - **Display message attachment**: persisted message payload; should not store base64 payloads.
+
+## Upstream Collaboration Language
+
+- **Upstream read**: A side-effect-free search, list, view, public GET, reference, or download involving `liliMozi/openhanako`. _Avoid_: “upstream access,” because that can also imply write authority.
+- **Local upstream draft**: Reviewable Markdown and supporting evidence kept in this fork or its SkillWiki project for possible human use. Creating or approving a draft has no external side effect. _Avoid_: “pending submission,” which implies that publication is automatic.
+- **Upstream mutation**: Any state change under `liliMozi/openhanako`, including creating, editing, commenting on, closing, reopening, labeling, reacting to, transferring, or deleting an issue, pull request, discussion, release, or other repository object. Codex and Claude are never authorized to perform an upstream mutation. _Avoid_: “submit issue” as the whole boundary, because comments and edits are mutations too.
+- **Draft approval**: A human decision that the wording and evidence in a local upstream draft are acceptable. Draft approval never grants posting authority. _Avoid_: “approved to submit.”
+- **Human submission**: An upstream mutation performed manually by a human outside a Codex or Claude session. It is the only permitted path from a local upstream draft to an upstream repository object. _Avoid_: “agent-assisted submission,” because an agent may help prepare content but may not execute the mutation.
 
 ## Model capability SoT (Vision auxiliary)
 

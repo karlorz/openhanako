@@ -93,6 +93,17 @@ describe("upstream issue tracker", () => {
     expect(draft).not.toMatch(/token=[A-Za-z0-9_-]{12,}/);
   });
 
+  it("makes local drafting distinct from human-only publication", () => {
+    const status = renderStatusMarkdown();
+    const fix = TRACKED_FIXES.find((item) => item.id === "remote-attachment-preview-persistence");
+    const draft = renderDraftIssue(fix);
+
+    expect(status).toContain("Codex and Claude never submit them");
+    expect(status).toContain("human acting manually outside an agent session");
+    expect(draft).toContain("Codex and Claude must never submit, comment, edit, label, react, close");
+    expect(draft).toContain("Human approval changes the draft wording state only");
+  });
+
   it("documents upstream #2188 as related but not equivalent to remote attachment persistence", () => {
     const fix = TRACKED_FIXES.find((item) => item.id === "remote-attachment-preview-persistence");
 

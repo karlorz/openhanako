@@ -1,0 +1,18 @@
+{
+  "description": "Deny coding-agent GitHub mutations that are permanently reserved for a human.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "^(Bash|mcp__.*)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$(git rev-parse --show-toplevel)/scripts/guard-agent-github-mutation.mjs\"",
+            "timeout": 10,
+            "statusMessage": "Checking the human-only GitHub boundary"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR}/scripts/guard-agent-github-mutation.mjs\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

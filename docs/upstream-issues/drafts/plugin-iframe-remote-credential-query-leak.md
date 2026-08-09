@@ -1,6 +1,6 @@
 # [Bug] Remote plugin iframe URLs expose device credentials in query strings
 
-> Local draft only. Do not submit upstream until the fork owner approves.
+> Local draft only. Codex and Claude must never submit, comment, edit, label, react, close, or otherwise publish this upstream. Human approval changes the draft wording state only; a human must post manually outside the agent session.
 
 Tracked fix: `plugin-iframe-remote-credential-query-leak`
 Classification: `upstream`
