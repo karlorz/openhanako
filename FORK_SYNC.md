@@ -424,7 +424,7 @@ attended rebase begins.
 
 | Signal | Observed value |
 |--------|----------------|
-| Working branch / pre-work | `dev`; Marketplace pre-work is committed as `0dd015358cd38dce44482d90783f7cbf98b9a445`, followed by the reviewed coding-agent GitHub boundary commit before sync |
+| Working branch / pre-work | `dev`; Marketplace pre-work is committed as `0dd015358cd38dce44482d90783f7cbf98b9a445`, followed by reviewed coding-agent GitHub-boundary commit `4ed988578409c444765dc62f70d9ee3c188a6b76` and this pre-rebase documentation reconciliation; all remain local before sync |
 | Package / lockfile version | `0.421.24`; intentionally not pre-bumped |
 | Last synchronized upstream stable | `v0.421.24` |
 | Next stable production target | `v0.446.6` @ `5f08a4f30203abb61dafac7dbb7ab92d11c23efa` |
@@ -484,9 +484,10 @@ actual upstream sync occurs.
 
 ### Pre-sync gate closeout evidence (2026-08-09)
 
-- Repository `dev` and `origin/dev` both remain at
-  `875c26d3780bb1fc9f19e113c3e364121eea09ef`; nothing is staged and no tag
-  points at the working head.
+- At the 2026-08-09 pre-work checkpoint, repository `dev` and `origin/dev`
+  both were `875c26d3780bb1fc9f19e113c3e364121eea09ef`; nothing was staged and
+  no tag pointed at the working head. The 2026-08-10 amendment below records
+  the later authorized local documentation/tooling commits.
 - The local-only conflict plan reports zero conflicts, `prUpdated: false`,
   stable target `v0.446.6` at `5f08a4f30203abb61dafac7dbb7ab92d11c23efa`,
   and `stableActivationAllowed: true`. It did not start the rebase or write
@@ -515,16 +516,22 @@ actual upstream sync occurs.
 
 - The completed Marketplace pre-work was subsequently committed locally as
   `0dd015358cd38dce44482d90783f7cbf98b9a445` (`feat(marketplace): complete
-  pre-sync hardening`). `dev` is one commit ahead of unchanged `origin/dev` at
-  `875c26d3780bb1fc9f19e113c3e364121eea09ef`; no push occurred.
+  pre-sync hardening`), followed by the GitHub-boundary tooling/documentation
+  commit `4ed988578409c444765dc62f70d9ee3c188a6b76`
+  (`chore(agents): enforce human-only GitHub submissions`). A final
+  pre-rebase documentation reconciliation follows both commits. All of this
+  pre-work remains local against unchanged `origin/dev` at
+  `875c26d3780bb1fc9f19e113c3e364121eea09ef`; no push occurred. The exact
+  current pre-rebase SHA is recorded by the backup ref at sync activation.
 - The installed app remains the valid, strict-codesign-passing local working-tree
   build produced before that local commit. Its metadata intentionally reports
   base SHA `875c26d3780bb1fc9f19e113c3e364121eea09ef` with `dirty: true`; committing
   the already-packaged tree did not change its application contents.
 - The coding-agent GitHub boundary work is a repository tooling/documentation
-  layer and does not change packaged HanaAgent runtime code. It is reviewed and
-  committed before the stable rebase; that commit does not itself authorize a
-  push, PR #1 refresh, sync, tag, or release.
+  layer and does not change packaged HanaAgent runtime code. Commit
+  `4ed988578409c444765dc62f70d9ee3c188a6b76` is reviewed and committed before
+  the stable rebase; that commit does not itself authorize a push, PR #1
+  refresh, sync, tag, or release.
 
 ## Stable sync activation and closeout boundary
 
