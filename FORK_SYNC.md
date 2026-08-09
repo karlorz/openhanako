@@ -30,7 +30,7 @@ Current status:
 |-----|--------|----------------------|--------|
 | LAN/Tailscale CSP + WebSocket auth | `existing/open` | [#1749](https://github.com/liliMozi/openhanako/issues/1749) OPEN; [#1811](https://github.com/liliMozi/openhanako/issues/1811) CLOSED | Read and reference during sync review only. Agents must never comment on or edit the upstream issue; shrink divergence only from verified upstream behavior. |
 | LAN query-token network hardening | `draft/pending-approval` | No exact issue found; related [#1749](https://github.com/liliMozi/openhanako/issues/1749) and [#1811](https://github.com/liliMozi/openhanako/issues/1811) | Review `docs/upstream-issues/drafts/lan-query-token-network-hardening.md`; keep it local, and if a human later posts manually, normally fold it into the LAN auth issue unless upstream requests a separate report. |
-| Remote plugin iframe credential query leak | `draft/pending-approval` | No exact issue found; related [#1493](https://github.com/liliMozi/openhanako/issues/1493), [#1546](https://github.com/liliMozi/openhanako/issues/1546) | Review `docs/upstream-issues/drafts/plugin-iframe-remote-credential-query-leak.md`; keep local unless a human later posts it manually. |
+| Remote plugin iframe credential query leak | `draft/pending-approval` | No exact issue found; related [#1493](https://github.com/liliMozi/openhanako/issues/1493), [#1546](https://github.com/liliMozi/openhanako/issues/1546), and [#2367](https://github.com/liliMozi/openhanako/issues/2367). #2367 is a local-loopback missing-credential failure, not the fork's remote query-token exposure. | Review `docs/upstream-issues/drafts/plugin-iframe-remote-credential-query-leak.md`; keep local unless a human later posts it manually. |
 | Remote attachment preview persistence | `draft/pending-approval` | Related [#2188](https://github.com/liliMozi/openhanako/issues/2188) OPEN fixes a WebUI SessionFile-registry load race, but does not cover the fork's remote client-path upload, scoped resource URL, or CSP behavior | Review `docs/upstream-issues/drafts/remote-attachment-preview-persistence.md`; keep local unless a human later posts it manually. |
 | Desktop temp upload session-cache materialization | `draft/pending-approval` | No exact issue found | Review `docs/upstream-issues/drafts/desktop-temp-upload-session-cache-materialization.md`; keep local unless a human later posts it manually. |
 | Marker-only image replay regenerate 400 | `draft/pending-approval` | No exact issue found | Review `docs/upstream-issues/drafts/session-replay-marker-only-image-regenerate.md`; keep local unless a human later posts it manually. |
@@ -301,9 +301,9 @@ Machine-readable source: `docs/fork-sync/pick-from-main-decisions.yml` (loaded b
 
 **Enforced:** force-adopt of `wait-stable` / `preserve-fork` paths from mirrored
 main is forbidden for dashboard cosmetics (`assertNoForceAdoptFromMain`).
-**Adopt-now set is empty** after the attended `v0.421.24` stable sync. A later
-main tip remains ineligible for cosmetic force-adoption until another attended
-stable release sync.
+**Adopt-now set is empty** after the completed local `v0.446.6` stable rebase.
+A later main tip remains ineligible for cosmetic force-adoption until another
+attended stable release sync.
 
 **Reclaim guards** (`checkForkReclaimGuards`): prevent duplicate re-application
 of already-landed fork fixes — ticket-primary WS, isolated `connect-probe`,
@@ -415,12 +415,16 @@ remote-resource-ownership).
 - No AtomGit mirror run exists for this release: the release was published by `github-actions[bot]`, while `.github/workflows/mirror-release-to-atomgit.yml` excludes that sender. This is expected, and the `legacy-raw` profile intentionally publishes no AtomGit mirror/train assets. PR #1 remains open, draft, unmerged, and without auto-merge.
 - The final local-only conflict-plan gate observed upstream stable `v0.416.44` as available after this prerelease publication (`stableActivationAllowed: true`); no stable rebase or production sync was started in this closeout.
 
-## Current upstream channel state (2026-08-10 pre-sync)
+## Historical pre-sync state (2026-08-10, before the `v0.446.6` rebase)
 
-The next stable production sync is available but **has not started**. The
-approved Marketplace/runtime/UI and skill-truth pre-work is committed locally,
-and the coding-agent GitHub boundary batch is reviewed and committed before the
-attended rebase begins.
+This section is an activation-time snapshot retained as evidence. It records
+the state before the later completed `v0.446.6` local rebase; it is superseded
+for current-state purposes by **Current post-rebase state** below.
+
+At that checkpoint, the next stable production sync was available but **had not
+started**. The approved Marketplace/runtime/UI and skill-truth pre-work was
+committed locally, and the coding-agent GitHub boundary batch was reviewed and
+committed before the attended rebase began.
 
 | Signal | Observed value |
 |--------|----------------|
@@ -494,11 +498,11 @@ actual upstream sync occurs.
   `dev`.
 - The protected diff is empty for `package.json`, `package-lock.json`, and both
   release digests. Manifest hashes remained unchanged across packaging.
-- No active merge, cherry-pick, revert, or rebase sequencer exists. A stale
-  `.git/REBASE_HEAD` still points to the July 28 pre-rebase commit `a21ffcb56`;
-  its July 28 mtime, absent rebase directories, clean branch identity, and
-  August 9 reflog confirm it predates this goal. It was preserved rather than
-  silently deleting repository metadata.
+- At that checkpoint, no active merge, cherry-pick, revert, or rebase sequencer
+  existed. A stale `.git/REBASE_HEAD` still pointed to the July 28 pre-rebase
+  commit `a21ffcb56`; its July 28 mtime, absent rebase directories, clean
+  branch identity, and August 9 reflog confirmed it predated that goal. It was
+  preserved rather than silently deleting repository metadata.
 - Final local API/filesystem cleanup found neither disposable fixture source,
   package, activation, skill directory, nor source directory. Native inventory
   was unchanged; the compiled official source remained present.
@@ -532,6 +536,41 @@ actual upstream sync occurs.
   `4ed988578409c444765dc62f70d9ee3c188a6b76` is reviewed and committed before
   the stable rebase; that commit does not itself authorize a push, PR #1
   refresh, sync, tag, or release.
+
+## Current post-rebase state (2026-08-10, `v0.446.6`)
+
+The local stable rebase is complete. This section is the current operational
+state; the preceding pre-sync material remains preserved historical evidence.
+
+| Signal | Observed value |
+|--------|----------------|
+| Local rebase base | Upstream stable `v0.446.6` / `5f08a4f30203abb61dafac7dbb7ab92d11c23efa`; it is an ancestor of local `dev`. |
+| Rebase completion / recovery | Rebase completed at `84c95a469d49d132f7a423ccc45579fad61b68f5`; backup `backup/dev-before-stable-v0.446.6-20260810` preserves `95b23b0829176c2858030e6dd8d9f2b712daa62f`. No active rebase sequencer, rebase directory, or `REBASE_HEAD` remains. |
+| Branch publication | Local `dev` remains intentionally unpublished. `origin/dev` is still `875c26d3780bb1fc9f19e113c3e364121eea09ef`; the rebased local branch diverges from that stale remote-tracking ref. |
+| Version ownership | `package.json` and the lockfile root are `0.446.6`; release digest v1 and the newest v2 entry are upstream-owned `v0.446.6` / `0.446.6`. No fork-qualified digest alignment has been made. |
+| Regenerated receipts | Effective-tree generation produced 9,686 CLI-closure files, 61 persistent stores / 839 sites, and persistence fingerprint `sha256:b6ccd7fc290dd6f0b038f35516f8a9d2c8be7284c452ccadddb16df81f55df64`. |
+| Issue evidence | Read-only tracker `status` and `search` are current; generated `docs/upstream-issues/README.md` matches its source. #1749 remains OPEN, #1811 CLOSED, and #2252/#2367 OPEN but adjacent—not duplicates of the local Vision catalog and remote iframe credential findings. |
+| Completed test evidence | Focused Marketplace/persistence/security baseline: 11 files, 209 tests, zero failures. Persistence tripwire (18) and store-registry (14) tests and upstream-issue-tracker coverage also pass. |
+| Local / remote runtime proof | The installed `/Applications/HanaAgent.app` remains the old local `0.421.24` build. Current-branch Tier 3A, local Marketplace/Settings smoke, and any sg01 contact or smoke are not evidence and remain pending. |
+| GitHub / host actions | No push, tag, release, workflow dispatch, PR #1 refresh, deployment, sg01 contact, fork social mutation, or upstream mutation occurred. |
+
+Two release-blocking regressions remain before final verification:
+
+1. An unchanged legacy Marketplace opt-out can be migrated again after a user
+   re-enables a skill, reintroducing the disabled tombstone.
+2. Credential-file permission healing does not cover source-qualified
+   Marketplace `plugin-data/<marketplaceId>/<pluginId>/config.json` and
+   `plugin-secrets/<marketplaceId>/<pluginId>/...` paths.
+
+The required correction and regression tests are pending the existing
+behavior-change design-approval gate. After that work, run the remaining
+post-rebase, focused/full, typecheck/lint/build, local package/install/codesign,
+Marketplace smoke, documentation, and release-publication gates. The
+read-only local-only conflict plan currently reports zero conflicts and
+`prUpdated: false` and `stableSyncAvailable: false`. `origin/dev` is still
+unpublished/stale, which is a later fork-publication concern rather than a
+remaining local rebase. `node scripts/sync-upstream.mjs --check` correctly
+recognizes `v0.446.6` as already ancestral to local `dev`.
 
 ## Stable sync activation and closeout boundary
 
@@ -654,3 +693,4 @@ permanent draft dashboard and is never a merge vehicle.
 | 2026-07-28 | `v0.421.24` | 48 upstream commits / 146 files introduced explicit-agent ownership, session compaction and migration changes, workspace/identity behavior, and release/persistence metadata; conflicts appeared in compaction/app-init characterization, historical fork digests, and generated receipts. | Replayed 256 fork commits onto upstream `e87769a070d12803247e5cc619dacf5814fe1f52`; preserved upstream stable digest v1/v2 while regenerating 56-store/761-site persistence inventory, 9,610-file CLI closure, and fingerprint `sha256:60af8244abc02d44dd3293f51c18dc06e7d9b16fb6b16968bf0f80585ebabe66`; package/lock aligned to `0.421.24`; simplify made optional model clearing explicit. | Tier 0/1/2 passed; receipt gates 37 tests; target-specific suite 547 tests; simplify follow-up 63 tests; sync helper 31 tests; tracker 7 tests; typecheck, diff-check, and zero-conflict local-only plan passed. | Tier 3A local signed `0.421.24` install and strict codesign passed with deleted one-time key material. Tier 3B helper passed identity + WS; Grok 4.3 Fast upload/send/switch/return restored the matching reply, 1024×1024 transcript thumbnail, `Files: 1` Conversation Files row, and nonblank 1024×1024 preview with no renderer/CSP/WS error. | Backup `backup/dev-before-stable-v0.421.24-20260728` @ `a21ffcb56c6d41181e6f87e26c0b43755c5078ea`. sg01 remained on `v0.416.51-karlorz.8`; no deploy. Issue tracking unchanged; PR #1 remains permanent draft never-merge. Publication evidence follows in the next two rows. |
 | 2026-07-28 | `v0.421.24-karlorz.1` | Initial stable-base fork publication passed CI and Build, but independent verification found the Windows server checksum sidecar's first token was prefixed by GNU's escaped-filename marker. | Published immutable `.1` from `9a8b0572`; preserved the tag/release after the audit failure, traced the producer parser, and refused to move or silently rewrite the release. | Focus-ownership repair CI `30350424227` / `30350424674`; release-prep CI `30351893173` / `30351897996`; Build `30353167993`; 20 non-empty legacy-raw assets otherwise matched profile/manifest/digest contracts. | Existing verified local signed app and sg01 image/send/switch/return/preview smoke remain the runtime evidence; no deployment. | `.1` is immutable audit evidence, not the recommended release. PR #1 remained open/draft/no-auto-merge. |
 | 2026-07-28 | `v0.421.24-karlorz.2` | Correct the Windows checksum token and prevent release publication unless every server sidecar is canonical and matches its archive. | Commit `d2238612` normalizes escaped `sha256sum` output and adds the release-side integrity gate; digest-prep/tag commit `adc36cd6` publishes the one-fix successor after `.1`. | Full local suite 1,071 files / 10,766 tests plus six expected manual skips; exact-head CI `30355471038` / `30355475395`; Build `30356813482`; exact remote tag/SHA, byte-equal digest, exact compatibility manifest, 20 non-empty assets, signed-only exclusions, five canonical sidecars, and independently recomputed Windows archive checksum all passed. | No new runtime smoke was required: the artifact-only correction retains the already passed local app and sg01 attachment/preview evidence. sg01 stayed on `v0.416.51-karlorz.8`. | Recommended verified fork release: `https://github.com/karlorz/openhanako/releases/tag/v0.421.24-karlorz.2`. Plain upstream tag untouched; PR #1 still permanent draft never-merge. |
+| 2026-08-10 | `v0.446.6` | Rebase replay conflicted in the final Marketplace hardening batch, including engine tool assembly, source-qualified plugin config custody, and persistence registry ownership. | Kept deferred MCP/plugin/bridge tool assembly and owner-context forwarding; retained source-qualified public/secrets configuration with `writeSecretFileSync`; preserved exact Marketplace state ownership and regenerated receipts from the effective tree. | Focused Marketplace/persistence/security baseline passed: 11 files / 209 tests, plus persistence-tripwire (18), store-registry (14), and upstream-issue-tracker coverage. Full post-rebase, typecheck/lint/build, package, and local-app gates remain pending. | Not run for this branch: installed app is still local `0.421.24`; no sg01 contact or remote smoke. | Backup `backup/dev-before-stable-v0.446.6-20260810` @ `95b23b082`; `v0.446.6` is ancestral to local `dev`. No push, dashboard refresh, tag, release, deployment, or GitHub mutation. Release remains blocked by the legacy opt-out re-migration and source-qualified credential-healer regressions. |

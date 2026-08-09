@@ -18,7 +18,26 @@ This is a permanent personal fork unless upstream accepts equivalent fixes. See 
 
 Use release-tag syncs from upstream, not continuous upstream `main` tracking. Preserve local fixes by behavior and tests, not by blindly preferring either side during conflicts.
 
-Current pre-sync state (2026-08-10): `dev` package and lockfile remain **`0.421.24`**, synchronized through upstream stable **`v0.421.24`**. The next stable production target is **`v0.446.6`** at `5f08a4f30203abb61dafac7dbb7ab92d11c23efa`; the separate **`train-beta-26`** prerelease label points to that same commit but does not replace the stable-tag production path. Approved Marketplace/runtime/UI/skill-truth pre-work is committed locally as `0dd015358cd38dce44482d90783f7cbf98b9a445`, followed by the coding-agent GitHub-boundary commit `4ed988578409c444765dc62f70d9ee3c188a6b76`. No sync or rebase has started, and package/lockfile versions and release digests remain unchanged. One renderer request reached a previously persisted sg01 endpoint and was rejected read-only with `loopback local-owner required`; the renderer was then reset to loopback-only. No successful remote mutation, deployment, tag/release, or permanent PR #1 mutation has occurred in this stage.
+Current post-rebase state (2026-08-10): local `dev` was rebased onto upstream
+stable **`v0.446.6`** at `5f08a4f30203abb61dafac7dbb7ab92d11c23efa`;
+the rebase-completion head was
+`84c95a469d49d132f7a423ccc45579fad61b68f5`. The separate
+**`train-beta-26`** prerelease label points to the same commit but does not
+replace the stable-tag production identity. Recoverable pre-rebase state is
+preserved at `backup/dev-before-stable-v0.446.6-20260810` /
+`95b23b0829176c2858030e6dd8d9f2b712daa62f`. `package.json`, the lockfile
+root, and upstream-owned digest entries now report **`0.446.6`** /
+**`v0.446.6`**. The rewritten branch is intentionally not published:
+`origin/dev` remains `875c26d3780bb1fc9f19e113c3e364121eea09ef`.
+
+The focused Marketplace/persistence/security baseline is green (11 files,
+209 tests), but this release is **not ready to publish**. Two unimplemented
+regressions remain: a legacy Marketplace opt-out can be re-migrated after a
+user re-enables it, and the credential-file healer does not yet cover
+source-qualified Marketplace config/secrets paths. The installed local app is
+still `0.421.24`, so current-branch Tier 3A and local Marketplace smoke remain
+pending. No push, tag, release, dashboard refresh, sg01 contact, deployment,
+or GitHub social/upstream mutation has occurred in this stage.
 
 ## Core Terms
 
@@ -48,7 +67,7 @@ Provider catalog model object fields (Settings → Providers → edit model) are
 
 - Dictionary sources (`known-models.json` partitions, `known-model-fallbacks.json`) are optional best-effort fill when catalog fields are **absent**. They must not silently steal another provider's partition for a custom hub, and they are not day-to-day maintenance for unknown model ids.
 - Model edit Save materializes `true` capabilities shown from dictionary defaults without a re-toggle; it materializes `false` only when the catalog already had that field or the user toggled it (preserves Ollama name-inference).
-- Fork fix tracked as `vision-capability-settings-sot` (commit `a98f86a9`, UAT-passed 2026-07-26). Upstream relatives: #1904, #538, #594. Draft: `docs/upstream-issues/drafts/vision-capability-settings-sot.md`.
+- Fork fix tracked as `vision-capability-settings-sot` (commit `a98f86a9`, UAT-passed 2026-07-26). Upstream relatives: #1904, #538, #594; #2252 is an adjacent `google-generative-ai` Vision Bridge adapter failure, not an equivalent catalog-source-of-truth fix. Draft: `docs/upstream-issues/drafts/vision-capability-settings-sot.md`.
 
 ## Critical Paths
 
