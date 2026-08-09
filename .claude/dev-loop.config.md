@@ -249,6 +249,7 @@ preflight:
 notes:
   github_repo: karlorz/openhanako
   upstream_repo: liliMozi/openhanako
+  agent_github_boundary: "Codex and Claude may read/reference upstream and write local drafts only. Every liliMozi/openhanako mutation and all issue/comment/review/discussion/reaction/label publishing or direct PR edit on karlorz/openhanako are human-only, except the separately authorized generated PR #1 dashboard workflow. Draft approval never grants posting authority; see docs/fork-sync/agent-github-boundary.md."
   project_wiki: projects/openhanako
   permanent_dashboard_pr: "https://github.com/karlorz/openhanako/pull/1"
   permanent_dashboard_pr_policy: "Draft forever: never merge, auto-merge, or close as a completed merge vehicle. Use it only to review dev against mirrored upstream main."
@@ -256,8 +257,8 @@ notes:
   tag_namespace_rule: "Plain v{version} tags belong to upstream sync targets; fork release tags use the -karlorz.N suffix. Latest fork prerelease tag: v0.421.24-karlorz.5."
   current_package_version: "0.421.24; package.json and package-lock.json remain intentionally unchanged during pre-sync work."
   last_synchronized_stable: "v0.421.24; completed in the attended 2026-07-28 stable sync."
-  next_stable_production_target: "v0.444.1; stable sync is available but has not started."
-  prerelease_review_candidate: "train-beta-26 / v0.446.6; review-only and not the stable production target."
+  next_stable_production_target: "v0.446.6 at 5f08a4f30203abb61dafac7dbb7ab92d11c23efa; stable sync is available but has not started."
+  prerelease_review_candidate: "train-beta-26 is a prerelease label on the same commit as stable v0.446.6; stable-tag detection remains the production path."
   pre_sync_boundary: "2026-08-09 approved pre-work may modify the local dev working tree and exact OpenHanako wiki work items only. It must not rebase/sync, pre-bump package.json or package-lock.json, align release digests, tag, publish, deploy, mutate PR #1, contact sg01, or absorb unrelated vault changes."
   fork_sync_post_rebase_gate: "Run `node scripts/sync-upstream.mjs --post-rebase`; Tier 3A local desktop install/version verification must pass before Tier 3B sg01 live smoke. A smoke run against a stale /Applications/HanaAgent.app is invalid."
   remote_server_url: http://100.125.173.118:14500
@@ -270,7 +271,7 @@ notes:
   sg01_model_removal_patch_release_target: "2026-07-01 patch target: v0.346.18-karlorz.6 includes provider model-removal persistence for slash-bearing local provider models; deploy with install-server upgrade --channel prerelease."
   sg01_stable_sync_release_target: "2026-07-02 stable target: v0.349.5-karlorz.1 includes upstream v0.349.5 plus replay, ToolGroup link-context, provider model-removal, LAN auth, scoped CSP, and remote resource-preview fork behavior; deploy with install-server upgrade --version v0.349.5-karlorz.1 --channel prerelease after release asset checks and host dry-run."
   latest_fork_release: "v0.421.24-karlorz.5 at e747a3fc2; latest fork prerelease tag observed before the 2026-08-09 pre-sync batch. No new tag or release is created during pre-work."
-  next_stable_sync_observed: "Upstream stable v0.444.1 is newer than the last synchronized stable v0.421.24. Stable-only remains the production default; train-beta-26 / v0.446.6 is review-only."
+  next_stable_sync_observed: "Upstream stable v0.446.6 is newer than the last synchronized stable v0.421.24. Stable-only remains the production default; train-beta-26 is a co-located prerelease label, not a separate production target."
   atomgit_mirror_note: "No mirror workflow run exists for the bot-created v0.416.44-karlorz.1 or v0.416.51-karlorz.1 releases because release-created-by-github-actions[bot] events are excluded by .github/workflows/mirror-release-to-atomgit.yml; legacy-raw intentionally excludes AtomGit mirror/train assets."
   sg01_mobile_pwa_diagnosis: "Raw mobile.auth.* text was deployment drift from the old v0.323 server bundle. After upgrading to v0.346.18-karlorz.1, the live MobileApp chunk preloads the auth locale before login and zh.json returns translated mobile.auth labels."
   gh_default_repo_hint: "Run `gh repo set-default karlorz/openhanako` if gh resolves to upstream."

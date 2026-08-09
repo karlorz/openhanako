@@ -16,6 +16,7 @@ user/
 .docs/
 CLAUDE.md
 AGENTS.md
+!/AGENTS.md
 docs/superpowers/
 .superpowers/
 archived/
@@ -64,6 +65,7 @@ node_modules
 # IDE / 工具
 .claude/*
 !.claude/dev-loop.config.md
+!.claude/settings.json
 .claude/dev-loop-debug/
 .claude/dev-loop-work/
 .agents/skills/
@@ -108,5 +110,6 @@ reviews/
 .superpowers/
 
 # Codex environments
-.codex/
+.codex/*
+!.codex/hooks.json
 .worktrees/

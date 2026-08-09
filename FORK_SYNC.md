@@ -9,7 +9,7 @@ For the *why* behind these decisions, see the wiki: `projects/openhanako/fork-sy
 ## Stance
 
 - **Permanent fork.** We maintain this for personal use. No PR planned upstream.
-- **Upstream issue tracker:** [#1749](https://github.com/liliMozi/openhanako/issues/1749) — our bug report (CSP + WS auth). If the maintainer ever accepts equivalent fixes upstream, revisit the permanent-fork decision.
+- **Upstream issue tracker:** [#1749](https://github.com/liliMozi/openhanako/issues/1749) — the upstream issue tracking the CSP + WS auth behavior. If the maintainer ever accepts equivalent fixes upstream, revisit the permanent-fork decision.
 - **Issue tracking rule:** every local fix gets a tracking row. Only upstream-eligible fixes get issue search/draft work; fork-only maintenance is documented without upstream issue noise.
 
 ## Upstream issue tracking
@@ -22,22 +22,22 @@ node scripts/track-upstream-issues.mjs search
 node scripts/track-upstream-issues.mjs draft
 ```
 
-The script never submits GitHub issues. It only prints/searches upstream state and writes local draft issue files under `docs/upstream-issues/drafts/`.
+The script never creates, comments on, edits, labels, reacts to, closes, or otherwise mutates GitHub issues. It only prints/searches upstream state and writes local draft issue files under `docs/upstream-issues/drafts/`. Codex and Claude must keep every proposed communication local even after wording is approved; only a human may post it manually outside the agent session. See `docs/fork-sync/agent-github-boundary.md` for the defense-in-depth controls, credential boundary, and known coverage limits.
 
 Current status:
 
 | Fix | Status | Upstream issue state | Action |
 |-----|--------|----------------------|--------|
-| LAN/Tailscale CSP + WebSocket auth | `existing/open` | [#1749](https://github.com/liliMozi/openhanako/issues/1749) OPEN; [#1811](https://github.com/liliMozi/openhanako/issues/1811) CLOSED | Check during every sync; close or shrink divergence only if upstream accepts equivalent behavior. |
-| LAN query-token network hardening | `draft/pending-approval` | No exact issue found; related [#1749](https://github.com/liliMozi/openhanako/issues/1749) and [#1811](https://github.com/liliMozi/openhanako/issues/1811) | Review `docs/upstream-issues/drafts/lan-query-token-network-hardening.md`; normally fold into the LAN auth issue unless reviewed separately. |
-| Remote plugin iframe credential query leak | `draft/pending-approval` | No exact issue found; related [#1493](https://github.com/liliMozi/openhanako/issues/1493), [#1546](https://github.com/liliMozi/openhanako/issues/1546) | Review `docs/upstream-issues/drafts/plugin-iframe-remote-credential-query-leak.md`; submit only after owner approval. |
-| Remote attachment preview persistence | `draft/pending-approval` | Related [#2188](https://github.com/liliMozi/openhanako/issues/2188) OPEN fixes a WebUI SessionFile-registry load race, but does not cover the fork's remote client-path upload, scoped resource URL, or CSP behavior | Review `docs/upstream-issues/drafts/remote-attachment-preview-persistence.md`; submit only after owner approval. |
-| Desktop temp upload session-cache materialization | `draft/pending-approval` | No exact issue found | Review `docs/upstream-issues/drafts/desktop-temp-upload-session-cache-materialization.md`; submit only after owner approval. |
-| Marker-only image replay regenerate 400 | `draft/pending-approval` | No exact issue found | Review `docs/upstream-issues/drafts/session-replay-marker-only-image-regenerate.md`; submit only after owner approval. |
-| ToolGroup file-detail link context | `draft/pending-approval` | No exact issue found | Review `docs/upstream-issues/drafts/toolgroup-file-detail-link-context.md`; submit only after owner approval. |
-| Provider model-removal persistence | `draft/pending-approval` | No exact issue found | Review `docs/upstream-issues/drafts/provider-model-removal-persistence.md`; submit only after owner approval. |
-| Remote skill viewer local-file IPC | `draft/pending-approval` | No exact issue found | Review `docs/upstream-issues/drafts/remote-skill-viewer-local-file-ipc.md`; submit only after owner approval. |
-| Remote skill install client-local path | `draft/pending-approval` | No exact issue found | Review `docs/upstream-issues/drafts/remote-skill-install-client-local-path.md`; submit only after owner approval. |
+| LAN/Tailscale CSP + WebSocket auth | `existing/open` | [#1749](https://github.com/liliMozi/openhanako/issues/1749) OPEN; [#1811](https://github.com/liliMozi/openhanako/issues/1811) CLOSED | Read and reference during sync review only. Agents must never comment on or edit the upstream issue; shrink divergence only from verified upstream behavior. |
+| LAN query-token network hardening | `draft/pending-approval` | No exact issue found; related [#1749](https://github.com/liliMozi/openhanako/issues/1749) and [#1811](https://github.com/liliMozi/openhanako/issues/1811) | Review `docs/upstream-issues/drafts/lan-query-token-network-hardening.md`; keep it local, and if a human later posts manually, normally fold it into the LAN auth issue unless upstream requests a separate report. |
+| Remote plugin iframe credential query leak | `draft/pending-approval` | No exact issue found; related [#1493](https://github.com/liliMozi/openhanako/issues/1493), [#1546](https://github.com/liliMozi/openhanako/issues/1546) | Review `docs/upstream-issues/drafts/plugin-iframe-remote-credential-query-leak.md`; keep local unless a human later posts it manually. |
+| Remote attachment preview persistence | `draft/pending-approval` | Related [#2188](https://github.com/liliMozi/openhanako/issues/2188) OPEN fixes a WebUI SessionFile-registry load race, but does not cover the fork's remote client-path upload, scoped resource URL, or CSP behavior | Review `docs/upstream-issues/drafts/remote-attachment-preview-persistence.md`; keep local unless a human later posts it manually. |
+| Desktop temp upload session-cache materialization | `draft/pending-approval` | No exact issue found | Review `docs/upstream-issues/drafts/desktop-temp-upload-session-cache-materialization.md`; keep local unless a human later posts it manually. |
+| Marker-only image replay regenerate 400 | `draft/pending-approval` | No exact issue found | Review `docs/upstream-issues/drafts/session-replay-marker-only-image-regenerate.md`; keep local unless a human later posts it manually. |
+| ToolGroup file-detail link context | `draft/pending-approval` | No exact issue found | Review `docs/upstream-issues/drafts/toolgroup-file-detail-link-context.md`; keep local unless a human later posts it manually. |
+| Provider model-removal persistence | `draft/pending-approval` | No exact issue found | Review `docs/upstream-issues/drafts/provider-model-removal-persistence.md`; keep local unless a human later posts it manually. |
+| Remote skill viewer local-file IPC | `draft/pending-approval` | No exact issue found | Review `docs/upstream-issues/drafts/remote-skill-viewer-local-file-ipc.md`; keep local unless a human later posts it manually. |
+| Remote skill install client-local path | `draft/pending-approval` | No exact issue found | Review `docs/upstream-issues/drafts/remote-skill-install-client-local-path.md`; keep local unless a human later posts it manually. |
 | Legacy raw release profile and evidence | `tracked/no-upstream-issue` | Fork-only release policy | Keep the explicit signed/auto/legacy-raw resolver, raw asset exclusions, and runtime-only standalone server bundle evidence under local review. |
 | Fork-only maintenance | `tracked/no-upstream-issue` | Local build identity, fork-sync/dev-loop runbooks, office-workflow examples, server installer/reinit safety, and CI file-mode hygiene | Keep local. The complete generated inventory is `docs/upstream-issues/README.md`; do not create upstream issue noise for fork-only work. |
 
@@ -372,7 +372,7 @@ remote-resource-ownership).
 - Tier 0/1/2 passed through `node scripts/sync-upstream.mjs --post-rebase`. Deterministic receipt gates passed 3 files / 37 tests; the target-specific stable/fork suite passed 30 files / 547 tests; sync-helper and issue-tracker coverage passed 31 and 7 tests; optional-model simplify follow-up coverage passed 6 files / 63 tests; `npm run typecheck`, `git diff --check`, and the local-only conflict plan passed with zero predicted conflicts. The required simplify review made optional clearing explicit at the three optional-model call sites by defaulting the shared widget to non-clearable; broader established-subsystem refactors were deferred outside this stable release.
 - Tier 3A rebuilt and installed `/Applications/HanaAgent.app` as local signed `0.421.24` using one-time Ed25519 validation material removed immediately afterward. Strict deep codesign passed; both bundle versions are `0.421.24`; build metadata reports git SHA `98f600f8686119f8f843def5e20e485e6071ede9`, base tag `v0.421.24`, `channel: local`, `sourceRepo: karlorz/openhanako`, signed profile, ad-hoc app signature, and both updater paths disabled.
 - Tier 3B helper verification against `http://100.125.173.118:14500` passed identity HTTP 200, WebSocket open, complete LAN feature contracts, and remote assessment. The installed-app Playwright/CDP smoke used `Grok 4.3 Fast`, uploaded and sent `Hanako.jpg` with marker `OPENHANAKO-V042124-SMOKE-20260728-1857-JST`, received the matching reply, switched to another chat and returned, restored the 1024×1024 remote transcript thumbnail, showed `Files: 1` and the Conversation Files row, and opened a nonblank 1024×1024 preview rendered at approximately 887×887 pixels. No renderer error, CSP refusal, or WebSocket disconnect was observed.
-- sg01 remains on immutable fork release `v0.416.51-karlorz.8` and was not deployed or modified. Upstream issue tracking remains unchanged after status/search/draft refresh: #1749 and #2188 are open, and no issue was submitted. PR #1 remains the permanent open draft dashboard and was not merged, auto-merged, or closed. Fork release publication and its checksum-audit correction are recorded separately below.
+- sg01 remains on immutable fork release `v0.416.51-karlorz.8` and was not deployed or modified. Upstream issue tracking remains unchanged after read-only status/search and local-draft refresh: #1749 and #2188 are open; Codex and Claude performed no upstream mutation, and only a human may post manually outside an agent session. PR #1 remains the permanent open draft dashboard and was not merged, auto-merged, or closed. Fork release publication and its checksum-audit correction are recorded separately below.
 
 ## Fork release publication closeout (2026-07-28, `.1` audit and corrected `.2`)
 
@@ -391,7 +391,7 @@ remote-resource-ownership).
 - Only after the stable release was published and independently verified, `dev` aligned digest v1/v2 for `v0.416.51-karlorz.1` in commit `ac3c2e7924fb4daa8d6b2fc086fb619022e4779a`. Push CI `30162299102` and permanent-dashboard PR CI `30162300392` passed; the immutable tag resolves to that exact SHA. Build run `30162931788` passed and published `https://github.com/karlorz/openhanako/releases/tag/v0.416.51-karlorz.1`.
 - Fork policy publishes both tags as GitHub prereleases, including the tag based on upstream stable `v0.416.44`. Actions resolved both to profile `legacy-raw`. Each release contains 20 non-empty assets: seven desktop installers, five standalone server bundles, five SHA-256 sidecars, one compatibility manifest, one immutable profile marker, and `release-digest.v1.json`; updater/train and AtomGit mirror assets are intentionally absent.
 - Independent verification confirmed both remote tag SHAs, byte-equal committed/published digests, fork-qualified digest validation, `legacy-raw` markers, exact tag/SHA/repository compatibility manifests, non-draft prerelease state, and 20 non-empty assets. The simplification review found no actionable change in the mechanical digest alignment.
-- Issue tracking remains unchanged by publication: upstream #2188 is related to the SessionFile race but does not replace the fork remote-upload/scoped-resource/CSP contract; no issue was submitted. PR #1 remains open, draft, mergeable, unmerged, and without auto-merge.
+- Issue tracking remains unchanged by publication: upstream #2188 is related to the SessionFile race but does not replace the fork remote-upload/scoped-resource/CSP contract; Codex and Claude performed no upstream mutation, and only a human may post manually outside an agent session. PR #1 remains open, draft, mergeable, unmerged, and without auto-merge.
 - No sg01 deployment was requested or performed. The host remains on immutable `v0.416.43-karlorz.1`; the already verified local signed `0.416.51` desktop installation remains the runtime smoke target.
 
 ## Attended prerelease sync closeout (2026-07-23, `train-beta-15` / `v0.416.43`)
@@ -403,7 +403,7 @@ remote-resource-ownership).
 - Tier 0 passed with all 79 fork-only patterns present. Tier 1 focused upstream/session/permission and packaging/release suites passed (8 files, 112 tests); the helper/runtime-policy/packaged-boot rerun passed 3 files, 50 tests. Tier 2 passed main/preload builds, connect/probe checks, and scoped remote CSP checks. `npm run typecheck` passed.
 - Tier 3A rebuilt and installed `/Applications/HanaAgent.app` as local signed `0.416.43` using temporary Ed25519 validation material that was deleted afterward. Strict deep codesign passed. Bundle metadata reports channel `local`, updates disabled, source repo `karlorz/openhanako`, release profile `signed`, signature kind `adhoc`, and the expected `3420026a...` git SHA. Installed seed resources are platform-qualified for `darwin-arm64`.
 - Tier 3B helper verification against `http://100.125.173.118:14500` returned identity HTTP 200 and an open WebSocket with `connectionKind: lan`; the independent environment assessment is `attention` because sg01 still reports server `0.412.7`, release `v0.412.7-karlorz.2`. Manual CDP smoke recovered the remote connection, uploaded `yuan-hanako-emblem.png`, sent it, and confirmed the file remained Available in Conversation Files with an enabled Preview action. Switching chats and returning preserved the existing persisted image attachment thumbnail and Conversation Files preview. The newly captioned smoke message was observed optimistically but was not claimed as persisted after reload.
-- sg01 was not deployed or modified. PR #1 remains the permanent draft dashboard and was not merged, auto-merged, closed, or used as a release vehicle. No unexpected rebase/conflict state remains.
+- sg01 was not deployed or modified. PR #1 remains the permanent draft dashboard and was not merged, auto-merged, closed, or used as a release vehicle. Codex and Claude performed no upstream mutation; any proposed communication remains local unless a human posts manually outside an agent session. No unexpected rebase/conflict state remains.
 
 ## Fork release + dual deploy closeout (2026-07-23, `v0.416.43-karlorz.1`)
 
@@ -415,15 +415,16 @@ remote-resource-ownership).
 - No AtomGit mirror run exists for this release: the release was published by `github-actions[bot]`, while `.github/workflows/mirror-release-to-atomgit.yml` excludes that sender. This is expected, and the `legacy-raw` profile intentionally publishes no AtomGit mirror/train assets. PR #1 remains open, draft, unmerged, and without auto-merge.
 - The final local-only conflict-plan gate observed upstream stable `v0.416.44` as available after this prerelease publication (`stableActivationAllowed: true`); no stable rebase or production sync was started in this closeout.
 
-## Current upstream channel state (2026-08-09 pre-sync)
+## Current upstream channel state (2026-08-10 pre-sync)
 
 The next stable production sync is available but **has not started**. The
-working tree intentionally contains the approved Marketplace/runtime/UI and
-skill-truth pre-work that must be closed before the attended rebase.
+approved Marketplace/runtime/UI and skill-truth pre-work is committed locally,
+and the coding-agent GitHub boundary batch is reviewed and committed before the
+attended rebase begins.
 
 | Signal | Observed value |
 |--------|----------------|
-| Working branch / HEAD | `dev` @ `875c26d3780bb1fc9f19e113c3e364121eea09ef`; approved pre-work is dirty and uncommitted |
+| Working branch / pre-work | `dev`; Marketplace pre-work is committed as `0dd015358cd38dce44482d90783f7cbf98b9a445`, followed by the reviewed coding-agent GitHub boundary commit before sync |
 | Package / lockfile version | `0.421.24`; intentionally not pre-bumped |
 | Last synchronized upstream stable | `v0.421.24` |
 | Next stable production target | `v0.446.6` @ `5f08a4f30203abb61dafac7dbb7ab92d11c23efa` |
@@ -510,6 +511,21 @@ actual upstream sync occurs.
   OpenHanako evidence pages. A newly appearing unrelated Agent Skills work item
   remains untouched and unstaged.
 
+### Post-closeout local state amendment (2026-08-10)
+
+- The completed Marketplace pre-work was subsequently committed locally as
+  `0dd015358cd38dce44482d90783f7cbf98b9a445` (`feat(marketplace): complete
+  pre-sync hardening`). `dev` is one commit ahead of unchanged `origin/dev` at
+  `875c26d3780bb1fc9f19e113c3e364121eea09ef`; no push occurred.
+- The installed app remains the valid, strict-codesign-passing local working-tree
+  build produced before that local commit. Its metadata intentionally reports
+  base SHA `875c26d3780bb1fc9f19e113c3e364121eea09ef` with `dirty: true`; committing
+  the already-packaged tree did not change its application contents.
+- The coding-agent GitHub boundary work is a repository tooling/documentation
+  layer and does not change packaged HanaAgent runtime code. It is reviewed and
+  committed before the stable rebase; that commit does not itself authorize a
+  push, PR #1 refresh, sync, tag, or release.
+
 ## Stable sync activation and closeout boundary
 
 - 2026-07-18: upstream stable `v0.407.15` was activated as the attended sync target and `dev` was rebased onto upstream commit `ab8d508e3ca4`. Package and lockfile metadata now report `0.407.15`; the upstream release digest remains `v0.407.15` / `0.407.15`.
@@ -543,7 +559,7 @@ actual upstream sync occurs.
 - sg01 first refreshed the durable CLI from tag-pinned `install-server-bootstrap.sh --install-cli-only` (installed installer + status dependencies). Online status then recommended `.7` while still on `.6`. Upgrade used `install-server upgrade --version v0.407.15-karlorz.7 --channel prerelease` dry-run then execute; result was `ok: true`, `rolledBack: false`. Current symlink is `/opt/hanaagent/releases/v0.407.15-karlorz.7-linux-arm64` with server archive checksum `595a9d2c1df6be2c43bd56b541d22d80f956d6a2474f599de74a75c588272f6c`.
 - Fresh post-deploy evidence shows `hanaagent` active and enabled, `/mobile/`, `/mobile/locales/zh.json`, and `/mobile/locales/en.json` HTTP 200, identity HTTP 200 (token-auth via desktop smoke helper), WebSocket open, exact release match, eligible deployability, valid compatibility manifest, no release-policy drift, and declared `chat.core@1`, `input.drafts@1`, and `websocket.ticket@1` contracts. Online status check reports `.7` as current.
 - Live desktop smoke attached the 64×64 `smoke-image.png`, opened Conversation Files (row `smoke-image.png`), switched to `Image Preview Smoke Test`, returned to the new chat, and recorded zero CSP refusals and zero WebSocket disconnects in the CDP console sample.
-- Upstream issue search was refreshed on 2026-07-20: #1749 remains open, #1811 remains closed, #1493 remains open, #1546 remains closed, and no exact matches were found for the pending local drafts. The tracker remains status/search/draft only; no issue was submitted.
+- Upstream issue search was refreshed on 2026-07-20: #1749 remains open, #1811 remains closed, #1493 remains open, #1546 remains closed, and no exact matches were found for the pending local drafts. The tracker remains read-only status/search plus local drafting; Codex and Claude do not create, comment on, edit, label, react to, close, or otherwise mutate upstream issues, and only a human may post manually outside an agent session.
 - PR #1 remains open and draft and was not merged, closed, auto-merged, or used as a release vehicle. Immutable tags `.6` and `.7` were not moved. Ignored UAT media and unrelated dirty SkillWiki work were not absorbed.
 
 ### Prior closeout snapshot (`v0.407.15-karlorz.6`)
@@ -564,7 +580,9 @@ Before a fork release is created, the attended gate is:
 1. Run the upstream stable/issue checks and record the result. On this line,
    upstream stable is still `v0.407.15`; issue search confirms #1749 remains
    open, #1811 remains closed, and no exact matches were found for the pending
-   local drafts. The tracker is search/status-only and never submits issues.
+   local drafts. The tracker performs read-only search/status and local draft
+   generation only; Codex and Claude never mutate upstream, and only a human
+   may post manually outside an agent session.
 2. Run the sync rule, focused remote-assessment/release suites, typecheck,
    diff check, desktop/server builds, and compatibility-manifest validation.
 3. Generate a temporary digest through the configured generic

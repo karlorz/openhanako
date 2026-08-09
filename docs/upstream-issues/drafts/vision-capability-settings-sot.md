@@ -1,6 +1,6 @@
 # [Bug] Vision auxiliary model picker misses models until capability re-toggle because Settings catalog is not SoT
 
-> Local draft only. Do not submit upstream until the fork owner approves.
+> Local draft only. Codex and Claude must never submit, comment, edit, label, react, close, or otherwise publish this upstream. Human approval changes the draft wording state only; a human must post manually outside the agent session.
 
 Tracked fix: `vision-capability-settings-sot`
 Classification: `upstream`

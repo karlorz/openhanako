@@ -35,7 +35,8 @@ This file tracks local fork fixes against upstream GitHub issues. The source of 
 - Track every local fix or maintenance slice.
 - Search upstream for every `upstream` or `needs-triage` item.
 - Keep `fork-only` items documented without upstream issue noise.
-- Draft issue bodies locally first. Submit only after explicit owner approval.
+- Draft issue bodies locally first. Codex and Claude never submit them; human review changes wording only.
+- Only a human acting manually outside an agent session may publish an approved draft.
 - Do not store live credentials, tokens, cookies, or server secrets in drafts.
 
 ## Commands

@@ -22,6 +22,14 @@ This checkout is the `karlorz/openhanako` fork. Work normally happens on branch 
 - Safe dashboard refresh: `node scripts/sync-upstream.mjs --conflict-plan`. This may mirror `origin/main` from `upstream/main`, but must not merge, rebase, reset, stage, or write `dev`.
 - Dashboard conflict cleanup must not pre-bump `package.json` or `package-lock.json`; package version alignment is deferred to the attended stable production fork sync.
 
+## GitHub Authority
+
+- Treat `liliMozi/openhanako` as permanently read-only. Claude may research and download public upstream material but may never create, edit, comment on, close, reopen, label, react to, transfer, delete, publish, push to, or otherwise mutate upstream state.
+- Keep proposed issue reports and upstream communications as local Markdown under `docs/upstream-issues/`. Human approval of draft wording does not authorize Claude to post it; a human must submit manually outside the agent session.
+- On `karlorz/openhanako`, issues, issue comments, PR comments/reviews, discussions, reactions, labels, and direct PR edits are human-only. The separately authorized generated PR #1 dashboard refresh is the only PR-edit exception.
+- Fork pushes, releases, workflow dispatches, and dashboard refreshes still require a separate task-specific request and an explicit fork target. Ambiguous GitHub mutations fail closed.
+- `.claude/settings.json` invokes the shared `scripts/guard-agent-github-mutation.mjs` `PreToolUse` guard. Never disable or bypass it, and verify it only with the offline synthetic test suite.
+
 ## Key Paths
 
 - Desktop renderer: `desktop/src/react/`

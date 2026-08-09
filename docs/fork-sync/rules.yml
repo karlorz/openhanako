@@ -34,8 +34,31 @@ issueTracking:
   states:
   - existing/open
   - draft/pending-approval
+  - local-verified
   - tracked/no-upstream-issue
   submission: never
+  pendingApprovalMeaning: wording-and-evidence-review-only
+  agentSubmission: never
+  humanSubmission: manual-outside-agent-session
+agentGithubBoundary:
+  upstreamRepository: liliMozi/openhanako
+  upstreamAgentAccess: read-only
+  localDraftDirectory: docs/upstream-issues
+  draftApprovalGrantsSubmissionAuthority: false
+  humanSubmission: manual-outside-agent-session
+  forkRepository: karlorz/openhanako
+  forkSocialMutation: human-only
+  forkEngineeringMutation: separate-task-specific-authorization
+  permanentDashboardException:
+    prNumber: 1
+    command: node scripts/sync-upstream.mjs --conflict-plan
+  ambiguousMutation: deny
+  liveMutationTests: forbidden
+  hooks:
+    codex: .codex/hooks.json
+    claude: .claude/settings.json
+    guard: scripts/guard-agent-github-mutation.mjs
+    tests: tests/agent-github-mutation-guard.test.mjs
 migrationContracts:
   inventory: docs/fork-sync/migration-contracts.yml
 pickFromMain:
@@ -61,6 +84,7 @@ conflictRules:
   - .env.example
   - scripts/sync-upstream.mjs
   - scripts/track-upstream-issues.mjs
+  - scripts/guard-agent-github-mutation.mjs
   - scripts/resolve-release-profile.mjs
   - scripts/release-desktop-with-profile.mjs
   - scripts/prepare-desktop-package.mjs
@@ -77,6 +101,7 @@ conflictRules:
   - tests/pack-server-bundle.test.mjs
   - tests/hana-desktop-smoke-helper.test.mjs
   - tests/upstream-issue-tracker.test.mjs
+  - tests/agent-github-mutation-guard.test.mjs
   - tests/release-profile.test.mjs
   - tests/resolve-release-profile.test.mjs
   - tests/release-desktop-with-profile.test.mjs
@@ -96,6 +121,7 @@ conflictRules:
   - desktop/src/shared/packaged-artifact-boot.cjs
   - tests/packaged-artifact-boot.test.mjs
   - docs/fork-sync/rules.yml
+  - docs/fork-sync/agent-github-boundary.md
   - docs/fork-sync/migration-contracts.yml
   - docs/fork-sync/pick-from-main-decisions.md
   - tests/pick-from-main-reclaim.test.mjs
@@ -132,9 +158,13 @@ conflictRules:
   - tests/server-compatibility-manifest.test.mjs
   - tests/remote-server-workflow-contract.test.mjs
   - .claude/dev-loop.config.md
+  - .claude/settings.json
+  - .codex/hooks.json
+  - AGENTS.md
   - CLAUDE.md
   - CONTEXT.md
   - FORK_SYNC.md
+  - docs/adr/0001-human-only-upstream-submission-authority.md
   - .gitattributes
   divergingFiles:
   - core/server-auth.ts

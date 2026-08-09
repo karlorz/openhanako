@@ -71,7 +71,7 @@ export const TRACKED_FIXES = [
     ],
     notes: [
       "No exact upstream issue found in the 2026-06-19 search.",
-      "This is a hardening companion to LAN query-token support; submit separately only if upstream does not want it folded into the LAN auth fix.",
+      "This is a hardening companion to LAN query-token support; keep it local, and if a human later posts manually, prefer folding it into the LAN auth fix unless upstream asks for a separate report.",
     ],
     draft: {
       file: "lan-query-token-network-hardening.md",
@@ -131,7 +131,7 @@ export const TRACKED_FIXES = [
     notes: [
       "No exact upstream issue covers the fork's remote client-path upload, scoped resource URL, and CSP behavior.",
       "#2188 is related because it fixes a WebUI session-load race that can discard the SessionFile registry; it does not cover the fork-specific remote transport and preview ownership boundary.",
-      "Draft only; do not submit until the fork owner approves the exact upstream wording.",
+      "Draft only; human approval changes wording state, and only a human may post manually outside an agent session.",
     ],
     draft: {
       file: "remote-attachment-preview-persistence.md",
@@ -894,7 +894,8 @@ export function renderStatusMarkdown(rows = TRACKED_FIXES) {
     "- Track every local fix or maintenance slice.",
     "- Search upstream for every `upstream` or `needs-triage` item.",
     "- Keep `fork-only` items documented without upstream issue noise.",
-    "- Draft issue bodies locally first. Submit only after explicit owner approval.",
+    "- Draft issue bodies locally first. Codex and Claude never submit them; human review changes wording only.",
+    "- Only a human acting manually outside an agent session may publish an approved draft.",
     "- Do not store live credentials, tokens, cookies, or server secrets in drafts.",
     "",
     "## Commands",
@@ -919,7 +920,7 @@ export function renderDraftIssue(fix) {
   return [
     `# ${fix.draft.title}`,
     "",
-    "> Local draft only. Do not submit upstream until the fork owner approves.",
+    "> Local draft only. Codex and Claude must never submit, comment, edit, label, react, close, or otherwise publish this upstream. Human approval changes the draft wording state only; a human must post manually outside the agent session.",
     "",
     `Tracked fix: \`${fix.id}\``,
     `Classification: \`${fix.classification}\``,
@@ -1032,7 +1033,7 @@ Commands:
   search   Query upstream issues with gh and print matches
   draft    Write docs/upstream-issues/README.md and local draft issue files
 
-This script never submits upstream issues. Drafts are local files only.`);
+This script never creates, comments on, edits, labels, reacts to, closes, or otherwise mutates upstream issues. Drafts are local files only; only a human may post them manually outside an agent session.`);
 }
 
 function main(argv) {

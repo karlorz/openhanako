@@ -1435,7 +1435,7 @@ Prerelease mutate (attended): --include-prerelease --i-accept-prerelease-sync wi
   Targets: GitHub prerelease releases only (not upstream/main HEAD).
 Conflict planning is dry-run for dev, replaces origin/main from upstream/main unless --no-main-sync is set, and updates PR #1 unless --no-pr-update is set.
 Use --local-only as shorthand for --no-pr-update --no-main-sync.
-The issue workflow supports status/search/draft only and never submits GitHub issues.`);
+The issue workflow performs read-only status/search plus local drafting only. Codex and Claude never create, comment on, edit, label, react to, close, or otherwise mutate upstream issues; only a human may post manually outside an agent session.`);
 }
 
 export function parseSyncArgs(argv) {
