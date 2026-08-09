@@ -90,6 +90,19 @@ export class PluginTrustStore {
     return true;
   }
 
+  revokeMarketplacePlugin(marketplaceId: string, pluginId: string): number {
+    const market = assertMarketplaceId(marketplaceId);
+    const id = assertPluginId(pluginId);
+    const file = this._read();
+    const keys = Object.entries(file.grants)
+      .filter(([, grant]) => grant.marketplaceId === market && grant.pluginId === id)
+      .map(([key]) => key);
+    if (keys.length === 0) return 0;
+    for (const key of keys) delete file.grants[key];
+    this._write(file);
+    return keys.length;
+  }
+
   getGrant(marketplaceId: string, pluginId: string, artifactDigest: string): PluginTrustGrant | null {
     const key = buildPluginArtifactKey({
       marketplaceId: assertMarketplaceId(marketplaceId),
@@ -132,6 +145,14 @@ export class PluginTrustStore {
 export function marketplacePluginDataDir(rootDataDir: string, marketplaceId: string, pluginId: string): string {
   return path.join(
     rootDataDir,
+    assertMarketplaceId(marketplaceId),
+    assertPluginId(pluginId),
+  );
+}
+
+export function marketplacePluginSecretsDir(rootSecretsDir: string, marketplaceId: string, pluginId: string): string {
+  return path.join(
+    rootSecretsDir,
     assertMarketplaceId(marketplaceId),
     assertPluginId(pluginId),
   );

@@ -98,6 +98,14 @@ export function MarketplacePluginInspector({
   // While any action owns the single busy slot, no visible mutation control may
   // stay enabled: the handler guards would otherwise swallow clicks silently.
   const anyBusy = actions.busyKey !== null;
+  const packageEnabled = packageGateEnabled(
+    plugin,
+    marketplace?.configDiagnostics?.file?.activations,
+  );
+  const effectivePackageAvailable = packageEnabled
+    && plugin.sourceStatus !== 'disabled'
+    && plugin.sourceStatus !== 'removed'
+    && plugin.packageInstall?.state !== 'stale-record';
 
   return (
     <>
@@ -155,11 +163,9 @@ export function MarketplacePluginInspector({
             && marketplace?.access?.isStudioOwner === true && (
             <button
               type="button"
-              className={`hana-toggle${packageGateEnabled(
-                plugin,
-                marketplace?.configDiagnostics?.file?.activations,
-              ) ? ' on' : ''}${pluginBusy ? ' loading' : ''}`}
+              className={`${styles['settings-save-btn-sm']} ${styles['plugin-labeled-action']} ${pluginBusy ? 'loading' : ''}`}
               disabled={anyBusy}
+              aria-pressed={packageEnabled}
               aria-label={t('settings.plugins.skillPackageToggle', {
                 identity: sourceQualifiedId(plugin),
                 name: plugin.name,
@@ -167,13 +173,13 @@ export function MarketplacePluginInspector({
               title={t('settings.plugins.marketPackageGateTitle')}
               onClick={(e) => {
                 e.stopPropagation();
-                const next = !packageGateEnabled(
-                  plugin,
-                  marketplace?.configDiagnostics?.file?.activations,
-                );
-                void actions.toggleSkillPackageGate(plugin, next);
+                void actions.toggleSkillPackageGate(plugin, !packageEnabled);
               }}
-            />
+            >
+              {packageEnabled
+                ? t('settings.plugins.skillPackageDisable')
+                : t('settings.plugins.skillPackageEnable')}
+            </button>
           )}
           {plugin.installTarget === 'native-plugin' && selectedAgentId && plugin.active && (
             <button
@@ -261,22 +267,27 @@ export function MarketplacePluginInspector({
           </div>
         )}
         {isInstalledSkillsPackage(plugin) && (
-          <div className={styles['plugin-marketplace-plan']}>
-            <span>{t('settings.plugins.marketPackageGate')}</span>
-            <strong>
-              {packageGateEnabled(
-                plugin,
-                marketplace?.configDiagnostics?.file?.activations,
-              ) ? t('settings.plugins.marketPackageGateEnabled') : t('settings.plugins.marketPackageGateDisabled')}
-              {plugin.packageActivation?.state
-                ? ` · ${plugin.packageActivation.state}`
-                : ''}
-              {plugin.packageActivation?.reason
-                ? ` · ${plugin.packageActivation.reason}`
-                : ''}
-              {' · ' + t('settings.plugins.marketPackageGateScope')}
-            </strong>
-          </div>
+          <>
+            <div className={styles['plugin-marketplace-plan']}>
+              <span>{t('settings.plugins.skillPackageLayerPackage')}</span>
+              <strong>{packageEnabled
+                ? t('settings.plugins.marketPackageGateEnabled')
+                : t('settings.plugins.marketPackageGateDisabled')}</strong>
+            </div>
+            <div className={styles['plugin-marketplace-plan']}>
+              <span>{t('settings.plugins.skillPackageLayerAgentPreference')}</span>
+              <strong>{t('settings.plugins.skillPackageManageInSkills')}</strong>
+            </div>
+            <div className={styles['plugin-marketplace-plan']}>
+              <span>{t('settings.plugins.skillPackageLayerEffectiveAvailability')}</span>
+              <strong>
+                {effectivePackageAvailable
+                  ? t('settings.plugins.skillPackageLayerAvailable')
+                  : t('settings.plugins.skillPackageLayerUnavailable')}
+                {plugin.packageActivation?.reason ? ` · ${plugin.packageActivation.reason}` : ''}
+              </strong>
+            </div>
+          </>
         )}
         {isSkillsTarget(plugin.installTarget) && (
           <div className={styles['plugin-marketplace-plan']}>

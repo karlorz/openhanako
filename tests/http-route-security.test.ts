@@ -557,6 +557,30 @@ describe("HTTP route security policy", () => {
     }
   });
 
+  it("requires Studio owner for Marketplace artifact and source-state deletion", async () => {
+    const { authorizeHttpRoute, classifyHttpRoute } = await import("../server/http/route-security.ts");
+    const writer = devicePrincipal(["settings.read", "settings.write"]);
+    const owner = devicePrincipal(["settings.read", "settings.write", "studio.owner"]);
+    const pluginSurface = {
+      kind: "plugin",
+      credentialKind: "plugin_surface_session",
+      pluginId: "my-plugin",
+      scopes: [],
+    };
+    for (const path of [
+      `/api/plugins/my-plugin/artifacts/team-plugins/${"a".repeat(64)}`,
+      "/api/plugins/my-plugin/state/team-plugins",
+    ]) {
+      expect(classifyHttpRoute({ method: "DELETE", path })).toMatchObject({ kind: "studio_owner" });
+      expect(authorizeHttpRoute({ method: "DELETE", path, principal: writer }))
+        .toMatchObject({ allowed: false, error: "studio_owner_required", status: 403 });
+      expect(authorizeHttpRoute({ method: "DELETE", path, principal: pluginSurface }))
+        .toMatchObject({ allowed: false, error: "studio_owner_required", status: 403 });
+      expect(authorizeHttpRoute({ method: "DELETE", path, principal: owner }))
+        .toMatchObject({ allowed: true });
+    }
+  });
+
   it("allows settings.read to inventory installed marketplace skill packages", async () => {
     const { authorizeHttpRoute, classifyHttpRoute } = await import("../server/http/route-security.ts");
     for (const path of [

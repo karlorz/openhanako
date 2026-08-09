@@ -233,6 +233,14 @@ describe('PluginMarketplaceTab inspector rendering', () => {
         'settings.plugins.marketPackageGateEnabled': 'enabled',
         'settings.plugins.marketPackageGateDisabled': 'disabled',
         'settings.plugins.marketPackageGateScope': 'global skill-manager gate (not PluginManager)',
+        'settings.plugins.skillPackageLayerPackage': 'Package',
+        'settings.plugins.skillPackageLayerAgentPreference': 'Agent preference',
+        'settings.plugins.skillPackageLayerEffectiveAvailability': 'Effective availability',
+        'settings.plugins.skillPackageLayerAvailable': 'available',
+        'settings.plugins.skillPackageLayerUnavailable': 'unavailable',
+        'settings.plugins.skillPackageLayerPartial': 'partially available',
+        'settings.plugins.skillPackageEnable': 'Enable',
+        'settings.plugins.skillPackageDisable': 'Disable',
         'settings.plugins.marketActionInstall': 'install',
         'settings.plugins.marketInventorySkills': 'Skills',
         'settings.plugins.marketInventoryAgentFacing': 'Agent-facing',
@@ -250,7 +258,7 @@ describe('PluginMarketplaceTab inspector rendering', () => {
         'settings.plugins.marketRetainedBadge': 'retained',
         'settings.plugins.skillPackageManageInSkills': 'Manage in Skills',
         'settings.plugins.marketSwitchSource': 'Switch source',
-        'settings.plugins.marketPackageGate': 'Package gate',
+        'settings.plugins.marketPackageGate': 'Package',
         'settings.plugins.marketActivationRoute': 'Activation route',
         'settings.plugins.marketActivationRouteValue': 'Skills Settings / Agent Skill Toggles (not Native Plugins)',
         'settings.plugins.marketInstallPlan': 'Install Plan',
@@ -1012,10 +1020,15 @@ describe('PluginMarketplaceTab inspector rendering', () => {
 
     expect(await screen.findByRole('button', { name: 'Uninstall skills' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Manage in Skills' })).toBeInTheDocument();
-    expect(screen.getByText(/Package gate/)).toBeInTheDocument();
-    expect(screen.getByText(/global skill-manager gate/)).toBeInTheDocument();
+    expect(screen.getByText('Package')).toBeInTheDocument();
+    expect(screen.getByText('Agent preference')).toBeInTheDocument();
+    expect(screen.getByText('Effective availability')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /Toggle skill package skillwiki@llm-wiki/ }));
+    const toggle = screen.getByRole('button', { name: 'Toggle skill package skillwiki@llm-wiki' });
+    expect(toggle).toHaveTextContent('Disable');
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+
+    fireEvent.click(toggle);
 
     await waitFor(() => expect(mockShowToast).toHaveBeenCalledWith(expect.anything(), 'success'));
   });
@@ -1183,8 +1196,9 @@ describe('PluginMarketplaceTab inspector rendering', () => {
 
     expect(await screen.findByRole('button', { name: 'Manage in Skills' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Toggle skill package skillwiki@llm-wiki/ })).not.toBeInTheDocument();
-    // Package gate status still visible for inspection
-    expect(screen.getByText(/Package gate/)).toBeInTheDocument();
+    expect(screen.getByText('Package')).toBeInTheDocument();
+    expect(screen.getByText('Agent preference')).toBeInTheDocument();
+    expect(screen.getByText('Effective availability')).toBeInTheDocument();
   });
 
   it('runs source switch through plan then execute with registry preconditions', async () => {

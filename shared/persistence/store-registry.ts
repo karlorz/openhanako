@@ -900,7 +900,7 @@ export const PERSISTENT_STORES: readonly StoreDescriptor[] = Object.freeze([
     siteRules: [
       ...rules(["lib/plugin-install-backups.ts", "lib/plugin-install-records.ts", "lib/plugin-artifact-store.ts", "lib/plugin-trust-store.ts", "lib/plugin-marketplace-sources.ts", "lib/plugin-marketplace-snapshots.ts", "lib/plugin-marketplace-git-cache.ts", "lib/plugin-marketplace-claude-skills.ts", "lib/plugin-marketplace-active-marker.ts", "lib/claude-compatibility.ts", "lib/plugin-source-switch.ts"], "Backs up, records, retains, caches, switches, or derives marketplace-qualified plugin and compatibility state."),
       ...rules(["server/routes/plugins.ts"], "Creates, promotes, rolls back, switches source, or removes an installed plugin directory.", ["mkdir", "copy-file", "rename", "remove-path"], "(?:userPluginsDir|pluginSrc|stagedDir|targetDir|pluginDir|extractDir|tmpTarget)"),
-      ...rules(["server/routes/plugins-marketplace.ts"], "Removes an installed plugin directory during marketplace uninstall.", ["remove-path"], "pluginDir"),
+      ...rules(["server/routes/plugins-marketplace.ts"], "Removes an installed plugin directory or a marketplace-qualified install backup during uninstall or exact state purge.", ["remove-path"], "(?:pluginDir|installBackupDir)"),
     ],
   }),
   defineStore({
@@ -945,9 +945,9 @@ export const PERSISTENT_STORES: readonly StoreDescriptor[] = Object.freeze([
     },
     openEntry: ["PluginManager activation with plugin-scoped dataDir"],
     migrationEntry: ["plugin manifest/migrationVersion hook; no host-wide implicit migration"],
-    checkpointPolicy: "Checkpoint by marketplace-qualified plugin identity and declared migrationVersion; never infer one schema for plugin-data/**.",
-    restorePolicy: "Restore only when the same marketplaceId+pluginId and a compatible manifest/migrationVersion are available. Incomplete switch journals recover to the last committed active pointer.",
-    identityContract: "Marketplace plugins own plugin-data/{marketplaceId}/{pluginId}; bare pluginId paths remain legacy/unqualified until migrated. Active runtime projection is bare plugins/{pluginId}.",
+    checkpointPolicy: "Checkpoint plugin-data and plugin-secrets by marketplace-qualified plugin identity and declared migrationVersion; never infer one schema for all plugin-owned state.",
+    restorePolicy: "Restore plugin-data and plugin-secrets only when the same marketplaceId+pluginId and a compatible manifest/migrationVersion are available. Incomplete switch journals recover to the last committed active pointer.",
+    identityContract: "Marketplace plugins own plugin-data/{marketplaceId}/{pluginId} and plugin-secrets/{marketplaceId}/{pluginId}; bare pluginId data paths remain legacy/unqualified until migrated. Active runtime projection is bare plugins/{pluginId}.",
     exemption: {
       reason: "Dynamic plugin schemas must be registered by pluginId and migrationVersion before a coordinated data migration consumes them.",
       expiresOn: "2026-12-31",
@@ -970,6 +970,7 @@ export const PERSISTENT_STORES: readonly StoreDescriptor[] = Object.freeze([
         "core/media-adapters/agnes.ts",
         "plugins/jimeng-cli/adapters/dreamina.ts",
       ], "Writes data within the active pluginId-scoped data directory."),
+      ...rules(["server/routes/plugins-marketplace.ts"], "Removes marketplace-qualified plugin data or secrets during exact source-state purge.", ["remove-path"], "runtimeStateDir"),
     ],
   }),
   defineStore({

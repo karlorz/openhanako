@@ -21,6 +21,7 @@ describe('AddMarketplaceSourceDialog', () => {
         'settings.plugins.marketSourceExampleCatalog': 'https://example.com/marketplace.json',
         'settings.plugins.marketSourceExampleGit': 'https://github.com/org/catalog',
         'settings.plugins.marketSourceExampleLocal': '/path/to/marketplace',
+        'settings.plugins.marketSourceExamplesLabel': 'Marketplace source examples',
         'settings.plugins.marketSourceDetectedCatalog': 'Detected: HTTPS catalog',
         'settings.plugins.marketSourceDetectedGit': 'Detected: public HTTPS Git repository',
         'settings.plugins.marketSourceDetectedLocal': 'Detected: server-local path',
@@ -53,6 +54,7 @@ describe('AddMarketplaceSourceDialog', () => {
 
     const sourceInput = screen.getByRole('textbox', { name: 'Source' });
     expect(screen.getAllByRole('textbox')).toHaveLength(1);
+    expect(screen.getByRole('list', { name: 'Marketplace source examples' })).toBeInTheDocument();
     await waitFor(() => expect(sourceInput).toHaveFocus());
 
     fireEvent.change(sourceInput, { target: { value: '/srv/marketplaces/team' } });

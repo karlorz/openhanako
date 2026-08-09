@@ -2607,6 +2607,32 @@
     padding: var(--space-8) var(--space-12);
 }
 
+.marketplace-source-details {
+    margin-top: var(--space-2);
+    color: var(--text-muted);
+    font-size: var(--fs-hint);
+}
+
+.marketplace-source-details summary {
+    width: fit-content;
+    cursor: default;
+}
+
+.marketplace-source-details-content {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin-top: var(--space-4);
+    overflow-wrap: anywhere;
+}
+
+.plugin-labeled-action {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-4);
+    white-space: nowrap;
+}
+
 .skills-list-item {
     display: flex;
     align-items: center;

@@ -1,10 +1,12 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { PluginMarketplaceService } from "../lib/plugin-marketplace-service.ts";
 import { parseMarketplaceCatalogStrict } from "../lib/plugin-marketplace-schema.ts";
 import { sanitizeAcquisitionError } from "../lib/plugin-marketplace-network-policy.ts";
+import { OFFICIAL_MARKETPLACE_ID } from "../lib/plugin-marketplace-sources.ts";
+import { HanaEngine } from "../core/engine.ts";
 
 const tempDirs: string[] = [];
 function makeHome() {
@@ -114,5 +116,48 @@ describe("OH-Plugins official catalog compatibility", () => {
     const after = svc.listSources()[0];
     expect(after.status).toBe("ok");
     expect(svc.listCatalogRows().plugins.some((p) => p.pluginId === "hanako-hyperframes")).toBe(true);
+  });
+
+  it("recovers a persisted refreshing marker instead of remaining stuck after restart", async () => {
+    const home = makeHome();
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify(OH_SHAPED), { status: 200 }));
+    const svc = new PluginMarketplaceService({
+      hanakoHome: home,
+      env: {},
+      fetchOptions: {
+        fetchImpl,
+        lookup: async () => [{ address: "93.184.216.34", family: 4 }],
+      },
+    });
+    svc.snapshots.markRefreshing(OFFICIAL_MARKETPLACE_ID);
+
+    const status = await svc.ensureOfficialSnapshotSeededAsync();
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(status.state).toBe("ok");
+  });
+
+  it("keeps boot seeding non-fatal when the official source is offline", async () => {
+    const home = makeHome();
+    const svc = new PluginMarketplaceService({
+      hanakoHome: home,
+      env: {},
+      fetchOptions: {
+        fetchImpl: vi.fn(async () => { throw new Error("offline"); }),
+        lookup: async () => [{ address: "93.184.216.34", family: 4 }],
+      },
+    });
+
+    await expect(svc.ensureOfficialSnapshotSeededAsync()).resolves.toMatchObject({ state: "error" });
+  });
+
+  it("starts the coalesced official seed from the engine boot hook without awaiting it", async () => {
+    const seed = vi.fn().mockRejectedValue(new Error("offline"));
+    const engine: any = Object.create(HanaEngine.prototype);
+    engine._ensurePluginMarketplaceService = () => ({ ensureOfficialSnapshotSeededAsync: seed });
+
+    expect(() => engine._seedOfficialMarketplaceSnapshotAtBoot()).not.toThrow();
+    expect(seed).toHaveBeenCalledTimes(1);
+    await new Promise((resolve) => setTimeout(resolve, 0));
   });
 });

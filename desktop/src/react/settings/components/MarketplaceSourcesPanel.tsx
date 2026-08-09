@@ -24,6 +24,9 @@ export interface MarketplaceSourceRow {
   gitUrl?: string;
   gitRef?: string;
   indexPath?: string;
+  resolvedRevision?: string | null;
+  catalogSha256?: string | null;
+  fetchedAt?: string | null;
   refreshError?: { message?: string; code?: string } | null;
 }
 
@@ -211,6 +214,7 @@ export function MarketplaceSourcesPanel({
       await reloadAfterMutation();
     } catch (err: unknown) {
       showToast(err instanceof Error ? err.message : String(err), 'error');
+      throw err;
     } finally {
       setBusy(false);
     }
@@ -281,13 +285,21 @@ export function MarketplaceSourcesPanel({
   const refreshSource = async (sourceId: string) => {
     setBusy(true);
     try {
-      const res = await hanaFetch(`/api/plugins/marketplace/sources/${encodeURIComponent(sourceId)}/refresh`, {
-        method: 'POST',
+      await withFreshRegistryRetry(async (snapshot) => {
+        const res = await hanaFetch(`/api/plugins/marketplace/sources/${encodeURIComponent(sourceId)}/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...(typeof snapshot?.revision === 'number' ? { expectedRevision: snapshot.revision } : {}),
+            ...(snapshot?.digest ? { expectedDigest: snapshot.digest } : {}),
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.error) {
+          if (isMarketplaceRegistryStaleConflict(data)) throw data;
+          throw new Error(data.error || data.detail || t('settings.plugins.marketSourceRefreshFailed'));
+        }
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || data.error) {
-        throw new Error(data.error || data.detail || t('settings.plugins.marketSourceRefreshFailed'));
-      }
       showToast(t('settings.plugins.marketSourceRefreshed'), 'success');
       await reloadAfterMutation();
     } catch (err: unknown) {
@@ -389,47 +401,60 @@ export function MarketplaceSourcesPanel({
                     {src.id}
                     {src.kind ? ` · ${sourceKindLabel(src.kind)}` : ''}
                   </span>
-                  <span className={styles['skills-list-desc']} title={location}>
-                    {location}
-                    {src.gitRef ? ` · ${src.gitRef}` : ''}
-                    {src.indexPath ? ` · ${src.indexPath}` : ''}
-                  </span>
-                  {src.refreshError?.message && (
-                    <span className={styles['skills-list-desc']} style={{ color: 'var(--danger, #c55)' }}>
-                      {src.refreshError.message}
-                    </span>
-                  )}
+                  <details className={styles['marketplace-source-details']}>
+                    <summary>{t('settings.plugins.marketSourceTechnicalDetails')}</summary>
+                    <div className={styles['marketplace-source-details-content']}>
+                      <span><strong>{t('settings.plugins.marketSourceLocation')}:</strong> {location}</span>
+                      {src.gitRef && <span><strong>{t('settings.plugins.marketSourceGitRef')}:</strong> {src.gitRef}</span>}
+                      {src.indexPath && <span><strong>{t('settings.plugins.marketSourceIndexPath')}:</strong> {src.indexPath}</span>}
+                      {src.resolvedRevision && <span><strong>{t('settings.plugins.marketSourceResolvedRevision')}:</strong> {src.resolvedRevision}</span>}
+                      {src.catalogSha256 && <span><strong>{t('settings.plugins.marketSourceCatalogDigest')}:</strong> {src.catalogSha256}</span>}
+                      {src.fetchedAt && <span><strong>{t('settings.plugins.marketSourceFetchedAt')}:</strong> {src.fetchedAt}</span>}
+                      {src.refreshError?.message && (
+                        <span style={{ color: 'var(--danger, #c55)' }}>
+                          <strong>{t('settings.plugins.marketSourceDiagnostics')}:</strong> {src.refreshError.message}
+                        </span>
+                      )}
+                    </div>
+                  </details>
                 </div>
                 {canMutate && (
                   <div className={`${styles['skills-list-actions']} ${styles['marketplace-source-actions']}`}>
                     <button
                       type="button"
-                      className={`${styles['settings-icon-btn']} ${styles['plugin-action-icon']}`}
+                      className={`${styles['pv-add-form-btn']} ${styles['plugin-labeled-action']}`}
                       disabled={busy}
                       onClick={() => refreshSource(src.id)}
                       aria-label={t('settings.plugins.marketSourceRefreshNamed', { id: src.id })}
                       title={t('settings.plugins.marketSourceRefreshNamed', { id: src.id })}
                     >
                       <RefreshIcon />
+                      <span>{t('settings.plugins.marketSourceRefreshAction')}</span>
                     </button>
                     <button
                       type="button"
-                      className={`${styles['settings-icon-btn']} ${styles['plugin-action-icon']} ${styles['plugin-action-danger']}`}
+                      className={`${styles['pv-add-form-btn']} ${styles['plugin-labeled-action']} ${styles['plugin-action-danger']}`}
                       disabled={busy}
                       onClick={() => removeSource(src.id)}
                       aria-label={t('settings.plugins.marketSourceRemoveNamed', { id: src.id })}
                       title={t('settings.plugins.marketSourceRemoveNamed', { id: src.id })}
                     >
                       <RemoveIcon />
+                      <span>{t('settings.plugins.marketSourceRemoveAction')}</span>
                     </button>
                     <button
                       type="button"
-                      className={`hana-toggle${src.enabled === false ? '' : ' on'}`}
+                      className={`${styles['pv-add-form-btn']} ${styles['plugin-labeled-action']}`}
                       disabled={busy}
                       onClick={() => setSourceEnabled(src, src.enabled === false)}
+                      aria-pressed={src.enabled !== false}
                       aria-label={`${src.enabled === false ? t('settings.plugins.marketSourceEnable') : t('settings.plugins.marketSourceDisable')} ${src.id}`}
                       title={`${src.enabled === false ? t('settings.plugins.marketSourceEnable') : t('settings.plugins.marketSourceDisable')} ${src.id}`}
-                    />
+                    >
+                      {src.enabled === false
+                        ? t('settings.plugins.marketSourceEnable')
+                        : t('settings.plugins.marketSourceDisable')}
+                    </button>
                   </div>
                 )}
               </div>

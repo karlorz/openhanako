@@ -415,53 +415,100 @@ remote-resource-ownership).
 - No AtomGit mirror run exists for this release: the release was published by `github-actions[bot]`, while `.github/workflows/mirror-release-to-atomgit.yml` excludes that sender. This is expected, and the `legacy-raw` profile intentionally publishes no AtomGit mirror/train assets. PR #1 remains open, draft, unmerged, and without auto-merge.
 - The final local-only conflict-plan gate observed upstream stable `v0.416.44` as available after this prerelease publication (`stableActivationAllowed: true`); no stable rebase or production sync was started in this closeout.
 
-## Current upstream channel state (2026-07-28 post `v0.421.24`)
+## Current upstream channel state (2026-08-09 pre-sync)
 
-The requested stable production sync is complete locally at **`v0.421.24`**.
-Although the same upstream commit is co-tagged `train-beta-18`, the stable
-release identity was selected and stable-only detection remains the default for
-future runs.
+The next stable production sync is available but **has not started**. The
+working tree intentionally contains the approved Marketplace/runtime/UI and
+skill-truth pre-work that must be closed before the attended rebase.
 
 | Signal | Observed value |
 |--------|----------------|
-| Working branch / HEAD | `dev` contains corrected release commit `adc36cd6` plus this documentation closeout |
-| Package / lockfile version | `0.421.24` |
-| Latest stable upstream | `v0.421.24` @ `e87769a0` |
-| Last synced tag (sync log) | `v0.421.24` (stable channel) |
-| Stable production sync available | **no** newer non-prerelease than `v0.421.24` |
-| Co-tagged prerelease | `train-beta-18` at the same upstream SHA; not used as the sync identity |
-| Published fork release | `v0.421.24-karlorz.2` @ `adc36cd6` (`legacy-raw`, initially verified as a prerelease; GitHub record updated externally to stable at `2026-07-28T15:05:03Z`) |
-| Superseded audit release | `v0.421.24-karlorz.1` @ `9a8b0572`; immutable, but not recommended because its Windows server checksum sidecar has a non-canonical escaped first token |
-| sg01 current runtime | `v0.421.24-karlorz.2` / `adc36cd6`; external post-closeout switch observed at approximately `2026-07-28T15:14:10Z`; service active/enabled |
-| Main tip (mirror) | `e87769a0` at verification time; future untagged main is not a production target |
-| PR #1 | OPEN, draft, never-merge dashboard |
-| Backup | `backup/dev-before-stable-v0.421.24-20260728` @ `a21ffcb5` |
-| Upstream issue search | #1749 OPEN, #1811 CLOSED, #2188 OPEN and related to attachment persistence; tracker remains status/search/draft only |
+| Working branch / HEAD | `dev` @ `875c26d3780bb1fc9f19e113c3e364121eea09ef`; approved pre-work is dirty and uncommitted |
+| Package / lockfile version | `0.421.24`; intentionally not pre-bumped |
+| Last synchronized upstream stable | `v0.421.24` |
+| Next stable production target | `v0.446.6` @ `5f08a4f30203abb61dafac7dbb7ab92d11c23efa` |
+| Stable production sync available | **yes**, but no sync/rebase has begun |
+| Latest prerelease review candidate | Not separately activated; `v0.446.6` is now the stable production target |
+| Latest fork prerelease tag | `v0.421.24-karlorz.5` @ `e747a3fc2` |
+| Release digest | Existing `v0.421.24-karlorz.5` digest remains unchanged during pre-work |
+| PR #1 | OPEN permanent draft dashboard; untouched, never merge/auto-merge/close |
+| sg01 | One accidental renderer request reached the previously persisted remote endpoint and was rejected read-only (`loopback local-owner required`); no successful mutation or deployment occurred, and the renderer was reset to loopback-only |
+| Stable sync state | Not started: no fetch/rebase/package alignment/tag/release/publication/deployment |
 
-Planned conflict paths from `--conflict-plan --json --local-only`:
+Default production detection remains stable-only. The final local-only conflict
+plan resolves `v0.446.6` as the available stable target with
+`stableActivationAllowed: true`; this pre-work closeout does not activate or
+start that sync.
 
-| Path | Strategy | Risk |
-|------|----------|------|
-| `.github/workflows/build.yml` | preserve-both | high |
-| `build/cli-runtime-closure.json` | take-main | low |
-| `build/installer.nsh` | take-main | low |
-| `build/persistence-schema-fingerprint.json` | take-main | low |
-| `build/persistence-store-inventory.json` | take-main | low |
-| `core/engine.ts` | preserve-both | high |
-| `core/session-turn-actions.ts` | take-main | low |
-| `desktop/main.cjs` | human-review | high |
-| `desktop/src/shared/launch-integrity.cjs` | take-main | low |
-| `package.json` | defer-to-stable-production-sync | medium |
-| `release-digest.v1.json` | take-main | medium |
-| `release-digest.v2.json` | take-main | low |
-| `scripts/build-server.mjs` | preserve-both | high |
-| `scripts/fix-modules.cjs` | take-main | low |
-| `server/index.ts` | preserve-both | high |
-| `tests/build-server-artifact.test.ts` | take-main | low |
+### Pre-sync completion checklist
 
-Default channel remains stable-only. `v0.416.51` is recorded only as the
-separate prerelease-channel sync performed with `CONFIRM=train-beta-17`; it is
-not a stable production release.
+Complete every item below before starting the attended stable rebase. This is
+a pre-work gate, not a sync-log event; do not append a sync-log row until an
+actual upstream sync occurs.
+
+- [x] Native Marketplace runtime: source-qualified data/secrets/backups/trust,
+  separate sensitive configuration, exact retained-artifact deletion, exact
+  inactive source-state purge, official boot seed, and preservation tests.
+- [x] Marketplace Settings UI: failed Add Source preserves dialog/input,
+  revision+digest refresh with one stale retry, collapsed technical details,
+  visible localized actions, `aria-pressed`, and the Package / Agent preference
+  / Effective availability wording.
+- [x] Skill inventory truth: English and Chinese prompt regressions prove that
+  `<available_skills>` and authoritative native/Marketplace inventories—not
+  file search, caches, retained artifacts, backups, downloads, or session
+  storage—define availability and installation.
+- [x] Release-digest closeout: provider-neutral BYOK, secret-loading hardening,
+  and fenced-JSON follow-up are verified using current rebased equivalents;
+  package/lock/digest files remain unmodified until attended sync ownership.
+- [x] Active documentation and skills are aligned with the implemented
+  Marketplace, release-channel, and pre-sync boundaries; historical evidence
+  remains frozen.
+- [x] Required `simplify:simplify` four-angle review is complete and every
+  high-confidence finding is fixed.
+- [x] Focused Marketplace/UI/prompt and fork-sync/release suites pass, followed
+  by lint/build/typecheck/diff gates and one full `npm test` run.
+- [x] The current working tree is packaged with `SKIP_NOTARIZE=true npm run
+  install:local`; strict codesign, bundle versions, local channel, source repo,
+  build identity, and updater-disabled metadata are verified.
+- [x] Local-only Marketplace/Settings smoke passes, including source dialog,
+  technical disclosure, labeled actions, skill-package lifecycle, availability
+  layers, per-Agent toggle, and unchanged HyperFrames/native dropzone behavior.
+- [x] Exact OpenHanako SkillWiki work items are truthfully reconciled and
+  validated without staging or rewriting unrelated vault work.
+- [x] Final boundary audit confirms no stable sync/rebase, package/lockfile
+  bump, tag/release/publication, deployment, PR #1 mutation, successful sg01
+  mutation, or unrelated workspace/vault change was absorbed; it must also
+  record the one rejected request caused by the initially persisted renderer
+  connection before loopback-only reset.
+
+### Pre-sync gate closeout evidence (2026-08-09)
+
+- Repository `dev` and `origin/dev` both remain at
+  `875c26d3780bb1fc9f19e113c3e364121eea09ef`; nothing is staged and no tag
+  points at the working head.
+- The local-only conflict plan reports zero conflicts, `prUpdated: false`,
+  stable target `v0.446.6` at `5f08a4f30203abb61dafac7dbb7ab92d11c23efa`,
+  and `stableActivationAllowed: true`. It did not start the rebase or write
+  `dev`.
+- The protected diff is empty for `package.json`, `package-lock.json`, and both
+  release digests. Manifest hashes remained unchanged across packaging.
+- No active merge, cherry-pick, revert, or rebase sequencer exists. A stale
+  `.git/REBASE_HEAD` still points to the July 28 pre-rebase commit `a21ffcb56`;
+  its July 28 mtime, absent rebase directories, clean branch identity, and
+  August 9 reflog confirm it predates this goal. It was preserved rather than
+  silently deleting repository metadata.
+- Final local API/filesystem cleanup found neither disposable fixture source,
+  package, activation, skill directory, nor source directory. Native inventory
+  was unchanged; the compiled official source remained present.
+- One initial renderer request reached the previously persisted sg01 endpoint
+  and was rejected before mutation with `loopback local-owner required`. The
+  renderer was reset to loopback-only; no remote mutation or deployment
+  occurred.
+- SkillWiki's five exact OpenHanako work items pass `--require-complete`.
+  Vault Sync concurrently snapshotted the scoped closure while this attended
+  session was running; the remaining local vault diff contains only four exact
+  OpenHanako evidence pages. A newly appearing unrelated Agent Skills work item
+  remains untouched and unstaged.
 
 ## Stable sync activation and closeout boundary
 

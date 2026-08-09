@@ -2267,6 +2267,14 @@ export class HanaEngine {
     return this.pluginMarketplaceService;
   }
 
+  _seedOfficialMarketplaceSnapshotAtBoot() {
+    const svc = this._ensurePluginMarketplaceService();
+    if (!svc) return;
+    void svc.ensureOfficialSnapshotSeededAsync().catch((err) => {
+      moduleLog.warn(`[init] official Marketplace snapshot seed failed: ${err?.message || err}`);
+    });
+  }
+
   /**
    * Build present skill→package membership and inject SkillManager package gate.
    * Membership is refreshed on skills reload; activations/sources are read live.
@@ -2702,6 +2710,9 @@ export class HanaEngine {
     this._skills.init(this._resourceLoader, this._agentMgr.agents, HIDDEN_SKILLS);
     // Marketplace package gate: membership + control-plane activations.
     this._wireMarketplaceSkillPackageGate();
+    // Warm the compiled official source during boot without delaying startup.
+    // Route callers still await the same coalesced promise when they need rows.
+    this._seedOfficialMarketplaceSnapshotAtBoot();
     const extCount = this._skills.allSkills.filter(s => s.source === "external").length;
     log(`[init] 3/5 ResourceLoader 完成 (${Date.now() - t_rl}ms, ${this._skills.allSkills.length} skills${extCount ? `, ${extCount} external` : ""})`);
 
@@ -2868,6 +2879,7 @@ export class HanaEngine {
     const pluginDevRunsDir = path.join(this.hanakoHome, "plugin-dev-runs");
     const pluginDevSourcesDir = path.join(this.hanakoHome, "plugin-dev-sources");
     const pluginDataDir = path.join(this.hanakoHome, PLUGIN_DATA_DIRNAME);
+    const pluginSecretsDir = path.join(this.hanakoHome, "plugin-secrets");
     fs.mkdirSync(pluginDevSourcesDir, { recursive: true });
 
     // Read app version for plugin compatibility check
@@ -2884,6 +2896,7 @@ export class HanaEngine {
       pluginsDirs: [builtinPluginsDir, userPluginsDir],
       pluginsDir: undefined,
       dataDir: pluginDataDir,
+      secretsDir: pluginSecretsDir,
       bus,
       preferencesManager: this._prefs,
       appVersion,

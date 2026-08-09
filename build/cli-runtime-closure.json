@@ -7901,9 +7901,14 @@
           "root": "server-bootstrap",
           "from": "lib/plugin-source-switch.ts",
           "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
+          "from": "server/routes/plugins-marketplace.ts",
+          "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by lib/plugin-marketplace-active-marker.ts (import-statement); lib/plugin-trust-store.ts (import-statement); lib/marketplace-skill-preferences.ts (import-statement); +16 more importer(s)."
+      "reason": "Reached via esbuild source module graph, imported by lib/plugin-marketplace-active-marker.ts (import-statement); lib/plugin-trust-store.ts (import-statement); lib/marketplace-skill-preferences.ts (import-statement); +17 more importer(s)."
     },
     {
       "path": "lib/plugin-marketplace-inspector.ts",
@@ -8172,6 +8177,11 @@
       "provenance": [
         {
           "root": "server-bootstrap",
+          "from": "core/plugin-manager.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
           "from": "lib/plugin-source-switch.ts",
           "kind": "import-statement"
         },
@@ -8186,7 +8196,7 @@
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by lib/plugin-source-switch.ts (import-statement); core/engine.ts (import-statement); server/routes/plugins-marketplace.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by core/plugin-manager.ts (import-statement); lib/plugin-source-switch.ts (import-statement); core/engine.ts (import-statement); +1 more importer(s)."
     },
     {
       "path": "lib/plugin-versioning.ts",

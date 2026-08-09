@@ -21,7 +21,9 @@ describe("Marketplace documentation package boundaries", () => {
     expectDestinationBoundary(pluginsGuide);
     expectDestinationBoundary(pluginSdk);
     expect(pluginsGuide).toContain("Hana skills badge");
-    expect(pluginsGuide).toContain("Agent Skill Toggle");
+    expect(pluginsGuide).toContain("**Package**");
+    expect(pluginsGuide).toContain("**Agent preference**");
+    expect(pluginsGuide).toContain("**Effective");
     expect(pluginsGuide).toContain("current multi-source/Agent contract");
     expect(pluginsGuide).toMatch(/preview-only|deferred/i);
     expect(pluginsGuide).toMatch(/Studio owners[\s\S]{0,180}Settings[\s\S]{0,180}signed\s+plan\/execute lifecycle/i);
@@ -58,8 +60,9 @@ describe("Marketplace documentation package boundaries", () => {
     expect(marketplaceManager).toMatch(/legacy release metadata[\s\S]{0,100}bypass/i);
 
     expect(userGuide).toContain("marketplace-manager");
-    expect(userGuide).toContain("Marketplace package gate");
-    expect(userGuide).toContain("Agent Skill Toggle");
+    expect(userGuide).toContain("**Package**");
+    expect(userGuide).toContain("**Agent preference**");
+    expect(userGuide).toContain("**Effective availability**");
     expect(userGuide).toContain("Marketplace source toggle");
     expect(userGuide).toContain("native plugin toggle");
     expect(userGuide).toContain("Hana skills badge");

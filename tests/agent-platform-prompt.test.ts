@@ -74,9 +74,28 @@ describe("Agent platform prompt identity", () => {
     });
 
     expect(prompt).toContain("The <available_skills> block in the system prompt is authoritative");
+    expect(prompt).toContain("Only skills listed there may be described as currently available or loaded");
     expect(prompt).toContain("SKILL.md path proves only that a file exists");
+    expect(prompt).toContain("Files in caches, retained artifacts, backups, Marketplace downloads, stale bundles, or session storage do not prove that a skill is installed, enabled, built in, or plugin-provided");
+    expect(prompt).toContain("Use PluginManager/native inventory for native plugin installation claims");
     expect(prompt).toContain("installed-package inventory for Marketplace Hana-skill package claims");
     expect(prompt).toContain("currently available/runtime skills");
+    expect(prompt).toContain("file paths alone cannot establish built-in ownership");
+  });
+
+  it("enforces the full skill-inventory truth contract in Chinese", () => {
+    const prompt = makeAgent("zh-CN").buildSystemPrompt({
+      forceMemoryEnabled: false,
+      forceExperienceEnabled: false,
+    });
+
+    expect(prompt).toContain("系统提示中的 <available_skills> 是当前 session 可用技能的权威清单");
+    expect(prompt).toContain("find、grep、ls、read 或某个 SKILL.md 路径只能证明文件存在");
+    expect(prompt).toContain("缓存、保留产物、备份、Marketplace 下载、旧 bundle 或 session 存储中的文件，不证明技能已安装、启用、内置或由插件提供");
+    expect(prompt).toContain("原生插件安装状态必须以 PluginManager/原生插件清单为准");
+    expect(prompt).toContain("Marketplace Hana 技能包安装状态必须以已安装包清单为准");
+    expect(prompt).toContain("当前可用/runtime 技能");
+    expect(prompt).toContain("无法仅凭文件路径判断内置来源");
   });
 
   it("distinguishes SessionFile identity from writable local refs in Chinese", () => {

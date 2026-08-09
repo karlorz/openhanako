@@ -42,7 +42,9 @@ describe("hana Agent Marketplace smoke helpers", () => {
     expect(prompt).toContain("Use only the plugin_marketplace tool");
     expect(prompt).toContain("set_source_enabled false using expectedRevision and expectedDigest");
     expect(prompt).toContain("set_package_enabled false using the latest expectedRevision and expectedDigest");
-    expect(prompt).toContain("The user explicitly authorizes only the exact disposable source and package lifecycle");
+    expect(prompt).toContain("never pass the combined package identity as pluginId");
+    expect(prompt).toContain("I explicitly authorize you to perform every listed mutation, including the final remove_source");
+    expect(prompt).toContain("The final remove_source remains owner-reviewed");
     expect(prompt).toContain("Never bypass review or change permission mode");
   });
 
@@ -113,10 +115,12 @@ describe("hana Agent Marketplace smoke helpers", () => {
     }));
     expect(assertLifecycleTrace(autoTrace, "auto")).toEqual({
       kind: "automatic-review-enforced",
+      sourceRemoval: "review-approved",
       successfulReviewedMutations: [
         "add_source", "refresh_source", "set_source_enabled", "set_source_enabled", "install",
         "set_package_enabled", "set_package_enabled", "uninstall", "remove_source",
       ],
+      failClosedReviewedMutations: [],
     });
     expect(assertLifecycleTrace(autoTrace, "operate")).toEqual(expect.objectContaining({
       kind: "full-session-access",
@@ -134,6 +138,40 @@ describe("hana Agent Marketplace smoke helpers", () => {
     const missingResultTrace = autoTrace.map((call) => ({ ...call }));
     missingResultTrace[1] = { ...missingResultTrace[1], result: null, success: false };
     expect(() => assertLifecycleTrace(missingResultTrace, "auto")).toThrow(/missing results.*add_source/i);
+
+    const failClosedRemovalTrace = autoTrace.map((call) => ({ ...call }));
+    const removal = failClosedRemovalTrace.at(-1);
+    removal.success = false;
+    removal.result = {
+      isError: true,
+      details: {
+        errorCode: "TOOL_APPROVAL_UNAVAILABLE",
+        confirmed: false,
+        confirmation: { status: "needs_user_approval_but_unavailable" },
+      },
+    };
+    removal.confirmation = { status: "needs_user_approval_but_unavailable" };
+    expect(assertLifecycleTrace(failClosedRemovalTrace, "auto")).toEqual(expect.objectContaining({
+      sourceRemoval: "review-fail-closed",
+      failClosedReviewedMutations: [{
+        action: "remove_source",
+        errorCode: "TOOL_APPROVAL_UNAVAILABLE",
+        confirmationStatus: "needs_user_approval_but_unavailable",
+      }],
+    }));
+    expect(assertLifecycleTrace(failClosedRemovalTrace, "operate")).toEqual(expect.objectContaining({
+      sourceRemoval: "review-fail-closed",
+    }));
+
+    expect(() => assertLifecycleTrace([...autoTrace, { ...autoTrace.at(-1) }], "auto"))
+      .toThrow(/exactly one terminal remove_source/i);
+    expect(() => assertLifecycleTrace([...autoTrace, {
+      name: "plugin_marketplace",
+      action: "list_sources",
+      result: {},
+      success: true,
+      confirmation: null,
+    }], "auto")).toThrow(/remove_source must be the final/i);
   });
 
   it("requires the persisted detached-session permission scope", () => {

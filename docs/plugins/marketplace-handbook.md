@@ -16,14 +16,20 @@ source mutation, and package state without adding a second management model:
 - The **Plugin Marketplace** teaser is a full-row link to the detailed
   Marketplace page; its browse glyph is only a visual affordance, so clicking
   the title or description opens the same destination.
-- **＋ Add source** is the single compact outlined text action. Refresh,
-  browse/open, configuration, and removal controls are bare utility icons;
-  they use color-only hover/focus feedback rather than filled button surfaces.
-- For a mutable custom source, the actions are ordered **refresh → remove × →
-  enable/disable toggle**. The × opens the ordinary removal confirmation.
-  The switch changes only source enablement; it retains the same owner,
-  revision, digest, and confirmation protections as the former Enable/Disable
-  action.
+- **＋ Add source** opens the source dialog. A failed add keeps the dialog open,
+  preserves the submitted input, and displays the server error inline so the
+  operator can correct it without re-entering the source.
+- Mutable source/package controls use visible localized action labels such as
+  **Refresh**, **Remove**, **Enable**, **Disable**, and **Manage in Skills**.
+  Stateful controls also expose `aria-pressed`; a glyph may accompany the
+  label but does not replace it.
+- Source technical fields are collapsed by default behind the native details
+  disclosure. Expanding it shows location, requested ref, index path,
+  `resolvedRevision`, catalog digest, fetched time, and diagnostics.
+- Refresh, remove, and enable/disable retain owner, revision, digest, and
+  confirmation protections. Source refresh sends both revision and digest,
+  reloads the registry after one stale conflict, and retries exactly once;
+  a second stale conflict is shown to the operator.
 - Official, legacy, immutable, degraded, and non-owner source rows remain
   read-only. A visual control never bypasses the server ownership or stale
   configuration rules described below.
@@ -41,6 +47,15 @@ Git sources may declare a ref such as `refs/heads/stable`, a release tag, or ano
 Private Git credentials, SSH URLs, credential-bearing URLs, arbitrary desktop-local paths, and paths outside the server's allowed local root are not accepted. A remote desktop sees server-local paths as redacted. When Settings says `server-local`, it means local to the connected Hana server, not local to the Mac or browser displaying Settings.
 
 Every package identity is source-qualified, for example `review-tools@team-market`. Duplicate package ids from different sources remain separate. Enable, disable, access, planning, and install operations must use the qualified identity.
+
+The official source is compiled, immutable, and always enabled. Hana starts
+official snapshot acquisition asynchronously during engine boot; startup does
+not wait for the fetch. A fetch or offline failure is non-fatal. Existing
+durable source snapshots remain readable as last-known-good `stale` snapshots,
+including diagnostics, and a persisted interrupted `refreshing` marker is
+retried after restart. A degraded registry can reuse only the last valid
+registry already cached by the current process; it is not a second persisted
+registry backup.
 
 ## Immutable install destinations
 
@@ -66,7 +81,25 @@ the active projection and its artifact trust grant while preserving verified
 downloads, retained artifacts, backups, and lifecycle history as non-installed
 evidence.
 
-## Manage Plugins inventory and package enable gate
+Marketplace install records may retain artifacts for several sources, but a
+native `pluginId` has only one active Marketplace source in the runtime slot.
+Switching sources is explicit and never copies state, secrets, backups, or
+trust. Source-qualified native storage is:
+
+```text
+plugin-data/<marketplaceId>/<pluginId>/
+plugin-secrets/<marketplaceId>/<pluginId>/
+plugin-backups/<marketplaceId>/<pluginId>/
+plugin-artifacts/<marketplaceId>/<pluginId>/<artifactDigest>/
+```
+
+Ordinary configuration fields remain in `config.json`. Schema fields marked
+`sensitive: true` live separately in `secrets.json`; Settings/API values are
+redacted as `********`, while server-side `ctx.config` returns the merged real
+value. Legacy sensitive fields migrate on first read. Global, per-Agent, and
+per-session logical scopes remain independent.
+
+## Manage Plugins inventory and three-layer availability
 
 Installed Hana-skill marketplace packages appear under **Settings → Plugins → Manage Plugins** alongside native community plugins. They are listed as Hana-skill packages (skill-manager destination), not as PluginManager runtime plugins.
 
@@ -75,6 +108,17 @@ Installed Hana-skill marketplace packages appear under **Settings → Plugins �
 - **Package enable toggle:** Owner-only. Writes `activations.marketplaceSkillPackages[pluginId@marketplaceId] = { enabled }`. Missing record means **enabled** (installed-default). This is a **global skill-manager gate**: when disabled, skills from that package are gated off for every Agent, independent of per-Agent skill toggles (prefs are kept; runtime is inactive).
 - **Not PluginManager:** Package enable does not load, unload, or reconfigure native plugins. Uninstall uses `DELETE /api/plugins/marketplace/:id/skills`. Install, Uninstall, and **Manage in Skills** remain the skill lifecycle and per-skill activation paths. The native dropzone under Manage Plugins still installs only PluginManager packages.
 - **Plugin Marketplace detail:** When a Hana-skill package is installed (not `not-installed`), the catalog inspector shows the same package enable toggle bound to `packageActivation` / `marketplaceSkillPackages`, while keeping Install / Uninstall / Manage in Skills actions.
+
+The visible package/skill state is always described with three separate
+layers:
+
+- **Package** — the source-qualified global skill-manager package gate.
+- **Agent preference** — the selected Agent's preference for one skill.
+- **Effective availability** — the resulting runtime availability after both
+  layers and source state are applied.
+
+The UI must not collapse these into one ambiguous “enabled” label. Package and
+skill actions use visible **Enable**/**Disable** labels and `aria-pressed`.
 
 ### Per-Agent skill defaults and opt-outs
 
@@ -90,9 +134,9 @@ The package gate and the individual Agent preference have different scopes:
 - **Skills → Agent Skill Toggles** controls one Agent's individual skill
   preference. An absent entry means enabled by default; it does not mean
   disabled.
-- A package-gated skill reports its preference (`enabled`) separately from
-  runtime availability (`active`). Turning a package off makes the skill
-  inactive for every Agent but does not erase individual preferences.
+- A package-gated skill reports **Agent preference** separately from
+  **Effective availability**. Turning **Package** off makes the skill
+  unavailable for every Agent but does not erase individual preferences.
 
 Hana persists an explicit per-Agent opt-out in that Agent's `config.yaml`:
 
@@ -165,7 +209,7 @@ inside the configured local Marketplace root. Absolute package paths,
 traversal, and symlink escape are rejected before any skill is copied. Git
 source installation keeps the existing clone/ref/revision behavior.
 
-Before a mutation, Hana shows a concise operation summary containing the exact qualified target, connected-server ownership requirement, warnings, revision/digest or plan token, and the operation that will occur. In `auto` (autoreview), reviewable mutations are sent to the automatic reviewer and fail closed if review rejects or is unavailable. In `operate` (full session access), the same reviewable mutations execute directly. Owner checks, stale-state checks, source containment, unsupported-component restrictions, and the Agent-driven native-install block remain enforced in both modes. Native Settings installation is a separate owner-only surface and is not callable through the Agent tool. Adding a source may be followed by an offer to browse its catalog, but Hana does not auto-install recommendations.
+Before a mutation, Hana shows a concise operation summary containing the exact qualified target, connected-server ownership requirement, warnings, revision/digest or plan token, and the operation that will occur. In `auto` (autoreview), reviewable mutations are sent to the automatic reviewer and fail closed if review rejects or is unavailable. `operate` (full session access) removes the ordinary write prompt, but it does not bypass owner-required Marketplace review: an owner-required action still goes through the approval gateway and may require an attended confirmation when the reviewer asks for one. Owner checks, stale-state checks, source containment, unsupported-component restrictions, and the Agent-driven native-install block remain enforced in both modes. Native Settings installation is a separate owner-only surface and is not callable through the Agent tool. Adding a source may be followed by an offer to browse its catalog, but Hana does not auto-install recommendations.
 
 **Auto-mode operators:** automatic review needs working **utility** and
 **utility_large** models on the Agent (credentials + provider reachable). Empty
@@ -212,7 +256,7 @@ The server-owned `plugin-marketplaces.json` file is the advanced control plane. 
 
 API and Settings writes use atomic replacement plus revision/digest comparison. A stale writer receives a conflict instead of overwriting newer state. A valid direct edit changes desired configuration only; it does not fetch, install, promote, or activate content by itself.
 
-If a direct edit is malformed, Hana keeps the last-known-good effective registry for inspection, marks the configuration degraded, and blocks acquisition and mutation. Repair the reported field/path, preserve source-qualified identities, increment from the last valid revision, save atomically, and reload diagnostics. Do not interpret `enabled` as `installed`: desired-not-installed is a supported diagnostic state.
+If a direct edit is malformed, Hana keeps the current process's last valid effective registry for inspection when one has already been loaded, marks the configuration degraded, and blocks acquisition and mutation. This registry fallback is in-memory; durable per-source snapshots are the persisted last-known-good acquisition evidence. Repair the reported field/path, preserve source-qualified identities, increment from the last valid revision, save atomically, and reload diagnostics. Do not interpret `enabled` as `installed`: desired-not-installed is a supported diagnostic state.
 
 ## Claude compatibility bindings
 
@@ -250,13 +294,33 @@ execute routes under
 Older servers omit the capability and remain inspect-only. Native uninstall
 never uses the Hana-skill `DELETE /api/plugins/marketplace/:id/skills` route.
 
+Retained native artifacts and inactive source state use two exact owner-only
+routes with different preservation contracts:
+
+- `DELETE /api/plugins/:pluginId/artifacts/:marketplaceId/:artifactDigest`
+  deletes only the exact inactive retained artifact, retained record, and
+  matching digest trust grant. It rejects the active artifact and preserves
+  `plugin-data`, `plugin-secrets`, and `plugin-backups`.
+- `DELETE /api/plugins/:pluginId/state/:marketplaceId` requires exact
+  confirmation `<pluginId>@<marketplaceId> state purge`. It deletes only the
+  inactive source's data, secrets, backups, and all matching source/plugin
+  trust grants. It preserves retained artifacts, active/retained/history
+  install records, catalog snapshots, source registry, other marketplaces,
+  legacy-unqualified state, and the active runtime projection. Repeating an
+  already-completed purge is idempotent.
+
 For attended local verification without UI or Computer Use, run
 `node scripts/hana-agent-marketplace-smoke.mjs` against the locally installed
 Hana server. The harness creates two disposable contained Claude sources,
 opens visible detached conversations in `auto` and `operate`, requires real
-`plugin_marketplace` tool calls for the complete lifecycle, verifies
-authoritative session branches and postconditions, and removes only its two
-exact fixture identities.
+`plugin_marketplace` tool calls through package uninstall and a final
+owner-reviewed source-removal attempt, verifies authoritative session branches
+and postconditions, and removes only its two exact fixture identities. A
+reviewer-approved `remove_source` proves the full Agent lifecycle. A specific
+approval rejection, unavailable-review result, or unattended-confirmation
+timeout proves fail-closed owner review instead; the harness then uses its
+exact-targeted owner cleanup path and still requires zero live fixture source,
+package, skill, activation, or native-inventory residue.
 
 ## Troubleshooting and recovery
 

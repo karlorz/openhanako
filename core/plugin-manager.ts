@@ -12,6 +12,10 @@ import { detectIncompatiblePluginFormat } from "../lib/plugin-format-guard.ts";
 import { createModuleLogger } from "../lib/debug-log.ts";
 import { getToolSessionPath, normalizeToolRuntimeContext } from "../lib/tools/tool-session.ts";
 import { readMarketplaceActiveMarker } from "../lib/plugin-marketplace-active-marker.ts";
+import {
+  marketplacePluginDataDir,
+  marketplacePluginSecretsDir,
+} from "../lib/plugin-trust-store.ts";
 
 const log = createModuleLogger("plugin-manager");
 
@@ -76,7 +80,15 @@ function pluginSourcePriority(source) {
 
 function pluginDataDirForEntry(rootDir, entry) {
   if (entry.source === "dev") return path.join(rootDir, "dev", entry.id);
+  if (entry.marketplaceInstall) {
+    return marketplacePluginDataDir(rootDir, entry.marketplaceInstall.marketplaceId, entry.id);
+  }
   return path.join(rootDir, entry.id);
+}
+
+function pluginSecretsDirForEntry(rootDir, entry) {
+  if (!rootDir || !entry.marketplaceInstall) return null;
+  return marketplacePluginSecretsDir(rootDir, entry.marketplaceInstall.marketplaceId, entry.id);
 }
 
 function addContribution(contributions, name) {
@@ -225,6 +237,7 @@ export class PluginManager {
   declare _commands: any;
   declare _configSchemas: any;
   declare _dataDir: any;
+  declare _secretsDir: any;
   declare _extensionFactories: any;
   declare _getSessionPath: any;
   declare _loadTimeoutMs: any;
@@ -258,6 +271,7 @@ export class PluginManager {
     pluginsDirs,
     pluginsDir,
     dataDir,
+    secretsDir,
     bus,
     preferencesManager,
     appVersion,
@@ -275,6 +289,7 @@ export class PluginManager {
   }) {
     this._pluginsDirs = pluginsDirs || (pluginsDir ? [pluginsDir] : []);
     this._dataDir = dataDir;
+    this._secretsDir = secretsDir || path.join(path.dirname(dataDir), "plugin-secrets");
     this._bus = bus;
     this._preferencesManager = preferencesManager || null;
     this._appVersion = appVersion || "0.0.0";
@@ -699,6 +714,7 @@ export class PluginManager {
       source: entry.source,
       pluginDir: entry.pluginDir,
       dataDir: pluginDataDirForEntry(this._dataDir, entry),
+      secretsDir: pluginSecretsDirForEntry(this._secretsDir, entry),
       bus: this._bus,
       accessLevel,
       registerSessionFile: this._registerSessionFile,
@@ -1225,7 +1241,11 @@ export class PluginManager {
       stores.push({
         pluginId: entry.id,
         pluginKey: entry.pluginKey,
-        store: createPluginConfigStore({ dataDir, schema: entry.configSchema }),
+        store: createPluginConfigStore({
+          dataDir,
+          secretsDir: pluginSecretsDirForEntry(this._secretsDir, entry),
+          schema: entry.configSchema,
+        }),
       });
     }
     return stores;

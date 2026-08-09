@@ -90,6 +90,19 @@ describe('ManagePluginsSkillPackagesPanel', () => {
         'settings.plugins.skillPackageOpenSkills': `Open skills for ${params?.name || ''}`.trim(),
         'settings.plugins.skillPackageOpenArea': `Open the ${params?.name || ''} skill package`.trim(),
         'settings.plugins.skillPackageSkillsCount': `${params?.count || '0'} skills`,
+        'settings.plugins.skillPackageManageInSkills': 'Manage in Skills',
+        'settings.plugins.skillPackageRemove': 'Remove',
+        'settings.plugins.skillPackageEnable': 'Enable',
+        'settings.plugins.skillPackageDisable': 'Disable',
+        'settings.plugins.skillPackageLayerPackage': 'Package',
+        'settings.plugins.skillPackageLayerAgentPreference': 'Agent preference',
+        'settings.plugins.skillPackageLayerEffectiveAvailability': 'Effective availability',
+        'settings.plugins.skillPackageLayerPreferencesPreserved': 'Preserved per Agent',
+        'settings.plugins.skillPackageLayerAvailable': 'Available',
+        'settings.plugins.skillPackageLayerUnavailable': 'Unavailable',
+        'settings.plugins.skillPackageLayerPartial': 'Partially available',
+        'settings.plugins.marketPackageGateEnabled': 'enabled',
+        'settings.plugins.marketPackageGateDisabled': 'disabled',
         'settings.plugins.skillPackageDisabledPreservesPreferences': 'Disabled; preferences preserved.',
         'settings.plugins.skillPackageDefaultOn': 'Enabled by default.',
       };
@@ -127,9 +140,14 @@ describe('ManagePluginsSkillPackagesPanel', () => {
 
     const openSkills = screen.getByRole('button', { name: 'Open skills for SkillWiki' });
     expect(openSkills).toHaveAttribute('title', 'Open skills for SkillWiki');
-    expect(openSkills.className).toMatch(/settings-icon-btn/);
-    expect(openSkills.className).toMatch(/plugin-action-icon/);
+    expect(openSkills).toHaveTextContent('Manage in Skills');
+    expect(openSkills.className).toMatch(/pv-add-form-btn/);
+    expect(openSkills.className).toMatch(/plugin-labeled-action/);
     expect(openSkills.className).not.toMatch(/skill-card-delete/);
+    expect(screen.getAllByText(/Package: enabled|Package: disabled/)).toHaveLength(2);
+    expect(screen.getAllByText('Agent preference: Preserved per Agent')).toHaveLength(2);
+    expect(screen.getByText('Effective availability: Available')).toBeInTheDocument();
+    expect(screen.getByText('Effective availability: Unavailable')).toBeInTheDocument();
   });
 
   it('fires onOpen with the row identity from the open-skills button', () => {
@@ -159,12 +177,17 @@ describe('ManagePluginsSkillPackagesPanel', () => {
     expect(onToggle).toHaveBeenCalledTimes(1);
     expect(onToggle.mock.calls[0][0]).toMatchObject({ identity: 'skillwiki@llm-wiki' });
     expect(onToggle.mock.calls[0][1]).toBe(false);
+    const toggle = screen.getByRole('button', { name: 'Toggle package skillwiki@llm-wiki' });
+    expect(toggle).toHaveTextContent('Disable');
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('fires onUninstall with the row', () => {
     const { onUninstall } = renderPanel();
 
-    fireEvent.click(screen.getByTitle(/Uninstall skillwiki@llm-wiki/));
+    const remove = screen.getByTitle(/Uninstall skillwiki@llm-wiki/);
+    expect(remove).toHaveTextContent('Remove');
+    fireEvent.click(remove);
 
     expect(onUninstall).toHaveBeenCalledTimes(1);
     expect(onUninstall.mock.calls[0][0]).toMatchObject({ identity: 'skillwiki@llm-wiki' });

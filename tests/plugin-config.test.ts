@@ -54,6 +54,76 @@ describe("plugin config schema", () => {
     }
   });
 
+  it("stores sensitive marketplace config separately with restrictive permissions", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-plugin-config-public-"));
+    const secretsDir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-plugin-config-secret-"));
+    try {
+      const schema = normalizePluginConfigSchema("demo", {
+        properties: {
+          enabled: { type: "boolean", default: true },
+          apiKey: { type: "string", sensitive: true },
+        },
+      });
+      const store = createPluginConfigStore({ dataDir: dir, secretsDir, schema });
+
+      store.setMany({ enabled: false, apiKey: "secret-value" });
+
+      expect(store.getAll()).toEqual({ enabled: false, apiKey: "secret-value" });
+      expect(store.getAll({ redacted: true })).toEqual({ enabled: false, apiKey: "********" });
+      expect(JSON.parse(fs.readFileSync(path.join(dir, "config.json"), "utf-8"))).toMatchObject({
+        global: { enabled: false },
+      });
+      expect(fs.readFileSync(path.join(dir, "config.json"), "utf-8")).not.toContain("secret-value");
+      expect(JSON.parse(fs.readFileSync(path.join(secretsDir, "secrets.json"), "utf-8"))).toMatchObject({
+        global: { apiKey: "secret-value" },
+      });
+      if (process.platform !== "win32") {
+        expect(fs.statSync(secretsDir).mode & 0o777).toBe(0o700);
+        expect(fs.statSync(path.join(secretsDir, "secrets.json")).mode & 0o777).toBe(0o600);
+      }
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+      fs.rmSync(secretsDir, { recursive: true, force: true });
+    }
+  });
+
+  it("migrates legacy sensitive values out of ordinary config on first read", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-plugin-config-migrate-"));
+    const secretsDir = path.join(dir, "..", `${path.basename(dir)}-secrets`);
+    try {
+      fs.writeFileSync(path.join(dir, "config.json"), JSON.stringify({
+        schemaVersion: 1,
+        global: { enabled: true, apiKey: "legacy-secret" },
+        agents: { hanako: { agentToken: "agent-secret" } },
+        sessions: {},
+      }), "utf-8");
+      const schema = normalizePluginConfigSchema("demo", {
+        properties: {
+          enabled: { type: "boolean" },
+          apiKey: { type: "string", sensitive: true },
+          agentToken: { type: "string", scope: "per-agent", sensitive: true },
+        },
+      });
+      const store = createPluginConfigStore({ dataDir: dir, secretsDir, schema });
+
+      expect(store.getAll()).toEqual({ enabled: true, apiKey: "legacy-secret" });
+      expect(store.getAll({ scope: "per-agent", agentId: "hanako" })).toEqual({
+        agentToken: "agent-secret",
+      });
+
+      const publicText = fs.readFileSync(path.join(dir, "config.json"), "utf-8");
+      expect(publicText).not.toContain("legacy-secret");
+      expect(publicText).not.toContain("agent-secret");
+      expect(JSON.parse(fs.readFileSync(path.join(secretsDir, "secrets.json"), "utf-8"))).toMatchObject({
+        global: { apiKey: "legacy-secret" },
+        agents: { hanako: { agentToken: "agent-secret" } },
+      });
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+      fs.rmSync(secretsDir, { recursive: true, force: true });
+    }
+  });
+
   it("rejects invalid type writes with field errors", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-plugin-config-"));
     try {

@@ -46,18 +46,40 @@ export function normalizePluginConfigSchema(pluginId, rawSchema: Record<string, 
   };
 }
 
-export function createPluginConfigStore({ dataDir, schema }) {
+export function createPluginConfigStore({ dataDir, secretsDir = null, schema }) {
   const configPath = path.join(dataDir, PLUGIN_CONFIG_FILENAME);
+  const secretsPath = secretsDir ? path.join(secretsDir, "secrets.json") : null;
   const normalizedSchema = schema || normalizePluginConfigSchema("", {});
 
   function readState() {
-    const raw = readJson(configPath);
-    const state = normalizeState(raw);
+    const publicState = normalizeState(readJson(configPath));
+    if (!secretsPath) {
+      publicState.global = applyDefaults(normalizedSchema, publicState.global);
+      return publicState;
+    }
+
+    const storedSecrets = normalizeState(readJson(secretsPath));
+    const publicParts = partitionConfigState(normalizedSchema, publicState);
+    const secretParts = partitionConfigState(normalizedSchema, storedSecrets);
+    const ordinary = mergeConfigStates(secretParts.ordinary, publicParts.ordinary);
+    const secrets = mergeConfigStates(publicParts.secrets, secretParts.secrets);
+    const state = mergeConfigStates(ordinary, secrets);
+    if (hasConfigValues(publicParts.secrets) || hasConfigValues(secretParts.ordinary)) {
+      writeSeparatedState(state);
+    }
     state.global = applyDefaults(normalizedSchema, state.global);
     return state;
   }
 
   function writeState(state) {
+    if (secretsPath) {
+      writeSeparatedState(state);
+      return;
+    }
+    writePublicState(state);
+  }
+
+  function writePublicState(state) {
     fs.mkdirSync(dataDir, { recursive: true });
     const next = {
       schemaVersion: 1,
@@ -68,6 +90,16 @@ export function createPluginConfigStore({ dataDir, schema }) {
     // Plugin configuration carries whatever a plugin asks its user for, which
     // for connector-style plugins is service credentials and access tokens.
     writeSecretFileSync(configPath, `${JSON.stringify(next, null, 2)}\n`);
+  }
+
+  function writeSeparatedState(state) {
+    const { ordinary, secrets } = partitionConfigState(normalizedSchema, normalizeState(state));
+    if (hasConfigValues(secrets) || fs.existsSync(secretsPath)) {
+      fs.mkdirSync(secretsDir, { recursive: true, mode: 0o700 });
+      try { fs.chmodSync(secretsDir, 0o700); } catch { /* Windows and restricted filesystems */ }
+      writeSecretFileSync(secretsPath, `${JSON.stringify(secrets, null, 2)}\n`);
+    }
+    writePublicState(ordinary);
   }
 
   function resolveBucket(state, options: Record<string, any> = {}, create = false) {
@@ -285,6 +317,65 @@ function normalizeState(raw) {
     };
   }
   return { schemaVersion: 1, global: raw, agents: {}, sessions: {} };
+}
+
+function partitionConfigState(schema, rawState) {
+  const state = normalizeState(rawState);
+  const ordinary = { schemaVersion: 1, global: {}, agents: {}, sessions: {} };
+  const secrets = { schemaVersion: 1, global: {}, agents: {}, sessions: {} };
+  partitionConfigBucket(schema, state.global, ordinary.global, secrets.global);
+  partitionScopedConfig(schema, state.agents, ordinary.agents, secrets.agents);
+  partitionScopedConfig(schema, state.sessions, ordinary.sessions, secrets.sessions);
+  return { ordinary, secrets };
+}
+
+function partitionScopedConfig(schema, records, ordinary, secrets) {
+  for (const [id, values] of Object.entries(records || {})) {
+    if (!isPlainObject(values)) continue;
+    const ordinaryValues = {};
+    const secretValues = {};
+    partitionConfigBucket(schema, values, ordinaryValues, secretValues);
+    if (Object.keys(ordinaryValues).length > 0) ordinary[id] = ordinaryValues;
+    if (Object.keys(secretValues).length > 0) secrets[id] = secretValues;
+  }
+}
+
+function partitionConfigBucket(schema, values, ordinary, secrets) {
+  for (const [key, value] of Object.entries(values || {})) {
+    if (schema.properties?.[key]?.sensitive === true) secrets[key] = value;
+    else ordinary[key] = value;
+  }
+}
+
+function mergeConfigStates(baseState, overrideState) {
+  const base = normalizeState(baseState);
+  const override = normalizeState(overrideState);
+  return {
+    schemaVersion: 1,
+    global: { ...base.global, ...override.global },
+    agents: mergeScopedConfig(base.agents, override.agents),
+    sessions: mergeScopedConfig(base.sessions, override.sessions),
+  };
+}
+
+function mergeScopedConfig(baseRecords, overrideRecords) {
+  const output = {};
+  for (const id of new Set([
+    ...Object.keys(baseRecords || {}),
+    ...Object.keys(overrideRecords || {}),
+  ])) {
+    output[id] = {
+      ...(isPlainObject(baseRecords?.[id]) ? baseRecords[id] : {}),
+      ...(isPlainObject(overrideRecords?.[id]) ? overrideRecords[id] : {}),
+    };
+  }
+  return output;
+}
+
+function hasConfigValues(state) {
+  return Object.keys(state?.global || {}).length > 0
+    || Object.values(state?.agents || {}).some((values) => Object.keys(values || {}).length > 0)
+    || Object.values(state?.sessions || {}).some((values) => Object.keys(values || {}).length > 0);
 }
 
 function redactScopedValues(schema, records = {}) {
