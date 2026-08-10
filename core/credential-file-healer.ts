@@ -20,13 +20,26 @@
 import fs from "fs";
 import path from "path";
 
+import { PluginInstallRecords, type MarketplaceStorageIdentity } from "../lib/plugin-install-records.ts";
+import { marketplacePluginDataDir, marketplacePluginSecretsDir } from "../lib/plugin-trust-store.ts";
 import { AppError } from "../shared/errors.ts";
 import { errorBus } from "../shared/error-bus.ts";
 import { CONFIG_SCOPE_BACKUP_SUFFIX } from "../shared/migrate-config-scope.ts";
-import { ensureSecretDirModeSync, ensureSecretFileModeSync, SECRET_TMP_SUFFIX } from "../shared/secret-fs.ts";
+import {
+  ensureSecretDirectoryModeNoFollowSync,
+  ensureSecretDirModeSync,
+  ensureSecretFileModeSync,
+  ensureSecretRegularFileModeNoFollowSync,
+  SECRET_TMP_SUFFIX,
+} from "../shared/secret-fs.ts";
 import { LOCAL_PROVIDER_PLUGINS_DIR } from "./local-provider-plugin-store.ts";
 import { MIGRATION_BACKUPS_DIR } from "./migration-backups.ts";
-import { PLUGIN_CONFIG_FILENAME, PLUGIN_DATA_DIRNAME } from "./plugin-config.ts";
+import {
+  PLUGIN_CONFIG_FILENAME,
+  PLUGIN_DATA_DIRNAME,
+  PLUGIN_SECRETS_DIRNAME,
+  PLUGIN_SECRETS_FILENAME,
+} from "./plugin-config.ts";
 import { SECURITY_DIR } from "./security-dir.ts";
 
 /** Files directly under the data directory that hold credentials. */
@@ -79,6 +92,13 @@ const MAX_TREE_DEPTH = 6;
 
 interface HealOptions {
   hanakoHome: string;
+  /**
+   * The install-record owner is the sole source of Marketplace storage
+   * identities. Passing Engine's existing instance avoids a second reader at
+   * startup; the standalone healer falls back to a local reader for tests and
+   * direct maintenance calls.
+   */
+  marketplaceInstallRecords?: Pick<PluginInstallRecords, "listMarketplaceStorageIdentities">;
   log?: (line: string) => void;
 }
 
@@ -89,7 +109,11 @@ export interface CredentialHealResult {
   failed: string[];
 }
 
-export function healCredentialFileModes({ hanakoHome, log = () => {} }: HealOptions): CredentialHealResult {
+export function healCredentialFileModes({
+  hanakoHome,
+  marketplaceInstallRecords,
+  log = () => {},
+}: HealOptions): CredentialHealResult {
   const result: CredentialHealResult = { healed: [], failed: [] };
   // Refuse rather than quietly do nothing: without a data directory there is
   // no work to skip, only a caller passing the wrong thing, and silently
@@ -123,6 +147,12 @@ export function healCredentialFileModes({ hanakoHome, log = () => {} }: HealOpti
 
   const healFile = (target: string) => apply(target, ensureSecretFileModeSync);
   const healDir = (target: string) => apply(target, ensureSecretDirModeSync);
+  // Source-qualified Marketplace paths have stricter ownership and symlink
+  // requirements than the established generic healer paths. Their final
+  // component is tightened through an O_NOFOLLOW descriptor after the exact
+  // root/intermediate lstat guards below have passed.
+  const healManagedCredentialFile = (target: string) => apply(target, ensureSecretRegularFileModeNoFollowSync);
+  const healManagedCredentialDir = (target: string) => apply(target, ensureSecretDirectoryModeNoFollowSync);
 
   healDir(hanakoHome);
 
@@ -140,14 +170,30 @@ export function healCredentialFileModes({ hanakoHome, log = () => {} }: HealOpti
     healTree(path.join(hanakoHome, tree), 0, healDir, healFile);
   }
 
-  // Plugin configuration can hold connector and service credentials. Only the
-  // configuration file is corrected: the rest of a plugin's data directory
-  // holds downloads, job state and generated output owned by other stores, and
-  // flattening those would both overstep this pass and strip modes those files
-  // legitimately carry. Names come from the module that writes them.
-  for (const pluginDir of subdirectories(path.join(hanakoHome, PLUGIN_DATA_DIRNAME))) {
-    healFile(path.join(pluginDir, PLUGIN_CONFIG_FILENAME));
-  }
+  // Plugin configuration can hold connector and service credentials. The
+  // direct bare-plugin pass remains for legacy/unqualified directories such
+  // as plugin-data/mcp/config.json, but now gives its root, plugin directory,
+  // and final file the same no-follow/type safeguards as Marketplace paths.
+  const pluginDataRoot = path.join(hanakoHome, PLUGIN_DATA_DIRNAME);
+  const pluginSecretsRoot = path.join(hanakoHome, PLUGIN_SECRETS_DIRNAME);
+  healBarePluginConfigs(pluginDataRoot, healManagedCredentialFile);
+
+  // Marketplace storage ownership comes exclusively from validated install
+  // records. There is intentionally no directory-depth fallback: runtime data
+  // under office, mcp, generated output, or an unregistered source must stay
+  // outside this custody pass.
+  const installRecords = marketplaceInstallRecords || new PluginInstallRecords({ hanakoHome });
+  const listedMarketplaceIdentities = installRecords.listMarketplaceStorageIdentities();
+  const marketplaceIdentities = Array.isArray(listedMarketplaceIdentities)
+    ? listedMarketplaceIdentities
+    : [];
+  healMarketplacePluginConfigs(pluginDataRoot, marketplaceIdentities, healManagedCredentialFile);
+  healMarketplacePluginSecrets(
+    pluginSecretsRoot,
+    marketplaceIdentities,
+    healManagedCredentialFile,
+    healManagedCredentialDir,
+  );
 
   // Migration checkpoints copy the agents directory wholesale, so the same
   // configuration files exist a second time inside each checkpoint.
@@ -185,11 +231,125 @@ function healTree(
 }
 
 function subdirectories(root: string): string[] {
+  if (!isRealDirectory(root)) return [];
   try {
     return fs.readdirSync(root, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory())
+      .filter((entry) => entry.isDirectory() && !entry.isSymbolicLink())
       .map((entry) => path.join(root, entry.name));
   } catch {
     return [];
+  }
+}
+
+/**
+ * `lstat` guards for paths the credential healer owns directly. `isFile()`
+ * and `isDirectory()` are false for symlinks when the metadata came from
+ * lstat, so links and wrong types are both skipped before a mode operation.
+ */
+function isRealDirectory(target: string): boolean {
+  try {
+    return fs.lstatSync(target).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The same lstat behavior gives a no-follow regular-file check for the final
+ * credential target before its descriptor-based chmod is attempted.
+ */
+function isRealRegularFile(target: string): boolean {
+  try {
+    return fs.lstatSync(target).isFile();
+  } catch {
+    return false;
+  }
+}
+
+function healBarePluginConfigs(
+  pluginDataRoot: string,
+  healFile: (target: string) => void,
+): void {
+  for (const pluginDir of subdirectories(pluginDataRoot)) {
+    if (!isRealDirectory(pluginDir)) continue;
+    const target = path.join(pluginDir, PLUGIN_CONFIG_FILENAME);
+    if (!isRealRegularFile(target)) continue;
+    healFile(target);
+  }
+}
+
+interface MarketplaceStorageDirectories {
+  marketplaceDir: string;
+  pluginDir: string;
+}
+
+function marketplaceStorageDirectories(
+  root: string,
+  identity: MarketplaceStorageIdentity,
+  buildPluginDir: (rootDir: string, marketplaceId: string, pluginId: string) => string,
+): MarketplaceStorageDirectories | null {
+  try {
+    const pluginDir = buildPluginDir(root, identity.marketplaceId, identity.pluginId);
+    const marketplaceDir = path.dirname(pluginDir);
+    // Validate every component immediately before any descriptor is opened or
+    // directory mode is changed. The canonical builder rejects dangerous path
+    // segments; lstat rejects a root, Marketplace parent, or plugin directory
+    // that has been replaced by a link or another file type.
+    if (!isRealDirectory(root) || !isRealDirectory(marketplaceDir) || !isRealDirectory(pluginDir)) {
+      return null;
+    }
+    return { marketplaceDir, pluginDir };
+  } catch {
+    // Install-record enumeration already validates identities, but refusing an
+    // unexpected value here keeps this safety boundary fail-closed when the
+    // healer is called with another implementation of the narrow interface.
+    return null;
+  }
+}
+
+/**
+ * Heal the exact `config.json` files for validated Marketplace install
+ * identities. This deliberately iterates records, never directory entries.
+ */
+function healMarketplacePluginConfigs(
+  pluginDataRoot: string,
+  identities: readonly MarketplaceStorageIdentity[],
+  healFile: (target: string) => void,
+): void {
+  for (const identity of identities) {
+    const directories = marketplaceStorageDirectories(pluginDataRoot, identity, marketplacePluginDataDir);
+    if (!directories) continue;
+    const target = path.join(directories.pluginDir, PLUGIN_CONFIG_FILENAME);
+    if (!isRealRegularFile(target)) continue;
+    healFile(target);
+  }
+}
+
+/**
+ * Heal the exact `secrets.json` files for validated Marketplace install
+ * identities. The dedicated secrets root and the two recognized parents are
+ * owner-only directories; public plugin-data parents are deliberately not.
+ */
+function healMarketplacePluginSecrets(
+  pluginSecretsRoot: string,
+  identities: readonly MarketplaceStorageIdentity[],
+  healFile: (target: string) => void,
+  healDir: (target: string) => void,
+): void {
+  for (const identity of identities) {
+    const directories = marketplaceStorageDirectories(pluginSecretsRoot, identity, marketplacePluginSecretsDir);
+    if (!directories) continue;
+    const target = path.join(directories.pluginDir, PLUGIN_SECRETS_FILENAME);
+    if (!isRealRegularFile(target)) continue;
+
+    // All roots/intermediates and the final target above have been lstat'd
+    // before any change. These helpers additionally use O_NOFOLLOW for their
+    // final component; Node cannot make parent traversal atomic without an
+    // openat-style API, so a concurrent parent swap remains outside this
+    // best-effort startup healer's platform contract.
+    healDir(pluginSecretsRoot);
+    healDir(directories.marketplaceDir);
+    healDir(directories.pluginDir);
+    healFile(target);
   }
 }

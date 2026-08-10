@@ -562,10 +562,17 @@ Two release-blocking regressions remain before final verification:
    Marketplace `plugin-data/<marketplaceId>/<pluginId>/config.json` and
    `plugin-secrets/<marketplaceId>/<pluginId>/...` paths.
 
-The required correction and regression tests are pending the existing
-behavior-change design-approval gate. After that work, run the remaining
-post-rebase, focused/full, typecheck/lint/build, local package/install/codesign,
-Marketplace smoke, documentation, and release-publication gates. The
+The approved correction (legacy Marketplace opt-out re-migration and
+source-qualified credential healing) is implemented and locally verified:
+the combined correction suite passes 18 files / 342 tests plus the offline
+GitHub-mutation guard, both deterministic receipts were regenerated from the
+effective tree, `node scripts/sync-upstream.mjs --post-rebase` passes
+Tier 0–2, and `git diff --check` is clean. The recorded full-suite and
+typecheck baseline is unchanged by the correction: 12 pre-existing failures
+(8 files) and two pre-existing typecheck errors reproduce identically on the
+clean pre-correction HEAD. Remaining gates are Tier 3A local
+package/install/codesign, Marketplace smoke, documentation, and
+release-publication authority. The
 read-only local-only conflict plan currently reports zero conflicts and
 `prUpdated: false` and `stableSyncAvailable: false`. `origin/dev` is still
 unpublished/stale, which is a later fork-publication concern rather than a

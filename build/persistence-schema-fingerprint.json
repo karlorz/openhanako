@@ -679,7 +679,7 @@
     ],
     "version": 3
   },
-  "payloadFingerprint": "sha256:b6ccd7fc290dd6f0b038f35516f8a9d2c8be7284c452ccadddb16df81f55df64",
+  "payloadFingerprint": "sha256:968b647f79b77e002972676d465174df4ce625ccbb836e5b7ae41a34dbc6a9e4",
   "registry": [
     {
       "affectedByEpochMigration": true,
@@ -3143,8 +3143,8 @@
   ],
   "review": {
     "classification": "compatible",
-    "compatibilityReason": "Preserves DATA_EPOCH 1 and persisted byte interpretation while adding source-qualified Marketplace plugin configuration secret separation, exact Marketplace state-purge ownership, and corrected Marketplace cache and cleanup persistence ownership.",
-    "payloadFingerprint": "sha256:b6ccd7fc290dd6f0b038f35516f8a9d2c8be7284c452ccadddb16df81f55df64"
+    "compatibilityReason": "Preserves DATA_EPOCH 1 and existing persisted byte interpretation while adding backward-compatible Marketplace preference migration metadata, source-qualified cleanup, validated storage identities, and record-qualified credential custody.",
+    "payloadFingerprint": "sha256:968b647f79b77e002972676d465174df4ce625ccbb836e5b7ae41a34dbc6a9e4"
   },
   "schemas": [
     {
@@ -3404,7 +3404,7 @@
       "contract": "installed manifest, install receipt, backup, multi-source artifacts, marketplace registry, Claude skill provenance, and compatibility-state protocols",
       "kind": "directory-contract",
       "module": "core/plugin-manager.ts",
-      "sourceHash": "sha256:041f6e3e62982e6366daa855b5d326899dbddd5367a45d6d1fdb0cf411912fee",
+      "sourceHash": "sha256:0bd641b9b13266c725c97c87ea8bc5d71070d8897180b387a6c216671cf47622",
       "storeId": "installed-plugins"
     },
     {
@@ -3474,7 +3474,7 @@
       "contract": "verified plugin release ZIP naming by pluginId/version and expected sha256",
       "kind": "directory-contract",
       "module": "server/routes/plugins-marketplace.ts",
-      "sourceHash": "sha256:f4f556437f617c1be25a82891aa59bc27e569f75a742fd3e1ea68320c12fce2a",
+      "sourceHash": "sha256:c9a85bf9c27d3c01aec9f4aca75a912a958015b0bbbfef102f8217f19b318e88",
       "storeId": "plugin-download-cache"
     },
     {

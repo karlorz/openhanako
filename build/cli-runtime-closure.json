@@ -1767,9 +1767,14 @@
           "root": "server-bootstrap",
           "from": "core/engine.ts",
           "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
+          "from": "server/routes/plugins-marketplace.ts",
+          "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by core/credential-file-healer.ts (import-statement); core/plugin-context.ts (import-statement); core/plugin-manager.ts (import-statement); +3 more importer(s)."
+      "reason": "Reached via esbuild source module graph, imported by core/credential-file-healer.ts (import-statement); core/plugin-context.ts (import-statement); core/plugin-manager.ts (import-statement); +4 more importer(s)."
     },
     {
       "path": "core/plugin-context.ts",
@@ -4815,6 +4820,11 @@
         },
         {
           "root": "server-bootstrap",
+          "from": "lib/plugin-install-records.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
           "from": "core/plugin-config.ts",
           "kind": "import-statement"
         },
@@ -4936,11 +4946,6 @@
         {
           "root": "server-bootstrap",
           "from": "lib/plugin-marketplace-snapshots.ts",
-          "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
-          "from": "lib/plugin-install-records.ts",
           "kind": "import-statement"
         },
         {
@@ -5244,7 +5249,7 @@
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by core/migrations.ts (import-statement); core/plugin-config.ts (import-statement); lib/desk/cron-store.ts (import-statement); +84 more importer(s)."
+      "reason": "Reached via esbuild source module graph, imported by core/migrations.ts (import-statement); lib/plugin-install-records.ts (import-statement); core/plugin-config.ts (import-statement); +84 more importer(s)."
     },
     {
       "path": "lib/default-models.json",
@@ -6608,6 +6613,11 @@
         },
         {
           "root": "server-bootstrap",
+          "from": "lib/plugin-marketplace-service.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
           "from": "lib/skills/remove-skill-references.ts",
           "kind": "import-statement"
         },
@@ -6622,7 +6632,7 @@
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by core/skill-manager.ts (import-statement); lib/skills/remove-skill-references.ts (import-statement); core/engine.ts (import-statement); +1 more importer(s)."
+      "reason": "Reached via esbuild source module graph, imported by core/skill-manager.ts (import-statement); lib/plugin-marketplace-service.ts (import-statement); lib/skills/remove-skill-references.ts (import-statement); +2 more importer(s)."
     },
     {
       "path": "lib/memory/cache-snapshot-observation.ts",
@@ -7648,6 +7658,11 @@
       "provenance": [
         {
           "root": "server-bootstrap",
+          "from": "core/credential-file-healer.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
           "from": "lib/plugin-marketplace-service.ts",
           "kind": "import-statement"
         },
@@ -7662,7 +7677,7 @@
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by lib/plugin-marketplace-service.ts (import-statement); core/engine.ts (import-statement); server/routes/plugins-marketplace.ts (import-statement)."
+      "reason": "Reached via esbuild source module graph, imported by core/credential-file-healer.ts (import-statement); lib/plugin-marketplace-service.ts (import-statement); core/engine.ts (import-statement); +1 more importer(s)."
     },
     {
       "path": "lib/plugin-marketplace-activation.ts",
@@ -7809,12 +7824,17 @@
       "provenance": [
         {
           "root": "server-bootstrap",
-          "from": "lib/plugin-marketplace-active-marker.ts",
+          "from": "lib/plugin-install-records.ts",
           "kind": "import-statement"
         },
         {
           "root": "server-bootstrap",
           "from": "lib/plugin-trust-store.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
+          "from": "lib/plugin-marketplace-active-marker.ts",
           "kind": "import-statement"
         },
         {
@@ -7850,11 +7870,6 @@
         {
           "root": "server-bootstrap",
           "from": "lib/plugin-marketplace-adapters.ts",
-          "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
-          "from": "lib/plugin-install-records.ts",
           "kind": "import-statement"
         },
         {
@@ -7899,6 +7914,11 @@
         },
         {
           "root": "server-bootstrap",
+          "from": "lib/plugin-marketplace-skill-uninstall.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
           "from": "lib/plugin-source-switch.ts",
           "kind": "import-statement"
         },
@@ -7908,7 +7928,7 @@
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by lib/plugin-marketplace-active-marker.ts (import-statement); lib/plugin-trust-store.ts (import-statement); lib/marketplace-skill-preferences.ts (import-statement); +17 more importer(s)."
+      "reason": "Reached via esbuild source module graph, imported by lib/plugin-install-records.ts (import-statement); lib/plugin-trust-store.ts (import-statement); lib/plugin-marketplace-active-marker.ts (import-statement); +18 more importer(s)."
     },
     {
       "path": "lib/plugin-marketplace-inspector.ts",
@@ -8177,6 +8197,11 @@
       "provenance": [
         {
           "root": "server-bootstrap",
+          "from": "core/credential-file-healer.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
           "from": "core/plugin-manager.ts",
           "kind": "import-statement"
         },
@@ -8196,7 +8221,7 @@
           "kind": "import-statement"
         }
       ],
-      "reason": "Reached via esbuild source module graph, imported by core/plugin-manager.ts (import-statement); lib/plugin-source-switch.ts (import-statement); core/engine.ts (import-statement); +1 more importer(s)."
+      "reason": "Reached via esbuild source module graph, imported by core/credential-file-healer.ts (import-statement); core/plugin-manager.ts (import-statement); lib/plugin-source-switch.ts (import-statement); +2 more importer(s)."
     },
     {
       "path": "lib/plugin-versioning.ts",
@@ -113120,6 +113145,16 @@
         },
         {
           "root": "server-bootstrap",
+          "from": "lib/plugin-install-records.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
+          "from": "lib/plugin-trust-store.ts",
+          "kind": "import-statement"
+        },
+        {
+          "root": "server-bootstrap",
           "from": "lib/desk/cron-store.ts",
           "kind": "import-statement"
         },
@@ -113131,11 +113166,6 @@
         {
           "root": "server-bootstrap",
           "from": "lib/plugin-marketplace-active-marker.ts",
-          "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
-          "from": "lib/plugin-trust-store.ts",
           "kind": "import-statement"
         },
         {
@@ -113226,11 +113256,6 @@
         {
           "root": "server-bootstrap",
           "from": "lib/plugin-marketplace-snapshots.ts",
-          "kind": "import-statement"
-        },
-        {
-          "root": "server-bootstrap",
-          "from": "lib/plugin-install-records.ts",
           "kind": "import-statement"
         },
         {

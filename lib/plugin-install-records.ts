@@ -30,6 +30,12 @@ export interface RetainedPluginArtifactRecord {
   lastActivatedAt?: string;
 }
 
+/** A validated source-qualified Marketplace identity with credential storage. */
+export interface MarketplaceStorageIdentity {
+  marketplaceId: string;
+  pluginId: string;
+}
+
 export interface PluginLifecycleHistoryEntry {
   action: string;
   result: string;
@@ -103,6 +109,10 @@ function emptyV2(pluginId: string): PluginInstallRecordV2 {
   };
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
 function compatFields(record: PluginInstallRecordV2): PluginInstallRecordV2 {
   const activeMarket = record.activeMarketplaceId;
   const activeDigest = record.activeArtifactDigest;
@@ -170,6 +180,67 @@ export class PluginInstallRecords {
         return structuredClone(this._v1ToV2View(record));
       })
       .filter(Boolean) as PluginInstallRecordV2[];
+  }
+
+  /**
+   * List the source-qualified Marketplace identities whose public or secret
+   * storage the custody healer may consider. Install records—not directory
+   * depth—are the ownership authority, so malformed or legacy entries are
+   * ignored rather than inferred from the filesystem.
+   */
+  listMarketplaceStorageIdentities(): MarketplaceStorageIdentity[] {
+    const identities = new Map<string, MarketplaceStorageIdentity>();
+    const add = (marketplaceId: string, pluginId: string) => {
+      identities.set(`${marketplaceId}\u0000${pluginId}`, { marketplaceId, pluginId });
+    };
+    const validatedEntry = (marketplaceId: unknown, artifactDigest: unknown, entry: unknown) => {
+      if (marketplaceId === LEGACY_UNQUALIFIED_MARKETPLACE_ID || !isPlainObject(entry)) return null;
+      try {
+        const market = assertMarketplaceId(marketplaceId);
+        const digest = assertArtifactDigest(artifactDigest);
+        if (entry.marketplaceId !== market || entry.artifactDigest !== digest) return null;
+        return { marketplaceId: market, artifactDigest: digest };
+      } catch {
+        return null;
+      }
+    };
+
+    for (const record of this.list()) {
+      let pluginId: string;
+      try {
+        pluginId = assertPluginId(record.pluginId);
+      } catch {
+        continue;
+      }
+      if (!isPlainObject(record.retained)) continue;
+
+      // Check the active pointer independently. A corrupt active pointer is
+      // not authority to heal storage unless it still matches its retained
+      // provenance entry.
+      if (record.activeMarketplaceId && record.activeArtifactDigest) {
+        const activeEntry = isPlainObject(record.retained[record.activeMarketplaceId])
+          ? record.retained[record.activeMarketplaceId][record.activeArtifactDigest]
+          : null;
+        const active = validatedEntry(
+          record.activeMarketplaceId,
+          record.activeArtifactDigest,
+          activeEntry,
+        );
+        if (active) add(active.marketplaceId, pluginId);
+      }
+
+      for (const [rawMarketplaceId, byDigest] of Object.entries(record.retained)) {
+        if (!isPlainObject(byDigest)) continue;
+        for (const [rawArtifactDigest, entry] of Object.entries(byDigest)) {
+          const retained = validatedEntry(rawMarketplaceId, rawArtifactDigest, entry);
+          if (retained) add(retained.marketplaceId, pluginId);
+        }
+      }
+    }
+
+    return [...identities.values()].sort((left, right) =>
+      left.marketplaceId.localeCompare(right.marketplaceId)
+      || left.pluginId.localeCompare(right.pluginId));
   }
 
   /**

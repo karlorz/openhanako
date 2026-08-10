@@ -158,6 +158,16 @@ export interface MutationOptions {
   isSourceInUse?: SourceInUseCallback;
 }
 
+/**
+ * Result returned by an in-lock activation transform. A no-op transform must
+ * explicitly report `changed: false`, allowing callers to avoid a needless
+ * durable write, schema upgrade, or revision increment.
+ */
+export interface ControlPlaneActivationMutation<T> {
+  changed: boolean;
+  result: T;
+}
+
 export interface MutationResult {
   revision: number;
   source?: EffectiveMarketplaceSource;
@@ -1038,6 +1048,69 @@ export class PluginMarketplaceSourceRegistry {
       return {
         revision: diagnostics.file.revision,
         activations: structuredClone(diagnostics.file.activations || {}),
+      };
+    });
+  }
+
+  /**
+   * Apply a narrow control-plane activation update against a freshly loaded
+   * durable file while holding the registry mutation lock. This avoids the
+   * read/snapshot/replace race that full activation replacement APIs cannot
+   * safely use for startup cleanup.
+   */
+  mutateControlPlaneActivations<T>(
+    mutator: (
+      activations: MarketplaceControlPlaneActivations,
+    ) => ControlPlaneActivationMutation<T>,
+    options: MutationOptions = {},
+  ): {
+    revision: number;
+    activations: MarketplaceControlPlaneActivations;
+    result: T;
+  } {
+    return this._withLockSync(() => {
+      this._assertMutable();
+      const loaded = this._loadDurable();
+      if (!loaded.ok) {
+        throw new Error(`Invalid registry (degraded): ${"error" in loaded ? loaded.error : "malformed registry"}`);
+      }
+      this._assertExpectedRevision(loaded.file.revision, options.expectedRevision);
+      this._assertExpectedDigest(loaded.digest, options.expectedDigest);
+
+      const activations = structuredClone(loaded.file.activations || {});
+      const mutation = mutator(activations);
+      if (!mutation || typeof mutation !== "object" || typeof mutation.changed !== "boolean") {
+        throw new Error("Marketplace activation transform must return { changed, result }");
+      }
+      if (!mutation.changed) {
+        return {
+          revision: loaded.file.revision,
+          activations: structuredClone(loaded.file.activations || {}),
+          result: mutation.result,
+        };
+      }
+
+      const candidate: MarketplaceSourcesFile = {
+        ...loaded.file,
+        schemaVersion: MARKETPLACE_CONTROL_PLANE_SCHEMA_VERSION,
+        revision: loaded.file.revision + 1,
+        sources: loaded.file.sources,
+        activations,
+      };
+      const payload = `${JSON.stringify(candidate, null, 2)}\n`;
+      const diagnostics = diagnoseMarketplaceSourcesText(payload, { path: this._path });
+      if (!diagnostics.ok || !diagnostics.file) {
+        throw new Error(
+          `Invalid marketplace control-plane activations: ${
+            diagnostics.diagnostics.find((item) => item.severity === "error")?.message || "invalid activation records"
+          }`,
+        );
+      }
+      this._persist(diagnostics.file);
+      return {
+        revision: diagnostics.file.revision,
+        activations: structuredClone(diagnostics.file.activations || {}),
+        result: mutation.result,
       };
     });
   }

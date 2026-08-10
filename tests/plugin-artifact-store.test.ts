@@ -215,6 +215,88 @@ describe("PluginInstallRecords v2", () => {
     expect(updated.retained["team-plugins"][DIGEST_C]).toBeTruthy();
   });
 
+  it("lists sorted, deduplicated storage identities from validated active and retained records", () => {
+    const home = makeHome();
+    const records = new PluginInstallRecords({ hanakoHome: home });
+    records.retainAndActivate({
+      pluginId: "demo",
+      marketplaceId: "oh-plugins-official",
+      artifactDigest: DIGEST_A,
+      version: "1.0.0",
+      sourceFingerprint: "1".repeat(64),
+      catalogSha256: "2".repeat(64),
+      packageSha256: DIGEST_A,
+      artifactPath: "/tmp/demo-official",
+      action: "install",
+      result: "ok",
+    });
+    records.retainAndActivate({
+      pluginId: "demo",
+      marketplaceId: "team-plugins",
+      artifactDigest: DIGEST_B,
+      version: "2.0.0",
+      sourceFingerprint: "3".repeat(64),
+      catalogSha256: "4".repeat(64),
+      packageSha256: DIGEST_B,
+      artifactPath: "/tmp/demo-team",
+      action: "source-switch",
+      result: "ok",
+    });
+    records.retainAndActivate({
+      pluginId: "archived",
+      marketplaceId: "backup-plugins",
+      artifactDigest: DIGEST_C,
+      version: "1.0.0",
+      sourceFingerprint: "5".repeat(64),
+      catalogSha256: "6".repeat(64),
+      packageSha256: DIGEST_C,
+      artifactPath: "/tmp/archived",
+      action: "install",
+      result: "ok",
+    });
+    records.deactivate({
+      pluginId: "archived",
+      marketplaceId: "backup-plugins",
+      artifactDigest: DIGEST_C,
+    });
+    records.recordInstall({ pluginId: "legacy", source: "local" });
+
+    const recordsPath = path.join(home, "plugin-installs.json");
+    const raw = JSON.parse(fs.readFileSync(recordsPath, "utf8"));
+    raw.plugins.mismatched = {
+      schemaVersion: 2,
+      pluginId: "mismatched",
+      activeMarketplaceId: "team-plugins",
+      activeArtifactDigest: DIGEST_A,
+      retained: {
+        "team-plugins": {
+          [DIGEST_A]: {
+            marketplaceId: "other-plugins",
+            artifactDigest: DIGEST_A,
+          },
+        },
+      },
+      transaction: null,
+      history: [],
+    };
+    raw.plugins.malformed = {
+      schemaVersion: 2,
+      pluginId: "not a valid plugin id",
+      activeMarketplaceId: "team-plugins",
+      activeArtifactDigest: DIGEST_A,
+      retained: {},
+      transaction: null,
+      history: [],
+    };
+    fs.writeFileSync(recordsPath, `${JSON.stringify(raw, null, 2)}\n`, "utf8");
+
+    expect((records as any).listMarketplaceStorageIdentities()).toEqual([
+      { marketplaceId: "backup-plugins", pluginId: "archived" },
+      { marketplaceId: "oh-plugins-official", pluginId: "demo" },
+      { marketplaceId: "team-plugins", pluginId: "demo" },
+    ]);
+  });
+
   it("migrates v1 records with trustworthy provenance and isolates ambiguous legacy", () => {
     const home = makeHome();
     const pathRecords = path.join(home, "plugin-installs.json");

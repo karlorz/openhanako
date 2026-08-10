@@ -666,6 +666,116 @@ describe("PluginMarketplaceSourceRegistry", () => {
     });
   });
 
+  it("applies an activation transform atomically and preserves an exact no-op", () => {
+    const home = makeHome();
+    writeRegistry(home, {
+      schemaVersion: 2,
+      revision: 7,
+      sources: [{ id: "team-plugins", name: "Team", kind: "url", url: "https://example.com/team.json" }],
+      activations: {
+        runtimePlugins: { "native@team-plugins": { enabled: true } },
+        agentSkillOverrides: {
+          agentA: {
+            "review@team-plugins/skill-pack": false,
+            "keep@team-plugins/skill-pack": { enabled: true },
+          },
+          agentB: {
+            "other@team-plugins/skill-pack": { enabled: false },
+          },
+        },
+      },
+    });
+    const registry = new PluginMarketplaceSourceRegistry({ hanakoHome: home });
+    const beforeChange = fs.readFileSync(registryPath(home), "utf8");
+
+    const initialNoChange = registry.mutateControlPlaneActivations(() => ({
+      changed: false,
+      result: "nothing-to-retire-yet",
+    }));
+    expect(initialNoChange).toMatchObject({ revision: 7, result: "nothing-to-retire-yet" });
+    expect(fs.readFileSync(registryPath(home), "utf8")).toBe(beforeChange);
+    expect(() => registry.mutateControlPlaneActivations(
+      () => ({ changed: false, result: null }),
+      { expectedRevision: 6 },
+    )).toThrow(/revision conflict/i);
+
+    const changed = registry.mutateControlPlaneActivations((activations) => {
+      delete activations.agentSkillOverrides?.agentA?.["review@team-plugins/skill-pack"];
+      return { changed: true, result: "retired" };
+    });
+
+    expect(changed).toMatchObject({
+      revision: 8,
+      result: "retired",
+      activations: {
+        runtimePlugins: { "native@team-plugins": { enabled: true } },
+        agentSkillOverrides: {
+          agentA: { "keep@team-plugins/skill-pack": { enabled: true } },
+          agentB: { "other@team-plugins/skill-pack": { enabled: false } },
+        },
+      },
+    });
+    const afterChange = fs.readFileSync(registryPath(home), "utf8");
+
+    const noChange = registry.mutateControlPlaneActivations(() => ({
+      changed: false,
+      result: "nothing-to-retire",
+    }));
+
+    expect(noChange).toMatchObject({
+      revision: 8,
+      result: "nothing-to-retire",
+    });
+    expect(fs.readFileSync(registryPath(home), "utf8")).toBe(afterChange);
+  });
+
+  it("reloads the latest durable activation state before applying a transform", () => {
+    const home = makeHome();
+    writeRegistry(home, {
+      schemaVersion: 2,
+      revision: 7,
+      sources: [{ id: "team-plugins", name: "Team", kind: "url", url: "https://example.com/team.json" }],
+      activations: {
+        agentSkillOverrides: {
+          agentA: { "review@team-plugins/skill-pack": false },
+        },
+      },
+    });
+    const registry = new PluginMarketplaceSourceRegistry({ hanakoHome: home });
+    // Prime a stale in-memory read, then emulate a different writer committing
+    // an unrelated activation before this exact transform starts.
+    registry.getControlPlaneActivations();
+    writeRegistry(home, {
+      schemaVersion: 2,
+      revision: 8,
+      sources: [{ id: "team-plugins", name: "Team", kind: "url", url: "https://example.com/team.json" }],
+      activations: {
+        runtimePlugins: { "native@team-plugins": { enabled: true } },
+        agentSkillOverrides: {
+          agentA: {
+            "review@team-plugins/skill-pack": false,
+            "keep@team-plugins/skill-pack": { enabled: true },
+          },
+        },
+      },
+    });
+
+    const result = registry.mutateControlPlaneActivations((activations) => {
+      delete activations.agentSkillOverrides?.agentA?.["review@team-plugins/skill-pack"];
+      return { changed: true, result: "retired" };
+    });
+
+    expect(result).toMatchObject({
+      revision: 9,
+      activations: {
+        runtimePlugins: { "native@team-plugins": { enabled: true } },
+        agentSkillOverrides: {
+          agentA: { "keep@team-plugins/skill-pack": { enabled: true } },
+        },
+      },
+    });
+  });
+
   it("accepts activation records for the compiled official marketplace source", () => {
     const home = makeHome();
     writeRegistry(home, {

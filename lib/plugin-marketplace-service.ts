@@ -21,6 +21,7 @@ import {
   buildMarketplaceSkillRef,
   buildPluginMarketplaceRef,
 } from "./plugin-marketplace-identity.ts";
+import { legacyMarketplaceSkillRecordState } from "./marketplace-skill-preferences.ts";
 import {
   computeSkillDirSha256,
   readClaudeSkillsInstallRecord,
@@ -510,6 +511,50 @@ export class PluginMarketplaceService {
       expectedRevision: options.expectedRevision,
       expectedDigest: options.expectedDigest,
     });
+  }
+
+  /**
+   * Remove successfully migrated legacy per-skill activation records in one
+   * exact registry transform. Agent configuration owns completion metadata;
+   * the registry keeps no migrated tombstone that could continue to disable a
+   * skill after the user re-enables it.
+   */
+  retireLegacyMarketplaceSkillOverrides(
+    candidates: Iterable<{ agentId: string; legacyRef: string }>,
+  ): {
+    revision: number;
+    retiredLegacyRefs: Array<{ agentId: string; legacyRef: string }>;
+  } {
+    const unique = new Map<string, { agentId: string; legacyRef: string }>();
+    for (const candidate of candidates) {
+      if (!candidate || typeof candidate.agentId !== "string" || typeof candidate.legacyRef !== "string") continue;
+      if (!candidate.agentId || !candidate.legacyRef) continue;
+      const key = JSON.stringify([candidate.agentId, candidate.legacyRef]);
+      if (!unique.has(key)) unique.set(key, { agentId: candidate.agentId, legacyRef: candidate.legacyRef });
+    }
+    const requested = [...unique.values()].sort((left, right) =>
+      left.agentId.localeCompare(right.agentId) || left.legacyRef.localeCompare(right.legacyRef));
+
+    const transformed = this.registry.mutateControlPlaneActivations((activations) => {
+      const retiredLegacyRefs: Array<{ agentId: string; legacyRef: string }> = [];
+      for (const { agentId, legacyRef } of requested) {
+        const entries = activations.agentSkillOverrides?.[agentId];
+        if (!entries || !Object.prototype.hasOwnProperty.call(entries, legacyRef)) continue;
+        if (!legacyMarketplaceSkillRecordState(entries[legacyRef])) continue;
+        delete entries[legacyRef];
+        retiredLegacyRefs.push({ agentId, legacyRef });
+      }
+      if (retiredLegacyRefs.length > 0) pruneEmptySkillActivationMaps(activations);
+      return {
+        changed: retiredLegacyRefs.length > 0,
+        result: retiredLegacyRefs,
+      };
+    });
+
+    return {
+      revision: transformed.revision,
+      retiredLegacyRefs: transformed.result,
+    };
   }
 
   async refreshSource(marketplaceId: string, options: {

@@ -50,6 +50,15 @@ export const SECRET_DIR_MODE = 0o700;
 export const SECRET_TMP_SUFFIX = ".tmp";
 
 const SUPPORTS_POSIX_MODE = process.platform !== "win32";
+const NO_FOLLOW_OPEN_SKIP_CODES = new Set([
+  "EACCES",
+  "EISDIR",
+  "ELOOP",
+  "ENOENT",
+  "ENOTDIR",
+  "ENXIO",
+  "EPERM",
+]);
 
 function permissionError(message: string, filePath: string, cause?: unknown) {
   return new AppError("FS_PERMISSION", { message, context: { filePath }, cause });
@@ -69,6 +78,81 @@ function applyMode(target: string, mode: number): void {
     fs.chmodSync(target, mode);
   } catch (err: any) {
     throw permissionError("FS_PERMISSION", target, err);
+  }
+}
+
+/**
+ * Tighten an already-open credential target without resolving a symlink in
+ * its final pathname component.
+ *
+ * This is deliberately narrower than the established path-based helpers
+ * below. Callers must first verify every parent they own with `lstat`; Node
+ * has no portable `openat` API for a descriptor-relative, race-free walk of
+ * those parents. `O_NOFOLLOW` still pins the final chmod to the inode that was
+ * opened, and there is intentionally no path-based fallback when that open is
+ * unavailable or unsafe.
+ */
+function ensureSecretTargetModeNoFollowSync(
+  target: string,
+  kind: "file" | "directory",
+  mode: number,
+): boolean {
+  if (!SUPPORTS_POSIX_MODE) return false;
+
+  const noFollow = fs.constants.O_NOFOLLOW;
+  const nonBlocking = fs.constants.O_NONBLOCK;
+  const directoryOnly = fs.constants.O_DIRECTORY;
+  // The supported Node/POSIX platforms expose these flags. If an unusual
+  // runtime does not, skip rather than silently falling back to a pathname
+  // chmod that could follow a replacement symlink.
+  if (
+    !Number.isInteger(noFollow)
+    || !Number.isInteger(nonBlocking)
+    || (kind === "directory" && !Number.isInteger(directoryOnly))
+  ) {
+    return false;
+  }
+
+  let descriptor: number;
+  try {
+    descriptor = fs.openSync(
+      target,
+      fs.constants.O_RDONLY
+        | noFollow
+        | nonBlocking
+        | (kind === "directory" ? directoryOnly : 0),
+    );
+  } catch (err: any) {
+    // Missing, unreadable, symlinked, and wrong-type paths are an expected
+    // "nothing safe to heal" result for the startup pass. In particular,
+    // ELOOP is O_NOFOLLOW rejecting a final symlink.
+    if (NO_FOLLOW_OPEN_SKIP_CODES.has(err?.code)) return false;
+    throw permissionError(`credential ${kind} could not be opened safely`, target, err);
+  }
+
+  try {
+    let initial: fs.Stats;
+    try {
+      initial = fs.fstatSync(descriptor);
+    } catch (err) {
+      throw permissionError(`credential ${kind} could not be inspected safely`, target, err);
+    }
+    if (kind === "file" ? !initial.isFile() : !initial.isDirectory()) return false;
+    if ((initial.mode & 0o777) === mode) return false;
+
+    try {
+      fs.fchmodSync(descriptor, mode);
+    } catch (err) {
+      throw permissionError(`credential ${kind} could not be restricted to its owner`, target, err);
+    }
+
+    try {
+      return (fs.fstatSync(descriptor).mode & 0o777) === mode;
+    } catch (err) {
+      throw permissionError(`credential ${kind} mode could not be confirmed safely`, target, err);
+    }
+  } finally {
+    fs.closeSync(descriptor);
   }
 }
 
@@ -150,6 +234,26 @@ export function writeSecretFileSync(filePath: string, content: string): void {
     try { fs.rmSync(tmp, { force: true }); } catch { /* leave the target untouched */ }
     throw err;
   }
+}
+
+/**
+ * Tighten a regular credential file through a no-follow file descriptor.
+ *
+ * Use this only after the caller has lstat-validated the directories it owns.
+ * It rejects a final symlink and never falls back to `chmodSync(path)`.
+ */
+export function ensureSecretRegularFileModeNoFollowSync(filePath: string): boolean {
+  return ensureSecretTargetModeNoFollowSync(filePath, "file", SECRET_FILE_MODE);
+}
+
+/**
+ * Tighten a credential directory through a no-follow file descriptor.
+ *
+ * As with the regular-file helper, this protects the final component only;
+ * callers remain responsible for validating parent directories they own.
+ */
+export function ensureSecretDirectoryModeNoFollowSync(dirPath: string): boolean {
+  return ensureSecretTargetModeNoFollowSync(dirPath, "directory", SECRET_DIR_MODE);
 }
 
 /**
