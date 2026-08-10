@@ -52634,6 +52634,39 @@
       "reason": "nft-runtime-trace via nft-server-bundle (see roots[] for the full explanation)"
     },
     {
+      "path": "node_modules/@firecrawl/anydoc-<platform>/package.json",
+      "inputType": "nft-runtime-trace",
+      "provenance": [
+        {
+          "root": "nft-server-bundle",
+          "kind": "nft-trace"
+        }
+      ],
+      "reason": "nft-runtime-trace via nft-server-bundle (see roots[] for the full explanation)"
+    },
+    {
+      "path": "node_modules/@firecrawl/anydoc/index.js",
+      "inputType": "nft-runtime-trace",
+      "provenance": [
+        {
+          "root": "nft-server-bundle",
+          "kind": "nft-trace"
+        }
+      ],
+      "reason": "nft-runtime-trace via nft-server-bundle (see roots[] for the full explanation)"
+    },
+    {
+      "path": "node_modules/@firecrawl/anydoc/package.json",
+      "inputType": "nft-runtime-trace",
+      "provenance": [
+        {
+          "root": "nft-server-bundle",
+          "kind": "nft-trace"
+        }
+      ],
+      "reason": "nft-runtime-trace via nft-server-bundle (see roots[] for the full explanation)"
+    },
+    {
       "path": "node_modules/@google/genai/dist/node/index.mjs",
       "inputType": "nft-runtime-trace",
       "provenance": [
@@ -113964,11 +113997,11 @@
     }
   ],
   "stats": {
-    "totalFiles": 9686,
+    "totalFiles": 9689,
     "byInputType": {
       "source-graph": 708,
       "runtime-asset": 11,
-      "nft-runtime-trace": 8967
+      "nft-runtime-trace": 8970
     }
   }
 }

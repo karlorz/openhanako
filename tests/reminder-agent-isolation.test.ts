@@ -87,7 +87,7 @@ describe("memory-change reminder agent isolation (#2106)", () => {
     expect(typeof proto.renderSessionReminderBlock).toBe("function");
     expect(typeof proto.consumeRenderedSessionReminderBlock).toBe("function");
     expect(typeof proto.consumeSessionReminderBlock).toBe("function");
-    expect(typeof proto.noteSessionTimeObserved).toBe("function");
+    expect(typeof proto.noteSessionTimeObserved).not.toBe("function");
   });
 
   it("documents unscoped memory_facts fan-out as the #2106 leak shape to reject", async () => {

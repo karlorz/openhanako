@@ -52,7 +52,7 @@ function stubFetch(switchResponse: { status: number; body: unknown }) {
         headers: { 'Content-Type': 'application/json' },
       });
     }
-    return new Response(JSON.stringify({}), {
+    return new Response(JSON.stringify({ agents: [{ id: 'agent-a', name: 'Agent A' }, { id: 'agent-b', name: 'Agent B' }] }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });

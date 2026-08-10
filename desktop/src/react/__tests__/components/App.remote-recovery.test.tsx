@@ -87,6 +87,8 @@ describe('App remote recovery gate', () => {
         reasonCodes: ['missing_core_capability'],
         warningCodes: [],
       },
+      fileHistoryModal: { open: false, preselectRelPath: null },
+      closeFileHistoryModal: vi.fn(),
     });
   });
 

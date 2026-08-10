@@ -205,7 +205,7 @@ describe('OnboardingApp locale switching', () => {
 
     expect(await screen.findByRole('heading', { name: '欢迎' })).toBeInTheDocument();
     expect(screen.getByText('Onboarding target agent is ambiguous')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '已有服务器？使用局域网连接' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '已有服务器？连接到远程服务器' })).toBeInTheDocument();
   });
 
   it('uses a six-step flow and moves directly from model selection to workspace selection', async () => {
