@@ -3,136 +3,68 @@
   "entries": [
     {
       "schemaVersion": 1,
-      "tag": "v0.446.6",
+      "tag": "v0.446.6-karlorz.1",
       "version": "0.446.6",
-      "previousTag": "v0.444.1",
-      "generatedAt": "2026-08-08T18:00:10.000Z",
+      "previousTag": "v0.421.24-karlorz.5",
+      "generatedAt": "2026-08-10T09:42:42.000Z",
       "noUserFacingChanges": false,
       "summary": {
-        "zh": "这一版新增 Memory Dream：你可以让每个 Agent 单独整理自己的长期记忆，把 Facts 和 Long-term 中重复、零散的内容重组成有依据的自然段，同时保留 Today 和 Week 原样不动。它可以从设置页手动运行，也可以按 Agent 选择开启每日自动整理；默认关闭，不会改变现有 Agent 的行为。每次整理前都会保留修订版本，历史版本可以先预览、再确认恢复；运行和恢复失败时也会显示本地化、可行动的错误信息。整理只使用当前常驻记忆，不会从事实归档里擅自补写新内容；长度目标只是柔性的压缩引导，只有总正文超过安全上限才会拒绝写入。另外两项是界面修复：上下文圆圈里的普通「压缩」和「压缩并更新」现在排在实验性的「瞬时简易压缩」之前；Markdown 实时预览中的裸网址不再消失，而有名称的链接仍只显示链接文字。",
-        "en": "This release adds Memory Dream, which lets each Agent organize its own long-term memory independently. It reshapes duplicate or scattered material in Facts and Long-term into grounded natural paragraphs while leaving Today and Week untouched. You can run it manually from Settings or opt an individual Agent into a daily automatic run; it is off by default, so existing Agents do not change behavior. Every run preserves a revision first, and earlier revisions can be previewed before you confirm a restore. Run and restore failures now surface localized, actionable messages. Dream works only from the memory currently kept in residence and does not silently enrich it from the fact archive. Length targets guide compression softly, while only the combined hard safety ceiling can reject a write. Two interface fixes are included as well: the ordinary Compact and Compact and update actions now appear before the experimental Instant simple compaction action in the context-ring menu, and bare URLs no longer disappear from Markdown live preview while named links still show only their label."
+        "zh": "同步上游稳定版 v0.446.6，修复 Marketplace 旧版技能偏好迁移可能覆盖用户重新启用的技能，以及凭据权限修复误触非 Marketplace 运行时路径的问题。",
+        "en": "Syncs upstream stable v0.446.6 and fixes two Marketplace regressions: legacy skill opt-out re-migration could re-disable a user-enabled skill after reload, and credential permission healing used unsafe directory-depth discovery instead of install-record-qualified identities."
       },
       "counts": {
-        "feature": 1,
+        "feature": 0,
         "fix": 2,
         "improvement": 0,
         "migration": 0
       },
       "source": {
-        "owner": "liliMozi",
+        "owner": "karlorz",
         "repo": "openhanako",
-        "commitRange": "v0.444.1..v0.446.6",
-        "releaseUrl": "https://github.com/liliMozi/openhanako/releases/tag/v0.446.6",
+        "commitRange": "v0.421.24-karlorz.5..HEAD",
+        "releaseUrl": "",
         "releaseNotes": ""
       },
       "items": [
         {
-          "id": "per-agent-memory-dream",
-          "kind": "feature",
+          "id": "marketplace-legacy-optout-retirement",
+          "kind": "fix",
           "importance": "high",
           "title": {
-            "zh": "Memory Dream：按 Agent 整理长期记忆，并保留可恢复版本",
-            "en": "Memory Dream: organize long-term memory per Agent with restorable revisions"
+            "zh": "Marketplace 旧版技能偏好迁移修正",
+            "en": "Marketplace legacy skill opt-out migration correction"
           },
           "summary": {
-            "zh": "每个 Agent 的设置页新增 Memory Dream。它会读取这个 Agent 当前可编辑的 Facts 和 Long-term，消除重复、合并零散表达，并写成有来源依据的自然段；Today 和 Week 不参与改写。你可以手动运行，也可以只为需要的 Agent 打开每日自动整理。自动开关默认关闭，其他 Agent 和现有记忆流程不受影响。",
-            "en": "Each Agent's Settings page now includes Memory Dream. It reads that Agent's editable Facts and Long-term memory, removes duplication, combines scattered expressions, and writes grounded natural paragraphs; Today and Week are not rewritten. You can run it manually or enable a daily automatic run only for the Agents that need it. The automatic switch is off by default, leaving other Agents and existing memory flows unchanged."
-          },
-          "details": [
-            {
-              "zh": "整理只以运行开始时的常驻记忆为依据，不从事实归档补充新材料。输出必须能回溯到原文，避免整理过程悄悄发明事实。",
-              "en": "Organization is grounded only in the resident memory present when the run begins and does not pull in new material from the fact archive. Output must remain traceable to the source text so the process cannot quietly invent facts."
-            },
-            {
-              "zh": "Facts 约 400 字、Long-term 约 800 字是柔性的压缩目标：超过目标时会再尝试一次更紧凑的整理，但不会仅因变长就丢弃结果。两部分正文合计超过 5000 字时才触发硬安全上限并停止写入。",
-              "en": "About 400 characters for Facts and 800 for Long-term are soft compression targets. Crossing them prompts one tighter retry, but growth alone does not discard the result. A write is stopped only when the two section bodies together exceed the 5,000-character hard safety ceiling."
-            },
-            {
-              "zh": "每次改写前都会留下修订版本。版本浏览器会先展示差异和内容预览，恢复还需要再次确认，避免误点直接覆盖当前记忆。",
-              "en": "A revision is preserved before every rewrite. The revision browser shows the differences and a content preview first, and restoring requires a separate confirmation so an accidental click cannot overwrite current memory."
-            },
-            {
-              "zh": "运行、版本读取和恢复失败会按稳定错误类型显示本地化说明；即使后端没有提供已知类型，也会按当前动作给出明确的兜底信息。",
-              "en": "Run, revision-loading, and restore failures are localized from stable error types. If the backend does not provide a known type, the app still shows a clear fallback specific to the action you attempted."
-            }
-          ],
-          "sources": [
-            {
-              "type": "commit",
-              "ref": "9dd70cd5c",
-              "title": "feat: add per-agent memory Dream consolidation"
-            },
-            {
-              "type": "commit",
-              "ref": "408b7a184",
-              "title": "feat(memory): organize Dream as grounded units"
-            },
-            {
-              "type": "commit",
-              "ref": "f29d15f2a",
-              "title": "fix(memory): make Dream organize resident memory only"
-            },
-            {
-              "type": "commit",
-              "ref": "ca6dbf955",
-              "title": "fix(memory): compose Dream units into thematic paragraphs"
-            },
-            {
-              "type": "commit",
-              "ref": "483c5fe01",
-              "title": "fix(memory): make Dream compression targets soft"
-            },
-            {
-              "type": "commit",
-              "ref": "476b2d7cd",
-              "title": "fix(memory): use one loose Dream safety ceiling"
-            },
-            {
-              "type": "commit",
-              "ref": "06e173413",
-              "title": "fix(memory): localize Dream failures"
-            }
-          ]
-        },
-        {
-          "id": "compaction-menu-priority",
-          "kind": "fix",
-          "importance": "low",
-          "title": {
-            "zh": "常用压缩操作回到菜单前面",
-            "en": "Everyday compaction actions return to the top of the menu"
-          },
-          "summary": {
-            "zh": "聊天输入框上方的上下文圆圈菜单现在依次显示「压缩」「压缩并更新」「瞬时简易压缩」。普通操作不再被实验性入口抢到后面，更符合日常使用顺序；各项压缩本身的行为没有变化。",
-            "en": "The context-ring menu above the chat input now lists Compact, Compact and update, then Instant simple compaction. The ordinary actions no longer sit behind the experimental entry, matching everyday use more closely; the behavior of each compaction mode is unchanged."
+            "zh": "旧版技能禁用偏好现在只迁移一次：配置拥有完成元数据，注册表在锁内原子批处理删除旧记录，用户重新启用后不会被重新禁用。",
+            "en": "Legacy skill disabled preferences now migrate exactly once: agent configuration owns completion metadata, the registry retires exact legacy records in one locked batch, and a later user enable is never re-disabled on reload."
           },
           "details": [],
           "sources": [
             {
               "type": "commit",
-              "ref": "d356e6ce9",
-              "title": "fix(desktop): prioritize ordinary compaction action"
+              "ref": "12f7a6b4c",
+              "title": "fix(marketplace): retire legacy opt-outs exactly once and heal source-qualified credentials"
             }
           ]
         },
         {
-          "id": "bare-markdown-urls-visible",
+          "id": "source-qualified-credential-healing",
           "kind": "fix",
-          "importance": "medium",
+          "importance": "high",
           "title": {
-            "zh": "Markdown 实时预览不再藏掉裸网址",
-            "en": "Markdown live preview no longer hides bare URLs"
+            "zh": "源限定凭据权限修复",
+            "en": "Source-qualified credential permission healing"
           },
           "summary": {
-            "zh": "在主编辑器和独立查看窗口里，直接粘贴的裸网址以前会被 Markdown 装饰规则当成链接目标隐藏，结果整段网址从实时预览中消失。现在裸网址会保持可见；像「名称 + 链接地址」这样的标准命名链接仍只显示名称，避免把目标地址重复铺开。",
-            "en": "In both the main editor and detached viewer windows, a pasted bare URL could be treated as a hidden Markdown destination and disappear from live preview entirely. Bare URLs now remain visible, while standard named links still show only their label so the destination is not repeated."
+            "zh": "凭据权限修复改为只处理已验证安装记录的 Marketplace 身份路径，使用 lstat 和 O_NOFOLLOW 描述符保护，不再递归遍历插件运行时数据。",
+            "en": "Credential permission healing now targets only install-record-qualified Marketplace identity paths with lstat and O_NOFOLLOW descriptor guards, replacing unsafe directory-depth traversal."
           },
           "details": [],
           "sources": [
             {
               "type": "commit",
-              "ref": "2870af8e7",
-              "title": "fix(editor): keep bare Markdown URLs visible"
+              "ref": "12f7a6b4c",
+              "title": "fix(marketplace): retire legacy opt-outs exactly once and heal source-qualified credentials"
             }
           ]
         }
