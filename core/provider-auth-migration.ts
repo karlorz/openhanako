@@ -223,6 +223,18 @@ export function migrateLegacyApiKeyAuthToProviders({ hanakoHome, providerRegistr
   // 数据目录存放凭证，只对当前用户开放（Windows 上 NTFS 忽略该位，由用户目录 ACL 兜底）
   fs.mkdirSync(hanakoHome, { recursive: true, mode: 0o700 });
   store.saveProviders(providers, { deletedProviders: [...deletedProviders] });
+  // The registry caches catalog reads keyed by the catalog file's mtime. This
+  // migration writes the catalog through the store directly (not through the
+  // registry's own save, which invalidates that cache), so the cache must be
+  // invalidated here: on filesystems with coarse timestamp granularity
+  // (Windows) the second write can land in the same timestamp quantum as an
+  // earlier one, and the next reload() would keep serving the pre-recovery
+  // provider config — dropping the rescued API key from the next models.json
+  // projection. Same treatment as the direct store saves in core/migrations.ts.
+  if (providerRegistry) {
+    providerRegistry._addedModelsCache = null;
+    providerRegistry._addedModelsMtime = 0;
+  }
   providerRegistry?.reload?.();
   log(`[migrations] legacy API-key auth moved to provider catalog (${migratedProviders.join(", ")})`);
   return { migrated: migratedProviders.length, providers: migratedProviders };
