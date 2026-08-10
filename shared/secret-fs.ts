@@ -204,9 +204,15 @@ export function writeSecretFileSync(filePath: string, content: string): void {
     }
     try {
       fs.renameSync(tmp, filePath);
-    } catch (err) {
-      try { fs.rmSync(tmp, { force: true }); } catch { /* leave the target untouched */ }
-      throw err;
+    } catch {
+      // Windows can EPERM on rename when the target is briefly locked by
+      // antivirus or another reader. Fall back to a direct write so the
+      // data is not lost; the temp file is cleaned up afterward.
+      try {
+        fs.writeFileSync(filePath, content, "utf-8");
+      } finally {
+        try { fs.rmSync(tmp, { force: true }); } catch { /* best-effort */ }
+      }
     }
     return;
   }
