@@ -1,7 +1,7 @@
 # Marketplace Legacy Preference Retirement and Credential Healing Design
 
 **Date:** 2026-08-10
-**Status:** Approved design — pending written-spec review
+**Status:** Amended — pending written-spec re-review
 **Scope:** Local `dev` release-prework for upstream base `v0.446.6`
 
 ## Context
@@ -261,7 +261,10 @@ install records
 2. Existing bare `plugin-data/<pluginId>/config.json` healing remains intact.
 3. `plugin-data/office/jobs/config.json`,
    `plugin-data/office/generated/config.json`, and
-   `plugin-data/mcp/config.json` retain their original modes.
+   `plugin-data/mcp/<runtime-child>/config.json` retain their original modes.
+   The existing bare `plugin-data/mcp/config.json` is an independently owned
+   MCP credential config and remains covered by the established direct
+   bare-plugin config pass.
 4. Marketplace-looking but unregistered directory pairs retain their original
    modes; no raw depth-based fallback is allowed.
 5. Data/secrets root, source, plugin, and final-file symlinks are skipped;
