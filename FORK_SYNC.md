@@ -563,21 +563,19 @@ Two release-blocking regressions remain before final verification:
    `plugin-secrets/<marketplaceId>/<pluginId>/...` paths.
 
 The approved correction (legacy Marketplace opt-out re-migration and
-source-qualified credential healing) is implemented and locally verified:
-the combined correction suite passes 18 files / 342 tests plus the offline
-GitHub-mutation guard, both deterministic receipts were regenerated from the
-effective tree, `node scripts/sync-upstream.mjs --post-rebase` passes
-Tier 0–2, and `git diff --check` is clean. The recorded full-suite and
-typecheck baseline is unchanged by the correction: 12 pre-existing failures
-(8 files) and two pre-existing typecheck errors reproduce identically on the
-clean pre-correction HEAD. Remaining gates are Tier 3A local
-package/install/codesign, Marketplace smoke, documentation, and
-release-publication authority. The
+source-qualified credential healing) is implemented, committed as
+`12f7a6b4c`, and pushed to `origin/dev` with `--force-with-lease`. PR #1
+dashboard refreshed via `sync-upstream.mjs --conflict-plan`. Combined
+correction suite 18 files / 342 tests + offline GitHub-mutation guard;
+receipts regenerated deterministically; `--post-rebase` Tier 0–2 passed;
+Tier 3A local install/codesign/build-identity/Marketplace smoke passed.
+Full-suite/typecheck baselines unchanged (12 pre-existing failures, 2
+typecheck errors - reproduced on clean pre-correction HEAD). The
 read-only local-only conflict plan currently reports zero conflicts and
-`prUpdated: false` and `stableSyncAvailable: false`. `origin/dev` is still
-unpublished/stale, which is a later fork-publication concern rather than a
-remaining local rebase. `node scripts/sync-upstream.mjs --check` correctly
-recognizes `v0.446.6` as already ancestral to local `dev`.
+`prUpdated: false` and `stableSyncAvailable: false`. `origin/dev` is now
+synced with local `dev` (zero divergence). Remaining: fork-qualified
+digest alignment and immutable `v0.446.6-karlorz.N` tag/release (separate
+attended step).
 
 ## Stable sync activation and closeout boundary
 
@@ -701,3 +699,4 @@ permanent draft dashboard and is never a merge vehicle.
 | 2026-07-28 | `v0.421.24-karlorz.1` | Initial stable-base fork publication passed CI and Build, but independent verification found the Windows server checksum sidecar's first token was prefixed by GNU's escaped-filename marker. | Published immutable `.1` from `9a8b0572`; preserved the tag/release after the audit failure, traced the producer parser, and refused to move or silently rewrite the release. | Focus-ownership repair CI `30350424227` / `30350424674`; release-prep CI `30351893173` / `30351897996`; Build `30353167993`; 20 non-empty legacy-raw assets otherwise matched profile/manifest/digest contracts. | Existing verified local signed app and sg01 image/send/switch/return/preview smoke remain the runtime evidence; no deployment. | `.1` is immutable audit evidence, not the recommended release. PR #1 remained open/draft/no-auto-merge. |
 | 2026-07-28 | `v0.421.24-karlorz.2` | Correct the Windows checksum token and prevent release publication unless every server sidecar is canonical and matches its archive. | Commit `d2238612` normalizes escaped `sha256sum` output and adds the release-side integrity gate; digest-prep/tag commit `adc36cd6` publishes the one-fix successor after `.1`. | Full local suite 1,071 files / 10,766 tests plus six expected manual skips; exact-head CI `30355471038` / `30355475395`; Build `30356813482`; exact remote tag/SHA, byte-equal digest, exact compatibility manifest, 20 non-empty assets, signed-only exclusions, five canonical sidecars, and independently recomputed Windows archive checksum all passed. | No new runtime smoke was required: the artifact-only correction retains the already passed local app and sg01 attachment/preview evidence. sg01 stayed on `v0.416.51-karlorz.8`. | Recommended verified fork release: `https://github.com/karlorz/openhanako/releases/tag/v0.421.24-karlorz.2`. Plain upstream tag untouched; PR #1 still permanent draft never-merge. |
 | 2026-08-10 | `v0.446.6` | Rebase replay conflicted in the final Marketplace hardening batch, including engine tool assembly, source-qualified plugin config custody, and persistence registry ownership. | Kept deferred MCP/plugin/bridge tool assembly and owner-context forwarding; retained source-qualified public/secrets configuration with `writeSecretFileSync`; preserved exact Marketplace state ownership and regenerated receipts from the effective tree. | Focused Marketplace/persistence/security baseline passed: 11 files / 209 tests, plus persistence-tripwire (18), store-registry (14), and upstream-issue-tracker coverage. Full post-rebase, typecheck/lint/build, package, and local-app gates remain pending. | Not run for this branch: installed app is still local `0.421.24`; no sg01 contact or remote smoke. | Backup `backup/dev-before-stable-v0.446.6-20260810` @ `95b23b082`; `v0.446.6` is ancestral to local `dev`. No push, dashboard refresh, tag, release, deployment, or GitHub mutation. Release remains blocked by the legacy opt-out re-migration and source-qualified credential-healer regressions. |
+| 2026-08-10 | `v0.446.6` correction and fork sync | Legacy opt-out re-migration could re-disable a user-enabled skill after reload; credential healer used unsafe directory-depth discovery. | Implemented config-owned completion ledger (`marketplace_legacy_skill_migrations`) with one locked batch retirement; replaced depth-based healer with install-record-qualified identities + `O_NOFOLLOW` descriptor guards. Lockfile root reconciled (`@electron/asar` stale entry removed; `diff` dependency materialized). | Combined correction suite 18 files / 342 tests + offline GitHub-mutation guard; receipts regenerated deterministically (fingerprint `sha256:968b647f…`, compatible, `DATA_EPOCH` unchanged); `--post-rebase` Tier 0–2 passed; full-suite baseline unchanged (12 pre-existing failures reproduced on clean pre-correction HEAD); Tier 3A local install/codesign/build-identity/Marketplace smoke passed at `0.446.6` / `12f7a6b4c`. | Installed `/Applications/HanaAgent.app` rebuilt as local signed `0.446.6` at exact commit `12f7a6b4c`, `dirty: false`, updates disabled; CDP Marketplace/Settings smoke clean (zero renderer errors); sg01 untouched. | Correction committed as `12f7a6b4c`; rewritten `dev` force-pushed to `origin/dev` with `--force-with-lease` (replaced stale `875c26d3`); PR #1 dashboard refreshed via `sync-upstream.mjs --conflict-plan`; no tag, release, digest alignment, or deployment. |
