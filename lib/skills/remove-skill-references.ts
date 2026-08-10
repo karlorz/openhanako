@@ -1,7 +1,11 @@
 import fs from "fs";
 import path from "path";
 import { loadConfig, saveConfig } from "../memory/config-loader.ts";
-import { removeMarketplaceSkillPackagePreference } from "../marketplace-skill-preferences.ts";
+import {
+  normalizeMarketplaceLegacySkillMigrations,
+  removeMarketplaceLegacySkillMigrationPackage,
+  removeMarketplaceSkillPackagePreference,
+} from "../marketplace-skill-preferences.ts";
 
 export interface RemoveAgentSkillReferencesResult {
   updatedAgents: string[];
@@ -9,10 +13,8 @@ export interface RemoveAgentSkillReferencesResult {
 }
 
 export interface RemoveAgentSkillReferencesOptions {
-  /** Remove this package's complete per-agent preference entry in addition to legacy enabled names. */
+  /** A complete uninstall removes this package's config-owned Marketplace state. */
   marketplacePackageIdentity?: string;
-  /** For partial uninstall, remove only the preference entries for handled skills. */
-  marketplacePackageSkillNames?: Iterable<string>;
   /** Live agent objects, used to keep in-memory config aligned with disk cleanup. */
   agents?: Iterable<any>;
 }
@@ -57,7 +59,6 @@ export function removeAgentSkillReferences(
         const nextOverrides = removeMarketplaceSkillPackagePreference(
           config?.skills?.marketplace_overrides,
           packageIdentity,
-          options.marketplacePackageSkillNames,
         );
         if (nextOverrides) {
           // config-loader's existing null-as-delete merge removes this exact
@@ -65,6 +66,26 @@ export function removeAgentSkillReferences(
           skillsPatch.marketplace_overrides = {
             [packageIdentity]: nextOverrides[packageIdentity] || null,
           };
+        }
+
+        const nextMigrations = removeMarketplaceLegacySkillMigrationPackage(
+          config?.skills?.marketplace_legacy_skill_migrations,
+          packageIdentity,
+        );
+        if (nextMigrations) {
+          const currentMigrations = normalizeMarketplaceLegacySkillMigrations(
+            config?.skills?.marketplace_legacy_skill_migrations,
+          );
+          const removedRefs = Object.keys(currentMigrations)
+            .filter((legacyRef) => nextMigrations[legacyRef] !== true);
+          if (removedRefs.length > 0) {
+            // config-loader deep-merges nested maps, so delete only the exact
+            // source-qualified refs owned by the package. Do not replace the
+            // map: sibling package completion ledger entries must survive.
+            skillsPatch.marketplace_legacy_skill_migrations = Object.fromEntries(
+              removedRefs.map((legacyRef) => [legacyRef, null]),
+            );
+          }
         }
       }
 

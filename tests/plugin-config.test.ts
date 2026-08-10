@@ -3,10 +3,30 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {
+  PLUGIN_CONFIG_FILENAME,
+  PLUGIN_DATA_DIRNAME,
+  PLUGIN_SECRETS_DIRNAME,
+  PLUGIN_SECRETS_FILENAME,
   PluginConfigValidationError,
   createPluginConfigStore,
   normalizePluginConfigSchema,
 } from "../core/plugin-config.ts";
+
+describe("plugin config storage vocabulary", () => {
+  it("exports the canonical public and secret layout names", () => {
+    expect({
+      dataDir: PLUGIN_DATA_DIRNAME,
+      configFile: PLUGIN_CONFIG_FILENAME,
+      secretsDir: PLUGIN_SECRETS_DIRNAME,
+      secretsFile: PLUGIN_SECRETS_FILENAME,
+    }).toEqual({
+      dataDir: "plugin-data",
+      configFile: "config.json",
+      secretsDir: "plugin-secrets",
+      secretsFile: "secrets.json",
+    });
+  });
+});
 
 describe.skipIf(process.platform === "win32")("plugin config storage", () => {
   // Plugin configuration can hold connector and third-party service

@@ -1,7 +1,7 @@
 # Marketplace Legacy Preference Retirement and Credential Healing Design
 
 **Date:** 2026-08-10
-**Status:** Amended — pending written-spec re-review
+**Status:** Amended — approved 2026-08-10; implemented and verified locally (evidence in the corrections work item)
 **Scope:** Local `dev` release-prework for upstream base `v0.446.6`
 
 ## Context

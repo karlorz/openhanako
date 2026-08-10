@@ -20,6 +20,7 @@ import {
   restorePluginInstallBackup,
 } from "../../lib/plugin-install-backups.ts";
 import { inspectMarketplacePackage } from "../../lib/plugin-marketplace-inspector.ts";
+import { PLUGIN_DATA_DIRNAME, PLUGIN_SECRETS_DIRNAME } from "../../core/plugin-config.ts";
 import { emitAppEvent } from "../app-events.ts";
 import { uninstallMarketplaceSkillPackage } from "../../lib/plugin-marketplace-skill-uninstall.ts";
 import { refreshMarketplaceSkillRuntime } from "../../lib/plugin-marketplace-skill-runtime.ts";
@@ -1006,8 +1007,8 @@ export function createMarketplaceRoutes(engine: any): Hono {
         );
       }
 
-      const dataRoot = path.join(engine.hanakoHome, "plugin-data");
-      const secretsRoot = path.join(engine.hanakoHome, "plugin-secrets");
+      const dataRoot = path.join(engine.hanakoHome, PLUGIN_DATA_DIRNAME);
+      const secretsRoot = path.join(engine.hanakoHome, PLUGIN_SECRETS_DIRNAME);
       const backupsRoot = path.join(engine.hanakoHome, "plugin-backups");
       const stateTargets = {
         data: marketplacePluginDataDir(dataRoot, marketplaceId, pluginId),

@@ -683,6 +683,11 @@ describe("marketplace sources auth principal", () => {
             "skillwiki@llm-wiki": { disabled: ["wiki-query", "wiki-sync"] },
             "other@source": { disabled: ["other-skill"] },
           },
+          marketplace_legacy_skill_migrations: {
+            "wiki-query@llm-wiki/skillwiki": true,
+            "wiki-sync@llm-wiki/skillwiki": true,
+            "other-skill@source/other": true,
+          },
         },
       },
     };
@@ -723,12 +728,16 @@ describe("marketplace sources auth principal", () => {
     expect(fs.existsSync(skillDir)).toBe(false);
     expect(loadConfig(agentConfig)?.skills?.enabled).toEqual(["other"]);
     expect(loadConfig(agentConfig)?.skills?.marketplace_overrides).toEqual({
-      "skillwiki@llm-wiki": { disabled: ["wiki-query", "wiki-sync"] },
       "other@source": { disabled: ["other-skill"] },
     });
     expect(agent.config.skills.marketplace_overrides).toEqual({
-      "skillwiki@llm-wiki": { disabled: ["wiki-query", "wiki-sync"] },
       "other@source": { disabled: ["other-skill"] },
+    });
+    expect(loadConfig(agentConfig)?.skills?.marketplace_legacy_skill_migrations).toEqual({
+      "other-skill@source/other": true,
+    });
+    expect(agent.config.skills.marketplace_legacy_skill_migrations).toEqual({
+      "other-skill@source/other": true,
     });
     expect(loadSkillBundleStore(engine).bundles).toEqual([
       expect.objectContaining({ skillNames: ["other"] }),
@@ -738,6 +747,91 @@ describe("marketplace sources auth principal", () => {
       type: "app_event",
       event: expect.objectContaining({ type: "skills-changed" }),
     }), null);
+  });
+
+  it("preserves Marketplace preference and completion metadata on a partial skills-package uninstall", async () => {
+    const home = makeHome();
+    const engine = createEngine(home);
+    engine.agentsDir = path.join(home, "agents");
+    engine.reloadSkills = vi.fn(async () => {});
+    engine.emitEvent = vi.fn();
+    for (const name of ["wiki-query", "wiki-sync"]) {
+      const skillDir = path.join(engine.userSkillsDir, name);
+      fs.mkdirSync(skillDir, { recursive: true });
+      fs.writeFileSync(path.join(skillDir, "SKILL.md"), `---\nname: ${name}\n---\n`, "utf8");
+    }
+    const agentConfig = path.join(engine.agentsDir, "agent-a", "config.yaml");
+    fs.mkdirSync(path.dirname(agentConfig), { recursive: true });
+    fs.writeFileSync(agentConfig, "{}\n", "utf8");
+    const agent = {
+      id: "agent-a",
+      config: {
+        skills: {
+          enabled: ["wiki-query", "wiki-sync", "other"],
+          marketplace_overrides: {
+            "skillwiki@llm-wiki": { disabled: ["wiki-query", "wiki-sync"] },
+            "other@source": { disabled: ["other-skill"] },
+          },
+          marketplace_legacy_skill_migrations: {
+            "wiki-query@llm-wiki/skillwiki": true,
+            "wiki-sync@llm-wiki/skillwiki": true,
+            "other-skill@source/other": true,
+          },
+        },
+      },
+    };
+    saveConfig(agentConfig, agent.config);
+    engine.agents = new Map([[agent.id, agent]]);
+    writeClaudeSkillsInstallRecord(home, {
+      kind: "claude-skills",
+      marketplaceId: "llm-wiki",
+      pluginId: "skillwiki",
+      packagePath: "packages/skills",
+      resolvedRevision: "abc",
+      skills: ["wiki-query", "wiki-sync"],
+      skillDigests: { "wiki-sync": "a".repeat(64) },
+      installedAt: "2026-07-31T00:00:00.000Z",
+    });
+    const app = createAppWithPrincipal(engine, localOwner);
+
+    const res = await app.request("/api/plugins/marketplace/skillwiki/skills", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ marketplaceId: "llm-wiki" }),
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(207);
+    expect(body).toMatchObject({
+      ok: false,
+      complete: false,
+      deleted: ["wiki-query"],
+      failed: [{ name: "wiki-sync", error: expect.stringContaining("provenance mismatch") }],
+      referenceCleanup: { updatedAgents: ["agent-a"], failedAgents: [] },
+    });
+    expect(fs.existsSync(path.join(engine.userSkillsDir, "wiki-query"))).toBe(false);
+    expect(fs.existsSync(path.join(engine.userSkillsDir, "wiki-sync"))).toBe(true);
+    expect(loadConfig(agentConfig)?.skills).toMatchObject({
+      enabled: ["wiki-sync", "other"],
+      marketplace_overrides: {
+        "skillwiki@llm-wiki": { disabled: ["wiki-query", "wiki-sync"] },
+        "other@source": { disabled: ["other-skill"] },
+      },
+      marketplace_legacy_skill_migrations: {
+        "wiki-query@llm-wiki/skillwiki": true,
+        "wiki-sync@llm-wiki/skillwiki": true,
+        "other-skill@source/other": true,
+      },
+    });
+    expect(agent.config.skills.marketplace_overrides).toEqual({
+      "skillwiki@llm-wiki": { disabled: ["wiki-query", "wiki-sync"] },
+      "other@source": { disabled: ["other-skill"] },
+    });
+    expect(agent.config.skills.marketplace_legacy_skill_migrations).toEqual({
+      "wiki-query@llm-wiki/skillwiki": true,
+      "wiki-sync@llm-wiki/skillwiki": true,
+      "other-skill@source/other": true,
+    });
   });
 
   it("rejects marketplace skills uninstall without owner before filesystem mutation", async () => {

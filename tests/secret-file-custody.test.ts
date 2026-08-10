@@ -14,6 +14,7 @@
  * persistence census, which forces every production write to be claimed by a
  * store descriptor.
  */
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -21,9 +22,19 @@ import { describe, expect, it } from "vitest";
 import { discoverSites } from "../scripts/scan-persistent-stores.mjs";
 import { SECRET_TREES, TOP_LEVEL_SECRET_FILES } from "../core/credential-file-healer.ts";
 import { LOCAL_PROVIDER_PLUGINS_DIR } from "../core/local-provider-plugin-store.ts";
+import {
+  PLUGIN_CONFIG_FILENAME,
+  PLUGIN_DATA_DIRNAME,
+  PLUGIN_SECRETS_DIRNAME,
+  PLUGIN_SECRETS_FILENAME,
+} from "../core/plugin-config.ts";
 import { SECURITY_DIR } from "../core/security-dir.ts";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const CREDENTIAL_HEALER_SOURCE = fs.readFileSync(
+  path.join(ROOT, "core", "credential-file-healer.ts"),
+  "utf8",
+);
 
 /**
  * Source files whose file writes are credential writes without exception.
@@ -119,5 +130,21 @@ describe("startup healer coverage", () => {
     "web-sessions.json",
   ])("heals %s", (fileName) => {
     expect(TOP_LEVEL_SECRET_FILES).toContain(fileName);
+  });
+
+  // Blocker B: Marketplace credential ownership is record-qualified, not a
+  // directory-depth convention. The behavioral fixtures exercise the modes;
+  // this structural census catches a future rewrite that disconnects the
+  // healer from the record owner or reintroduces duplicate layout literals.
+  it("uses shared Marketplace storage vocabulary and install-record identities", () => {
+    expect(PLUGIN_DATA_DIRNAME).toBeTruthy();
+    expect(PLUGIN_CONFIG_FILENAME).toBeTruthy();
+    expect(PLUGIN_SECRETS_DIRNAME).toBeTruthy();
+    expect(PLUGIN_SECRETS_FILENAME).toBeTruthy();
+    expect(CREDENTIAL_HEALER_SOURCE).toContain("listMarketplaceStorageIdentities");
+    expect(CREDENTIAL_HEALER_SOURCE).toContain("marketplacePluginDataDir");
+    expect(CREDENTIAL_HEALER_SOURCE).toContain("marketplacePluginSecretsDir");
+    expect(CREDENTIAL_HEALER_SOURCE).toContain("PLUGIN_SECRETS_DIRNAME");
+    expect(CREDENTIAL_HEALER_SOURCE).toContain("PLUGIN_SECRETS_FILENAME");
   });
 });

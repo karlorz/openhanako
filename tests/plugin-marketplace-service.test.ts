@@ -714,6 +714,72 @@ describe("PluginMarketplaceService", () => {
       });
     });
 
+    it("retires only supplied legacy Marketplace skill overrides in one registry transform", () => {
+      const home = makeHome();
+      const svc = new PluginMarketplaceService({ hanakoHome: home, env: {} });
+      svc.registry.addSource({
+        id: "llm-wiki",
+        name: "llm-wiki",
+        kind: "git",
+        gitUrl: "https://example.com/llm-wiki.git",
+      });
+      svc.registry.setControlPlaneActivations({
+        runtimePlugins: { "native@llm-wiki": { enabled: true } },
+        marketplaceSkills: { "wiki-query@llm-wiki/skillwiki": { enabled: true } },
+        agentSkillOverrides: {
+          agentA: {
+            "wiki-query@llm-wiki/skillwiki": false,
+            "keep@llm-wiki/skillwiki": { enabled: true },
+          },
+          agentB: {
+            "wiki-sync@llm-wiki/skillwiki": { enabled: false, migrated: true },
+          },
+          agentC: {
+            "obsolete@llm-wiki/skillwiki": { enabled: false, migrated: true },
+          },
+          agentD: {
+            "object-disabled@llm-wiki/skillwiki": { enabled: false },
+          },
+        },
+      });
+      const before = svc.getRegistryStatus();
+      const transform = vi.spyOn(svc.registry, "mutateControlPlaneActivations");
+      const replacement = vi.spyOn(svc.registry, "setControlPlaneActivations");
+
+      const result = svc.retireLegacyMarketplaceSkillOverrides([
+        { agentId: "agentB", legacyRef: "wiki-sync@llm-wiki/skillwiki" },
+        { agentId: "agentA", legacyRef: "wiki-query@llm-wiki/skillwiki" },
+        { agentId: "agentA", legacyRef: "wiki-query@llm-wiki/skillwiki" },
+        { agentId: "agentA", legacyRef: "keep@llm-wiki/skillwiki" },
+        { agentId: "agentD", legacyRef: "object-disabled@llm-wiki/skillwiki" },
+        { agentId: "missing", legacyRef: "wiki-query@llm-wiki/skillwiki" },
+      ]);
+
+      expect(transform).toHaveBeenCalledOnce();
+      expect(replacement).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        revision: before.revision + 1,
+        retiredLegacyRefs: [
+          { agentId: "agentA", legacyRef: "wiki-query@llm-wiki/skillwiki" },
+          { agentId: "agentB", legacyRef: "wiki-sync@llm-wiki/skillwiki" },
+          { agentId: "agentD", legacyRef: "object-disabled@llm-wiki/skillwiki" },
+        ],
+      });
+      expect(svc.registry.getControlPlaneActivations()).toEqual({
+        runtimePlugins: { "native@llm-wiki": { enabled: true } },
+        marketplaceSkills: { "wiki-query@llm-wiki/skillwiki": { enabled: true } },
+        agentSkillOverrides: {
+          agentA: { "keep@llm-wiki/skillwiki": { enabled: true } },
+          agentC: {
+            "obsolete@llm-wiki/skillwiki": { enabled: false, migrated: true },
+          },
+        },
+      });
+
+      const noChange = svc.retireLegacyMarketplaceSkillOverrides(result.retiredLegacyRefs);
+      expect(noChange).toEqual({ revision: before.revision + 1, retiredLegacyRefs: [] });
+    });
+
     it("does not overwrite a concurrent activation change during uninstall cleanup", () => {
       const home = makeHome();
       const svc = new PluginMarketplaceService({ hanakoHome: home, env: {} });

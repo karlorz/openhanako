@@ -21,7 +21,7 @@ import { migrateProviderMediaConfig } from "./provider-media-config.ts";
 import { runMigrations } from "./migrations.ts";
 import { migrateAgentPersonaFileNames } from "./agents-md-migration.ts";
 import { healCredentialFileModes } from "./credential-file-healer.ts";
-import { PLUGIN_DATA_DIRNAME } from "./plugin-config.ts";
+import { PLUGIN_DATA_DIRNAME, PLUGIN_SECRETS_DIRNAME } from "./plugin-config.ts";
 import { pruneStaleCredentialBackups } from "./credential-backup-retention.ts";
 import { createServerRuntimeContext } from "./server-runtime-context.ts";
 import { StudioCronService } from "./studio-cron-service.ts";
@@ -2291,7 +2291,7 @@ export class HanaEngine {
     // Ensure registry is available so package gates enforce after cold start.
     const svc = this._ensurePluginMarketplaceService();
     const legacyByAgent = svc?.registry?.getControlPlaneActivations?.()?.agentSkillOverrides;
-    const migrated = migrateLegacyMarketplaceSkillOverrides({
+    const migrateResult = migrateLegacyMarketplaceSkillOverrides({
       agents: this._agentMgr?.agents?.values?.() || [],
       legacyByAgent,
       membership: membershipMap,
@@ -2299,7 +2299,26 @@ export class HanaEngine {
         `[marketplace] ${diagnostic.path}: ${diagnostic.message}`,
       ),
     });
-    if (migrated > 0) moduleLog.log(`[marketplace] migrated ${migrated} agent skill preference record(s)`);
+    let retiredLegacyRefs: Array<{ agentId: string; legacyRef: string }> = [];
+    if (svc && migrateResult.retirementCandidates.length > 0) {
+      try {
+        retiredLegacyRefs = svc.retireLegacyMarketplaceSkillOverrides(
+          migrateResult.retirementCandidates,
+        ).retiredLegacyRefs;
+      } catch (error) {
+        moduleLog.warn(
+          `[marketplace] could not retire ${migrateResult.retirementCandidates.length} legacy override candidate(s): ${
+            error?.message || error
+          }`,
+        );
+      }
+    }
+    if (migrateResult.configWrites > 0) moduleLog.log(`[marketplace] migrated ${migrateResult.configWrites} agent skill preference record(s)`);
+    if (migrateResult.retirementCandidates.length > 0) {
+      moduleLog.log(
+        `[marketplace] legacy override retirement candidates: ${migrateResult.retirementCandidates.length}; retired: ${retiredLegacyRefs.length}`,
+      );
+    }
 
     this._skills.setMarketplaceSkillPackageGateResolver((skillName) => {
       const membership = this._marketplaceSkillMembershipMap?.get(skillName);
@@ -2553,7 +2572,11 @@ export class HanaEngine {
       pruneStaleCredentialBackups({ hanakoHome: this.hanakoHome, log });
     }, log);
     runBestEffortStartupMigrationStep("credential-custody", () => {
-      const healed = healCredentialFileModes({ hanakoHome: this.hanakoHome, log });
+      const healed = healCredentialFileModes({
+        hanakoHome: this.hanakoHome,
+        marketplaceInstallRecords: this._pluginInstallRecords,
+        log,
+      });
       if (healed.failed.length > 0) {
         log(`[credential-custody] ${healed.failed.length} 个文件未能收紧权限，已记录；应用继续启动`);
       }
@@ -2891,7 +2914,7 @@ export class HanaEngine {
     const pluginDevRunsDir = path.join(this.hanakoHome, "plugin-dev-runs");
     const pluginDevSourcesDir = path.join(this.hanakoHome, "plugin-dev-sources");
     const pluginDataDir = path.join(this.hanakoHome, PLUGIN_DATA_DIRNAME);
-    const pluginSecretsDir = path.join(this.hanakoHome, "plugin-secrets");
+    const pluginSecretsDir = path.join(this.hanakoHome, PLUGIN_SECRETS_DIRNAME);
     fs.mkdirSync(pluginDevSourcesDir, { recursive: true });
 
     // Read app version for plugin compatibility check

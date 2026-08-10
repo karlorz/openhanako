@@ -134,6 +134,10 @@ describe("skills route", () => {
         skills: {
           enabled: ["ordinary"],
           marketplace_overrides: { "other@source": { disabled: ["other-skill"] } },
+          marketplace_legacy_skill_migrations: {
+            "wiki-query@llm-wiki/skillwiki": true,
+            "other-skill@source/other": true,
+          },
         },
       },
     };
@@ -201,6 +205,10 @@ describe("skills route", () => {
       },
     }, { agentId });
     expect(selected.config.skills.marketplace_overrides).toEqual({ "other@source": { disabled: ["other-skill"] } });
+    expect(selected.config.skills.marketplace_legacy_skill_migrations).toEqual({
+      "wiki-query@llm-wiki/skillwiki": true,
+      "other-skill@source/other": true,
+    });
   });
 
   it("keeps package preference enabled separate from a disabled global package gate", async () => {

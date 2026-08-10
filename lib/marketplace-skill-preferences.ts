@@ -1,4 +1,5 @@
 import {
+  buildMarketplaceSkillRef,
   buildPluginMarketplaceRef,
   parseMarketplaceSkillRef,
   parsePluginMarketplaceRef,
@@ -12,6 +13,8 @@ export interface MarketplaceSkillOverride {
 
 /** Normalized `skills.marketplace_overrides` configuration. */
 export type MarketplaceSkillOverrides = Record<string, MarketplaceSkillOverride>;
+
+export type MarketplaceLegacySkillMigrations = Record<string, true>;
 
 export interface MarketplaceSkillPreferenceDiagnostic {
   path: string;
@@ -36,9 +39,33 @@ export interface MarketplaceSkillPackagePreferenceRef {
 
 export interface LegacyMarketplaceSkillMigrationAgent {
   id: string;
-  config?: { skills?: { marketplace_overrides?: unknown } };
-  updateConfig(partial: { skills: { marketplace_overrides: MarketplaceSkillOverrides } }): void;
+  config?: {
+    skills?: {
+      marketplace_overrides?: unknown;
+      marketplace_legacy_skill_migrations?: unknown;
+    };
+  };
+  updateConfig(partial: {
+    skills: {
+      marketplace_overrides: MarketplaceSkillOverrides;
+      marketplace_legacy_skill_migrations: MarketplaceLegacySkillMigrations;
+    };
+  }): void;
 }
+
+/**
+ * Result of a single legacy override migration pass. Config writes and legacy
+ * record consumption are reported separately so callers and tests can assert
+ * each independently: a config write that fails must not retire the legacy
+ * record, and an already-migrated upgrade state retires the legacy record
+ * without re-persisting config.
+ */
+export interface LegacyMarketplaceSkillMigrationResult {
+  configWrites: number;
+  retirementCandidates: Array<{ agentId: string; legacyRef: string }>;
+}
+
+export type LegacyMarketplaceSkillRecordState = "disabled" | "obsolete-migrated" | null;
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -125,6 +152,23 @@ export function normalizeMarketplaceSkillOverrides(raw: unknown): NormalizedMark
   return { overrides, diagnostics };
 }
 
+export function normalizeMarketplaceLegacySkillMigrations(
+  raw: unknown,
+): MarketplaceLegacySkillMigrations {
+  if (!isPlainObject(raw)) return {};
+  const migrations: MarketplaceLegacySkillMigrations = {};
+  for (const legacyRef of Object.keys(raw).sort((a, b) => a.localeCompare(b))) {
+    if (raw[legacyRef] !== true) continue;
+    try {
+      const canonicalLegacyRef = buildMarketplaceSkillRef(parseMarketplaceSkillRef(legacyRef));
+      migrations[canonicalLegacyRef] = true;
+    } catch {
+      // Invalid private metadata is never authority to change preferences.
+    }
+  }
+  return migrations;
+}
+
 /** Return true only for an explicit per-agent opt-out. */
 export function isMarketplaceSkillDisabled(
   rawOverrides: unknown,
@@ -207,6 +251,25 @@ export function removeMarketplaceSkillPackagePreference(
   return next;
 }
 
+export function removeMarketplaceLegacySkillMigrationPackage(
+  rawMigrations: unknown,
+  identity: string,
+): MarketplaceLegacySkillMigrations | null {
+  const canonicalIdentity = buildPluginMarketplaceRef(parsePluginMarketplaceRef(identity));
+  const migrations = normalizeMarketplaceLegacySkillMigrations(rawMigrations);
+  const next: MarketplaceLegacySkillMigrations = {};
+  let removed = false;
+  for (const [legacyRef, value] of Object.entries(migrations)) {
+    const ref = packagePreferenceRefFromLegacySkillRef(legacyRef);
+    if (ref?.identity === canonicalIdentity) {
+      removed = true;
+      continue;
+    }
+    next[legacyRef] = value;
+  }
+  return removed ? next : null;
+}
+
 /** Metadata used by Skills API consumers for a known package-owned skill. */
 export function marketplaceSkillPreference(
   rawOverrides: unknown,
@@ -240,36 +303,55 @@ export function packagePreferenceRefFromLegacySkillRef(
   }
 }
 
-function isExplicitlyDisabledLegacyRecord(value: unknown): boolean {
-  return value === false
-    || (isPlainObject(value) && value.enabled === false);
+export function legacyMarketplaceSkillRecordState(
+  value: unknown,
+): LegacyMarketplaceSkillRecordState {
+  if (value === false) return "disabled";
+  if (!isPlainObject(value) || value.enabled !== false) return null;
+  return isLegacyRecordAlreadyMigrated(value) ? "obsolete-migrated" : "disabled";
+}
+
+/** True only for the obsolete locally handed-off compatibility marker. */
+function isLegacyRecordAlreadyMigrated(value: unknown): boolean {
+  return isPlainObject(value) && value.enabled === false && value.migrated === true;
 }
 
 /**
- * Migrate only known installed Claude/Hana package entries from the legacy
- * source-qualified activation map. Native marketplace records remain intact;
- * callers supply the installed membership map to prevent bare-name guesses.
+ * Migrate known installed Claude/Hana package entries from legacy
+ * source-qualified activation state. This helper changes agent configuration
+ * only: it writes active preference state plus private completion metadata in
+ * one operation and returns exact registry candidates for the service-owned
+ * retirement batch.
  */
 export function migrateLegacyMarketplaceSkillOverrides(options: {
   agents: Iterable<LegacyMarketplaceSkillMigrationAgent>;
   legacyByAgent?: unknown;
   membership: Map<string, { identity: string }>;
   onDiagnostic?: (diagnostic: MarketplaceSkillPreferenceDiagnostic) => void;
-}): number {
+}): LegacyMarketplaceSkillMigrationResult {
   const legacyByAgent = options.legacyByAgent;
-  if (!isPlainObject(legacyByAgent)) return 0;
+  const result: LegacyMarketplaceSkillMigrationResult = {
+    configWrites: 0,
+    retirementCandidates: [],
+  };
+  if (!isPlainObject(legacyByAgent)) return result;
   const agents = [...options.agents];
-  let migrated = 0;
 
-  for (const [agentId, entries] of Object.entries(legacyByAgent)) {
+  for (const [agentId, entries] of Object.entries(legacyByAgent)
+    .sort(([left], [right]) => left.localeCompare(right))) {
     const agent = agents.find((candidate) => candidate?.id === agentId);
     if (!agent || !isPlainObject(entries)) continue;
     let nextOverrides: MarketplaceSkillOverrides = normalizeMarketplaceSkillOverrides(
       agent.config?.skills?.marketplace_overrides,
     ).overrides;
+    const nextMigrations = normalizeMarketplaceLegacySkillMigrations(
+      agent.config?.skills?.marketplace_legacy_skill_migrations,
+    );
     let changed = false;
+    const candidatesForAgent: string[] = [];
 
-    for (const [legacyRef, record] of Object.entries(entries)) {
+    for (const [legacyRef, record] of Object.entries(entries)
+      .sort(([left], [right]) => left.localeCompare(right))) {
       const ref = packagePreferenceRefFromLegacySkillRef(legacyRef);
       if (!ref) {
         options.onDiagnostic?.({
@@ -280,22 +362,56 @@ export function migrateLegacyMarketplaceSkillOverrides(options: {
       }
       const membership = options.membership.get(ref.skillName);
       if (!membership || membership.identity !== ref.identity) continue;
-      if (!isExplicitlyDisabledLegacyRecord(record)) continue;
-      if (marketplaceSkillPreferenceFromNormalized(nextOverrides, ref.identity, ref.skillName).explicitlyDisabled) continue;
-      nextOverrides = setMarketplaceSkillPreference(nextOverrides, ref.identity, ref.skillName, false);
-      changed = true;
+
+      const state = legacyMarketplaceSkillRecordState(record);
+      if (!state) continue;
+
+      const completionKnown = nextMigrations[legacyRef] === true;
+      if (!completionKnown) {
+        nextMigrations[legacyRef] = true;
+        changed = true;
+      }
+
+      if (state === "disabled" && !completionKnown) {
+        const alreadyDisabled = marketplaceSkillPreferenceFromNormalized(
+          nextOverrides, ref.identity, ref.skillName,
+        ).explicitlyDisabled;
+        if (!alreadyDisabled) {
+          nextOverrides = setMarketplaceSkillPreference(nextOverrides, ref.identity, ref.skillName, false);
+          changed = true;
+        }
+      }
+
+      candidatesForAgent.push(legacyRef);
     }
 
-    if (!changed) continue;
-    try {
-      agent.updateConfig({ skills: { marketplace_overrides: nextOverrides } });
-      migrated += 1;
-    } catch (error) {
-      options.onDiagnostic?.({
-        path: `agents.${agentId}.skills.marketplace_overrides`,
-        message: `could not persist migrated preference: ${error?.message || error}`,
-      });
+    if (candidatesForAgent.length === 0) continue;
+
+    if (changed) {
+      try {
+        agent.updateConfig({
+          skills: {
+            marketplace_overrides: nextOverrides,
+            marketplace_legacy_skill_migrations: normalizeMarketplaceLegacySkillMigrations(nextMigrations),
+          },
+        });
+        result.configWrites += 1;
+      } catch (error) {
+        options.onDiagnostic?.({
+          path: `agents.${agentId}.skills.marketplace_overrides`,
+          message: `could not persist migrated preference: ${error?.message || error}`,
+        });
+        // Config persistence failed: do NOT retire any legacy records for this
+        // agent. The migration can retry on the next pass. This preserves the
+        // unconsumed records so they are still eligible for a future attempt.
+        continue;
+      }
+    }
+
+    for (const legacyRef of candidatesForAgent) {
+      result.retirementCandidates.push({ agentId, legacyRef });
     }
   }
-  return migrated;
+
+  return result;
 }

@@ -4,8 +4,10 @@ import os from "os";
 import path from "path";
 
 import {
+  ensureSecretDirectoryModeNoFollowSync,
   ensureSecretDirModeSync,
   ensureSecretFileModeSync,
+  ensureSecretRegularFileModeNoFollowSync,
   writeSecretFileSync,
 } from "../shared/secret-fs.ts";
 
@@ -218,6 +220,58 @@ describe("ensureSecretFileModeSync", () => {
     });
 
     expect(() => ensureSecretFileModeSync(target)).toThrowError(/FS_PERMISSION|EACCES/);
+  });
+});
+
+describe("no-follow credential mode helpers", () => {
+  it.skipIf(!POSIX)("tightens a regular credential through its opened descriptor", () => {
+    const root = makeTmpDir();
+    const target = path.join(root, "credential.json");
+    fs.writeFileSync(target, "{}\n");
+    fs.chmodSync(target, 0o644);
+    const open = vi.spyOn(fs, "openSync");
+    const fchmod = vi.spyOn(fs, "fchmodSync");
+    const chmod = vi.spyOn(fs, "chmodSync");
+
+    expect(ensureSecretRegularFileModeNoFollowSync(target)).toBe(true);
+
+    const flags = open.mock.calls[0]?.[1] as number;
+    expect(flags & fs.constants.O_NOFOLLOW).toBe(fs.constants.O_NOFOLLOW);
+    expect(fchmod).toHaveBeenCalledWith(expect.any(Number), 0o600);
+    expect(chmod).not.toHaveBeenCalled();
+    expect(modeOf(target)).toBe(0o600);
+  });
+
+  it.skipIf(!POSIX)("rejects a final symlink without changing its external target", () => {
+    const root = makeTmpDir();
+    const external = path.join(root, "external.json");
+    const link = path.join(root, "credential.json");
+    fs.writeFileSync(external, "{}\n");
+    fs.chmodSync(external, 0o644);
+    fs.symlinkSync(external, link);
+
+    expect(ensureSecretRegularFileModeNoFollowSync(link)).toBe(false);
+    expect(modeOf(external)).toBe(0o644);
+  });
+
+  it.skipIf(!POSIX)("skips a directory passed to the regular-file helper", () => {
+    const root = makeTmpDir();
+    const directory = path.join(root, "not-a-file.json");
+    fs.mkdirSync(directory);
+    fs.chmodSync(directory, 0o755);
+
+    expect(ensureSecretRegularFileModeNoFollowSync(directory)).toBe(false);
+    expect(modeOf(directory)).toBe(0o755);
+  });
+
+  it.skipIf(!POSIX)("tightens a verified credential directory through its opened descriptor", () => {
+    const root = makeTmpDir();
+    const directory = path.join(root, "credentials");
+    fs.mkdirSync(directory);
+    fs.chmodSync(directory, 0o755);
+
+    expect(ensureSecretDirectoryModeNoFollowSync(directory)).toBe(true);
+    expect(modeOf(directory)).toBe(0o700);
   });
 });
 

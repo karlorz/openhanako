@@ -6,7 +6,11 @@ import {
   isPluginBusCapabilityError,
 } from "./plugin-route-request-context.ts";
 import { freshImport } from "./fresh-import.ts";
-import { createPluginConfigStore, normalizePluginConfigSchema } from "./plugin-config.ts";
+import {
+  createPluginConfigStore,
+  normalizePluginConfigSchema,
+  PLUGIN_SECRETS_DIRNAME,
+} from "./plugin-config.ts";
 import { semverGte } from "../lib/plugin-versioning.ts";
 import { detectIncompatiblePluginFormat } from "../lib/plugin-format-guard.ts";
 import { createModuleLogger } from "../lib/debug-log.ts";
@@ -289,7 +293,7 @@ export class PluginManager {
   }) {
     this._pluginsDirs = pluginsDirs || (pluginsDir ? [pluginsDir] : []);
     this._dataDir = dataDir;
-    this._secretsDir = secretsDir || path.join(path.dirname(dataDir), "plugin-secrets");
+    this._secretsDir = secretsDir || path.join(path.dirname(dataDir), PLUGIN_SECRETS_DIRNAME);
     this._bus = bus;
     this._preferencesManager = preferencesManager || null;
     this._appVersion = appVersion || "0.0.0";
