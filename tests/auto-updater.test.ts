@@ -2,9 +2,6 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import fs from "fs";
-import os from "os";
-import path from "path";
 
 // ── Mocks（必须在 import 之前声明）──
 

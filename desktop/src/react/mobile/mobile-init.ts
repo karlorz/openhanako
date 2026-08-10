@@ -194,7 +194,6 @@ export function resetMobileRuntimeAfterAuthLoss(): void {
     todosBySession: {},
     sessionAuthorizedFoldersByPath: {},
     todosLiveVersionBySession: {},
-    capabilityDriftBySession: {},
     capabilityRefreshingSessions: [],
     chatSessions: {},
     sessionLocatorsById: {},
