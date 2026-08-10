@@ -679,7 +679,7 @@
     ],
     "version": 3
   },
-  "payloadFingerprint": "sha256:968b647f79b77e002972676d465174df4ce625ccbb836e5b7ae41a34dbc6a9e4",
+  "payloadFingerprint": "sha256:4782a9ffcbdd6876bee63b5449a61c0f45a2e9f0e818c337851446a0f5ce0a3d",
   "registry": [
     {
       "affectedByEpochMigration": true,
@@ -3143,8 +3143,8 @@
   ],
   "review": {
     "classification": "compatible",
-    "compatibilityReason": "Preserves DATA_EPOCH 1 and existing persisted byte interpretation while adding backward-compatible Marketplace preference migration metadata, source-qualified cleanup, validated storage identities, and record-qualified credential custody.",
-    "payloadFingerprint": "sha256:968b647f79b77e002972676d465174df4ce625ccbb836e5b7ae41a34dbc6a9e4"
+    "compatibilityReason": "Added a direct-write fallback in writeSecretFileSync (Windows) when rename fails with EPERM; the persistence schema is unchanged, the new code path writes the same credential data to the same target file.",
+    "payloadFingerprint": "sha256:4782a9ffcbdd6876bee63b5449a61c0f45a2e9f0e818c337851446a0f5ce0a3d"
   },
   "schemas": [
     {
@@ -10444,6 +10444,14 @@
       "exemptionId": "generic-secret-fs-primitives",
       "kind": "rename",
       "ordinal": 1,
+      "reason": "Shared owner-only write primitives have no store ownership; callers are scanned and assigned to concrete descriptors.",
+      "sourceFile": "shared/secret-fs.ts",
+      "storeId": null
+    },
+    {
+      "exemptionId": "generic-secret-fs-primitives",
+      "kind": "write-file",
+      "ordinal": 0,
       "reason": "Shared owner-only write primitives have no store ownership; callers are scanned and assigned to concrete descriptors.",
       "sourceFile": "shared/secret-fs.ts",
       "storeId": null
