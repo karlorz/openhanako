@@ -3,26 +3,26 @@
   "entries": [
     {
       "schemaVersion": 1,
-      "tag": "v0.449.0",
+      "tag": "v0.449.0-karlorz.1",
       "version": "0.449.0",
-      "previousTag": "v0.448.3",
-      "generatedAt": "2026-08-21T14:34:56.000Z",
+      "previousTag": "v0.446.6-karlorz.1",
+      "generatedAt": "2026-08-24T07:30:00.000Z",
       "noUserFacingChanges": false,
       "summary": {
-        "zh": "DeepSeek 图像能力正式接入：新增实验性的 DeepSeek V4 Flash Vision 模型，并让明确声明支持图片的 DeepSeek 模型直接接收图像，不再被静默转交给辅助视觉模型。",
-        "en": "DeepSeek vision support is now available: this release adds the experimental DeepSeek V4 Flash Vision model and lets DeepSeek models that explicitly declare image support receive images directly instead of silently rerouting them through the auxiliary vision model."
+        "zh": "同步上游稳定版 v0.449.0：新增 DeepSeek 视觉模型支持、Beta 渠道邀请门、AGENTS.md 角色文件、持久化存储恢复和 Windows 安装器种子修复；重新生成持久化指纹和 CLI 闭包收据。",
+        "en": "Syncs upstream stable v0.449.0 (DeepSeek vision model support, beta-channel updater invite gate, AGENTS.md persona adoption, persistence store recovery, Windows installer seed fix) and regenerates persistence receipts for the v0.449.0 effective tree."
       },
       "counts": {
         "feature": 1,
-        "fix": 0,
+        "fix": 1,
         "improvement": 0,
         "migration": 0
       },
       "source": {
-        "owner": "liliMozi",
+        "owner": "karlorz",
         "repo": "openhanako",
-        "commitRange": "v0.448.3..v0.449.0",
-        "releaseUrl": "https://github.com/liliMozi/openhanako/releases/tag/v0.449.0",
+        "commitRange": "v0.446.6-karlorz.1..HEAD",
+        "releaseUrl": "https://github.com/karlorz/openhanako/releases/tag/v0.449.0-karlorz.1",
         "releaseNotes": ""
       },
       "items": [
@@ -53,6 +53,36 @@
               "type": "commit",
               "ref": "b289c311b",
               "title": "feat(models): support DeepSeek's vision model by removing the provider-level image gate"
+            }
+          ]
+        },
+        {
+          "id": "persistence-receipt-regeneration",
+          "kind": "fix",
+          "importance": "medium",
+          "title": {
+            "zh": "重新生成持久化指纹和 CLI 闭包收据",
+            "en": "Regenerate persistence fingerprint and CLI closure receipts"
+          },
+          "summary": {
+            "zh": "上游 v0.449.0 新增自动化存储恢复和 cron 存储恢复写入点后，持久化指纹和 CLI 闭包收据需要从有效代码树重新生成，否则 CI 指纹校验测试会失败。",
+            "en": "After upstream v0.449.0 added automation store failure recovery and cron-store recovery write points, the persistence schema fingerprint and CLI runtime closure receipts must be regenerated from the effective tree or CI fingerprint tripwire tests fail."
+          },
+          "details": [
+            {
+              "zh": "指纹从 sha256:968b647f...（v0.446.6）更新为 sha256:fc1e4cac...（v0.449.0），标记为兼容性新增，无 DATA_EPOCH 变更。",
+              "en": "Fingerprint updated from sha256:968b647f... (v0.446.6) to sha256:fc1e4cac... (v0.449.0), classified as a compatible addition with no DATA_EPOCH change."
+            },
+            {
+              "zh": "CLI 闭包从 9,686 文件更新为 9,690 文件。",
+              "en": "CLI closure updated from 9,686 files to 9,690 files."
+            }
+          ],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "767e206f7",
+              "title": "fix(receipts): regenerate persistence fingerprint and CLI closure for v0.449.0"
             }
           ]
         }
