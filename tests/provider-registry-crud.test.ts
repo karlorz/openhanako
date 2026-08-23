@@ -786,6 +786,24 @@ describe("removeModel", () => {
     expect(persisted["test-provider"].models).toEqual(["model-a"]);
   });
 
+  it("removes slash-bearing models from local provider plugin definitions", () => {
+    writeAddedModels({});
+    const reg = makeRegistry();
+    reg.saveProvider("custom-local", {
+      display_name: "Custom Local",
+      base_url: "https://custom.local/v1",
+      api: "openai-completions",
+      models: ["vendor/model-a"],
+    });
+
+    expect(reg.getAllProvidersRaw()["custom-local"].models).toEqual(["vendor/model-a"]);
+
+    reg.removeModel("custom-local", "vendor/model-a");
+
+    expect(reg.getAllProvidersRaw()["custom-local"].models || []).toEqual([]);
+    expect(readLocalProviderPlugin("custom-local")).not.toHaveProperty("models");
+  });
+
   it("移除不存在的模型不会报错", () => {
     writeAddedModels({
       "test-provider": {
@@ -1069,6 +1087,80 @@ describe("saveProvider", () => {
 
     const reloaded = new ProviderRegistry(tmpDir);
     expect(reloaded.getProviderModels("custom-local")).toEqual(["keep-model"]);
+  });
+
+  it("persists an explicitly empty local provider model list", () => {
+    writeAddedModels({});
+    const reg = new ProviderRegistry(tmpDir);
+
+    reg.saveProvider("custom-local", {
+      display_name: "Custom Local",
+      auth_type: "api-key",
+      api_key: "sk-local",
+      base_url: "https://local.example/v1",
+      api: "openai-completions",
+      models: ["keep-model", "drop-model"],
+    });
+
+    reg.saveProvider("custom-local", { models: [] });
+
+    // Runtime list is empty; disk intentionally omits models rather than writing [].
+    expect(reg.getProviderModels("custom-local")).toEqual([]);
+    expect(readLocalProviderPlugin("custom-local")).not.toHaveProperty("models");
+    expect(reg.getAllProvidersRaw()["custom-local"]).not.toHaveProperty("models");
+
+    const reloaded = new ProviderRegistry(tmpDir);
+    expect(reloaded.getProviderModels("custom-local")).toEqual([]);
+    expect(readLocalProviderPlugin("custom-local")).not.toHaveProperty("models");
+  });
+
+  it("deletes a slash-bearing model id without repopulating it after reload", () => {
+    writeAddedModels({});
+    const reg = new ProviderRegistry(tmpDir);
+
+    reg.saveProvider("custom-local", {
+      display_name: "Custom Local",
+      auth_type: "api-key",
+      api_key: "sk-local",
+      base_url: "https://local.example/v1",
+      api: "openai-completions",
+      models: ["codex/model-x", "keep-model"],
+    });
+
+    reg.removeModel("custom-local", "codex/model-x");
+    expect(reg.getProviderModels("custom-local")).toEqual(["keep-model"]);
+
+    reg.reload();
+    expect(reg.getProviderModels("custom-local")).toEqual(["keep-model"]);
+    expect(reg.getProviderModels("custom-local")).not.toContain("codex/model-x");
+
+    const reloaded = new ProviderRegistry(tmpDir);
+    expect(reloaded.getProviderModels("custom-local")).toEqual(["keep-model"]);
+    expect(reloaded.getAllProvidersRaw()["custom-local"].models).toEqual(["keep-model"]);
+    expect(reloaded.getAllProvidersRaw()["custom-local"].models).not.toContain("codex/model-x");
+  });
+
+  it("persists provider API type after save and reload", () => {
+    writeAddedModels({});
+    const reg = new ProviderRegistry(tmpDir);
+
+    reg.saveProvider("custom-local", {
+      display_name: "Custom Local",
+      auth_type: "api-key",
+      api_key: "sk-local",
+      base_url: "https://local.example/v1",
+      api: "openai-completions",
+      models: ["keep-model"],
+    });
+
+    reg.saveProvider("custom-local", { api: "anthropic-messages" });
+
+    expect(reg.get("custom-local")?.api).toBe("anthropic-messages");
+    expect(reg.getAllProvidersRaw()["custom-local"].api).toBe("anthropic-messages");
+
+    const reloaded = new ProviderRegistry(tmpDir);
+    expect(reloaded.get("custom-local")?.api).toBe("anthropic-messages");
+    expect(reloaded.getAllProvidersRaw()["custom-local"].api).toBe("anthropic-messages");
   });
 
   it("更新已有 provider 的配置（合并）", () => {

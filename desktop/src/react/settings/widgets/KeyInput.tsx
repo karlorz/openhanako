@@ -1,7 +1,7 @@
 /**
  * API Key 输入框 — password/text 切换
  */
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import styles from '../Settings.module.css';
 
 interface KeyInputProps {
@@ -9,7 +9,7 @@ interface KeyInputProps {
   onChange: (val: string) => void;
   placeholder?: string;
   ariaLabel?: string;
-  onBlur?: (event: React.FocusEvent<HTMLDivElement>) => void;
+  onBlur?: (event: React.FocusEvent<HTMLElement>) => void;
   onReveal?: () => Promise<string | null | undefined>;
   onRevealError?: (err: unknown) => void;
 }
@@ -19,14 +19,28 @@ export function KeyInput({ value, onChange, placeholder, ariaLabel, onBlur, onRe
   const [visible, setVisible] = useState(false);
   const [revealing, setRevealing] = useState(false);
   const [revealedValue, setRevealedValue] = useState<string | null>(null);
+  const previousValueRef = useRef(value);
+  const internalChangeRef = useRef(false);
   const isTransientSecretVisible = visible && revealedValue !== null;
   const displayValue = isTransientSecretVisible ? revealedValue : value;
+
+  useEffect(() => {
+    if (previousValueRef.current === value) return;
+    previousValueRef.current = value;
+    if (internalChangeRef.current) {
+      internalChangeRef.current = false;
+      return;
+    }
+    setVisible(false);
+    setRevealedValue(null);
+  }, [value]);
 
   const replaceTransientSecret = (nextValue: string) => {
     const safeValue = revealedValue && nextValue.includes(revealedValue)
       ? nextValue.replace(revealedValue, '')
       : nextValue;
     setRevealedValue(null);
+    internalChangeRef.current = true;
     onChange(safeValue);
   };
 
@@ -57,26 +71,19 @@ export function KeyInput({ value, onChange, placeholder, ariaLabel, onBlur, onRe
   };
 
   return (
-    <div
-      className={styles['settings-key-wrapper']}
-      onBlur={(event) => {
-        const nextTarget = event.relatedTarget;
-        if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) return;
-        onBlur?.(event);
-      }}
-    >
+    <div className={styles['settings-key-wrapper']} data-settings-key-wrapper="true">
       <input
         className={`${styles['settings-input']} ${styles['settings-key-input']}`}
         type={visible ? 'text' : 'password'}
         value={displayValue}
         readOnly={isTransientSecretVisible}
         data-secret-visible={isTransientSecretVisible ? 'true' : undefined}
-        aria-label={ariaLabel}
         onChange={(e) => {
           if (isTransientSecretVisible) {
             replaceTransientSecret(e.target.value);
             return;
           }
+          internalChangeRef.current = true;
           onChange(e.target.value);
         }}
         onCopy={(e) => {
@@ -116,13 +123,17 @@ export function KeyInput({ value, onChange, placeholder, ariaLabel, onBlur, onRe
             replaceTransientSecret('');
           }
         }}
+        aria-label={ariaLabel}
         placeholder={placeholder}
+        onBlur={onBlur}
       />
       <button
         className={styles['settings-key-toggle']}
         type="button"
+        data-settings-key-toggle="true"
         disabled={revealing}
         onClick={() => { void toggleVisible(); }}
+        onBlur={onBlur}
       >
         {visible ? t('settings.api.hideKey') : t('settings.api.showKey')}
       </button>

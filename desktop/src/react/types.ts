@@ -1,4 +1,5 @@
 import type { ThinkingLevel } from './stores/model-slice';
+import type { RemoteServerReleaseCheck } from '../../../shared/remote-server-release-catalog';
 
 // ── Auto-update ──
 
@@ -45,7 +46,7 @@ export interface UpdateDigestHistoryResult {
 }
 
 export interface AutoUpdateState {
-  status: 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'installing' | 'error' | 'latest';
+  status: 'idle' | 'disabled' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'installing' | 'error' | 'latest';
   version: string | null;
   releaseNotes: string | null;
   releaseUrl: string | null;
@@ -164,6 +165,22 @@ export interface TrainUpdateProgress {
    */
   overallReceivedBytes?: number;
   overallTotalBytes?: number;
+}
+
+export interface BuildInfo {
+  appVersion: string | null;
+  channel: string;
+  sourceRepo: string;
+  gitSha: string | null;
+  baseTag: string | null;
+  /** Exact fork release tag when this is a published build. */
+  releaseTag?: string | null;
+  dirty: boolean | null;
+  /** Explicit package layout contract; absent means the historical signed default. */
+  releaseProfile?: 'signed' | 'legacy-raw';
+  updateEnabled: boolean;
+  artifactUpdatesEnabled?: boolean;
+  signatureKind: string | null;
 }
 
 export interface AutoLaunchStatus {
@@ -609,6 +626,8 @@ export interface PlatformApi {
   getSplashInfo?(): Promise<{ agentName?: string; locale?: string; yuan?: string } | null>;
   reloadMainWindow?(): Promise<void>;
   onboardingComplete?(): Promise<void>;
+  debugOpenOnboarding?(): Promise<void>;
+  debugOpenOnboardingPreview?(): Promise<void>;
 
   // ── Notification ──
   showNotification?(title: string, body: string, agentId?: string | null, options?: DesktopNotificationOptions): void;
@@ -618,9 +637,11 @@ export interface PlatformApi {
   /** 升级后首启合订本：entries 为 (书签, 当前] 区间的 digest 史册切片，新→旧 */
   getPendingAnnouncement?(): Promise<{ version: string; entries: ReleaseDigest[] } | null>;
   ackAnnouncement?(): Promise<void>;
+  getBuildInfo?(): Promise<BuildInfo>;
+  checkUpdate?(): Promise<{ version: string; downloadUrl: string } | null>;
 
   // ── Auto-update (Windows) ──
-  autoUpdateCheck?(): Promise<string | null>;
+  autoUpdateCheck?(): Promise<AutoUpdateState | void>;
   autoUpdateDownload?(): Promise<boolean>;
   autoUpdateInstall?(): Promise<boolean>;
   autoUpdateState?(): Promise<AutoUpdateState>;
@@ -647,6 +668,7 @@ export interface PlatformApi {
   ackTrainFallbackNotice?(): Promise<{ ok: boolean }>;
   /** 关于页更新历史：在线最近五个已发布版本；网络失败时显式返回包内备份来源。 */
   getUpdateDigestHistory?(): Promise<UpdateDigestHistoryResult>;
+  checkRemoteServerRelease?(options?: { force?: boolean }): Promise<RemoteServerReleaseCheck>;
   getAutoLaunchStatus?(): Promise<AutoLaunchStatus>;
   setAutoLaunchEnabled?(enabled: boolean): Promise<AutoLaunchStatus>;
   getKeepAwakeStatus?(): Promise<KeepAwakeStatus>;

@@ -1,13 +1,22 @@
 import { useStore } from '../stores';
 import { hanaFetch } from '../hooks/use-hana-fetch';
 import { sessionIdForPathFromLocatorState, sessionScopedValue } from '../stores/session-slice';
+import { clearMessageLiveVersion } from '../stores/message-live-version';
+import { invalidateSessionCache } from '../stores/selectors/file-refs';
+import { invalidateStreamBuffer, invalidateStreamResumeMeta } from '../stores/stream-invalidator';
 import { applyAgentIdentity, loadAvatars } from '../stores/agent-actions';
 import { activateWorkspaceDesk } from '../stores/desk-actions';
 import { loadMessages, pendingNewSessionIdentityPatch } from '../stores/session-actions';
 import { connectWebSocket, getWebSocket } from '../services/websocket';
 import { configureAppEventActions } from '../services/app-event-actions';
 import { configureWsMessageHandler } from '../services/ws-message-handler';
-import { createBrowserServerConnection, upsertServerConnection, warnIfServerProtocolMismatch, type ServerIdentity } from '../services/server-connection';
+import {
+  createBrowserServerConnection,
+  upsertServerConnection,
+  warnIfServerProtocolMismatch,
+  type ServerConnection,
+  type ServerIdentity,
+} from '../services/server-connection';
 import { loadModels } from '../utils/ui-helpers';
 import { applySyncedAppearancePreferences, type SyncedAppearancePreferences } from '../services/appearance-sync';
 import { applyChatLayout } from '../chat/layout';
@@ -63,6 +72,7 @@ export async function readMobileAuthSession(): Promise<MobileAuthSession> {
 export async function initializeMobileRuntime(principal: MobilePrincipal): Promise<{
   identity: ServerIdentity;
   bootstrap: MobileBootstrap;
+  connection: ServerConnection;
 }> {
   configureMobileMessageHandlers();
 
@@ -144,7 +154,128 @@ export async function initializeMobileRuntime(principal: MobilePrincipal): Promi
 
   connectWebSocket();
 
-  return { identity, bootstrap };
+  return { identity, bootstrap, connection };
+}
+
+/**
+ * Remove authenticated Mobile runtime projections after browser-session loss.
+ * The Mobile root captures the narrowly approved recovery snapshot before
+ * calling this function; no server/runtime state is retained here.
+ */
+export function resetMobileRuntimeAfterAuthLoss(): void {
+  invalidateSessionCache();
+  invalidateStreamBuffer();
+  invalidateStreamResumeMeta();
+  clearMessageLiveVersion();
+  useStore.setState({
+    serverPort: null,
+    serverToken: null,
+    serverConnections: {},
+    activeServerConnectionId: null,
+    activeServerConnection: null,
+    remoteConnectionRecovery: null,
+    remoteServerAssessment: null,
+    connected: false,
+    bridgeDotConnected: false,
+    wsState: 'disconnected',
+    wsReconnectAttempt: 0,
+    oauthSessionId: null,
+    sessions: [],
+    currentSessionPath: null,
+    currentSessionId: null,
+    pendingSessionSwitchPath: null,
+    sessionStreams: {},
+    pendingNewSession: false,
+    pendingDraftId: null,
+    pendingProjectId: null,
+    pendingNewSessionThinkingLevel: null,
+    pendingNewSessionPermissionMode: null,
+    sessionTodos: [],
+    todosBySession: {},
+    sessionAuthorizedFoldersByPath: {},
+    todosLiveVersionBySession: {},
+    capabilityRefreshingSessions: [],
+    chatSessions: {},
+    sessionLocatorsById: {},
+    sessionRegistryFilesByPath: {},
+    sessionModelsByPath: {},
+    _loadMessagesVersion: {},
+    _sessionFilesFlightByPath: {},
+    _pendingBlockPatches: {},
+    scrollPositions: {},
+    streamingSessions: [],
+    activeSessionStreams: {},
+    unreadOutputSessionPaths: [],
+    inlineErrors: {},
+    modelSwitching: false,
+    compactingSessions: [],
+    contextTokens: null,
+    contextWindow: null,
+    contextPercent: null,
+    contextBySession: {},
+    pendingSessionConfirmationsByPath: {},
+    metaRecovery: null,
+    drafts: {},
+    draftDocs: {},
+    draftsHydratedAt: 0,
+    attachedFiles: [],
+    attachedFilesBySession: {},
+    deskContextAttached: false,
+    docContextAttached: false,
+    quotedSelections: [],
+    quotedSelection: null,
+    quoteCandidate: null,
+    chatFindBySession: {},
+    pendingMessageLocate: null,
+    browserBySession: {},
+    selectedIdsBySession: {},
+    agentActivitiesBySession: {},
+    computerOverlayBySession: {},
+    subagentPreviewByTaskId: {},
+    previewItems: [],
+    openTabs: [],
+    activeTabId: null,
+    pinnedViewers: [],
+    markdownPreviewIds: [],
+    previewReadingPositions: {},
+    previewOpen: false,
+    mediaViewer: null,
+    agents: [],
+    currentAgentId: null,
+    selectedAgentId: null,
+    settingsAgentId: null,
+    agentName: 'Hanako',
+    userName: 'User',
+    agentAvatarUrl: null,
+    userAvatarUrl: null,
+    activities: [],
+    toasts: [],
+    models: [],
+    currentModel: null,
+    activePanel: null,
+    deskBasePath: '',
+    deskCurrentPath: '',
+    deskFiles: [],
+    deskTreeFilesByPath: {},
+    deskExpandedPaths: [],
+    deskDirtyTreePaths: [],
+    deskSelectedPath: '',
+    deskJianContent: null,
+    cwdSkills: [],
+    cwdSkillsOpen: false,
+    homeFolder: null,
+    selectedFolder: null,
+    selectedWorkspaceMountId: null,
+    selectedWorkspaceLabel: null,
+    deskWorkspaceMountId: null,
+    deskWorkspaceLabel: null,
+    deskWorkspaceNativeRoot: null,
+    studioWorkspaces: [],
+    workspaceFolders: [],
+    cwdHistory: [],
+    workspaceDeskStateByRoot: {},
+    welcomeVisible: true,
+  });
 }
 
 export async function loadMobileSessions({

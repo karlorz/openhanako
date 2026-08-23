@@ -1,0 +1,1253 @@
+/**
+ * @vitest-environment jsdom
+ */
+
+import React from 'react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import '@testing-library/jest-dom/vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { PluginMarketplaceTab } from '../../settings/tabs/PluginMarketplaceTab';
+
+const mockHanaFetch = vi.fn();
+const mockSet = vi.fn();
+const mockShowToast = vi.fn();
+let mockStoreState: Record<string, any>;
+
+vi.mock('../../settings/store', () => ({
+  useSettingsStore: (selector?: (state: any) => unknown) => {
+    return selector ? selector(mockStoreState) : mockStoreState;
+  },
+}));
+
+vi.mock('../../settings/api', () => ({
+  hanaFetch: (...args: unknown[]) => mockHanaFetch(...args),
+}));
+
+vi.mock('../../settings/components/MarketplaceSourcesPanel', () => ({
+  MarketplaceSourcesPanel: () => <div data-testid="marketplace-sources-panel" />,
+}));
+
+vi.mock('../../utils/markdown', () => ({
+  renderMarkdown: (markdown: string) => markdown,
+}));
+
+function jsonResponse(body: unknown, status?: number): Response {
+  return { status, ok: status == null ? true : status >= 200 && status < 300, json: async () => body } as Response;
+}
+
+function catalogPlugin(overrides: Record<string, unknown> = {}) {
+  return {
+    pluginId: 'skillwiki',
+    id: 'skillwiki',
+    name: 'skillwiki',
+    version: '0.10.22',
+    description: 'SkillWiki skills',
+    publisher: 'llm-wiki',
+    trust: 'restricted',
+    marketplaceId: 'llm-wiki',
+    compositeKey: 'skillwiki@llm-wiki',
+    sourceAuthority: 'custom',
+    sourceStatus: 'ok',
+    catalogFormat: 'claude',
+    installTarget: 'hana-skills',
+    installAdapter: 'skill-manager',
+    installable: true,
+    confirmationLevel: 'inline',
+    capabilityInventory: {
+      skills: ['skillwiki'],
+      nativePluginContributions: [],
+      agentFacing: ['skills'],
+      serverImpact: [],
+      unsupportedClaudeComponents: [],
+    },
+    warnings: [],
+    installPlan: {
+      action: 'install',
+      destination: 'hana-skills',
+      installAdapter: 'skill-manager',
+      confirmationLevel: 'inline',
+      warnings: [],
+      installable: true,
+    },
+    canInstall: true,
+    active: false,
+    sourceSnapshot: {
+      state: 'ok',
+      sourceFingerprint: '2'.repeat(64),
+      catalogSha256: '3'.repeat(64),
+      requestedRef: 'main',
+      resolvedRevision: 'rev-1',
+    },
+    ...overrides,
+  };
+}
+
+function mockCatalog(plugins: unknown[]) {
+  mockHanaFetch.mockImplementation(async (url: string) => {
+    if (url.startsWith('/api/plugins/marketplace/catalog')) {
+      return jsonResponse({
+        plugins,
+        sources: [],
+        warnings: [],
+        capabilities: { supported: true, features: { claudeCompatibilityBindings: true } },
+        access: { isStudioOwner: true, isLocalOwner: true },
+        registry: { revision: 7, digest: 'a'.repeat(64), degraded: false },
+        configDiagnostics: { ok: true, degraded: false, path: '/srv/hana/plugin-marketplaces.json', digest: 'a'.repeat(64), file: { revision: 7, activations: {} }, diagnostics: [], summary: { revision: 7 } },
+      });
+    }
+    if (url.includes('/readme')) {
+      return jsonResponse({ markdown: '' });
+    }
+    if (url === '/api/plugins/marketplace/sources') {
+      return jsonResponse({ sources: [] });
+    }
+    return jsonResponse({ ok: true, name: 'skillwiki' });
+  });
+}
+
+describe('PluginMarketplaceTab inspector rendering', () => {
+  beforeEach(() => {
+    mockHanaFetch.mockReset();
+    mockSet.mockReset();
+    mockShowToast.mockReset();
+    mockStoreState = {
+      set: mockSet,
+      showToast: mockShowToast,
+      agents: [],
+      currentAgentId: null,
+      settingsAgentId: null,
+    };
+    window.t = ((key: string, params?: Record<string, string>) => {
+      const labels: Record<string, string> = {
+        'settings.plugins.marketBack': 'Back',
+        'settings.plugins.marketplaceHint': 'Install marketplace packages',
+        'settings.plugins.marketplaceCount': `${params?.count || '0'} package`,
+        'settings.plugins.reload': 'Reload marketplace',
+        'settings.plugins.marketLoading': 'Loading...',
+        'settings.plugins.marketInstall': 'Install',
+        'settings.plugins.marketInstallSkills': 'Install skills',
+        'settings.plugins.marketIncompatible': 'Incompatible',
+        'settings.plugins.marketSelectPlugin': 'Select a package',
+        'settings.plugins.marketplaceEmpty': 'No plugins to browse',
+        'settings.plugins.skillPackageToggle': `Toggle skill package ${params?.identity || ''}`.trim(),
+        'settings.autoSaved': 'Saved',
+        'settings.saveFailed': 'Save failed',
+        'settings.plugins.marketDowngrade': 'Downgrade',
+        'settings.plugins.marketReinstall': 'Reinstall',
+        'settings.plugins.marketUpdate': 'Update',
+        'settings.plugins.marketDowngradeConfirm': 'Installed version is v{from}. Downgrade to v{to}?',
+        'settings.plugins.marketNativeInstallConfirm': 'Install native Marketplace plugin {identity}?\n\nVersion: {version}\nPackage SHA-256: {packageSha256}\nRuntime trust: {trust}\nServer-global contributions: {contributions}',
+        'settings.plugins.installSuccess': 'Plugin "{name}" installed',
+        'settings.plugins.marketNativeUninstallConfirm': 'Uninstall {identity}? The active projection and artifact trust will be removed; retained verified artifacts and history will remain non-installed.',
+        'settings.plugins.marketNativeUninstallSuccess': 'Uninstalled {identity}; retained artifact remains non-installed.',
+        'settings.plugins.marketNativeUninstallError': 'Native Marketplace uninstall failed: {message}',
+        'settings.plugins.marketSkillsUninstallPartial': 'Marketplace skills uninstall is partial: {failures}',
+        'settings.plugins.marketSkillsRemoved': 'Removed {count} recorded skills from {identity}',
+        'settings.plugins.marketSkillsUninstallFailed': 'Marketplace skills uninstall failed: {message}',
+        'settings.plugins.marketplaceChangedRetry': 'Marketplace settings changed again. Please try the toggle once more.',
+        'settings.plugins.marketplaceNoSource': 'No marketplace source',
+        'settings.plugins.marketSupportedServer': 'Supported server',
+        'settings.plugins.marketSourcesSection': 'Marketplace sources',
+        'settings.plugins.marketInstalled': 'installed',
+        'settings.plugins.marketUpdateAvailable': 'Update available',
+        'settings.plugins.marketPackageGateTitle': 'Package enable (global skill-manager gate)',
+        'settings.plugins.enableAgentAccess': 'Enable Agent Access',
+        'settings.plugins.disableAgentAccess': 'Disable Agent Access',
+        'settings.plugins.marketIdentity': 'Identity',
+        'settings.plugins.marketInstallTarget': 'Install Target',
+        'settings.plugins.marketInstallAdapter': 'Install Adapter',
+        'settings.plugins.marketConfirmation': 'Confirmation',
+        'settings.plugins.marketInstallable': 'Installable',
+        'settings.plugins.marketYes': 'Yes',
+        'settings.plugins.marketNo': 'No',
+        'settings.plugins.marketInstallation': 'Installation',
+        'settings.plugins.marketNotInstalled': 'not installed',
+        'settings.plugins.marketSource': 'Source',
+        'settings.plugins.marketServerRuntime': 'Server runtime',
+        'settings.plugins.marketUnknown': 'unknown',
+        'settings.plugins.marketAgentPluginAccess': 'Agent Plugin Access',
+        'settings.plugins.marketPackageState': 'Package state',
+        'settings.plugins.marketSourceRemovedUninstallOnly': 'source removed / uninstall only',
+        'settings.plugins.marketWarnings': 'Warnings',
+        'settings.plugins.marketLoadError': 'Plugin marketplace failed to load',
+        'settings.plugins.marketDowngradeTo': 'Only compatible version v{version} can be installed',
+        'settings.plugins.marketUpdateFrom': 'Installed v{from}, update to v{to}',
+        'settings.plugins.marketInstalledVersion': 'Installed v{version}',
+        'settings.plugins.marketInstallPlanReview': 'Review this install plan before continuing:\n\n{details}\n\nThe connected server owner must approve this mutation.',
+        'settings.plugins.marketAgentAccessConfirm': '{summary}\n\nConfirm this exact source-qualified access change?',
+        'settings.plugins.marketAgentAccessSummaryMissing': 'Marketplace config is missing activations snapshot; reload before changing Agent Plugin Access.',
+        'settings.plugins.marketAgentAccessUpdated': 'Agent Plugin Access {state} for {identity}',
+        'settings.plugins.marketAgentAccessEnableVerb': 'Enable',
+        'settings.plugins.marketAgentAccessDisableVerb': 'Disable',
+        'settings.plugins.marketAgentAccessSummaryHeading': '{action} Agent Plugin Access for {identity}',
+        'settings.plugins.marketAgentAccessSummaryAgent': 'Agent: {agentId}',
+        'settings.plugins.marketAgentAccessSummaryScope': 'Agent-facing scope: tools, commands, chat cards, and agent-aware surfaces only.',
+        'settings.plugins.marketAgentAccessSummaryServerGlobal': 'Owner-reviewed server-global capabilities are unchanged: {items}',
+        'settings.plugins.marketAgentAccessSummaryNoServerChange': 'No server-global capability state will be changed.',
+        'settings.plugins.marketAgentAccessSummaryRevision': 'Registry revision: {revision}',
+        'settings.plugins.marketAgentAccessSummaryDigest': 'Registry digest: {digest}',
+        'settings.plugins.marketAgentAccessUpdateFailed': 'Agent Plugin Access update failed',
+        'settings.plugins.marketConfigRefreshFailed': 'Marketplace config refresh failed',
+        'settings.plugins.marketSourceSwitchFailed': 'switch failed',
+        'settings.plugins.marketMissingActivationsSnapshot': 'missing activations snapshot',
+        'settings.plugins.marketNone': 'none',
+        'settings.plugins.marketPlanTarget': 'Target: {label}',
+        'settings.plugins.marketPlanAdapter': 'Adapter: {label}',
+        'settings.plugins.marketPlanConfirmation': 'Confirmation: {label}',
+        'settings.plugins.marketPlanWarnings': 'Warnings:\n{list}',
+        'settings.plugins.marketSkillsUninstallQuestion': 'Uninstall marketplace skills package {identity}?',
+        'settings.plugins.marketSkillsUninstallPermanentDelete': 'These shared user-skill directories will be permanently deleted, including later edits:',
+        'settings.plugins.marketSkillsDeleteLine': '- shared user skills/{name}/',
+        'settings.plugins.marketSkillsNoPresentDirs': '- none; all recorded directories are already missing',
+        'settings.plugins.marketSkillsUninstallAlreadyMissingHeading': 'Already-missing recorded directories:',
+        'settings.plugins.marketSkillsNoMissingDirs': '- none',
+        'settings.plugins.marketSkillsInvalidEntries': 'Invalid record entries will fail closed and will not be used as paths:\n{names}',
+        'settings.plugins.marketSkillsUninstallUnaffected': 'Native/community plugin directories and Allow Agent plugin dev tools directories, slots, and records are unaffected.',
+        'settings.plugins.marketSkillsUninstallSeparateFromManage': 'This package-level action is separate from Manage in Skills.',
+        'settings.plugins.marketSkillsAgentFailure': 'Agent {agentId}: {error}',
+        'settings.plugins.marketSkillsCleanupActivation': 'activation cleanup: {error}',
+        'settings.plugins.marketSkillsCleanupBundle': 'bundle cleanup: {error}',
+        'settings.plugins.marketSkillsCleanupReload': 'skill reload: {error}',
+        'settings.plugins.marketSkillsCleanupUnresolved': 'Some cleanup steps remain unresolved.',
+        'settings.plugins.marketUninstallSkills': 'Uninstall skills',
+        'settings.plugins.marketUninstallRemainingSkills': 'Uninstall remaining skills',
+        'settings.plugins.marketClearStaleInstallation': 'Clear stale installation',
+        'settings.plugins.marketUninstall': 'Uninstall',
+        'settings.plugins.marketInspectOnly': 'Inspect only',
+        'settings.plugins.marketTargetHanaSkills': 'Hana skills',
+        'settings.plugins.marketTargetNativePlugin': 'Native plugin',
+        'settings.plugins.marketTargetUnsupported': 'Unsupported',
+        'settings.plugins.marketAdapterSkillManager': 'Skill manager',
+        'settings.plugins.marketAdapterPluginManager': 'Plugin manager',
+        'settings.plugins.marketAdapterNone': 'None',
+        'settings.plugins.marketConfirmationTypedExact': 'Typed exact',
+        'settings.plugins.marketConfirmationCapabilityReview': 'Capability review',
+        'settings.plugins.marketConfirmationInline': 'Inline',
+        'settings.plugins.marketVersionStatusInstalled': '{count} marketplace skill {unit} installed',
+        'settings.plugins.marketSkillDirectory': 'directory',
+        'settings.plugins.marketSkillDirectories': 'directories',
+        'settings.plugins.marketVersionStatusPartial': '{present} present · {missing} already missing',
+        'settings.plugins.marketVersionStatusStale': '{count} recorded skill {unit} already missing',
+        'settings.plugins.marketVersionStatusUnsupported': 'Unsupported package',
+        'settings.plugins.marketLifecycleUnavailable': 'Settings lifecycle unavailable',
+        'settings.plugins.marketPackageGateEnabled': 'enabled',
+        'settings.plugins.marketPackageGateDisabled': 'disabled',
+        'settings.plugins.marketPackageGateScope': 'global skill-manager gate (not PluginManager)',
+        'settings.plugins.skillPackageLayerPackage': 'Package',
+        'settings.plugins.skillPackageLayerAgentPreference': 'Agent preference',
+        'settings.plugins.skillPackageLayerEffectiveAvailability': 'Effective availability',
+        'settings.plugins.skillPackageLayerAvailable': 'available',
+        'settings.plugins.skillPackageLayerUnavailable': 'unavailable',
+        'settings.plugins.skillPackageLayerPartial': 'partially available',
+        'settings.plugins.skillPackageEnable': 'Enable',
+        'settings.plugins.skillPackageDisable': 'Disable',
+        'settings.plugins.marketActionInstall': 'install',
+        'settings.plugins.marketInventorySkills': 'Skills',
+        'settings.plugins.marketInventoryAgentFacing': 'Agent-facing',
+        'settings.plugins.marketInventoryServerImpact': 'Server impact',
+        'settings.plugins.marketInventoryNativeContributions': 'Native contributions',
+        'settings.plugins.marketInventoryUnsupportedClaudeComponents': 'Unsupported Claude components',
+        'settings.plugins.marketUnsupportedServerGuidance': 'Upgrade the connected Hana server to use marketplace sources.',
+        'settings.plugins.marketUnsupportedServerNoCapabilities': 'The connected Hana server does not advertise plugin marketplace capabilities. Upgrade the server before managing marketplace sources.',
+        'settings.plugins.marketUnsupportedServerUpgrade': 'Upgrade the connected Hana server to a build with plugin-marketplace-capabilities.v1.',
+        'settings.plugins.marketRegistryDegraded': 'Marketplace registry is using the last-known-good state: {diagnostic}',
+        'settings.plugins.skillPackageToggleFallback': 'Toggle skill package {identity}',
+        'settings.plugins.marketSummaryScope': 'One server-owned registry and shared catalog for every connected desktop and Agent.',
+        'settings.plugins.marketSummaryAgentAccess': 'Selected-Agent Plugin Access',
+        'settings.plugins.marketSummarySelectAgent': 'Select an Agent',
+        'settings.plugins.marketRetainedBadge': 'retained',
+        'settings.plugins.skillPackageManageInSkills': 'Manage in Skills',
+        'settings.plugins.marketSwitchSource': 'Switch source',
+        'settings.plugins.marketPackageGate': 'Package',
+        'settings.plugins.marketActivationRoute': 'Activation route',
+        'settings.plugins.marketActivationRouteValue': 'Skills Settings / Agent Skill Toggles (not Native Plugins)',
+        'settings.plugins.marketInstallPlan': 'Install Plan',
+        'settings.plugins.marketConfigAsCodeDiagnostics': 'Configuration-as-code diagnostics',
+        'settings.plugins.marketConfigStatus': 'Status',
+        'settings.plugins.marketServerLocalPath': 'Server-local path',
+        'settings.plugins.marketLastValidRevision': 'Last valid revision',
+        'settings.plugins.marketDigest': 'Digest',
+        'settings.plugins.marketClaudeCompatBindings': 'Claude compatibility bindings',
+        'settings.plugins.marketNoCompatBindings': 'No compatibility bindings configured.',
+        'settings.plugins.marketLastValidDigest': 'Last-valid digest',
+        'settings.plugins.marketSanitizedExclusions': 'Sanitized exclusions',
+        'settings.plugins.marketServerRuntimeSources': 'Server runtime & sources',
+        'settings.plugins.marketAdvancedJsonConfig': 'Claude compatibility & advanced JSON configuration',
+        'settings.plugins.marketAgentForNativeAccess': 'Agent for native plugin access',
+        'settings.plugins.marketDiagnosticsRepairGuidance': 'Diagnostics & repair guidance',
+      };
+      const template = labels[key];
+      if (template === undefined) return key;
+      if (!params) return template;
+      return template.replace(/\{(\w+)\}/g, (_, name: string) => params[name] ?? `{${name}}`);
+    }) as typeof window.t;
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+  });
+
+  it('renders source-qualified identity and inspector fields for Hana skill packages', async () => {
+    mockCatalog([catalogPlugin()]);
+
+    render(<PluginMarketplaceTab />);
+
+    expect((await screen.findAllByText('skillwiki@llm-wiki')).length).toBeGreaterThan(0);
+    expect(screen.getByText('Install Target')).toBeInTheDocument();
+    expect(screen.getAllByText('Hana skills').length).toBeGreaterThan(0);
+    expect(screen.getByText('Install Adapter')).toBeInTheDocument();
+    expect(screen.getAllByText('Skill manager').length).toBeGreaterThan(0);
+    expect(screen.getByText('Confirmation')).toBeInTheDocument();
+    expect(screen.getByText('Inline')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Install skills' })).toBeEnabled();
+    expect(screen.getByText('Agent-facing')).toBeInTheDocument();
+    expect(screen.getAllByText('skills').length).toBeGreaterThan(0);
+  });
+
+  it('labels the Marketplace toolbar refresh icon as a reload action', async () => {
+    mockCatalog([catalogPlugin()]);
+
+    render(<PluginMarketplaceTab />);
+
+    const reload = await screen.findByRole('button', { name: 'Reload marketplace' });
+    expect(reload).toHaveAttribute('title', 'Reload marketplace');
+    expect(reload.className).toMatch(/settings-icon-btn/);
+    expect(reload.querySelector('svg')).toBeInTheDocument();
+  });
+
+  it('shows unsupported packages as inspect only and disables install', async () => {
+    mockCatalog([
+      catalogPlugin({
+        installTarget: 'unsupported',
+        installAdapter: 'none',
+        installable: false,
+        canInstall: false,
+        confirmationLevel: 'capability-review',
+        capabilityInventory: {
+          skills: [],
+          nativePluginContributions: [],
+          agentFacing: [],
+          serverImpact: [],
+          unsupportedClaudeComponents: ['hooks'],
+        },
+        warnings: ['Claude package source kind is not installable in Hana v1: git-subdir'],
+        installPlan: {
+          action: 'install',
+          destination: 'unsupported',
+          installAdapter: 'none',
+          confirmationLevel: 'capability-review',
+          warnings: ['Claude package source kind is not installable in Hana v1: git-subdir'],
+          installable: false,
+        },
+      }),
+    ]);
+
+    render(<PluginMarketplaceTab />);
+
+    expect((await screen.findAllByText('Unsupported')).length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: 'Inspect only' })).toBeDisabled();
+    expect(screen.getByText('Unsupported Claude components')).toBeInTheDocument();
+    expect(screen.getByText('hooks')).toBeInTheDocument();
+    expect(screen.getByText('Warnings')).toBeInTheDocument();
+    expect(screen.getByText('Claude package source kind is not installable in Hana v1: git-subdir')).toBeInTheDocument();
+  });
+
+  it('shows unsupported-server guidance instead of falling back to an empty marketplace', async () => {
+    mockHanaFetch.mockImplementation(async (url: string) => {
+      if (url === '/api/plugins/marketplace/capabilities') {
+        return jsonResponse({
+          supported: false,
+          code: 'PLUGIN_MARKETPLACE_UNSUPPORTED_SERVER',
+          upgradeGuidance: 'Upgrade the connected Hana server to use marketplace sources.',
+        }, 404);
+      }
+      return jsonResponse({ plugins: [catalogPlugin()], sources: [], warnings: [] });
+    });
+
+    render(<PluginMarketplaceTab />);
+
+    expect(await screen.findByText('Upgrade the connected Hana server to use marketplace sources.')).toBeInTheDocument();
+    expect(mockHanaFetch).not.toHaveBeenCalledWith('/api/plugins/marketplace/catalog', expect.anything());
+  });
+
+  it('shows native marketplace packages as preview-only until PluginManager audit completes', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    mockCatalog([
+      catalogPlugin({
+        pluginId: 'native-page',
+        id: 'native-page',
+        name: 'Native Page',
+        publisher: 'Hana',
+        trust: 'full-access',
+        marketplaceId: 'official',
+        compositeKey: 'native-page@official',
+        catalogFormat: null,
+        installTarget: 'native-plugin',
+        installAdapter: 'plugin-manager',
+        installable: false,
+        canInstall: false,
+        confirmationLevel: 'typed-exact',
+        capabilityInventory: {
+          skills: [],
+          nativePluginContributions: ['tools', 'routes'],
+          agentFacing: ['tools'],
+          serverImpact: ['routes'],
+          unsupportedClaudeComponents: [],
+        },
+        warnings: [
+          'native marketplace install is preview-only until the PluginManager contract audit is complete',
+          'native plugin requests full-access review',
+        ],
+        installPlan: {
+          action: 'install',
+          destination: 'native-plugin',
+          installAdapter: 'plugin-manager',
+          confirmationLevel: 'typed-exact',
+          warnings: [
+            'native marketplace install is preview-only until the PluginManager contract audit is complete',
+            'native plugin requests full-access review',
+          ],
+          installable: false,
+        },
+      }),
+    ]);
+
+    render(<PluginMarketplaceTab />);
+
+    const installButton = await screen.findByRole('button', { name: 'Inspect only' });
+    expect(installButton).toBeDisabled();
+    expect(screen.getByText('native marketplace install is preview-only until the PluginManager contract audit is complete')).toBeInTheDocument();
+    fireEvent.click(installButton);
+
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(mockHanaFetch).not.toHaveBeenCalledWith('/api/plugins/marketplace/native-page/install', expect.anything());
+  });
+
+  it('installs a supported native package through owner plan/execute and never the skills route', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const native = catalogPlugin({
+      pluginId: 'native-page', id: 'native-page', name: 'Native Page', marketplaceId: 'official',
+      compositeKey: 'native-page@official', catalogFormat: null, installTarget: 'native-plugin',
+      installAdapter: 'plugin-manager', installable: false, canInstall: true, active: false,
+      nativeSettingsLifecycle: { supported: true, canInstall: true, canUninstall: false, reason: 'Studio-owner Settings install is available' },
+      confirmationLevel: 'typed-exact',
+    });
+    mockHanaFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === '/api/plugins/marketplace/capabilities') return jsonResponse({ supported: true, features: { nativeMarketplaceSettingsLifecycle: true }, access: { isStudioOwner: true }, registry: { revision: 7, digest: 'a'.repeat(64) } });
+      if (url.startsWith('/api/plugins/marketplace/catalog')) return jsonResponse({ plugins: [native], sources: [], access: { isStudioOwner: true }, registry: { revision: 7, digest: 'a'.repeat(64) } });
+      if (url === '/api/plugins/marketplace/sources') return jsonResponse({ sources: [] });
+      if (url === '/api/plugins/marketplace/native-page/native/install/plan') {
+        expect(JSON.parse(String(init?.body))).toMatchObject({ marketplaceId: 'official', expectedRevision: 7 });
+        return jsonResponse({ identity: 'native-page@official', confirmationText: 'native-page@official', planToken: 'signed-plan', facts: { version: '1.0.0', packageSha256: 'b'.repeat(64), trust: 'full-access', contributions: ['routes'] } });
+      }
+      if (url === '/api/plugins/marketplace/native-page/native/install/execute') {
+        expect(JSON.parse(String(init?.body))).toEqual({ planToken: 'signed-plan', confirmation: 'native-page@official' });
+        return jsonResponse({ ok: true, name: 'Native Page' });
+      }
+      if (url.includes('/readme')) return jsonResponse({ markdown: '' });
+      return jsonResponse({});
+    });
+
+    render(<PluginMarketplaceTab />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Install' }));
+
+    await waitFor(() => expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('Install native Marketplace plugin native-page@official')));
+    await waitFor(() => expect(mockShowToast).toHaveBeenCalledWith(expect.any(String), 'success'));
+    expect(mockHanaFetch).not.toHaveBeenCalledWith('/api/plugins/marketplace/native-page/skills', expect.anything());
+  });
+
+  it('uninstalls an active native package through owner plan/execute and preserves retained evidence', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const native = catalogPlugin({
+      pluginId: 'native-page', id: 'native-page', name: 'Native Page', marketplaceId: 'official',
+      compositeKey: 'native-page@official', catalogFormat: null, installTarget: 'native-plugin',
+      installAdapter: 'plugin-manager', installable: false, canInstall: false, active: true, retained: true,
+      nativeSettingsLifecycle: { supported: true, canInstall: false, canUninstall: true, reason: 'Exact Marketplace-native identity is actively installed' },
+    });
+    mockHanaFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === '/api/plugins/marketplace/capabilities') return jsonResponse({ supported: true, features: { nativeMarketplaceSettingsLifecycle: true }, access: { isStudioOwner: true }, registry: { revision: 7, digest: 'a'.repeat(64) } });
+      if (url.startsWith('/api/plugins/marketplace/catalog')) return jsonResponse({ plugins: [native], sources: [], access: { isStudioOwner: true }, registry: { revision: 7, digest: 'a'.repeat(64) } });
+      if (url === '/api/plugins/marketplace/sources') return jsonResponse({ sources: [] });
+      if (url === '/api/plugins/marketplace/native-page/native/uninstall/plan') return jsonResponse({ identity: 'native-page@official', confirmationText: 'native-page@official', planToken: 'remove-plan' });
+      if (url === '/api/plugins/marketplace/native-page/native/uninstall/execute') {
+        expect(JSON.parse(String(init?.body))).toEqual({ planToken: 'remove-plan', confirmation: 'native-page@official' });
+        return jsonResponse({ ok: true, installed: false, retained: true });
+      }
+      if (url.includes('/readme')) return jsonResponse({ markdown: '' });
+      return jsonResponse({});
+    });
+
+    render(<PluginMarketplaceTab />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Uninstall' }));
+
+    await waitFor(() => expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('Uninstall native-page@official')));
+    await waitFor(() => expect(mockShowToast).toHaveBeenCalledWith(expect.stringContaining('retained artifact remains non-installed'), 'success'));
+    expect(mockHanaFetch).not.toHaveBeenCalledWith('/api/plugins/marketplace/native-page/skills', expect.anything());
+  });
+
+  it('distinguishes a supported empty catalog from an unsupported or missing source state', async () => {
+    mockCatalog([]);
+
+    render(<PluginMarketplaceTab />);
+
+    expect(await screen.findByText('0 package')).toBeInTheDocument();
+    expect(screen.getByText('No plugins to browse')).toBeInTheDocument();
+    expect(screen.getByText('Supported server')).toBeInTheDocument();
+    expect(screen.queryByText('settings.plugins.marketplaceNoSource')).not.toBeInTheDocument();
+  });
+
+  it('shows degraded last-known-good JSON diagnostics and repair guidance', async () => {
+    mockHanaFetch.mockImplementation(async (url: string) => {
+      if (url === '/api/plugins/marketplace/capabilities') {
+        return jsonResponse({
+          supported: true,
+          features: { claudeCompatibilityBindings: false },
+          access: { isStudioOwner: true, isLocalOwner: false },
+          registry: { revision: 4, digest: 'b'.repeat(64), degraded: true, lastKnownGood: true, path: '[server-local path redacted]', diagnostic: 'Malformed JSON' },
+          configDiagnostics: {
+            ok: false,
+            degraded: true,
+            path: '[server-local path redacted]',
+            digest: 'b'.repeat(64),
+            file: { revision: 4, activations: {} },
+            diagnostics: [{ severity: 'error', code: 'INVALID_JSON', path: '$', message: 'Repair malformed JSON and reload.' }],
+            summary: { revision: 4, schemaVersion: 2 },
+          },
+        });
+      }
+      if (url.startsWith('/api/plugins/marketplace/catalog')) {
+        return jsonResponse({ plugins: [], sources: [], warnings: [], capabilities: { supported: true }, access: { isStudioOwner: true }, registry: { revision: 4, digest: 'b'.repeat(64), degraded: true, diagnostic: 'Malformed JSON' }, configDiagnostics: { degraded: true, path: '[server-local path redacted]', digest: 'b'.repeat(64), file: { revision: 4, activations: {} }, diagnostics: [{ code: 'INVALID_JSON', path: '$', message: 'Repair malformed JSON and reload.' }], summary: { revision: 4 } } });
+      }
+      if (url === '/api/plugins/marketplace/sources') return jsonResponse({ sources: [] });
+      return jsonResponse({ plugins: [] });
+    });
+
+    render(<PluginMarketplaceTab />);
+
+    expect(await screen.findByText('degraded / last-known-good')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Claude compatibility & advanced JSON configuration'));
+    expect(screen.getByText('Invalid edit · last-known-good active')).toBeInTheDocument();
+    expect(screen.getByText('[server-local path redacted]')).toBeInTheDocument();
+    expect(screen.getByText('$: Repair malformed JSON and reload.')).toBeInTheDocument();
+  });
+
+  it('routes Hana-compatible marketplace packages to existing Skills Settings', async () => {
+    mockCatalog([catalogPlugin()]);
+    render(<PluginMarketplaceTab />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Manage in Skills' }));
+
+    expect(mockSet).toHaveBeenCalledWith({ activeTab: 'skills' });
+    expect(screen.getByText('Skills Settings / Agent Skill Toggles (not Native Plugins)')).toBeInTheDocument();
+  });
+
+  it('keeps selected-Agent native access unavailable until the exact native identity is installed', async () => {
+    mockStoreState.agents = [{ id: 'agent-a', name: 'Agent A' }];
+    mockStoreState.currentAgentId = 'agent-a';
+    const native = catalogPlugin({
+      pluginId: 'native-page',
+      id: 'native-page',
+      name: 'Native Page',
+      marketplaceId: 'official',
+      compositeKey: 'native-page@official',
+      installTarget: 'native-plugin',
+      installAdapter: 'plugin-manager',
+      installable: false,
+      canInstall: false,
+      capabilityInventory: {
+        skills: [],
+        nativePluginContributions: ['tools', 'routes'],
+        agentFacing: ['tools'],
+        serverImpact: ['routes'],
+        unsupportedClaudeComponents: [],
+      },
+      runtimeActivation: { state: 'desired-not-installed', reason: 'native runtime plugin artifact is not installed' },
+      nativeAgentPluginAccess: {
+        identity: 'native-page@official',
+        agentId: 'agent-a',
+        enabled: false,
+        state: 'disabled',
+        reason: 'native Agent Plugin Access is disabled and artifact is not installed',
+        serverGlobalContributions: ['routes'],
+      },
+    });
+    mockHanaFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === '/api/plugins/marketplace/capabilities') return jsonResponse({ supported: true, features: {}, access: { isStudioOwner: true }, registry: { revision: 7, digest: 'a'.repeat(64) }, configDiagnostics: { file: { revision: 7, activations: {} }, summary: { revision: 7 } } });
+      if (url === '/api/plugins/marketplace/catalog?agentId=agent-a') return jsonResponse({ plugins: [native], sources: [], capabilities: { supported: true, features: {} }, access: { isStudioOwner: true }, registry: { revision: 7, digest: 'a'.repeat(64) }, configDiagnostics: { file: { revision: 7, activations: {} }, summary: { revision: 7 } } });
+      if (url === '/api/plugins/marketplace/sources') return jsonResponse({ sources: [] });
+      if (url === '/api/plugins/marketplace/config/activations') {
+        const body = JSON.parse(String(init?.body || '{}'));
+        expect(body).toMatchObject({
+          expectedRevision: 7,
+          expectedDigest: 'a'.repeat(64),
+          activations: { agentPluginAccess: { 'agent-a': { 'native-page@official': { enabled: true, contributions: ['tools'] } } } },
+        });
+        return jsonResponse({ revision: 8 });
+      }
+      if (url.includes('/readme')) return jsonResponse({ markdown: '' });
+      return jsonResponse({});
+    });
+
+    render(<PluginMarketplaceTab />);
+
+    expect(await screen.findByText('Selected-Agent Plugin Access')).toBeInTheDocument();
+    expect(screen.getByText(/Routes, providers, extensions/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Enable Agent Access' })).not.toBeInTheDocument();
+    expect(await screen.findByText('desired-not-installed · native runtime plugin artifact is not installed')).toBeInTheDocument();
+  });
+
+  it('refuses native Agent access changes when the activations snapshot is missing', async () => {
+    mockStoreState.agents = [{ id: 'agent-a', name: 'Agent A' }];
+    mockStoreState.currentAgentId = 'agent-a';
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const native = catalogPlugin({
+      pluginId: 'native-page',
+      id: 'native-page',
+      name: 'Native Page',
+      marketplaceId: 'official',
+      compositeKey: 'native-page@official',
+      installTarget: 'native-plugin',
+      installAdapter: 'plugin-manager',
+      installable: false,
+      canInstall: false,
+      active: true,
+      runtimeActivation: { state: 'active', reason: 'native runtime plugin artifact is installed' },
+      nativeAgentPluginAccess: {
+        identity: 'native-page@official',
+        agentId: 'agent-a',
+        enabled: false,
+        state: 'disabled',
+        serverGlobalContributions: ['routes'],
+      },
+      capabilityInventory: {
+        skills: [],
+        nativePluginContributions: ['tools', 'routes'],
+        agentFacing: ['tools'],
+        serverImpact: ['routes'],
+        unsupportedClaudeComponents: [],
+      },
+    });
+    const put = vi.fn();
+    mockHanaFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === '/api/plugins/marketplace/capabilities') {
+        return jsonResponse({ supported: true, features: {}, access: { isStudioOwner: true }, registry: { revision: 7, digest: 'a'.repeat(64) }, configDiagnostics: { file: { revision: 7 }, summary: { revision: 7 } } });
+      }
+      if (url.startsWith('/api/plugins/marketplace/catalog')) {
+        return jsonResponse({ plugins: [native], sources: [], capabilities: { supported: true, features: {} }, access: { isStudioOwner: true }, registry: { revision: 7, digest: 'a'.repeat(64) }, configDiagnostics: { file: { revision: 7 }, summary: { revision: 7 } } });
+      }
+      if (url === '/api/plugins/marketplace/sources') return jsonResponse({ sources: [] });
+      if (url === '/api/plugins/marketplace/config/activations' && init?.method === 'PUT') put();
+      if (url.includes('/readme')) return jsonResponse({ markdown: '' });
+      return jsonResponse({});
+    });
+
+    render(<PluginMarketplaceTab />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Enable Agent Access' }));
+
+    await waitFor(() => expect(mockShowToast).toHaveBeenCalledWith(
+      expect.stringContaining('missing activations snapshot'),
+      'error',
+    ));
+    expect(put).not.toHaveBeenCalled();
+  });
+
+  it('preserves sibling activation maps when enabling native Agent access', async () => {
+    mockStoreState.agents = [{ id: 'agent-a', name: 'Agent A' }];
+    mockStoreState.currentAgentId = 'agent-a';
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const existingActivations = {
+      runtimePlugins: { 'other@source': { enabled: true } },
+      marketplaceSkills: { 'skill@source/pkg': { enabled: false } },
+      marketplaceSkillPackages: { 'pkg@source': { enabled: true } },
+      agentSkillOverrides: { 'agent-a': { 'skill@source/pkg': { enabled: true } } },
+      agentPluginAccess: { 'agent-b': { 'other@source': { enabled: false } } },
+    };
+    const native = catalogPlugin({
+      pluginId: 'native-page',
+      id: 'native-page',
+      name: 'Native Page',
+      marketplaceId: 'official',
+      compositeKey: 'native-page@official',
+      installTarget: 'native-plugin',
+      installAdapter: 'plugin-manager',
+      installable: false,
+      canInstall: false,
+      active: true,
+      runtimeActivation: { state: 'active' },
+      nativeAgentPluginAccess: { identity: 'native-page@official', agentId: 'agent-a', enabled: false, state: 'disabled' },
+      capabilityInventory: { skills: [], nativePluginContributions: ['tools'], agentFacing: ['tools'], serverImpact: [], unsupportedClaudeComponents: [] },
+    });
+    const puts: unknown[] = [];
+    mockHanaFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === '/api/plugins/marketplace/capabilities') return jsonResponse({ supported: true, features: {}, access: { isStudioOwner: true }, registry: { revision: 7, digest: 'a'.repeat(64) }, configDiagnostics: { file: { revision: 7, activations: existingActivations }, summary: { revision: 7 } } });
+      if (url.startsWith('/api/plugins/marketplace/catalog')) return jsonResponse({ plugins: [native], sources: [], capabilities: { supported: true, features: {} }, access: { isStudioOwner: true }, registry: { revision: 7, digest: 'a'.repeat(64) }, configDiagnostics: { file: { revision: 7, activations: existingActivations }, summary: { revision: 7 } } });
+      if (url === '/api/plugins/marketplace/sources') return jsonResponse({ sources: [] });
+      if (url === '/api/plugins/marketplace/config/activations' && init?.method === 'PUT') {
+        puts.push(JSON.parse(String(init.body)));
+        return jsonResponse({ ok: true });
+      }
+      if (url.includes('/readme')) return jsonResponse({ markdown: '' });
+      return jsonResponse({});
+    });
+
+    render(<PluginMarketplaceTab />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Enable Agent Access' }));
+
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect(puts[0]).toEqual({
+      expectedRevision: 7,
+      expectedDigest: 'a'.repeat(64),
+      activations: {
+        ...existingActivations,
+        agentPluginAccess: {
+          ...existingActivations.agentPluginAccess,
+          'agent-a': {
+            'native-page@official': { enabled: true, contributions: ['tools'] },
+          },
+        },
+      },
+    });
+  });
+
+  it('renders live, mirror, and snapshot compatibility state with redacted paths and bridge limits', async () => {
+    mockHanaFetch.mockImplementation(async (url: string) => {
+      if (url === '/api/plugins/marketplace/capabilities') return jsonResponse({ supported: true, features: { claudeCompatibilityBindings: true }, access: { isStudioOwner: false, isLocalOwner: false }, registry: { revision: 2, digest: 'c'.repeat(64), path: '[server-local path redacted]' }, configDiagnostics: { path: '[server-local path redacted]', file: { revision: 2 }, summary: { revision: 2 } } });
+      if (url.startsWith('/api/plugins/marketplace/catalog')) return jsonResponse({ plugins: [], sources: [], capabilities: { supported: true, features: { claudeCompatibilityBindings: true } }, access: { isStudioOwner: false }, registry: { revision: 2, digest: 'c'.repeat(64), path: '[server-local path redacted]' }, configDiagnostics: { path: '[server-local path redacted]', file: { revision: 2 }, summary: { revision: 2 } } });
+      if (url === '/api/plugins/marketplace/sources') return jsonResponse({ sources: [] });
+      if (url === '/api/plugins/marketplace/compatibility/bindings') return jsonResponse({ bindings: ['live', 'mirror', 'snapshot'].map((mode, index) => ({ binding: { id: `${mode}-binding`, mode, enabled: true, inputs: [{ role: 'user-settings', path: '[server-local path redacted]' }] }, state: { digest: String(index + 1).repeat(64), warnings: mode === 'live' ? [{ code: 'CLAUDE_HOOK_EXCLUDED', message: 'Claude hooks are excluded.' }] : [] }, lastKnownGood: mode === 'mirror', diagnostic: mode === 'mirror' ? { code: 'CLAUDE_COMPAT_INPUT_INVALID', message: 'Repair the authorized input.', graceExpired: true } : null, pendingBoundary: 'next-agent-snapshot' })) });
+      return jsonResponse({});
+    });
+
+    render(<PluginMarketplaceTab />);
+    fireEvent.click(await screen.findByText('Claude compatibility & advanced JSON configuration'));
+
+    expect(screen.getByText('live-binding')).toBeInTheDocument();
+    expect(screen.getByText('mirror-binding')).toBeInTheDocument();
+    expect(screen.getByText('snapshot-binding')).toBeInTheDocument();
+    expect(screen.getAllByText('[server-local path redacted]').length).toBeGreaterThan(0);
+    expect(screen.getByText('Claude hooks are excluded.')).toBeInTheDocument();
+    expect(screen.getByText('Desktop bridge transport: unavailable in this build.')).toBeInTheDocument();
+  });
+
+  it('keeps duplicate package identities keyboard-operable and source-qualified', async () => {
+    mockCatalog([
+      catalogPlugin({ marketplaceId: 'market-a', compositeKey: 'skillwiki@market-a' }),
+      catalogPlugin({ marketplaceId: 'market-b', compositeKey: 'skillwiki@market-b', description: 'Second source' }),
+    ]);
+    render(<PluginMarketplaceTab />);
+
+    const second = await screen.findByRole('button', { name: 'Inspect skillwiki@market-b' });
+    second.focus();
+    expect(second).toHaveFocus();
+    fireEvent.click(second);
+
+    expect(screen.getAllByText('skillwiki@market-a').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('skillwiki@market-b').length).toBeGreaterThan(0);
+    expect(second).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('uninstalls an installed skills package with exact destructive confirmation and qualified identity', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const installed = catalogPlugin({
+      canInstall: false,
+      packageInstall: {
+        state: 'installed',
+        recorded: ['wiki-query', 'wiki-sync'],
+        present: ['wiki-query', 'wiki-sync'],
+        missing: [],
+        invalid: [],
+      },
+    });
+    mockHanaFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url.startsWith('/api/plugins/marketplace/catalog')) {
+        return jsonResponse({
+          plugins: [installed],
+          sources: [],
+          capabilities: { supported: true, features: {} },
+          access: { isStudioOwner: true },
+          registry: { revision: 7, digest: 'a'.repeat(64) },
+        });
+      }
+      if (url === '/api/plugins/marketplace/sources') return jsonResponse({ sources: [] });
+      if (url.includes('/readme')) return jsonResponse({ markdown: '' });
+      if (url === '/api/plugins/marketplace/skillwiki/skills') {
+        expect(init?.method).toBe('DELETE');
+        expect(JSON.parse(String(init?.body))).toEqual({
+          marketplaceId: 'llm-wiki',
+          expectedRevision: 7,
+          expectedDigest: 'a'.repeat(64),
+        });
+        return jsonResponse({ ok: true, deleted: ['wiki-query', 'wiki-sync'], alreadyMissing: [], failed: [] });
+      }
+      return jsonResponse({});
+    });
+    render(<PluginMarketplaceTab />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Uninstall skills' }));
+
+    expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('skillwiki@llm-wiki'));
+    expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('shared user skills/wiki-query/'));
+    expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('shared user skills/wiki-sync/'));
+    expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('Allow Agent plugin dev tools'));
+    await waitFor(() => expect(mockShowToast).toHaveBeenCalledWith(
+      'Removed 2 recorded skills from skillwiki@llm-wiki',
+      'success',
+    ));
+  });
+
+  it('renders partial and stale package actions independently of native-plugin active state', async () => {
+    mockCatalog([
+      catalogPlugin({
+        active: false,
+        canInstall: false,
+        packageInstall: {
+          state: 'partial',
+          recorded: ['wiki-query', 'wiki-sync'],
+          present: ['wiki-query'],
+          missing: ['wiki-sync'],
+          invalid: [],
+        },
+      }),
+      catalogPlugin({
+        pluginId: 'stale-pack',
+        id: 'stale-pack',
+        name: 'stale-pack',
+        compositeKey: 'stale-pack@llm-wiki',
+        sourceAuthority: 'removed',
+        sourceStatus: 'removed',
+        sourceEnabled: false,
+        available: false,
+        installable: false,
+        canInstall: false,
+        active: false,
+        packageInstall: {
+          state: 'stale-record',
+          recorded: ['old-skill'],
+          present: [],
+          missing: ['old-skill'],
+          invalid: [],
+        },
+      }),
+    ]);
+    render(<PluginMarketplaceTab />);
+
+    expect(await screen.findByRole('button', { name: 'Uninstall remaining skills' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect stale-pack@llm-wiki' }));
+    expect(screen.getByRole('button', { name: 'Clear stale installation' })).toBeEnabled();
+    expect(screen.getByText('stale-record · source removed / uninstall only')).toBeInTheDocument();
+  });
+
+  it('reports a partial package uninstall without a success toast', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const partial = catalogPlugin({
+      canInstall: false,
+      packageInstall: {
+        state: 'partial',
+        recorded: ['wiki-query', 'wiki-sync'],
+        present: ['wiki-query'],
+        missing: ['wiki-sync'],
+        invalid: [],
+      },
+    });
+    mockHanaFetch.mockImplementation(async (url: string) => {
+      if (url.startsWith('/api/plugins/marketplace/catalog')) return jsonResponse({ plugins: [partial], sources: [], capabilities: { supported: true }, access: { isStudioOwner: true }, registry: { revision: 7, digest: 'a'.repeat(64) } });
+      if (url === '/api/plugins/marketplace/sources') return jsonResponse({ sources: [] });
+      if (url.includes('/readme')) return jsonResponse({ markdown: '' });
+      if (url === '/api/plugins/marketplace/skillwiki/skills') return jsonResponse({ ok: false, deleted: [], alreadyMissing: ['wiki-sync'], failed: [{ name: 'wiki-query', error: 'busy' }] }, 207);
+      return jsonResponse({});
+    });
+    render(<PluginMarketplaceTab />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Uninstall remaining skills' }));
+
+    await waitFor(() => expect(mockShowToast).toHaveBeenCalledWith(
+      'Marketplace skills uninstall is partial: wiki-query: busy',
+      'error',
+    ));
+    expect(mockShowToast).not.toHaveBeenCalledWith(expect.any(String), 'success');
+  });
+
+  it('disables owner-only package mutations for non-owners', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    mockHanaFetch.mockImplementation(async (url: string) => {
+      if (url === '/api/plugins/marketplace/capabilities') return jsonResponse({ supported: true, features: {}, access: { isStudioOwner: false }, registry: { revision: 1, digest: 'd'.repeat(64) } });
+      if (url.startsWith('/api/plugins/marketplace/catalog')) return jsonResponse({ plugins: [catalogPlugin()], sources: [], capabilities: { supported: true, features: {} }, access: { isStudioOwner: false }, registry: { revision: 1, digest: 'd'.repeat(64) } });
+      if (url === '/api/plugins/marketplace/sources') return jsonResponse({ sources: [] });
+      if (url.includes('/readme')) return jsonResponse({ markdown: '' });
+      if (url === '/api/plugins/marketplace/skillwiki/install') return jsonResponse({ error: 'studio.owner or install permission required', code: 'PLUGIN_MARKETPLACE_SOURCE_FORBIDDEN' }, 403);
+      return jsonResponse({});
+    });
+    render(<PluginMarketplaceTab />);
+
+    expect(await screen.findByRole('button', { name: 'Install skills' })).toBeDisabled();
+    expect(mockShowToast).not.toHaveBeenCalledWith(expect.any(String), 'error');
+    expect(mockShowToast).not.toHaveBeenCalledWith(expect.any(String), 'success');
+  });
+
+  it('forwards registry and source-snapshot preconditions on the legacy skills install body (finding 9)', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const skills = catalogPlugin();
+    mockHanaFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === '/api/plugins/marketplace/capabilities') return jsonResponse({ supported: true, features: {}, access: { isStudioOwner: true }, registry: { revision: 7, digest: 'a'.repeat(64) } });
+      if (url.startsWith('/api/plugins/marketplace/catalog')) return jsonResponse({ plugins: [skills], sources: [], capabilities: { supported: true, features: {} }, access: { isStudioOwner: true }, registry: { revision: 7, digest: 'a'.repeat(64) } });
+      if (url === '/api/plugins/marketplace/sources') return jsonResponse({ sources: [] });
+      if (url.includes('/readme')) return jsonResponse({ markdown: '' });
+      if (url === '/api/plugins/marketplace/skillwiki/install') {
+        const body = JSON.parse(String(init?.body || '{}'));
+        expect(body).toEqual({
+          allowDowngrade: false,
+          marketplaceId: 'llm-wiki',
+          expectedRevision: 7,
+          expectedDigest: 'a'.repeat(64),
+          expectedSourceSnapshot: skills.sourceSnapshot,
+        });
+        return jsonResponse({ ok: true, installTarget: 'hana-skills', catalogFormat: 'claude', marketplaceId: 'llm-wiki', pluginId: 'skillwiki', skills: ['wiki-query'], skipped: [], warnings: [], resolvedRevision: 'rev-1' });
+      }
+      return jsonResponse({});
+    });
+
+    render(<PluginMarketplaceTab />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Install skills' }));
+
+    await waitFor(() => expect(mockShowToast).toHaveBeenCalledWith(expect.any(String), 'success'));
+    expect(mockHanaFetch).toHaveBeenCalledWith(
+      '/api/plugins/marketplace/skillwiki/install',
+      expect.objectContaining({ method: 'POST' }),
+    );
+  });
+
+  it('hides package enable toggle when skills package is not-installed', async () => {
+    mockCatalog([catalogPlugin({
+      packageInstall: { state: 'not-installed', recorded: [], present: [], missing: [], invalid: [] },
+      packageActivation: {
+        identity: 'skillwiki@llm-wiki',
+        kind: 'marketplace-skill-package',
+        enabled: false,
+        state: 'disabled',
+        recorded: false,
+      },
+    })]);
+    render(<PluginMarketplaceTab />);
+
+    expect(await screen.findByRole('button', { name: 'Install skills' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Toggle skill package skillwiki@llm-wiki/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Package gate/)).not.toBeInTheDocument();
+  });
+
+  it('shows package enable toggle for installed skills packages and PUTs marketplaceSkillPackages clone', async () => {
+    const existingActivations = {
+      marketplaceSkillPackages: { 'other@src': { enabled: true } },
+      marketplaceSkills: { 'wiki-query@llm-wiki/skillwiki': { enabled: true } },
+      runtimePlugins: { 'demo@official': { enabled: true } },
+      agentSkillOverrides: { 'agent-a': { 'wiki-query@llm-wiki/skillwiki': { enabled: false } } },
+      agentPluginAccess: { 'agent-a': { 'demo@official': { enabled: false } } },
+    };
+    const installed = catalogPlugin({
+      canInstall: false,
+      packageInstall: {
+        state: 'installed',
+        recorded: ['wiki-query', 'wiki-sync'],
+        present: ['wiki-query', 'wiki-sync'],
+        missing: [],
+        invalid: [],
+      },
+      packageActivation: {
+        identity: 'skillwiki@llm-wiki',
+        kind: 'marketplace-skill-package',
+        enabled: true,
+        state: 'enabled',
+        recorded: false,
+        requested: false,
+      },
+    });
+    mockHanaFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === '/api/plugins/marketplace/capabilities') {
+        return jsonResponse({
+          supported: true,
+          features: {},
+          access: { isStudioOwner: true },
+          registry: { revision: 7, digest: 'a'.repeat(64) },
+          configDiagnostics: {
+            file: {
+              revision: 7,
+              activations: existingActivations,
+            },
+            summary: { revision: 7 },
+          },
+        });
+      }
+      if (url.startsWith('/api/plugins/marketplace/catalog')) {
+        return jsonResponse({
+          plugins: [installed],
+          sources: [],
+          capabilities: { supported: true, features: {} },
+          access: { isStudioOwner: true },
+          registry: { revision: 7, digest: 'a'.repeat(64) },
+          configDiagnostics: {
+            file: {
+              revision: 7,
+              activations: existingActivations,
+            },
+            summary: { revision: 7 },
+          },
+        });
+      }
+      if (url === '/api/plugins/marketplace/sources') return jsonResponse({ sources: [] });
+      if (url.includes('/readme')) return jsonResponse({ markdown: '' });
+      if (url === '/api/plugins/marketplace/config/activations') {
+        expect(init?.method).toBe('PUT');
+        const body = JSON.parse(String(init?.body || '{}'));
+        expect(body).toEqual({
+          expectedRevision: 7,
+          expectedDigest: 'a'.repeat(64),
+          activations: {
+            marketplaceSkillPackages: {
+              'other@src': { enabled: true },
+              'skillwiki@llm-wiki': { enabled: false },
+            },
+            marketplaceSkills: existingActivations.marketplaceSkills,
+            runtimePlugins: existingActivations.runtimePlugins,
+            agentSkillOverrides: existingActivations.agentSkillOverrides,
+            agentPluginAccess: existingActivations.agentPluginAccess,
+          },
+        });
+        return jsonResponse({ revision: 8 });
+      }
+      return jsonResponse({});
+    });
+    render(<PluginMarketplaceTab />);
+
+    expect(await screen.findByRole('button', { name: 'Uninstall skills' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Manage in Skills' })).toBeInTheDocument();
+    expect(screen.getByText('Package')).toBeInTheDocument();
+    expect(screen.getByText('Agent preference')).toBeInTheDocument();
+    expect(screen.getByText('Effective availability')).toBeInTheDocument();
+
+    const toggle = screen.getByRole('button', { name: 'Toggle skill package skillwiki@llm-wiki' });
+    expect(toggle).toHaveTextContent('Disable');
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+
+    fireEvent.click(toggle);
+
+    await waitFor(() => expect(mockShowToast).toHaveBeenCalledWith(expect.anything(), 'success'));
+  });
+
+  it('refreshes the marketplace config and retries a stale package-gate write once', async () => {
+    const installed = catalogPlugin({
+      canInstall: false,
+      packageInstall: { state: 'installed', recorded: ['wiki-query'], present: ['wiki-query'], missing: [] },
+      packageActivation: { identity: 'skillwiki@llm-wiki', enabled: true, state: 'enabled' },
+    });
+    const initialActivations = {
+      marketplaceSkillPackages: { 'other@src': { enabled: true } },
+      marketplaceSkills: { 'wiki-query@llm-wiki/skillwiki': { enabled: true } },
+    };
+    const freshActivations = {
+      marketplaceSkillPackages: { 'other@src': { enabled: false } },
+      marketplaceSkills: { 'wiki-query@llm-wiki/skillwiki': { enabled: false } },
+      runtimePlugins: { 'newer@source': { enabled: true } },
+    };
+    const puts: unknown[] = [];
+    mockHanaFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === '/api/plugins/marketplace/capabilities') {
+        return jsonResponse({
+          supported: true,
+          features: {},
+          access: { isStudioOwner: true },
+          registry: { revision: 7, digest: 'a'.repeat(64) },
+          configDiagnostics: { file: { revision: 7, activations: initialActivations } },
+        });
+      }
+      if (url.startsWith('/api/plugins/marketplace/catalog')) {
+        return jsonResponse({
+          plugins: [installed], sources: [], capabilities: { supported: true, features: {} },
+          access: { isStudioOwner: true }, registry: { revision: 7, digest: 'a'.repeat(64) },
+          configDiagnostics: { file: { revision: 7, activations: initialActivations } },
+        });
+      }
+      if (url === '/api/plugins/marketplace/sources') return jsonResponse({ sources: [] });
+      if (url.includes('/readme')) return jsonResponse({ markdown: '' });
+      if (url === '/api/plugins/marketplace/config') {
+        return jsonResponse({
+          registry: { revision: 11, digest: 'c'.repeat(64) },
+          configDiagnostics: { file: { revision: 11, activations: freshActivations } },
+        });
+      }
+      if (url === '/api/plugins/marketplace/config/activations' && init?.method === 'PUT') {
+        puts.push(JSON.parse(String(init.body)));
+        if (puts.length === 1) {
+          throw new Error('Marketplace registry digest conflict: expected stale, current fresh');
+        }
+        return jsonResponse({ ok: true });
+      }
+      return jsonResponse({});
+    });
+    render(<PluginMarketplaceTab />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Toggle skill package skillwiki@llm-wiki/ }));
+
+    await waitFor(() => expect(puts).toHaveLength(2));
+    expect(puts[1]).toEqual({
+      activations: {
+        marketplaceSkillPackages: {
+          'other@src': { enabled: false },
+          'skillwiki@llm-wiki': { enabled: false },
+        },
+        marketplaceSkills: { 'wiki-query@llm-wiki/skillwiki': { enabled: false } },
+        runtimePlugins: { 'newer@source': { enabled: true } },
+      },
+      expectedRevision: 11,
+      expectedDigest: 'c'.repeat(64),
+    });
+    expect(mockShowToast).toHaveBeenCalledWith('Saved', 'success');
+  });
+
+  it('refuses package gate toggle when activations snapshot is missing', async () => {
+    const installed = catalogPlugin({
+      canInstall: false,
+      packageInstall: {
+        state: 'installed',
+        recorded: ['wiki-query'],
+        present: ['wiki-query'],
+        missing: [],
+      },
+      packageActivation: {
+        identity: 'skillwiki@llm-wiki',
+        enabled: true,
+        state: 'enabled',
+      },
+    });
+    mockHanaFetch.mockImplementation(async (url: string) => {
+      if (url === '/api/plugins/marketplace/capabilities') {
+        return jsonResponse({
+          supported: true,
+          features: {},
+          access: { isStudioOwner: true },
+          registry: { revision: 7, digest: 'a'.repeat(64) },
+          configDiagnostics: { file: { revision: 7 }, summary: { revision: 7 } },
+        });
+      }
+      if (url.startsWith('/api/plugins/marketplace/catalog')) {
+        return jsonResponse({
+          plugins: [installed],
+          sources: [],
+          capabilities: { supported: true },
+          access: { isStudioOwner: true },
+          registry: { revision: 7, digest: 'a'.repeat(64) },
+          configDiagnostics: { file: { revision: 7 }, summary: { revision: 7 } },
+        });
+      }
+      if (url === '/api/plugins/marketplace/sources') return jsonResponse({ sources: [] });
+      if (url.includes('/readme')) return jsonResponse({ markdown: '' });
+      return jsonResponse({});
+    });
+    render(<PluginMarketplaceTab />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Toggle skill package skillwiki@llm-wiki/ }));
+
+    await waitFor(() => expect(mockShowToast).toHaveBeenCalledWith(
+      expect.stringContaining('missing activations snapshot'),
+      'error',
+    ));
+    expect(
+      mockHanaFetch.mock.calls.some(
+        ([path, init]) =>
+          path === '/api/plugins/marketplace/config/activations'
+          && (init as RequestInit | undefined)?.method === 'PUT',
+      ),
+    ).toBe(false);
+  });
+
+  it('hides package enable toggle for non-owners while keeping Manage in Skills', async () => {
+    const installed = catalogPlugin({
+      canInstall: false,
+      packageInstall: {
+        state: 'installed',
+        recorded: ['wiki-query'],
+        present: ['wiki-query'],
+        missing: [],
+      },
+      packageActivation: { identity: 'skillwiki@llm-wiki', enabled: true, state: 'enabled' },
+    });
+    mockHanaFetch.mockImplementation(async (url: string) => {
+      if (url === '/api/plugins/marketplace/capabilities') {
+        return jsonResponse({
+          supported: true,
+          features: {},
+          access: { isStudioOwner: false },
+          registry: { revision: 7, digest: 'a'.repeat(64) },
+        });
+      }
+      if (url.startsWith('/api/plugins/marketplace/catalog')) {
+        return jsonResponse({
+          plugins: [installed],
+          sources: [],
+          capabilities: { supported: true },
+          access: { isStudioOwner: false },
+          registry: { revision: 7, digest: 'a'.repeat(64) },
+        });
+      }
+      if (url === '/api/plugins/marketplace/sources') return jsonResponse({ sources: [] });
+      if (url.includes('/readme')) return jsonResponse({ markdown: '' });
+      return jsonResponse({});
+    });
+    render(<PluginMarketplaceTab />);
+
+    expect(await screen.findByRole('button', { name: 'Manage in Skills' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Toggle skill package skillwiki@llm-wiki/ })).not.toBeInTheDocument();
+    expect(screen.getByText('Package')).toBeInTheDocument();
+    expect(screen.getByText('Agent preference')).toBeInTheDocument();
+    expect(screen.getByText('Effective availability')).toBeInTheDocument();
+  });
+
+  it('runs source switch through plan then execute with registry preconditions', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const planText = 'Switch skillwiki@llm-wiki from custom to llm-wiki? State and trust stay source-isolated.';
+    const retained = catalogPlugin({
+      retained: true,
+      active: false,
+      canInstall: false,
+    });
+    mockHanaFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === '/api/plugins/marketplace/capabilities') {
+        return jsonResponse({ supported: true, features: {}, access: { isStudioOwner: true }, registry: { revision: 7, digest: 'a'.repeat(64) } });
+      }
+      if (url.startsWith('/api/plugins/marketplace/catalog')) {
+        return jsonResponse({ plugins: [retained], sources: [], capabilities: { supported: true, features: {} }, access: { isStudioOwner: true }, registry: { revision: 7, digest: 'a'.repeat(64) } });
+      }
+      if (url === '/api/plugins/marketplace/sources') return jsonResponse({ sources: [] });
+      if (url === '/api/plugins/skillwiki/source-switch/plan') {
+        expect(init?.method).toBe('POST');
+        expect(JSON.parse(String(init?.body))).toEqual({
+          marketplaceId: 'llm-wiki',
+          expectedRevision: 7,
+          expectedDigest: 'a'.repeat(64),
+        });
+        return jsonResponse({ planToken: 'signed-plan-token', confirmationText: planText });
+      }
+      if (url === '/api/plugins/skillwiki/source-switch') {
+        expect(init?.method).toBe('POST');
+        expect(JSON.parse(String(init?.body))).toEqual({
+          marketplaceId: 'llm-wiki',
+          planToken: 'signed-plan-token',
+          confirmation: planText,
+        });
+        return jsonResponse({ ok: true });
+      }
+      if (url.includes('/readme')) return jsonResponse({ markdown: '' });
+      return jsonResponse({});
+    });
+
+    render(<PluginMarketplaceTab />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Switch source' }));
+
+    await waitFor(() => expect(confirmSpy).toHaveBeenCalledWith(planText));
+    await waitFor(() => expect(mockShowToast).toHaveBeenCalledWith('settings.plugins.marketSourceSwitched', 'success'));
+    const switchCalls = mockHanaFetch.mock.calls.filter(([path]) => String(path).includes('/source-switch'));
+    expect(switchCalls.map(([path]) => path)).toEqual([
+      '/api/plugins/skillwiki/source-switch/plan',
+      '/api/plugins/skillwiki/source-switch',
+    ]);
+  });
+});

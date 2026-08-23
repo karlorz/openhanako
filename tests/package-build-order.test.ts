@@ -34,6 +34,29 @@ describe("package build order", () => {
     expectClientBeforeServer("dist:linux", scripts["dist:linux"]);
   });
 
+  it("prepares raw macOS server runtime after build and before Electron Builder", () => {
+    const scripts = packageScripts();
+    for (const scriptName of ["pack", "dist"]) {
+      const command = scripts[scriptName];
+      const serverIndex = command.indexOf("npm run build:server");
+      const prepareIndex = command.indexOf("npm run prepare:desktop-package");
+      const builderIndex = command.indexOf("electron-builder");
+      expect(prepareIndex, `${scriptName} must prepare the raw server runtime`).toBeGreaterThan(serverIndex);
+      expect(prepareIndex, `${scriptName} must prepare the runtime before packaging`).toBeLessThan(builderIndex);
+    }
+  });
+
+  it("writes local build metadata before ad-hoc signing during local macOS install", () => {
+    const scripts = packageScripts();
+
+    expectTextBefore(
+      "install:local",
+      scripts["install:local"],
+      "node scripts/write-local-build-info.mjs",
+      "node scripts/sign-local.cjs",
+    );
+  });
+
   it("builds renderer assets before the server runtime in the release workflow", () => {
     const workflow = fs.readFileSync(path.join(rootDir, ".github", "workflows", "build.yml"), "utf-8");
 

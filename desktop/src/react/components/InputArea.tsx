@@ -19,9 +19,11 @@ import { isAudioFileName } from '../utils/file-kind';
 import { useI18n } from '../hooks/use-i18n';
 import {
   continueDeletedAgentSession,
-  ensureSession,
+  ensureSessionWithOutcome,
   loadSessions,
+  recoverPendingSessionDraftIdentity,
   upsertOptimisticSessionFirstMessage,
+  type SessionEnsureFailure,
   type SessionRef,
 } from '../stores/session-actions';
 import { getWebSocket } from '../services/websocket';
@@ -66,6 +68,7 @@ import { shouldAllowInputFocus } from '../utils/input-focus-policy';
 import { calculateInputCardBottomInset, parseCssPixels } from '../utils/input-card-layout';
 import { buildWaveformFromBlob, buildWaveformFromPcmChunks } from '../utils/audio-waveform';
 import { prepareChatImageUpload } from '../utils/chat-image-upload-compression';
+import { upsertUploadedSessionFile } from '../utils/uploaded-session-file';
 import {
   XING_PROMPT, executeDiary, executeCompact, executeSlashViaWs, buildSlashCommands, getSlashMatches,
   resolveSlashSubmitSelection, applySlashCompletion,
@@ -75,6 +78,7 @@ import { attachFilesFromPaths } from '../MainContent';
 import { searchDeskFiles } from '../stores/desk-actions';
 import { hanaFetch } from '../hooks/use-hana-fetch';
 import type { DeskSearchResult } from '../types';
+import { isLocalOwnerConnection, resolveServerConnection } from '../services/server-connection';
 import styles from './input/InputArea.module.css';
 import type { AudioWaveform, ChatListItem, SessionConfirmationBlock, SessionModel } from '../stores/chat-types';
 
@@ -84,6 +88,19 @@ function modelUnavailableMessageKey(reason: SessionModel['unavailableReason']): 
   if (reason === 'model_removed') return 'model.unavailableReason.modelRemoved';
   if (reason === 'provider_not_configured') return 'model.unavailableReason.providerNotConfigured';
   return 'model.unavailableReason.temporarilyUnavailable';
+}
+
+function showSessionResolutionFailure(
+  failure: SessionEnsureFailure,
+  fallbackDedupeKey: string,
+  text: string,
+  actionLabel: string,
+): void {
+  if (failure.status === 'create') return;
+  useStore.getState().addToast(text, 'error', 9000, {
+    dedupeKey: failure.status === 'draft-mismatch' ? 'send-identity-mismatch' : fallbackDedupeKey,
+    action: { label: actionLabel, onClick: recoverPendingSessionDraftIdentity },
+  });
 }
 
 function chatVideoMimeTypeForName(name: string, fallback?: string): string {
@@ -808,19 +825,18 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
       return false;
     }
 
-    let sessionRef: Readonly<SessionRef> | null = null;
-    if (pendingNewSession) {
-      sessionRef = await ensureSession(pendingDraftId);
-      if (!sessionRef) return false;
-      loadSessions();
-    } else {
-      const state = useStore.getState();
-      const projection = state.sessions.find(session => session.path === state.currentSessionPath);
-      const sessionId = state.currentSessionId || projection?.sessionId || null;
-      const agentId = projection?.agentId || state.currentAgentId || null;
-      if (!state.currentSessionPath || !sessionId || !agentId) return false;
-      sessionRef = Object.freeze({ sessionId, sessionPath: state.currentSessionPath, agentId });
+    const ensureOutcome = await ensureSessionWithOutcome(pendingNewSession ? pendingDraftId : null);
+    if (ensureOutcome.status !== 'ok') {
+      showSessionResolutionFailure(
+        ensureOutcome,
+        'send-missing-session',
+        t('error.noActiveSession'),
+        t('sidebar.newChat'),
+      );
+      return false;
     }
+    const sessionRef = ensureOutcome.ref;
+    if (pendingNewSession || !_s.currentSessionPath) loadSessions();
 
     ws.send(JSON.stringify({
       type: 'prompt',
@@ -997,6 +1013,7 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
               return undefined;
             })
             : undefined;
+          const sessionPath = useStore.getState().currentSessionPath;
           const res = await hanaFetch('/api/upload-blob', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1005,12 +1022,13 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
               base64Data: uploadPayload.base64Data,
               mimeType: uploadPayload.mimeType,
               ...(waveform ? { waveform } : {}),
-              ...(useStore.getState().currentSessionPath ? { sessionPath: useStore.getState().currentSessionPath } : {}),
+              ...(sessionPath ? { sessionPath } : {}),
             }),
           });
           const data = await res.json();
           const upload = data?.uploads?.[0];
           if (upload?.dest) {
+            upsertUploadedSessionFile(upload, sessionPath);
             addAttachedFile({
               fileId: upload.fileId,
               path: upload.dest,
@@ -1043,7 +1061,7 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
     if (typeof window.platform?.selectFiles === 'function') {
       try {
         const paths = await window.platform.selectFiles();
-        if (paths && paths.length > 0) await attachFilesFromPaths(paths);
+        if (paths && paths.length > 0) await attachFilesFromPaths(paths, {}, { pathOwner: 'client' });
       } finally {
         restoreEditorFocus();
       }
@@ -1053,22 +1071,21 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
     window.setTimeout(restoreEditorFocus, 0);
   }, [inputLocked, restoreEditorFocus, surface]);
 
-  const ensureVoiceSessionRef = useCallback(async (): Promise<Readonly<SessionRef>> => {
+  const ensureVoiceSessionRef = useCallback(async (): Promise<Readonly<SessionRef> | null> => {
     const state = useStore.getState();
-    const sessionPath = state.currentSessionPath;
-    if (sessionPath) {
-      const projection = state.sessions.find(session => session.path === sessionPath);
-      const sessionId = state.currentSessionId || projection?.sessionId || null;
-      const agentId = projection?.agentId || state.currentAgentId || null;
-      if (!sessionId || !agentId) throw new Error('missing session identity');
-      return Object.freeze({ sessionId, sessionPath, agentId });
+    const ensureOutcome = await ensureSessionWithOutcome(state.pendingNewSession ? state.pendingDraftId : null);
+    if (ensureOutcome.status !== 'ok') {
+      showSessionResolutionFailure(
+        ensureOutcome,
+        'voice-missing-session',
+        t('error.noActiveSession'),
+        t('sidebar.newChat'),
+      );
+      return null;
     }
-    if (!pendingNewSession) throw new Error('missing session path');
-    const ref = await ensureSession(pendingDraftId);
-    if (!ref) throw new Error('failed to create session');
-    loadSessions();
-    return ref;
-  }, [pendingDraftId, pendingNewSession]);
+    if (state.pendingNewSession || !state.currentSessionPath) loadSessions();
+    return ensureOutcome.ref;
+  }, [t]);
 
   const sendVoiceAudioAttachment = useCallback(async (file: {
     fileId?: string;
@@ -1098,6 +1115,7 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
     setSending(true);
     try {
       const sessionRef = await ensureVoiceSessionRef();
+      if (!sessionRef) return false;
       const ws = getWebSocket();
       if (!ws || typeof ws.send !== 'function') {
         throw new Error('websocket unavailable');
@@ -1180,6 +1198,7 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
       audioRecordingSeqRef.current = index;
       const name = t('input.recordedAudioName', { index });
       const sessionRef = await ensureVoiceSessionRef();
+      if (!sessionRef) return;
       const res = await hanaFetch('/api/upload-blob', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1198,6 +1217,7 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
       if (!upload?.dest) {
         throw new Error(upload?.error || 'audio upload failed');
       }
+      upsertUploadedSessionFile(upload, sessionRef.sessionPath);
       const sent = await sendVoiceAudioAttachment({
         fileId: upload.fileId,
         path: upload.dest,
@@ -1510,7 +1530,7 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
       }
       if (pathItems.length > 0) {
         e.preventDefault();
-        void Promise.resolve(attachFilesFromPaths(pathItems, nameMap)).catch((err) => {
+        void Promise.resolve(attachFilesFromPaths(pathItems, nameMap, { pathOwner: 'client' })).catch((err) => {
           console.warn('[paste] attach clipboard file paths failed', err);
         });
         return true;
@@ -1536,6 +1556,7 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
               base64Data,
               mimeType,
             });
+            const sessionPath = useStore.getState().currentSessionPath;
             const res = await hanaFetch('/api/upload-blob', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -1543,13 +1564,21 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
                 name: uploadPayload.name,
                 base64Data: uploadPayload.base64Data,
                 mimeType: uploadPayload.mimeType,
-                ...(useStore.getState().currentSessionPath ? { sessionPath: useStore.getState().currentSessionPath } : {}),
+                ...(sessionPath ? { sessionPath } : {}),
               }),
             });
             const data = await res.json();
             const upload = data?.uploads?.[0];
             if (upload?.dest) {
-              addAttachedFile({ fileId: upload.fileId, path: upload.dest, name: upload.name || uploadPayload.name, isDirectory: false });
+              upsertUploadedSessionFile(upload, sessionPath);
+              addAttachedFile({
+                fileId: upload.fileId,
+                path: upload.dest,
+                name: upload.name || uploadPayload.name,
+                isDirectory: false,
+                base64Data: uploadPayload.base64Data,
+                mimeType: uploadPayload.mimeType,
+              });
             } else {
               notifyPasteUploadFailure(t, upload?.error);
               console.warn('[paste] upload-blob failed', upload?.error || data);
@@ -1778,23 +1807,19 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
 
     try {
       let sessionRef = clickedSessionRef;
-      if (clickedPendingDraftId) {
-        sessionRef = await ensureSession(clickedPendingDraftId);
-        if (!sessionRef) {
-          // ensureSession 拿不到会话身份：不能静默吞掉这次发送，否则用户会以为点了没反应（#2101）。
-          useStore.getState().addToast(t('error.noActiveSession'), 'error', 6000, {
-            dedupeKey: 'send-missing-session',
-          });
+      if (clickState.pendingNewSession || !sessionRef) {
+        const ensureOutcome = await ensureSessionWithOutcome(clickedPendingDraftId);
+        if (ensureOutcome.status !== 'ok') {
+          showSessionResolutionFailure(
+            ensureOutcome,
+            'send-missing-session',
+            t('error.noActiveSession'),
+            t('sidebar.newChat'),
+          );
           return;
         }
+        sessionRef = ensureOutcome.ref;
         loadSessions();
-      }
-      if (!sessionRef) {
-        // 走到这里说明既不是 pending 新会话、也没有已激活会话身份——同样是无法发送，显式报错而非静默 return。
-        useStore.getState().addToast(t('error.noActiveSession'), 'error', 6000, {
-          dedupeKey: 'send-missing-session',
-        });
-        return;
       }
 
       // 分离原生媒体和普通附件；后端决定图片视觉桥、视频/音频原生能力或显式报错。
@@ -1869,6 +1894,7 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
       // 图片 / 视频读 base64。统一走 platform 层：Electron 里 platform 代理到 hana，
       // Web/PWA 里 platform 代理到 HTTP fallback。
       const platform = window.platform;
+      const canReadLocalAttachmentBytes = isLocalOwnerConnection(resolveServerConnection(useStore.getState()));
       const images: Array<{ type: 'image'; data: string; mimeType: string }> = [];
       const videos: Array<{ type: 'video'; data: string; mimeType: string }> = [];
       const audios: Array<{ type: 'audio'; data: string; mimeType: string }> = [];
@@ -1881,6 +1907,8 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
         try {
           if (img.base64Data && img.mimeType) {
             images.push({ type: 'image', data: img.base64Data, mimeType: img.mimeType });
+          } else if (!canReadLocalAttachmentBytes) {
+            imageFileOnlyPaths.add(img.path);
           } else {
             const base64 = await platform?.readFileBase64?.(img.path);
             if (base64) {
@@ -1986,27 +2014,49 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
       }
 
       const clientMessageId = createClientUserMessageId();
+      const displayAttachments = allFiles.length > 0 ? allFiles.map(f => {
+        const cached = imageBase64Map.get(f.path);
+        const cachedVideo = videoBase64Map.get(f.path);
+        const cachedAudio = audioBase64Map.get(f.path);
+        const imageFile = !f.isDirectory && isImageFile(f.name);
+        return {
+          fileId: f.fileId,
+          path: f.path,
+          name: f.name,
+          isDir: !!f.isDirectory,
+          mimeType: f.mimeType || cached?.mimeType || cachedVideo?.mimeType || cachedAudio?.mimeType || undefined,
+          visionAuxiliary: imageFile && !supportsVision && !imagesAsFileOnly && !imageFileOnlyPaths.has(f.path),
+          ...(f.waveform ? { waveform: f.waveform } : {}),
+        };
+      }) : undefined;
+      const optimisticAttachments = displayAttachments?.map((attachment, index) => {
+        const file = allFiles[index];
+        const cached = imageBase64Map.get(file.path)
+          || videoBase64Map.get(file.path)
+          || audioBase64Map.get(file.path);
+        const directBase64 = 'base64Data' in file && typeof file.base64Data === 'string'
+          ? file.base64Data
+          : '';
+        const directMime = 'mimeType' in file && typeof file.mimeType === 'string'
+          ? file.mimeType
+          : attachment.mimeType;
+        const inline = directBase64
+          ? { base64Data: directBase64, mimeType: directMime }
+          : cached;
+        if (!inline?.base64Data || !inline.mimeType) return attachment;
+        return {
+          ...attachment,
+          base64Data: inline.base64Data,
+          mimeType: inline.mimeType,
+        };
+      });
       const displayMessage = {
         text,
         skills: skills.length > 0 ? skills : undefined,
         quotedText: quotes.length > 0 ? quotes.map(q => q.text).join('\n\n') : undefined,
         sessionRefs: sessionRefs.length > 0 ? sessionRefs : undefined,
         agentMentions: agentMentions.length > 0 ? agentMentions : undefined,
-        attachments: allFiles.length > 0 ? allFiles.map(f => {
-          const cached = imageBase64Map.get(f.path);
-          const cachedVideo = videoBase64Map.get(f.path);
-          const cachedAudio = audioBase64Map.get(f.path);
-          const imageFile = !f.isDirectory && isImageFile(f.name);
-          return {
-            fileId: f.fileId,
-            path: f.path,
-            name: f.name,
-            isDir: !!f.isDirectory,
-            mimeType: f.mimeType || cached?.mimeType || cachedVideo?.mimeType || cachedAudio?.mimeType || undefined,
-            visionAuxiliary: imageFile && !supportsVision && !imagesAsFileOnly && !imageFileOnlyPaths.has(f.path),
-            ...(f.waveform ? { waveform: f.waveform } : {}),
-          };
-        }) : undefined,
+        attachments: displayAttachments,
       };
 
       useStore.getState().appendOptimisticUserMessage(sessionPathForSend, {
@@ -2015,7 +2065,7 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
         text,
         textHtml: text ? renderMarkdown(text) : undefined,
         timestamp: Date.now(),
-        attachments: displayMessage.attachments,
+        attachments: optimisticAttachments,
         quotedText: displayMessage.quotedText,
         skills: displayMessage.skills,
         sendStatus: 'pending',

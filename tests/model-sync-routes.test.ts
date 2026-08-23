@@ -932,6 +932,72 @@ describe("model sync related routes", () => {
     expect(engine.emitEvent).toHaveBeenCalledTimes(1);
   });
 
+  it("provider model delete decodes slash-bearing model ids left encoded by the HTTP adapter", async () => {
+    const { createProvidersRoute } = await import("../server/routes/providers.ts");
+    const app = new Hono();
+    const removeModel = vi.fn();
+    const engine = {
+      currentAgentId: "hana",
+      onProviderChanged: vi.fn().mockResolvedValue(undefined),
+      emitEvent: vi.fn(),
+      providerRegistry: { removeModel },
+      hanakoHome: "/tmp",
+    };
+
+    app.route("/api", createProvidersRoute(engine));
+
+    const res = await app.request("/api/providers/openrouter/models/openrouter%252Fqwen%252Fqwen-vl-plus", {
+      method: "DELETE",
+    });
+
+    expect(res.status).toBe(200);
+    expect(removeModel).toHaveBeenCalledWith("openrouter", "openrouter/qwen/qwen-vl-plus");
+  });
+
+  it("deletes a slash-bearing model id without repopulating it after reload", async () => {
+    const { createProvidersRoute } = await import("../server/routes/providers.ts");
+    const { ProviderRegistry } = await import("../core/provider-registry.ts");
+    const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "hana-slash-model-delete-"));
+    try {
+      const registry = new ProviderRegistry(tmpHome);
+      registry.saveProvider("custom-local", {
+        display_name: "Custom Local",
+        auth_type: "api-key",
+        api_key: "sk-local",
+        base_url: "https://local.example/v1",
+        api: "openai-completions",
+        models: ["codex/model-x", "keep-model"],
+      });
+
+      const engine = {
+        currentAgentId: "hana",
+        onProviderChanged: vi.fn().mockResolvedValue(undefined),
+        emitEvent: vi.fn(),
+        providerRegistry: registry,
+        hanakoHome: tmpHome,
+      };
+      const app = new Hono();
+      app.route("/api", createProvidersRoute(engine));
+
+      const res = await app.request(`/api/providers/custom-local/models/${encodeURIComponent("codex/model-x")}`, {
+        method: "DELETE",
+      });
+      expect(res.status).toBe(200);
+      expect(registry.getProviderModels("custom-local")).toEqual(["keep-model"]);
+
+      registry.reload();
+      expect(registry.getProviderModels("custom-local")).toEqual(["keep-model"]);
+      expect(registry.getProviderModels("custom-local")).not.toContain("codex/model-x");
+
+      const reloaded = new ProviderRegistry(tmpHome);
+      expect(reloaded.getProviderModels("custom-local")).toEqual(["keep-model"]);
+      expect(reloaded.getAllProvidersRaw()["custom-local"].models).toEqual(["keep-model"]);
+      expect(reloaded.getAllProvidersRaw()["custom-local"].models).not.toContain("codex/model-x");
+    } finally {
+      fs.rmSync(tmpHome, { recursive: true, force: true });
+    }
+  });
+
   it("provider model update refreshes runtime models and notifies the app", async () => {
     const { createProvidersRoute } = await import("../server/routes/providers.ts");
     const app = new Hono();

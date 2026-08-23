@@ -5,8 +5,14 @@ import path from "path";
 
 import { healCredentialFileModes } from "../core/credential-file-healer.ts";
 import { LOCAL_PROVIDER_PLUGINS_DIR } from "../core/local-provider-plugin-store.ts";
-import { PLUGIN_CONFIG_FILENAME, PLUGIN_DATA_DIRNAME } from "../core/plugin-config.ts";
+import {
+  PLUGIN_CONFIG_FILENAME,
+  PLUGIN_DATA_DIRNAME,
+  PLUGIN_SECRETS_DIRNAME,
+  PLUGIN_SECRETS_FILENAME,
+} from "../core/plugin-config.ts";
 import { SECURITY_DIR } from "../core/security-dir.ts";
+import { PluginInstallRecords } from "../lib/plugin-install-records.ts";
 import { SECRET_TMP_SUFFIX } from "../shared/secret-fs.ts";
 
 const POSIX = process.platform !== "win32";
@@ -26,8 +32,47 @@ function writeOpen(relativePath: string, content = "{}\n") {
   return target;
 }
 
+function writeOpenAt(target: string, content = "{}\n") {
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.writeFileSync(target, content);
+  fs.chmodSync(target, 0o644);
+  return target;
+}
+
 function modeOf(target: string) {
   return fs.statSync(target).mode & 0o777;
+}
+
+function digest(character: string) {
+  return character.repeat(64);
+}
+
+function registerMarketplaceInstall(
+  records: PluginInstallRecords,
+  marketplaceId: string,
+  pluginId: string,
+  artifactDigest: string,
+) {
+  records.retainAndActivate({
+    marketplaceId,
+    pluginId,
+    artifactDigest,
+    version: "1.0.0",
+    sourceFingerprint: digest("1"),
+    catalogSha256: digest("2"),
+    packageSha256: artifactDigest,
+    artifactPath: "/tmp/marketplace-artifact",
+    action: "install",
+    result: "ok",
+  });
+}
+
+function marketplaceConfigPath(marketplaceId: string, pluginId: string) {
+  return path.join(PLUGIN_DATA_DIRNAME, marketplaceId, pluginId, PLUGIN_CONFIG_FILENAME);
+}
+
+function marketplaceSecretsPath(marketplaceId: string, pluginId: string) {
+  return path.join(PLUGIN_SECRETS_DIRNAME, marketplaceId, pluginId, PLUGIN_SECRETS_FILENAME);
 }
 
 afterEach(() => {
@@ -277,5 +322,222 @@ describe.skipIf(!POSIX)("healCredentialFileModes", () => {
     expect(result.healed).toContain("models.json");
     expect(modeOf(path.join(root, "models.json"))).toBe(0o600);
     expect(lines.join("\n")).toContain("provider-catalog.json");
+  });
+
+  // --- Blocker B regression tests: source-qualified Marketplace credential healing ---
+
+  it("heals exact active and retained Marketplace config/secrets identities", () => {
+    const root = makeHome();
+    const records = new PluginInstallRecords({ hanakoHome: root });
+    // The second source becomes active; the first stays retained. Both remain
+    // valid credential-storage identities, even though they share pluginId.
+    registerMarketplaceInstall(records, "llm-wiki", "skillwiki", digest("a"));
+    registerMarketplaceInstall(records, "team-plugins", "skillwiki", digest("b"));
+    const identities = [
+      { marketplaceId: "llm-wiki", pluginId: "skillwiki" },
+      { marketplaceId: "team-plugins", pluginId: "skillwiki" },
+    ];
+    const configs = identities.map(({ marketplaceId, pluginId }) => marketplaceConfigPath(marketplaceId, pluginId));
+    const secrets = identities.map(({ marketplaceId, pluginId }) => marketplaceSecretsPath(marketplaceId, pluginId));
+    for (const target of [...configs, ...secrets]) writeOpen(target, '{"api_key":"value"}\n');
+    for (const directory of [
+      PLUGIN_SECRETS_DIRNAME,
+      "llm-wiki",
+      "team-plugins",
+    ]) {
+      const target = directory === PLUGIN_SECRETS_DIRNAME
+        ? path.join(root, directory)
+        : path.join(root, PLUGIN_SECRETS_DIRNAME, directory);
+      fs.chmodSync(target, 0o755);
+    }
+    for (const { marketplaceId, pluginId } of identities) {
+      fs.chmodSync(path.join(root, PLUGIN_SECRETS_DIRNAME, marketplaceId, pluginId), 0o755);
+    }
+
+    const result = healCredentialFileModes({ hanakoHome: root, marketplaceInstallRecords: records });
+
+    for (const target of [...configs, ...secrets]) {
+      expect(modeOf(path.join(root, target))).toBe(0o600);
+      expect(result.healed).toContain(target);
+    }
+    // The dedicated root, each recognized source, and each recognized plugin
+    // directory are private. Public plugin-data parents are intentionally not.
+    expect(modeOf(path.join(root, PLUGIN_SECRETS_DIRNAME))).toBe(0o700);
+    for (const { marketplaceId, pluginId } of identities) {
+      expect(modeOf(path.join(root, PLUGIN_SECRETS_DIRNAME, marketplaceId))).toBe(0o700);
+      expect(modeOf(path.join(root, PLUGIN_SECRETS_DIRNAME, marketplaceId, pluginId))).toBe(0o700);
+    }
+  });
+
+  it("leaves unregistered and runtime paths untouched while retaining the bare MCP config pass", () => {
+    const root = makeHome();
+    const records = new PluginInstallRecords({ hanakoHome: root });
+    registerMarketplaceInstall(records, "registered", "plugin", digest("c"));
+    const registeredConfig = marketplaceConfigPath("registered", "plugin");
+    const registeredSecrets = marketplaceSecretsPath("registered", "plugin");
+    const unregisteredConfig = marketplaceConfigPath("unregistered", "plugin");
+    const unregisteredSecrets = marketplaceSecretsPath("unregistered", "plugin");
+    const officeJob = path.join(PLUGIN_DATA_DIRNAME, "office", "jobs", PLUGIN_CONFIG_FILENAME);
+    const officeGenerated = path.join(PLUGIN_DATA_DIRNAME, "office", "generated", PLUGIN_CONFIG_FILENAME);
+    const nestedMcp = path.join(PLUGIN_DATA_DIRNAME, "mcp", "runtime-child", PLUGIN_CONFIG_FILENAME);
+    const mcpConfig = path.join(PLUGIN_DATA_DIRNAME, "mcp", PLUGIN_CONFIG_FILENAME);
+    const neighbor = path.join(PLUGIN_DATA_DIRNAME, "registered", "plugin", "generated", "output.txt");
+    for (const target of [registeredConfig, registeredSecrets, unregisteredConfig, unregisteredSecrets, officeJob, officeGenerated, nestedMcp, mcpConfig, neighbor]) {
+      writeOpen(target);
+    }
+    for (const target of [unregisteredConfig, unregisteredSecrets, officeJob, officeGenerated, nestedMcp, neighbor]) {
+      fs.chmodSync(path.join(root, target), 0o755);
+    }
+    const registeredDataSourceDir = path.join(root, PLUGIN_DATA_DIRNAME, "registered");
+    const registeredDataPluginDir = path.join(registeredDataSourceDir, "plugin");
+    fs.chmodSync(registeredDataSourceDir, 0o755);
+    fs.chmodSync(registeredDataPluginDir, 0o755);
+
+    const result = healCredentialFileModes({ hanakoHome: root, marketplaceInstallRecords: records });
+
+    expect(modeOf(path.join(root, registeredConfig))).toBe(0o600);
+    expect(modeOf(path.join(root, registeredSecrets))).toBe(0o600);
+    for (const target of [unregisteredConfig, unregisteredSecrets, officeJob, officeGenerated, nestedMcp, neighbor]) {
+      expect(modeOf(path.join(root, target))).toBe(0o755);
+      expect(result.healed).not.toContain(target);
+    }
+    expect(modeOf(path.join(root, mcpConfig))).toBe(0o600);
+    expect(modeOf(registeredDataSourceDir)).toBe(0o755);
+    expect(modeOf(registeredDataPluginDir)).toBe(0o755);
+  });
+
+  it("skips source-qualified root symlinks without traversing their external targets", () => {
+    const root = makeHome();
+    const records = new PluginInstallRecords({ hanakoHome: root });
+    registerMarketplaceInstall(records, "root-source", "root-plugin", digest("d"));
+    const config = marketplaceConfigPath("root-source", "root-plugin");
+    const secrets = marketplaceSecretsPath("root-source", "root-plugin");
+    const externalDataRoot = path.join(root, "outside-plugin-data");
+    const externalSecretsRoot = path.join(root, "outside-plugin-secrets");
+    const externalConfig = writeOpenAt(path.join(externalDataRoot, "root-source", "root-plugin", PLUGIN_CONFIG_FILENAME));
+    const externalSecrets = writeOpenAt(path.join(externalSecretsRoot, "root-source", "root-plugin", PLUGIN_SECRETS_FILENAME));
+    fs.symlinkSync(externalDataRoot, path.join(root, PLUGIN_DATA_DIRNAME));
+    fs.symlinkSync(externalSecretsRoot, path.join(root, PLUGIN_SECRETS_DIRNAME));
+
+    const result = healCredentialFileModes({ hanakoHome: root, marketplaceInstallRecords: records });
+
+    expect(modeOf(externalConfig)).toBe(0o644);
+    expect(modeOf(externalSecrets)).toBe(0o644);
+    expect(result.healed).not.toContain(config);
+    expect(result.healed).not.toContain(secrets);
+    expect(result.failed).toEqual([]);
+  });
+
+  it("skips Marketplace-parent, plugin-parent, and final-file symlinks for both storage trees", () => {
+    const root = makeHome();
+    const records = new PluginInstallRecords({ hanakoHome: root });
+    const outsideTargets: string[] = [];
+    const unsafePaths: string[] = [];
+    const trees = [
+      { rootName: PLUGIN_DATA_DIRNAME, filename: PLUGIN_CONFIG_FILENAME, pathFor: marketplaceConfigPath },
+      { rootName: PLUGIN_SECRETS_DIRNAME, filename: PLUGIN_SECRETS_FILENAME, pathFor: marketplaceSecretsPath },
+    ];
+    const levels = ["marketplace", "plugin", "file"] as const;
+
+    for (const [treeIndex, tree] of trees.entries()) {
+      for (const [levelIndex, level] of levels.entries()) {
+        const marketplaceId = `source${treeIndex}${levelIndex}`;
+        const pluginId = `plugin${treeIndex}${levelIndex}`;
+        registerMarketplaceInstall(records, marketplaceId, pluginId, digest(`${treeIndex + levelIndex + 3}`));
+        const treeRoot = path.join(root, tree.rootName);
+        const canonicalTarget = path.join(treeRoot, marketplaceId, pluginId, tree.filename);
+        const externalTarget = path.join(root, "outside", tree.rootName, level, marketplaceId, pluginId, tree.filename);
+        writeOpenAt(externalTarget);
+        outsideTargets.push(externalTarget);
+        unsafePaths.push(tree.pathFor(marketplaceId, pluginId));
+
+        if (level === "marketplace") {
+          fs.mkdirSync(treeRoot, { recursive: true });
+          fs.symlinkSync(path.dirname(path.dirname(externalTarget)), path.join(treeRoot, marketplaceId));
+        } else if (level === "plugin") {
+          fs.mkdirSync(path.join(treeRoot, marketplaceId), { recursive: true });
+          fs.symlinkSync(path.dirname(externalTarget), path.join(treeRoot, marketplaceId, pluginId));
+        } else {
+          fs.mkdirSync(path.dirname(canonicalTarget), { recursive: true });
+          fs.symlinkSync(externalTarget, canonicalTarget);
+        }
+      }
+    }
+
+    const result = healCredentialFileModes({ hanakoHome: root, marketplaceInstallRecords: records });
+
+    for (const target of outsideTargets) expect(modeOf(target)).toBe(0o644);
+    for (const target of unsafePaths) expect(result.healed).not.toContain(target);
+    expect(result.failed).toEqual([]);
+  });
+
+  it("skips directories named config.json or secrets.json", () => {
+    const root = makeHome();
+    const records = new PluginInstallRecords({ hanakoHome: root });
+    registerMarketplaceInstall(records, "directory-target", "plugin", digest("e"));
+    const config = path.join(root, marketplaceConfigPath("directory-target", "plugin"));
+    const secrets = path.join(root, marketplaceSecretsPath("directory-target", "plugin"));
+    fs.mkdirSync(config, { recursive: true });
+    fs.mkdirSync(secrets, { recursive: true });
+    fs.chmodSync(config, 0o755);
+    fs.chmodSync(secrets, 0o755);
+
+    const result = healCredentialFileModes({ hanakoHome: root, marketplaceInstallRecords: records });
+
+    expect(modeOf(config)).toBe(0o755);
+    expect(modeOf(secrets)).toBe(0o755);
+    expect(result.healed).not.toContain(marketplaceConfigPath("directory-target", "plugin"));
+    expect(result.healed).not.toContain(marketplaceSecretsPath("directory-target", "plugin"));
+    expect(result.failed).toEqual([]);
+  });
+
+  it("does not infer Marketplace targets from missing, malformed, or legacy-unqualified records", () => {
+    const root = makeHome();
+    const malformedConfig = marketplaceConfigPath("malformed-source", "plugin");
+    const legacyConfig = marketplaceConfigPath("legacy-unqualified", "legacy-plugin");
+    const malformedSecrets = marketplaceSecretsPath("malformed-source", "plugin");
+    const legacySecrets = marketplaceSecretsPath("legacy-unqualified", "legacy-plugin");
+    for (const target of [malformedConfig, legacyConfig, malformedSecrets, legacySecrets]) writeOpen(target);
+    const recordsPath = path.join(root, "plugin-installs.json");
+    const recordDigest = digest("f");
+    fs.writeFileSync(recordsPath, `${JSON.stringify({
+      version: 2,
+      plugins: {
+        malformed: {
+          schemaVersion: 2,
+          pluginId: "plugin",
+          activeMarketplaceId: "malformed-source",
+          activeArtifactDigest: recordDigest,
+          retained: {
+            "malformed-source": {
+              [recordDigest]: { marketplaceId: "different-source", artifactDigest: recordDigest },
+            },
+          },
+          transaction: null,
+          history: [],
+        },
+        legacy: {
+          schemaVersion: 2,
+          pluginId: "legacy-plugin",
+          activeMarketplaceId: "legacy-unqualified",
+          activeArtifactDigest: recordDigest,
+          retained: {
+            "legacy-unqualified": {
+              [recordDigest]: { marketplaceId: "legacy-unqualified", artifactDigest: recordDigest },
+            },
+          },
+          transaction: null,
+          history: [],
+        },
+      },
+    }, null, 2)}\n`);
+
+    const result = healCredentialFileModes({ hanakoHome: root });
+
+    for (const target of [malformedConfig, legacyConfig, malformedSecrets, legacySecrets]) {
+      expect(modeOf(path.join(root, target))).toBe(0o644);
+      expect(result.healed).not.toContain(target);
+    }
+    expect(result.failed).toEqual([]);
   });
 });

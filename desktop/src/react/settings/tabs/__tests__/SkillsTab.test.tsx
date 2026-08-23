@@ -78,7 +78,13 @@ vi.mock('../skills/SkillRow', () => ({
     onDragOver,
     onDrop,
   }: {
-    skill: { name: string; enabled: boolean };
+    skill: {
+      name: string;
+      enabled: boolean;
+      active?: boolean;
+      inactiveReason?: string | null;
+      marketplacePackage?: { identity: string; packageEnabled?: boolean } | null;
+    };
     draggable?: boolean;
     extraActions?: React.ReactNode;
     onToggle?: (name: string, enabled: boolean) => void;
@@ -91,6 +97,10 @@ vi.mock('../skills/SkillRow', () => ({
       data-testid={`skill-row-${skill.name}`}
       data-skill-name={skill.name}
       data-enabled={String(skill.enabled)}
+      data-effective-enabled={String(skill.active ?? skill.enabled)}
+      data-active={skill.active == null ? undefined : String(skill.active)}
+      data-marketplace-package={skill.marketplacePackage?.identity}
+      data-inactive-reason={skill.inactiveReason || undefined}
       draggable={draggable}
       onDragStart={(event) => onDragStart?.(event, skill.name)}
       onDragOver={onDragOver}
@@ -100,7 +110,10 @@ vi.mock('../skills/SkillRow', () => ({
       {onToggle && (
         <button
           data-testid={`skill-toggle-${skill.name}`}
-          onClick={() => onToggle(skill.name, !skill.enabled)}
+          disabled={skill.marketplacePackage?.packageEnabled === false
+            || skill.inactiveReason === 'marketplace-package-disabled'
+            || skill.inactiveReason === 'marketplace-source-blocked'}
+          onClick={() => onToggle(skill.name, !(skill.active ?? skill.enabled))}
         >
           toggle
         </button>
@@ -249,6 +262,44 @@ describe('SkillsTab — sticky skillsViewAgentId & toggleSkill race guard', () =
     expect(skillsCalls[0][0]).toContain('runtime=1');
   });
 
+  it('shows an installed marketplace skill enabled by preference even when it is runtime-inactive', async () => {
+    seedStore({ currentAgentId: 'agent-a' });
+    fetchMock.mockImplementation((url: string) => {
+      if (url.includes('/api/skills/external-paths')) {
+        return Promise.resolve(jsonResponse({ configured: [], discovered: [] }));
+      }
+      if (url.includes('/api/skills/bundles')) {
+        return Promise.resolve(jsonResponse({ bundles: [] }));
+      }
+      if (url.includes('/api/skills?agentId=agent-a')) {
+        return Promise.resolve(jsonResponse({ skills: [{
+          name: 'wiki-query',
+          description: 'Query the wiki',
+          enabled: true,
+          active: false,
+          inactiveReason: 'marketplace-package-disabled',
+          marketplacePackage: {
+            identity: 'skillwiki@llm-wiki',
+            skillName: 'wiki-query',
+            explicitlyDisabled: false,
+            packageEnabled: false,
+          },
+        }] }));
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+
+    render(<SkillsTab />);
+    await waitFor(() => expect(screen.getAllByTestId('skill-row-wiki-query')).toHaveLength(2));
+    const agentRow = screen.getAllByTestId('skill-row-wiki-query')[1];
+    expect(agentRow.getAttribute('data-enabled')).toBe('true');
+    expect(agentRow.getAttribute('data-effective-enabled')).toBe('false');
+    expect(agentRow.getAttribute('data-active')).toBe('false');
+    expect(agentRow.getAttribute('data-marketplace-package')).toBe('skillwiki@llm-wiki');
+    expect(agentRow.getAttribute('data-inactive-reason')).toBe('marketplace-package-disabled');
+    expect((screen.getByTestId('skill-toggle-wiki-query') as HTMLButtonElement).disabled).toBe(true);
+  });
+
   it('uploads a selected skill package when no local path picker is available', async () => {
     seedStore({ currentAgentId: 'agent-a' });
     fetchMock.mockImplementation((url: string, opts?: RequestInit) => {
@@ -289,6 +340,75 @@ describe('SkillsTab — sticky skillsViewAgentId & toggleSkill race guard', () =
     expect(body).toMatchObject({
       file: {
         filename: 'uploaded-skill.zip',
+      },
+    });
+    expect(typeof body.file.contentBase64).toBe('string');
+    expect(body.file.contentBase64.length).toBeGreaterThan(0);
+    expect(body.path).toBeUndefined();
+  });
+
+  it('uploads selected skill package bytes for remote connections even when Electron exposes a local path', async () => {
+    const remoteConnection = {
+      connectionId: 'lan:node:studio',
+      kind: 'lan',
+      serverId: 'remote',
+      studioId: 'studio',
+      label: 'Remote Hana',
+      baseUrl: 'http://100.125.173.118:14500',
+      wsUrl: 'ws://100.125.173.118:14500',
+      token: 'remote-token',
+      authState: 'paired',
+      trustState: 'lan',
+      credentialKind: 'device_credential',
+      capabilities: ['chat', 'settings.read', 'settings.write'],
+    };
+    seedStore({
+      currentAgentId: 'agent-a',
+      serverConnections: { [remoteConnection.connectionId]: remoteConnection },
+      activeServerConnectionId: remoteConnection.connectionId,
+      activeServerConnection: remoteConnection,
+    } as Partial<SettingsState>);
+    window.platform = {
+      getFilePath: vi.fn(() => '/Users/me/Desktop/uploaded-skill.skill'),
+    } as unknown as typeof window.platform;
+    fetchMock.mockImplementation((url: string, opts?: RequestInit) => {
+      if (url.includes('/api/skills/install')) {
+        expect(opts).toMatchObject({ method: 'POST' });
+        return Promise.resolve(jsonResponse({ ok: true, skill: { name: 'uploaded-skill' } }));
+      }
+      if (url.includes('/api/skills/external-paths')) {
+        return Promise.resolve(jsonResponse({ configured: [], discovered: [] }));
+      }
+      if (url.includes('/api/skills/bundles')) {
+        return Promise.resolve(jsonResponse({ bundles: [] }));
+      }
+      if (url.includes('/api/skills?agentId=agent-a')) {
+        return Promise.resolve(jsonResponse({ skills: [] }));
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+
+    const { container } = render(<SkillsTab />);
+    await flushMicrotasks();
+
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement | null;
+    expect(input).toBeTruthy();
+    const file = new File(['fake skill'], 'uploaded-skill.skill');
+    fireEvent.change(input!, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.some((call) =>
+        typeof call[0] === 'string' && call[0].includes('/api/skills/install'))).toBe(true);
+    });
+    await flushMicrotasks(6);
+
+    const installCall = fetchMock.mock.calls.find((call) =>
+      typeof call[0] === 'string' && call[0].includes('/api/skills/install'));
+    expect(installCall).toBeTruthy();
+    const body = JSON.parse(String((installCall?.[1] as RequestInit).body || '{}'));
+    expect(body).toMatchObject({
+      file: {
+        filename: 'uploaded-skill.skill',
       },
     });
     expect(typeof body.file.contentBase64).toBe('string');

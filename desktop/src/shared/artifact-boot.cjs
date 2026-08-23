@@ -20,6 +20,10 @@
  * - seed 新鲜度：安装器是主要投递通道。随包签名 seed 的产品版本严格新于
  *   已解析指针时，以 seed 为准重新激活，即使指针来自 OTA train；相同或更旧
  *   的 seed 不覆盖 current，避免安装旧包或同版重装造成降级/无意义替换。
+ *   唯一例外由调用方显式选择：本地安装包可开启 `refreshSameVersionSeed`，
+ *   在产品版本相同但签名归档 digest 不同时重新激活 seed。该策略沿调用链
+ *   默认关闭，正式包不改变同版防交叉覆盖规则；digest 一致后的下一次启动
+ *   自然回到普通 boot，不写额外 marker。
  *   旧指针缺少可比较版本时保留既有兼容规则：train 0 的 sha256 不同则重新
  *   激活随包 seed，train > 0 仍优先于 seed。
  * - 三连败降级：server 与 renderer都实现——boot
@@ -59,12 +63,7 @@ const pointerChannels = require("../../../shared/artifact-core/pointer-channels.
 
 const { SEED_CHANNEL, rendererPointerChannel } = pointerChannels;
 /**
- * Per-platform seed manifest file name — same `seed-train-${platformArch}.json`
- * convention as scripts/build-server-artifact.mjs's seedManifestFileName
- * (duplicated here, not imported: that file is an ESM build-time script,
- * this one ships inside the bundled CJS desktop app; same reasoning as the
- * pre-existing SEED_MANIFEST_NAME constant this replaces). `platformArch`
- * is always `${process.platform}-${process.arch}` at boot time.
+ * Per-platform seed manifest file name shared by packaged layout validation.
  * @param {string} platformArch
  * @returns {string}
  */
@@ -157,27 +156,57 @@ function compareProductVersions(leftVersion, rightVersion) {
 }
 
 /**
- * 纯决策：给定已解析指针、随包 seed 条目、是否处于三连败降级。
+ * 纯决策：给定已解析指针、随包 seed 条目、是否处于三连败降级，以及调用方
+ * 是否显式选择本地同版本 digest 刷新策略。该策略默认关闭，不能用作通用的
+ * 同版本覆盖开关。
  * @param {{resolved: {slot: string, pointer: object} | null,
- *          seedEntry: {sha256: string, version?: string}, crashFallback: boolean}} opts
- * @returns {"boot"|"activate-seed"}
+ *          seedEntry: {sha256: string, version?: string}, crashFallback: boolean,
+ *          refreshSameVersionSeed?: boolean}} opts
+ * @returns {{action: "boot"|"activate-seed", localSameVersionRefresh: boolean}}
  */
-function decideBootAction({ resolved, seedEntry, crashFallback }) {
-  if (!resolved) return "activate-seed";
-  if (crashFallback) return "boot"; // 绝不把降级目标又顶回 seed
+function decideBoot({
+  resolved,
+  seedEntry,
+  crashFallback,
+  refreshSameVersionSeed = false,
+}) {
+  if (!resolved) return { action: "activate-seed", localSameVersionRefresh: false };
+  if (crashFallback) {
+    return { action: "boot", localSameVersionRefresh: false }; // 绝不把降级目标又顶回 seed
+  }
   const pointer = resolved.pointer;
   const versionComparison = compareProductVersions(seedEntry.version, pointer.version);
   if (versionComparison !== null) {
-    return versionComparison > 0 ? "activate-seed" : "boot";
+    if (versionComparison > 0) {
+      return { action: "activate-seed", localSameVersionRefresh: false };
+    }
+    if (versionComparison < 0) {
+      return { action: "boot", localSameVersionRefresh: false };
+    }
+    const localSameVersionRefresh =
+      refreshSameVersionSeed && pointer.sha256 !== seedEntry.sha256;
+    return {
+      action: localSameVersionRefresh ? "activate-seed" : "boot",
+      localSameVersionRefresh,
+    };
   }
 
   // 老指针或异常数据没有完整产品版本时，逐字保留原来的 train/sha 决策：
   // seed-era 指针按内容新鲜度自愈，OTA train 不被无法比较的 seed 覆盖。
   const pointerTrain = Number.isInteger(pointer.train) ? pointer.train : 0;
   if (pointerTrain === 0 && pointer.sha256 !== seedEntry.sha256) {
-    return "activate-seed";
+    return { action: "activate-seed", localSameVersionRefresh: false };
   }
-  return "boot";
+  return { action: "boot", localSameVersionRefresh: false };
+}
+
+/**
+ * Backward-compatible pure action projection used by existing callers/tests.
+ * The boot preparers consume `decideBoot` directly so action and diagnostic
+ * reason are derived once.
+ */
+function decideBootAction(opts) {
+  return decideBoot(opts).action;
 }
 
 /**
@@ -188,6 +217,7 @@ function decideBootAction({ resolved, seedEntry, crashFallback }) {
  *   platformArch: string,
  *   keyset: Array<{keyId: string, publicKey: string}>,
  *   channel?: string,
+ *   refreshSameVersionSeed?: boolean,
  *   onProgress?: () => void,
  *   log?: (msg: string) => void,
  * }} opts
@@ -202,6 +232,7 @@ async function prepareArtifactServerBoot({
   platformArch,
   keyset,
   channel = SEED_CHANNEL,
+  refreshSameVersionSeed = false,
   onProgress,
   log = console.log,
 }) {
@@ -265,11 +296,22 @@ async function prepareArtifactServerBoot({
     });
 
     let resolved = await activation.resolveBoot(channel, homeDir);
-    const action = decideBootAction({ resolved, seedEntry: serverEntry, crashFallback });
+    const decision = decideBoot({
+      resolved,
+      seedEntry: serverEntry,
+      crashFallback,
+      refreshSameVersionSeed,
+    });
 
     let activatedSeed = false;
-    if (action === "activate-seed") {
+    if (decision.action === "activate-seed") {
       const archivePath = path.join(seedDir, serverEntry.path);
+      if (decision.localSameVersionRefresh) {
+        log(
+          `[artifact-boot] local same-version seed digest differs for server `
+            + `(${serverEntry.version}); refreshing through verified activation`,
+        );
+      }
       log(`[artifact-boot] activating seed train ${manifest.train} (${serverEntry.version}) from ${archivePath}`);
       if (onProgress) onProgress();
       // 与热更新完全相同的激活路径：一条代码路径，没有特例。allowReplaceProtected:
@@ -322,6 +364,7 @@ async function prepareArtifactServerBoot({
  *   platformArch: string,
  *   keyset: Array<{keyId: string, publicKey: string}>,
  *   channel?: string,
+ *   refreshSameVersionSeed?: boolean,
  *   onProgress?: () => void,
  *   log?: (msg: string) => void,
  * }} opts
@@ -336,6 +379,7 @@ async function prepareArtifactRendererBoot({
   platformArch,
   keyset,
   channel = SEED_CHANNEL,
+  refreshSameVersionSeed = false,
   onProgress,
   log = console.log,
 }) {
@@ -398,11 +442,22 @@ async function prepareArtifactRendererBoot({
     });
 
     let resolved = await activation.resolveBoot(pointerChannel, homeDir);
-    const action = decideBootAction({ resolved, seedEntry: rendererEntry, crashFallback });
+    const decision = decideBoot({
+      resolved,
+      seedEntry: rendererEntry,
+      crashFallback,
+      refreshSameVersionSeed,
+    });
 
     let activatedSeed = false;
-    if (action === "activate-seed") {
+    if (decision.action === "activate-seed") {
       const archivePath = path.join(seedDir, rendererEntry.path);
+      if (decision.localSameVersionRefresh) {
+        log(
+          `[artifact-boot] local same-version seed digest differs for renderer `
+            + `(${rendererEntry.version}); refreshing through verified activation`,
+        );
+      }
       log(`[artifact-boot] activating renderer seed train ${manifest.train} (${rendererEntry.version}) from ${archivePath}`);
       if (onProgress) onProgress();
       // 与热更新完全相同的激活路径：一条代码路径，没有特例。allowReplaceProtected:
@@ -450,6 +505,7 @@ async function prepareArtifactRendererBoot({
  *   platformArch: string,
  *   keyset: Array<{keyId: string, publicKey: string}>,
  *   channel?: string,
+ *   refreshSameVersionSeed?: boolean,
  *   onProgress?: () => void,
  *   log?: (msg: string) => void,
  * }} opts
@@ -464,6 +520,7 @@ async function prepareArtifactBoot({
   platformArch,
   keyset,
   channel = SEED_CHANNEL,
+  refreshSameVersionSeed = false,
   onProgress,
   log = console.log,
 }) {
@@ -486,8 +543,26 @@ async function prepareArtifactBoot({
     requiredKinds: ["server", "renderer"],
   });
 
-  const server = await prepareArtifactServerBoot({ homeDir, resourcesPath, platformArch, keyset, channel, onProgress, log });
-  const renderer = await prepareArtifactRendererBoot({ homeDir, resourcesPath, platformArch, keyset, channel, onProgress, log });
+  const server = await prepareArtifactServerBoot({
+    homeDir,
+    resourcesPath,
+    platformArch,
+    keyset,
+    channel,
+    refreshSameVersionSeed,
+    onProgress,
+    log,
+  });
+  const renderer = await prepareArtifactRendererBoot({
+    homeDir,
+    resourcesPath,
+    platformArch,
+    keyset,
+    channel,
+    refreshSameVersionSeed,
+    onProgress,
+    log,
+  });
 
   return { server, renderer };
 }

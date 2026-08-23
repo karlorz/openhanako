@@ -31,8 +31,10 @@ import { describe, expect, it } from "vitest";
 import fs from "fs";
 import path from "path";
 import vm from "vm";
+import { createRequire } from "module";
 
 const root = process.cwd();
+const require = createRequire(import.meta.url);
 
 // Same technique as tests/server-startup-diagnostics-contract.test.ts's
 // helper, but paren-aware: that original version located the function
@@ -67,6 +69,17 @@ function extractFunctionSource(source: string, name: string) {
   throw new Error(`unterminated function ${name}`);
 }
 
+const mainSource = fs.readFileSync(path.join(root, "desktop", "main.cjs"), "utf-8");
+const readPrefSource = extractFunctionSource(mainSource, "readUpdateChannelPreference");
+const resolveSource = extractFunctionSource(mainSource, "resolvePackagedArtifactBoot");
+const buildCrashFallbackNoticeSource = extractFunctionSource(mainSource, "buildCrashFallbackNotice");
+const announceCrashFallbackNoticeSource = extractFunctionSource(mainSource, "announceCrashFallbackNotice");
+const spawnServerOnceSource = extractFunctionSource(mainSource, "_spawnServerOnce");
+const rendererRetrySource = extractFunctionSource(mainSource, "handleRendererArtifactLoadFailure");
+const { shouldRefreshSameVersionSeed } = require(
+  path.join(root, "desktop", "src", "shared", "packaged-artifact-boot.cjs"),
+);
+
 type BootResultStub = {
   train: number;
   version: string;
@@ -82,9 +95,10 @@ type BootResultStub = {
 type RunResult = {
   result: { serverRoot: string; train: number; channel: string } | null;
   gcCalls: Array<{ kind: string; channel: string }>;
-  prepareArtifactBootChannels: string[];
+  prepareArtifactBootCalls: Array<{ channel: string; refreshSameVersionSeed: boolean }>;
   rendererBootChannel: string | null;
   artifactBootChannel: string | null;
+  refreshSameVersionSeed: boolean;
   crashFallbackNotice: { kind: string; fromVersion: string | null; toVersion: string | null; quarantinedTrain: number | null } | null;
   broadcastCalls: Array<{ channel: string; payload: unknown }>;
 };
@@ -115,24 +129,25 @@ function bootResultStub(overrides: Partial<BootResultStub> = {}): BootResultStub
  */
 async function runResolvePackagedArtifactBoot(
   updateChannelPreference: "stable" | "beta",
-  opts: { serverBoot?: Partial<BootResultStub>; rendererBoot?: Partial<BootResultStub> } = {},
+  opts: {
+    serverBoot?: Partial<BootResultStub>;
+    rendererBoot?: Partial<BootResultStub>;
+    buildChannel?: string;
+  } = {},
 ): Promise<RunResult> {
-  const mainSource = fs.readFileSync(path.join(root, "desktop", "main.cjs"), "utf-8");
-  const readPrefSource = extractFunctionSource(mainSource, "readUpdateChannelPreference");
-  const resolveSource = extractFunctionSource(mainSource, "resolvePackagedArtifactBoot");
-  const buildCrashFallbackNoticeSource = extractFunctionSource(mainSource, "buildCrashFallbackNotice");
-  const announceCrashFallbackNoticeSource = extractFunctionSource(mainSource, "announceCrashFallbackNotice");
-
   const gcCalls: Array<{ kind: string; channel: string }> = [];
-  const prepareArtifactBootChannels: string[] = [];
+  const prepareArtifactBootCalls: Array<{ channel: string; refreshSameVersionSeed: boolean }> = [];
   const broadcastCalls: Array<{ channel: string; payload: unknown }> = [];
 
   const artifactBoot = {
     SEED_CHANNEL: "stable",
     hasSeed: () => true,
     rendererPointerChannel: (channel: string) => `${channel}.renderer`,
-    prepareArtifactBoot: async (bootOpts: { channel: string }) => {
-      prepareArtifactBootChannels.push(bootOpts.channel);
+    prepareArtifactBoot: async (bootOpts: { channel: string; refreshSameVersionSeed: boolean }) => {
+      prepareArtifactBootCalls.push({
+        channel: bootOpts.channel,
+        refreshSameVersionSeed: bootOpts.refreshSameVersionSeed,
+      });
       return {
         server: bootResultStub({ versionDir: `/artifacts/server/0.446.14-darwin-arm64`, ...opts.serverBoot }),
         renderer: bootResultStub({ versionDir: `/artifacts/renderer/0.446.14`, ...opts.rendererBoot }),
@@ -148,11 +163,57 @@ async function runResolvePackagedArtifactBoot(
 
   const context = vm.createContext({
     hanakoHome: "/tmp/hana-home-fixture",
-    app: { isPackaged: true },
+    app: { isPackaged: true, getVersion: () => "0.412.7" },
     process: { resourcesPath: "/tmp/resources", platform: "darwin", arch: "arm64" },
     path,
     artifactBoot,
     artifactGc,
+    // Source-extracted resolvePackagedArtifactBoot imports these helpers by name.
+    // Without them the dual-profile branch throws ReferenceError; inject no-ops so
+    // the compatibility path (hasSeed + prepareArtifactBoot) exercises the channel
+    // consistency contract under test.
+    resolvePackagedLayout: () => ({ mode: "signed" }),
+    readBuildInfo: () => ({ channel: opts.buildChannel || "release" }),
+    planPackagedArtifactBoot: () => ({ kind: "signed" }),
+    shouldRefreshSameVersionSeed,
+    buildSignedPackagedBootResult: ({
+      boot,
+      bootChannel,
+      rendererPointerChannel,
+      previousContentVersion = null,
+    }: {
+      boot: { server: BootResultStub; renderer: BootResultStub };
+      bootChannel: string;
+      rendererPointerChannel: (channel: string) => string;
+      previousContentVersion?: string | null;
+    }) => {
+      const contentVersion = boot.renderer.version
+        || boot.server.version
+        || previousContentVersion
+        || null;
+      return {
+        kind: "signed",
+        context: {
+          serverRoot: boot.server.versionDir,
+          train: boot.server.train,
+          channel: bootChannel,
+          artifactManaged: true,
+          releaseProfile: "signed",
+        },
+        rendererState: {
+          distRenderer: boot.renderer.versionDir,
+          rendererBootChannel: rendererPointerChannel(bootChannel),
+          rendererBootTrain: boot.renderer.train,
+          artifactBootChannel: bootChannel,
+          contentVersion,
+        },
+        notices: {
+          quarantine: boot.server.quarantinedTrain != null || boot.renderer.quarantinedTrain != null,
+          server: boot.server,
+          renderer: boot.renderer,
+        },
+      };
+    },
     splashWindow: null,
     loadSplashWindowURL: () => {},
     loadPinnedKeyset: () => [],
@@ -165,6 +226,8 @@ async function runResolvePackagedArtifactBoot(
     _rendererBootChannel: null,
     _rendererBootTrain: null,
     _artifactBootChannel: null,
+    _refreshSameVersionSeed: false,
+    _currentContentVersion: null,
     _crashFallbackNotice: null,
   });
 
@@ -177,9 +240,10 @@ async function runResolvePackagedArtifactBoot(
   return {
     result,
     gcCalls,
-    prepareArtifactBootChannels,
+    prepareArtifactBootCalls,
     rendererBootChannel: (context as any)._rendererBootChannel,
     artifactBootChannel: (context as any)._artifactBootChannel,
+    refreshSameVersionSeed: (context as any)._refreshSameVersionSeed,
     crashFallbackNotice: (context as any)._crashFallbackNotice,
     broadcastCalls,
   };
@@ -189,7 +253,9 @@ describe("artifact-boot channel consistency (2026-07-12 beta-channel crash regre
   it("threads the beta channel preference through prepareArtifactBoot, both GC calls, and the returned context — not the stable default", async () => {
     const run = await runResolvePackagedArtifactBoot("beta");
 
-    expect(run.prepareArtifactBootChannels).toEqual(["beta"]);
+    expect(run.prepareArtifactBootCalls).toEqual([
+      { channel: "beta", refreshSameVersionSeed: false },
+    ]);
     expect(run.rendererBootChannel).toBe("beta.renderer");
     expect(run.artifactBootChannel).toBe("beta");
     expect(run.result?.channel).toBe("beta");
@@ -210,7 +276,9 @@ describe("artifact-boot channel consistency (2026-07-12 beta-channel crash regre
   it("still resolves the stable channel correctly for stable-preference machines (no regression on the default path)", async () => {
     const run = await runResolvePackagedArtifactBoot("stable");
 
-    expect(run.prepareArtifactBootChannels).toEqual(["stable"]);
+    expect(run.prepareArtifactBootCalls).toEqual([
+      { channel: "stable", refreshSameVersionSeed: false },
+    ]);
     expect(run.rendererBootChannel).toBe("stable.renderer");
     expect(run.artifactBootChannel).toBe("stable");
     expect(run.result?.channel).toBe("stable");
@@ -218,6 +286,20 @@ describe("artifact-boot channel consistency (2026-07-12 beta-channel crash regre
       { kind: "server", channel: "stable" },
       { kind: "renderer", channel: "stable.renderer" },
     ]);
+  });
+
+  it("derives and retains the local same-version refresh policy for the boot session", async () => {
+    const local = await runResolvePackagedArtifactBoot("stable", { buildChannel: "local" });
+    expect(local.prepareArtifactBootCalls).toEqual([
+      { channel: "stable", refreshSameVersionSeed: true },
+    ]);
+    expect(local.refreshSameVersionSeed).toBe(true);
+
+    const release = await runResolvePackagedArtifactBoot("stable", { buildChannel: "release" });
+    expect(release.prepareArtifactBootCalls).toEqual([
+      { channel: "stable", refreshSameVersionSeed: false },
+    ]);
+    expect(release.refreshSameVersionSeed).toBe(false);
   });
 });
 
@@ -232,10 +314,6 @@ describe("artifact-boot channel consistency: crash-sentinel + renderer-retry sou
   // resolved — is covered as a source contract instead: the specific
   // hardcoded-constant pattern that caused the incident must not
   // reappear in either function's body.
-  const mainSource = fs.readFileSync(path.join(root, "desktop", "main.cjs"), "utf-8");
-  const spawnServerOnceSource = extractFunctionSource(mainSource, "_spawnServerOnce");
-  const rendererRetrySource = extractFunctionSource(mainSource, "handleRendererArtifactLoadFailure");
-
   it("_spawnServerOnce reads the crash-sentinel channel off artifactBootContext, not the stable constant", () => {
     expect(spawnServerOnceSource).toContain("artifactBoot.writeBootSentinel(hanakoHome, artifactBootContext.channel, artifactBootContext.train)");
     expect(spawnServerOnceSource).toContain("channel: artifactBootContext.channel,");
@@ -245,6 +323,12 @@ describe("artifact-boot channel consistency: crash-sentinel + renderer-retry sou
   it("handleRendererArtifactLoadFailure's renderer-crash retry passes the session's boot channel to prepareArtifactRendererBoot", () => {
     expect(rendererRetrySource).toContain("prepareArtifactRendererBoot({");
     expect(rendererRetrySource).toContain("channel: _artifactBootChannel,");
+  });
+
+  it("handleRendererArtifactLoadFailure reuses the boot session's local refresh policy", () => {
+    expect(rendererRetrySource).toContain("refreshSameVersionSeed: _refreshSameVersionSeed,");
+    expect(rendererRetrySource).not.toContain("shouldRefreshSameVersionSeed");
+    expect(rendererRetrySource).not.toContain("readBuildInfo");
   });
 
   it("handleRendererArtifactLoadFailure's renderer-crash retry announces a crash-fallback notice when the retry itself demotes", () => {
@@ -260,20 +344,16 @@ describe("artifact-boot channel consistency: crash-sentinel + renderer-retry sou
 
 describe("crash-fallback user notice (silent auto-recovery must surface to the user)", () => {
   it("buildCrashFallbackNotice returns null when the boot result did not crash-fallback", () => {
-    const mainSource = fs.readFileSync(path.join(root, "desktop", "main.cjs"), "utf-8");
-    const source = extractFunctionSource(mainSource, "buildCrashFallbackNotice");
     const context = vm.createContext({ console });
-    vm.runInContext(source, context);
+    vm.runInContext(buildCrashFallbackNoticeSource, context);
     const build = (context as any).buildCrashFallbackNotice;
 
     expect(build("server", bootResultStub({ crashFallback: false }))).toBe(null);
   });
 
   it("buildCrashFallbackNotice projects kind/fromVersion/toVersion/quarantinedTrain when crashFallback is true", () => {
-    const mainSource = fs.readFileSync(path.join(root, "desktop", "main.cjs"), "utf-8");
-    const source = extractFunctionSource(mainSource, "buildCrashFallbackNotice");
     const context = vm.createContext({ console });
-    vm.runInContext(source, context);
+    vm.runInContext(buildCrashFallbackNoticeSource, context);
     const build = (context as any).buildCrashFallbackNotice;
 
     const notice = build(

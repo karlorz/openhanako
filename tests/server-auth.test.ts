@@ -81,6 +81,46 @@ describe("server auth service", () => {
     });
   });
 
+  it("accepts device credential via query token for LAN connections (B1 fix)", async () => {
+    tmpDir = makeTmpDir();
+    const { createDeviceCredential } = await import("../core/device-registry.ts");
+    const { createServerAuthService } = await import("../core/server-auth.ts");
+    const issued = createDeviceCredential(tmpDir, {
+      serverNodeId: "node_local",
+      userId: "user_local",
+      studioIds: ["studio_local"],
+      displayName: "Desktop LAN",
+      deviceKind: "desktop",
+      trustState: "lan",
+      scopes: ["chat"],
+      now: "2026-05-16T00:00:00.000Z",
+    });
+    const auth = createServerAuthService({
+      hanakoHome: tmpDir,
+      loopbackToken: "local-secret",
+      runtimeContext: runtimeContext(),
+    });
+
+    // Query token accepted for LAN when allowQueryToken is true (B1 fix)
+    expect(auth.authenticateRequest({
+      queryToken: issued.secret,
+      allowQueryToken: true,
+      connectionKind: "lan",
+    })).toMatchObject({
+      kind: "device",
+      credentialKind: "device_credential",
+      connectionKind: "lan",
+      trustState: "lan",
+    });
+
+    // Query token still rejected for custom_remote (tunnel) connections
+    expect(auth.authenticateRequest({
+      queryToken: issued.secret,
+      allowQueryToken: true,
+      connectionKind: "custom_remote",
+    })).toBeNull();
+  });
+
   it("authenticates a paired device credential", async () => {
     tmpDir = makeTmpDir();
     const { createDeviceCredential } = await import("../core/device-registry.ts");
@@ -311,5 +351,74 @@ describe("server auth service", () => {
       connectionKind: "lan",
       now: "2026-05-16T00:00:02.000Z",
     })).toBeNull();
+  });
+});
+
+describe("websocket ticket auth migration characterization", () => {
+  it("keeps LAN query-token acceptance as current fork behavior while ticket remains one-time", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-server-auth-ws-"));
+    try {
+      const { createDeviceCredential } = await import("../core/device-registry.ts");
+      const { createServerAuthService } = await import("../core/server-auth.ts");
+      const { createWebSocketTicketService } = await import("../core/ws-auth-ticket.ts");
+
+      const issued = createDeviceCredential(tmpDir, {
+        serverNodeId: "node_local",
+        userId: "device-1",
+        studioIds: ["studio_local"],
+        displayName: "Desktop LAN",
+        deviceKind: "desktop",
+        trustState: "lan",
+        scopes: ["chat"],
+        now: "2026-05-16T00:00:00.000Z",
+      });
+      const auth = createServerAuthService({
+        hanakoHome: tmpDir,
+        loopbackToken: "local-secret",
+        runtimeContext: {
+          serverId: "server_local",
+          serverNodeId: "node_local",
+          userId: "user_local",
+          studioId: "studio_local",
+          connectionKind: "local",
+          credentialKind: "loopback_token",
+          platformAccountId: null,
+          officialServiceKind: null,
+          capabilities: ["chat", "resources", "tools"],
+        },
+      });
+
+      // Current fork still authenticates LAN device credentials via query token.
+      expect(auth.authenticateRequest({
+        queryToken: issued.secret,
+        allowQueryToken: true,
+        connectionKind: "lan",
+      })).toMatchObject({
+        kind: "device",
+        credentialKind: "device_credential",
+        connectionKind: "lan",
+        userId: "device-1",
+        scopes: ["chat"],
+      });
+
+      // Ticket service still provides the preferred one-time scoped auth surface.
+      const tickets = createWebSocketTicketService({
+        now: () => "2026-06-20T00:00:00.000Z",
+        ttlMs: 30_000,
+      });
+      const principal = auth.authenticateRequest({
+        authorization: `Bearer ${issued.secret}`,
+        connectionKind: "lan",
+      });
+      const first = tickets.issueTicket(principal, { connectionKind: "lan", path: "/ws" });
+      expect(tickets.consumeTicket(first.ticket, { connectionKind: "lan", path: "/ws" })).toMatchObject({
+        userId: "device-1",
+        scopes: ["chat"],
+        connectionKind: "lan",
+      });
+      expect(tickets.consumeTicket(first.ticket, { connectionKind: "lan", path: "/ws" })).toBeNull();
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 });

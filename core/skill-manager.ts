@@ -14,6 +14,10 @@ import {
   resolveWorkspaceSkillCandidateStates,
   workspaceSkillPolicyFromConfig,
 } from "../shared/workspace-skill-paths.ts";
+import {
+  marketplaceSkillPreferenceFromNormalized,
+  normalizeMarketplaceSkillOverrides,
+} from "../lib/marketplace-skill-preferences.ts";
 
 const log = createModuleLogger("skill-manager");
 
@@ -77,11 +81,28 @@ function decorateLoadedSkill(skill, hiddenSkills) {
   return skill;
 }
 
+/** Result of marketplace package-level enable gate for a single skill name. */
+export type MarketplaceSkillPackageGateResult = {
+  enabled: boolean;
+  reason: string | null;
+  /** Source-qualified pluginId@marketplaceId when this skill belongs to a package. */
+  identity?: string | null;
+  /** The resolver's owning skill name; normally equal to the lookup name. */
+  skillName?: string | null;
+  state?: string | null;
+};
+
+/** Engine-injected resolver; return null/undefined to skip gating for that name. */
+export type MarketplaceSkillPackageGateResolver = (
+  skillName: string,
+) => MarketplaceSkillPackageGateResult | null | undefined;
+
 export class SkillManager {
   declare _allSkills: any;
   declare _externalPaths: any;
   declare _externalWatchers: any;
   declare _hiddenSkills: any;
+  declare _packageGateResolver: MarketplaceSkillPackageGateResolver | null;
   declare _reloadDeps: any;
   declare _reloadTimer: any;
   declare _watcher: any;
@@ -100,6 +121,39 @@ export class SkillManager {
     this._reloadDeps = null; // { resourceLoader, agents, onReloaded }
     this._externalPaths = externalPaths;
     this._externalWatchers = new Map();
+    this._packageGateResolver = null;
+  }
+
+  /**
+   * Inject marketplace package-gate resolver (engine wires membership + activations).
+   * Null clears the gate (non-marketplace / tests).
+   */
+  setMarketplaceSkillPackageGateResolver(
+    resolver: MarketplaceSkillPackageGateResolver | null | undefined,
+  ) {
+    this._packageGateResolver = typeof resolver === "function" ? resolver : null;
+  }
+
+  /**
+   * @param {string} skillName
+   * @returns {MarketplaceSkillPackageGateResult | null}
+   */
+  _getMarketplacePackageGate(skillName: string): MarketplaceSkillPackageGateResult | null {
+    if (!this._packageGateResolver || !skillName) return null;
+    try {
+      const result = this._packageGateResolver(skillName);
+      if (!result || typeof result !== "object") return null;
+      return {
+        enabled: result.enabled !== false,
+        reason: typeof result.reason === "string" ? result.reason : null,
+        identity: typeof result.identity === "string" ? result.identity : null,
+        skillName: typeof result.skillName === "string" ? result.skillName : null,
+        state: typeof result.state === "string" ? result.state : null,
+      };
+    } catch {
+      // Ambiguous/broken resolver for a named skill: fail closed.
+      return { enabled: false, reason: "marketplace-package-disabled" };
+    }
   }
 
   /** 全量 skill 列表 */
@@ -140,35 +194,48 @@ export class SkillManager {
   /** 返回全量 skill 列表（供 API 使用），附带指定 agent 的 enabled 状态。Plugin skill 不返回（UI 不显示） */
   getAllSkills(agent) {
     const enabled = new Set(agent?.config?.skills?.enabled || []);
-    return this._skillsVisibleToAgent(agent).map(s => ({
-      name: s.name,
-      description: s.description,
-      filePath: s.filePath,
-      baseDir: s.baseDir,
-      source: s.source,
-      hidden: !!s._hidden,
-      enabled: enabled.has(s.name),
-      externalLabel: s._externalLabel || null,
-      externalPath: s._externalPath || null,
-      readonly: !!s._readonly,
-      sourceIdentity: s.sourceIdentity || null,
-    }));
+    const marketplaceOverrides = normalizeMarketplaceSkillOverrides(
+      agent?.config?.skills?.marketplace_overrides,
+    ).overrides;
+    return this._skillsVisibleToAgent(agent).map(s => {
+      const packageGate = this._getMarketplacePackageGate(s.name);
+      const state = this._resolveSkillState(agent, s, enabled, packageGate, marketplaceOverrides);
+      return {
+        name: s.name,
+        description: s.description,
+        filePath: s.filePath,
+        baseDir: s.baseDir,
+        source: s.source,
+        hidden: !!s._hidden,
+        // Legacy resolver callers that only return { enabled, reason } retain
+        // the historical preference-list value in this settings view. The
+        // richer engine resolver marks package-owned skills explicitly.
+        enabled: state.marketplacePackage ? state.enabled : enabled.has(s.name),
+        active: state.active,
+        inactiveReason: state.inactiveReason,
+        externalLabel: s._externalLabel || null,
+        externalPath: s._externalPath || null,
+        readonly: !!s._readonly,
+        managedBy: state.marketplacePackage ? "marketplace-skill-package" : (s._managedBy || null),
+        marketplacePackage: state.marketplacePackage,
+        sourceIdentity: s.sourceIdentity || null,
+      };
+    });
   }
 
   /** 返回运行时 skill 列表（含 workspace skill），供 desk / slash 等 session 视图使用 */
   getRuntimeSkillInfos(agent) {
-    const enabled = new Set(agent?.config?.skills?.enabled || []);
     const selection = this._resolveRuntimeSkillSelection(agent);
     return selection.entries
       .filter(({ skill }) => !skill._pluginSkill)
-      .map(({ skill: s, active, shadowed, shadowedBy, inactiveReason }) => ({
+      .map(({ skill: s, enabled, active, shadowed, shadowedBy, inactiveReason, marketplacePackage }) => ({
       name: s.name,
       description: s.description,
       filePath: s.filePath,
       baseDir: s.baseDir,
       source: s._workspaceSkill ? "workspace" : s.source,
       hidden: !!s._hidden,
-      enabled: s._workspaceSkill ? active : this._isRuntimeEnabledForAgent(s, enabled),
+      enabled,
       active,
       shadowed,
       shadowedBy,
@@ -176,7 +243,8 @@ export class SkillManager {
       externalLabel: s._externalLabel || null,
       externalPath: s._externalPath || null,
       readonly: !!s._readonly,
-      managedBy: s._managedBy || null,
+      managedBy: marketplacePackage ? "marketplace-skill-package" : (s._managedBy || null),
+      marketplacePackage,
       sourceIdentity: s.sourceIdentity || null,
       sourceCategory: s._workspaceSkillCategory || null,
     }));
@@ -198,6 +266,9 @@ export class SkillManager {
 
   _resolveRuntimeSkillSelection(agent, candidates = this._allSkills) {
     const enabled = new Set(agent?.config?.skills?.enabled || []);
+    const marketplaceOverrides = normalizeMarketplaceSkillOverrides(
+      agent?.config?.skills?.marketplace_overrides,
+    ).overrides;
     const policy = workspaceSkillPolicyFromConfig(agent?.config?.workspace_context);
     const claimedByName = new Map();
     const skills = [];
@@ -217,17 +288,24 @@ export class SkillManager {
         continue;
       }
 
-      const runtimeEnabled = this._isRuntimeEnabledForAgent(skill, enabled);
       if (!claimedByName.has(skill.name)) {
         claimedByName.set(skill.name, skill.sourceIdentity || { skillName: skill.name, filePath: skill.filePath });
       }
-      if (runtimeEnabled) skills.push(skill);
+
+      // Marketplace package gate (global): blocks all Agents even if skill is in
+      // agent.config.skills.enabled. Marketplace packages use their explicit
+      // per-agent preference instead of requiring a name in skills.enabled.
+      const packageGate = this._getMarketplacePackageGate(skill.name);
+      const state = this._resolveSkillState(agent, skill, enabled, packageGate, marketplaceOverrides);
+      if (state.active) skills.push(skill);
       entries.push({
         skill,
-        active: runtimeEnabled,
+        enabled: state.enabled,
+        active: state.active,
         shadowed: false,
         shadowedBy: null,
-        inactiveReason: runtimeEnabled ? null : "disabled",
+        inactiveReason: state.inactiveReason,
+        marketplacePackage: state.marketplacePackage,
       });
     }
 
@@ -240,10 +318,12 @@ export class SkillManager {
       if (resolved.active) skills.push(resolved.skill);
       entries.push({
         skill: resolved.skill,
+        enabled: resolved.active,
         active: resolved.active,
         shadowed: resolved.shadowed,
         shadowedBy: resolved.shadowedBy,
         inactiveReason: resolved.inactiveReason,
+        marketplacePackage: null,
       });
     }
 
@@ -252,13 +332,14 @@ export class SkillManager {
 
   /**
    * 计算新建 agent 的默认 enabled skill 集合:
-   * 所有 source 不是 external 且没有 opt-out 的全局 skill name。
-   * plugin/workspace 通过 _isRuntimeEnabledForAgent 的 bypass 自动启用,
-   * 不需要写入 enabled 数组。
+   * 普通 user skill 仍写入 skills.enabled；已安装 marketplace skill package
+   * 由 package identity + per-agent override 在运行时默认启用，不需要写入
+   * enabled 数组。plugin/workspace 仍由运行时自己的 bypass 处理。
    */
   computeDefaultEnabledForNewAgent() {
     return this._allSkills
       .filter(s => s.source !== "external" && s.defaultEnabled !== false)
+      .filter(s => !this._getMarketplacePackageGate(s.name)?.identity)
       .map(s => s.name);
   }
 
@@ -443,11 +524,47 @@ export class SkillManager {
     this._externalWatchers.clear();
   }
 
-  _isRuntimeEnabledForAgent(skill, enabledSet) {
-    return !!(
-      skill?._pluginSkill
-      || skill?._workspaceSkill
-      || enabledSet?.has(skill.name)
-    );
+  _resolveSkillState(agent, skill, enabledSet, packageGate, marketplaceOverrides) {
+    const marketplaceIdentity = packageGate?.identity || null;
+    const isMarketplaceSkill = Boolean(marketplaceIdentity);
+    const marketplacePackage = isMarketplaceSkill
+      ? {
+        ...marketplaceSkillPreferenceFromNormalized(
+          marketplaceOverrides,
+          marketplaceIdentity,
+          packageGate?.skillName || skill?.name,
+        ),
+        // Keep the per-agent preference separate from the global package gate.
+        // Settings uses this field to lock package-owned skill toggles while
+        // the package is disabled, then restores the preference on re-enable.
+        packageEnabled: packageGate?.enabled !== false,
+      }
+      : null;
+    const agentPreferenceEnabled = isMarketplaceSkill
+      ? !marketplacePackage.explicitlyDisabled
+      : (skill?._pluginSkill || skill?._workspaceSkill || !!enabledSet?.has(skill?.name));
+    const sourceBlocked = packageGate?.state === "blocked-by-source";
+    const packageEnabled = !packageGate || packageGate.enabled !== false;
+    const active = agentPreferenceEnabled && packageEnabled;
+    // Keep compatibility with the original injected resolver contract. A
+    // resolver without an identity has no per-agent preference lane, so its
+    // gate result is also the runtime-facing enabled value.
+    const enabled = !isMarketplaceSkill && packageGate?.enabled === false
+      ? false
+      : agentPreferenceEnabled;
+    const inactiveReason = active
+      ? null
+      : sourceBlocked
+        ? "marketplace-source-blocked"
+        : !agentPreferenceEnabled
+          ? (isMarketplaceSkill ? "agent-skill-disabled" : "disabled")
+          : (packageGate?.reason || "marketplace-package-disabled");
+
+    return {
+      enabled,
+      active,
+      inactiveReason,
+      marketplacePackage,
+    };
   }
 }

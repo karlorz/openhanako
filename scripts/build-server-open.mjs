@@ -47,6 +47,7 @@ import {
   resolveAndInstallExternalServerDeps,
   writeServerWrapperScripts,
 } from "./build-server-phases.mjs";
+import { copyPackagedCliArtifactCore } from "./build-server-runtime-assets.mjs";
 import { RUNTIME_ASSETS } from "./compute-cli-closure.mjs";
 import { readExportManifest } from "./lint-open-boundary.mjs";
 
@@ -170,6 +171,9 @@ async function main() {
     libDirs: OPEN_LIB_TEMPLATE_DIRS,
     extraDirs: [],
   });
+  for (const copiedCore of copyPackagedCliArtifactCore({ rootDir: ROOT, outDir })) {
+    console.log(`[build-server-open]   ${copiedCore}`);
+  }
   console.log("[build-server-open] resource files copied");
 
   // ── 4-6. External dependencies 派生 + 安装 + 校验（不含内置插件包依赖：开源产物不带 plugins/）──

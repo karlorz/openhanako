@@ -38,7 +38,7 @@ import {
   selectLoopbackListenPort,
 } from "../core/server-port-selection.ts";
 import { isCorsOriginAllowed } from "./http/cors-policy.ts";
-import { inferHttpConnectionKind } from "./http/transport-context.ts";
+import { inferHttpConnectionKind, inferHttpRequestSecurity } from "./http/transport-context.ts";
 import { authorizeHttpRoute, isPublicHttpRoute } from "./http/route-security.ts";
 
 // Pi SDK 的 fetch 请求会累积 AbortSignal listener，提高上限避免无害警告
@@ -64,6 +64,9 @@ import { registerLoopBusHandlers } from "./loop-bus-handlers.ts";
 import { resolveHanakoHome } from "../shared/hana-runtime-paths.ts";
 import { DATA_EPOCH } from "../shared/contract-versions.cjs";
 import { readDataEpochStamp } from "../shared/data-epoch.cjs";
+import { SERVER_FEATURE_CONTRACTS } from "../shared/remote-feature-contracts.ts";
+import { normalizeServerPlatformArch } from "../shared/remote-server-release-catalog.ts";
+import { normalizeServerBuildInfo, readServerBuildInfo } from "../shared/server-build-info.ts";
 import { describeForeignServerBlock, isForeignServerBlocking, probeServerInfo } from "../shared/server-info-probe.cjs";
 import { coordinateDataEpochStartup, describeDataEpochStartupBlock } from "../core/data-epoch-coordinator.ts";
 import { createDataEpochCheckpointProvider } from "../core/data-epoch-checkpoint-provider.ts";
@@ -434,11 +437,25 @@ export async function startServer(root: CompositionRoot = {}): Promise<void> {
 
   // ── 初始化引擎 ──
   log.log("② 创建 HanaEngine...");
+  const runtimeFacts = normalizeServerPlatformArch(process.platform, process.arch);
+  const packagedRuntimeBuild = readServerBuildInfo({ rootDir: fromRoot(".") });
+  const runtimeBuild = packagedRuntimeBuild || normalizeServerBuildInfo({
+    schemaVersion: 1,
+    runtimeVersion: appVersion,
+    releaseTag: null,
+    gitSha: null,
+    sourceRepository: null,
+    platform: runtimeFacts?.platform ?? null,
+    arch: runtimeFacts?.arch ?? null,
+  });
   const engine: any = new HanaEngine({
     hanakoHome,
     productDir,
     appVersion,
     builtinMediaAdapters: root.builtinMediaAdapters,
+    runtimeBuild,
+    featureContracts: SERVER_FEATURE_CONTRACTS,
+    runtimeFacts,
   } as any);
   log.log("② HanaEngine 构造完成，开始 init...");
   await engine.init((msg: any) => log.log(msg));
@@ -582,6 +599,7 @@ export async function startServer(root: CompositionRoot = {}): Promise<void> {
   // CORS（默认允许 localhost 开发前端和 production Electron file:// 前端；HANA_CORS_ORIGIN 可收紧到单一来源）+ 鉴权
   const corsAllowedOrigin = process.env.HANA_CORS_ORIGIN;
   app.use("*", async (c: any, next: any) => {
+    c.header("Referrer-Policy", "no-referrer");
     const origin = c.req.header("origin") || "";
     const isAllowed = isCorsOriginAllowed({
       origin,
@@ -595,9 +613,10 @@ export async function startServer(root: CompositionRoot = {}): Promise<void> {
     c.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
     if (c.req.method === "OPTIONS") return c.text("", 204);
 
+    const remoteAddress = (c.env as any)?.incoming?.socket?.remoteAddress;
     const transport = inferHttpConnectionKind({
       hostHeader: c.req.header("host"),
-      remoteAddress: (c.env as any)?.incoming?.socket?.remoteAddress,
+      remoteAddress,
       networkMode: serverRuntimeState.mode,
     } as any);
     if (!transport.connectionKind) {
@@ -605,6 +624,12 @@ export async function startServer(root: CompositionRoot = {}): Promise<void> {
     }
     const routePath = new URL(c.req.url).pathname;
     c.set("transportConnectionKind", transport.connectionKind);
+    const requestSecurity = inferHttpRequestSecurity({
+      requestUrl: c.req.url,
+      forwardedProto: c.req.header("x-forwarded-proto"),
+      remoteAddress,
+    });
+    c.set("transportSecureRequest", requestSecurity.secure);
 
     if (isResourceTicketContentRequest(c, routePath)) {
       await next();

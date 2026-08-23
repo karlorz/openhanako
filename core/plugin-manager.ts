@@ -6,11 +6,20 @@ import {
   isPluginBusCapabilityError,
 } from "./plugin-route-request-context.ts";
 import { freshImport } from "./fresh-import.ts";
-import { createPluginConfigStore, normalizePluginConfigSchema } from "./plugin-config.ts";
+import {
+  createPluginConfigStore,
+  normalizePluginConfigSchema,
+  PLUGIN_SECRETS_DIRNAME,
+} from "./plugin-config.ts";
 import { semverGte } from "../lib/plugin-versioning.ts";
 import { detectIncompatiblePluginFormat } from "../lib/plugin-format-guard.ts";
 import { createModuleLogger } from "../lib/debug-log.ts";
 import { getToolSessionPath, normalizeToolRuntimeContext } from "../lib/tools/tool-session.ts";
+import { readMarketplaceActiveMarker } from "../lib/plugin-marketplace-active-marker.ts";
+import {
+  marketplacePluginDataDir,
+  marketplacePluginSecretsDir,
+} from "../lib/plugin-trust-store.ts";
 
 const log = createModuleLogger("plugin-manager");
 
@@ -75,7 +84,15 @@ function pluginSourcePriority(source) {
 
 function pluginDataDirForEntry(rootDir, entry) {
   if (entry.source === "dev") return path.join(rootDir, "dev", entry.id);
+  if (entry.marketplaceInstall) {
+    return marketplacePluginDataDir(rootDir, entry.marketplaceInstall.marketplaceId, entry.id);
+  }
   return path.join(rootDir, entry.id);
+}
+
+function pluginSecretsDirForEntry(rootDir, entry) {
+  if (!rootDir || !entry.marketplaceInstall) return null;
+  return marketplacePluginSecretsDir(rootDir, entry.marketplaceInstall.marketplaceId, entry.id);
 }
 
 function addContribution(contributions, name) {
@@ -224,6 +241,7 @@ export class PluginManager {
   declare _commands: any;
   declare _configSchemas: any;
   declare _dataDir: any;
+  declare _secretsDir: any;
   declare _extensionFactories: any;
   declare _getSessionPath: any;
   declare _loadTimeoutMs: any;
@@ -240,6 +258,7 @@ export class PluginManager {
   declare _resourceWatch: any;
   declare _routeApps: any;
   declare _runtimeContext: any;
+  declare _pluginTrustStore: any;
   declare _scanned: any;
   declare _settingsTabs: any;
   declare _skillPaths: any;
@@ -256,6 +275,7 @@ export class PluginManager {
     pluginsDirs,
     pluginsDir,
     dataDir,
+    secretsDir,
     bus,
     preferencesManager,
     appVersion,
@@ -269,9 +289,11 @@ export class PluginManager {
     lifecycleTimeoutMs,
     logSink,
     runtimeContext,
+    pluginTrustStore,
   }) {
     this._pluginsDirs = pluginsDirs || (pluginsDir ? [pluginsDir] : []);
     this._dataDir = dataDir;
+    this._secretsDir = secretsDir || path.join(path.dirname(dataDir), PLUGIN_SECRETS_DIRNAME);
     this._bus = bus;
     this._preferencesManager = preferencesManager || null;
     this._appVersion = appVersion || "0.0.0";
@@ -282,6 +304,7 @@ export class PluginManager {
     this._resourceWatch = resourceWatch || null;
     this._logSink = typeof logSink === "function" ? logSink : null;
     this._runtimeContext = runtimeContext || null;
+    this._pluginTrustStore = pluginTrustStore || null;
     this._plugins = new Map();
     this._scanned = [];
     this._opQueue = Promise.resolve();
@@ -552,7 +575,8 @@ export class PluginManager {
     const activationEvents = normalizeActivationEvents(manifest?.activationEvents, hasLifecycle);
     const capabilities = normalizeCapabilityList(manifest?.capabilities);
     const sensitiveCapabilities = normalizeCapabilityList(manifest?.sensitiveCapabilities);
-    return { id, name, version, description, pluginDir, manifest, contributions, trust, hidden, uiHostCapabilities, configSchema, activationEvents, capabilities, sensitiveCapabilities, hasLifecycle, formatIssue, source: undefined as any, pluginKey: undefined as any };
+    const marketplaceInstall = readMarketplaceActiveMarker(pluginDir, id);
+    return { id, name, version, description, pluginDir, manifest, contributions, trust, hidden, uiHostCapabilities, configSchema, activationEvents, capabilities, sensitiveCapabilities, hasLifecycle, formatIssue, marketplaceInstall, source: undefined as any, pluginKey: undefined as any };
   }
 
   async loadAll() {
@@ -578,8 +602,7 @@ export class PluginManager {
       }
 
       if (desc.source === "community" && desc.trust === "full-access") {
-        const allowed = this._preferencesManager?.getAllowFullAccessPlugins() || false;
-        if (!allowed) {
+        if (!this._isFullAccessAllowed(entry)) {
           entry.status = "restricted";
           this._setPluginEntry(entry);
           continue;
@@ -695,6 +718,7 @@ export class PluginManager {
       source: entry.source,
       pluginDir: entry.pluginDir,
       dataDir: pluginDataDirForEntry(this._dataDir, entry),
+      secretsDir: pluginSecretsDirForEntry(this._secretsDir, entry),
       bus: this._bus,
       accessLevel,
       registerSessionFile: this._registerSessionFile,
@@ -1221,7 +1245,11 @@ export class PluginManager {
       stores.push({
         pluginId: entry.id,
         pluginKey: entry.pluginKey,
-        store: createPluginConfigStore({ dataDir, schema: entry.configSchema }),
+        store: createPluginConfigStore({
+          dataDir,
+          secretsDir: pluginSecretsDirForEntry(this._secretsDir, entry),
+          schema: entry.configSchema,
+        }),
       });
     }
     return stores;
@@ -1399,7 +1427,16 @@ export class PluginManager {
   _isFullAccessAllowed(entryOrDesc, options: any = {}) {
     if (entryOrDesc.source === "builtin") return true;
     if (entryOrDesc.source === "dev") return options.allowFullAccess === true;
-    return this._preferencesManager?.getAllowFullAccessPlugins() || false;
+    const globalFullAccessEnabled = this._preferencesManager?.getAllowFullAccessPlugins() || false;
+    const marketplaceInstall = options.marketplaceInstall || entryOrDesc.marketplaceInstall;
+    if (!marketplaceInstall) return globalFullAccessEnabled;
+    if (!this._pluginTrustStore) return false;
+    return this._pluginTrustStore.isFullAccessAllowed({
+      marketplaceId: marketplaceInstall.marketplaceId,
+      pluginId: entryOrDesc.id,
+      artifactDigest: marketplaceInstall.artifactDigest,
+      globalFullAccessEnabled,
+    });
   }
 
   // ── Hot operations ───────────────────────────────────────────────────────
@@ -1575,7 +1612,7 @@ export class PluginManager {
         const disabledList = this._preferencesManager?.getDisabledPlugins() || [];
         if (disabledList.includes(entry.id)) continue;
 
-        if (allow && entry.status === "restricted") {
+        if (allow && entry.status === "restricted" && this._isFullAccessAllowed(entry)) {
           try {
             await this._loadPluginWithBoundary(entry);
             entry.status = "loaded";

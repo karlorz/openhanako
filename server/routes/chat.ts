@@ -51,6 +51,7 @@ import { visiblePromptText } from "../../core/session-reminders.ts";
 import { AppError } from "../../shared/errors.ts";
 import { errorBus } from "../../shared/error-bus.ts";
 import { createRequestContext } from "../http/boundary.ts";
+import { isLocalOwnerPrincipal, isStudioOwnerPrincipal } from "../http/route-security.ts";
 import { buildDeferredResultInterludeBlock, resolveDeferredReceiverName } from "../deferred-result-interlude.ts";
 import { DEFERRED_RESULT_MESSAGE_TYPE } from "../../lib/deferred-result-notification.ts";
 import {
@@ -453,7 +454,22 @@ export function createChatRoute(engine: any, hub: any, {
     return ss;
   }
 
-  function getExistingState(sessionPath) {
+  // B1-T1: record the connecting client's host owner principal for a session
+  // so tool approval review can resolve it later. Server-derived only
+  // (wsClient principal / request auth principal — never tool params or
+  // client-authored fields). Only recorded when a real principal is known;
+  // non-owner sessions resolve to all-false via the engine fallback.
+  function recordSessionOwnerPrincipal(sessionPath, { wsClient = null, requestContext = null } = {}) {
+    if (!sessionPath) return;
+    const principal = wsClient?.principal || requestContext?.authPrincipal || null;
+    if (!principal) return;
+    engine.markSessionOwnerPrincipal?.(sessionPath, {
+      isStudioOwner: isStudioOwnerPrincipal(principal) || isLocalOwnerPrincipal(principal),
+      isLocalOwner: isLocalOwnerPrincipal(principal),
+    });
+  }
+
+  function getExistingState(sessionPath, { wsClient = null, requestContext = null } = {}) {
     if (!sessionPath) return null;
     const key = sessionStateKey(sessionPath);
     if (key !== sessionPath && sessionState.has(sessionPath) && !sessionState.has(key)) {
@@ -465,6 +481,7 @@ export function createChatRoute(engine: any, hub: any, {
       ss.sessionPath = sessionPath;
       ss.lastAccessed = Date.now();
     }
+    recordSessionOwnerPrincipal(sessionPath, { wsClient, requestContext });
     return ss;
   }
 
@@ -1755,6 +1772,7 @@ export function createChatRoute(engine: any, hub: any, {
             if (msg.type === "abort") {
               const abortTarget = requireWsSessionContext(msg, ws); if (!abortTarget) return;
               const abortPath = abortTarget.sessionPath;
+              recordSessionOwnerPrincipal(abortPath, { wsClient: client, requestContext });
               const abortSs = getState(abortPath);
               const requestedStreamId = typeof msg.streamId === "string" && msg.streamId.trim()
                 ? msg.streamId.trim()
@@ -1835,7 +1853,7 @@ export function createChatRoute(engine: any, hub: any, {
               const resumeTarget = requireWsSessionContext(msg, ws); if (!resumeTarget) return;
               const currentPath = resumeTarget.sessionPath;
               const currentSessionId = resumeTarget.sessionId;
-              const ss = getExistingState(currentPath);
+              const ss = getExistingState(currentPath, { wsClient: client, requestContext });
               const runtimeIsStreaming = typeof engine.isSessionStreaming === "function"
                 ? !!engine.isSessionStreaming(currentPath)
                 : !!ss?.isStreaming;
@@ -1940,6 +1958,7 @@ export function createChatRoute(engine: any, hub: any, {
                 return;
               }
               const { sessionId: compactSessionId, sessionPath: compactPath } = compactTarget;
+              recordSessionOwnerPrincipal(compactPath, { wsClient: client, requestContext });
               const requestedMethod = msg.method == null ? null : String(msg.method);
               if (requestedMethod !== null && requestedMethod !== INSTANT_SIMPLE_COMPACTION_METHOD) {
                 wsSend(ws, {
@@ -2037,6 +2056,7 @@ export function createChatRoute(engine: any, hub: any, {
               // 消息不值得先把几 MB base64 量一遍再拒。
               const promptTarget = requireWsSessionContext(msg, ws); if (!promptTarget) return;
               const promptSessionPath = promptTarget.sessionPath;
+              recordSessionOwnerPrincipal(promptSessionPath, { wsClient: client, requestContext });
               // 图片校验：最多 10 张，单张 ≤ 20MB，仅允许常见图片 MIME
               if (msg.images?.length) {
                 const MAX_IMAGES = 10;

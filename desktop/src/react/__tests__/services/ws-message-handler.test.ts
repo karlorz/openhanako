@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { makeMigrationSession } from '../../../../../tests/helpers/migration-session.ts';
 
 const previewRefreshMocks = vi.hoisted(() => ({
   changeOptions: { retryMissing: true, retryUnchanged: true },
@@ -469,6 +470,72 @@ describe('ws-message-handler session-scoped desktop events', () => {
 
     const items = useStore.getState().chatSessions['/session/a.jsonl']?.items || [];
     expect(items).toHaveLength(1);
+  });
+
+  it('session_branch_reset applies only to the addressed migration session', () => {
+    const addressed = makeMigrationSession({
+      sessionPath: '/session/a.jsonl',
+      sourceEntryId: 'entry_user_1',
+    });
+    const neighbor = makeMigrationSession({
+      sessionId: 'sess_migration_b',
+      sessionPath: '/session/b.jsonl',
+      sourceEntryId: 'entry_user_b',
+    });
+
+    useStore.getState().clearSession(addressed.sessionPath);
+    useStore.getState().clearSession(neighbor.sessionPath);
+    useStore.getState().initSession(addressed.sessionPath, [], false);
+    useStore.getState().initSession(neighbor.sessionPath, [], false);
+    clearMessageLiveVersion(addressed.sessionPath);
+    clearMessageLiveVersion(neighbor.sessionPath);
+
+    useStore.getState().appendItem(addressed.sessionPath, {
+      type: 'message',
+      data: { id: 'u1', role: 'user', text: 'old a' },
+    });
+    useStore.getState().appendItem(addressed.sessionPath, {
+      type: 'message',
+      data: {
+        id: 'client-user-a',
+        sourceEntryId: addressed.sourceEntryId,
+        role: 'user',
+        text: 'retry a',
+      },
+    });
+    useStore.getState().appendItem(addressed.sessionPath, {
+      type: 'message',
+      data: { id: 'a2', role: 'assistant', blocks: [] },
+    });
+    useStore.getState().appendItem(neighbor.sessionPath, {
+      type: 'message',
+      data: {
+        id: 'client-user-b',
+        sourceEntryId: neighbor.sourceEntryId,
+        role: 'user',
+        text: 'keep b',
+      },
+    });
+    useStore.getState().appendItem(neighbor.sessionPath, {
+      type: 'message',
+      data: { id: 'b2', role: 'assistant', blocks: [] },
+    });
+
+    const neighborBefore = useStore.getState().chatSessions[neighbor.sessionPath]?.items || [];
+
+    handleServerMessage({
+      type: 'session_branch_reset',
+      sessionPath: addressed.sessionPath,
+      messageId: addressed.sourceEntryId,
+      clientMessageId: 'client-user-a',
+    });
+
+    const addressedItems = useStore.getState().chatSessions[addressed.sessionPath]?.items || [];
+    const neighborItems = useStore.getState().chatSessions[neighbor.sessionPath]?.items || [];
+    expect(addressedItems.map((item) => (item.type === 'message' ? item.data.id : item.id))).toEqual(['u1']);
+    expect(neighborItems).toEqual(neighborBefore);
+    expect(readMessageLiveVersion(addressed.sessionPath)).toBe(1);
+    expect(readMessageLiveVersion(neighbor.sessionPath)).toBe(0);
   });
 
   it('session_branch_reset 只截断目标会话尾部并提升 message live version', () => {
@@ -1067,14 +1134,48 @@ describe('ws-message-handler background chat stream routing', () => {
       },
     });
   });
+
+  it('does not rewrite the destination chat when a source session keeps streaming after focus switch', () => {
+    const source = makeMigrationSession({ sessionPath: '/session/a.jsonl' });
+    const destination = makeMigrationSession({
+      sessionId: 'sess_migration_b',
+      sessionPath: '/session/b.jsonl',
+      sourceEntryId: 'entry_user_b',
+    });
+
+    useStore.setState({
+      currentSessionPath: destination.sessionPath,
+      currentSessionId: destination.sessionId,
+      streamingSessions: [source.sessionPath],
+    } as never);
+
+    const destinationBefore = structuredClone(
+      useStore.getState().chatSessions[destination.sessionPath],
+    );
+
+    handleServerMessage({
+      type: 'text_delta',
+      sessionPath: source.sessionPath,
+      delta: 'source still streaming',
+    });
+
+    expect(streamBufferManager.handle).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'text_delta',
+      sessionPath: source.sessionPath,
+      delta: 'source still streaming',
+    }));
+    expect(useStore.getState().chatSessions[destination.sessionPath]).toEqual(destinationBefore);
+  });
 });
 
 describe('ws-message-handler compaction lifecycle', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     useStore.setState({
+      currentSessionId: null,
       currentSessionPath: '/session/a.jsonl',
       pendingNewSession: false,
+      sessionLocatorsById: {},
       sessions: [
         {
           path: '/session/a.jsonl',
@@ -1104,7 +1205,6 @@ describe('ws-message-handler compaction lifecycle', () => {
       contextWindow: null,
       contextPercent: null,
       contextBySession: {},
-      sessionLocatorsById: {},
       toasts: [],
     } as never);
   });
@@ -1223,6 +1323,44 @@ describe('ws-message-handler compaction lifecycle', () => {
       tokens: null,
       window: 200_000,
       percent: null,
+    });
+  });
+
+  it('treats compaction_end as the current fork terminal result for the addressed session only', () => {
+    const addressed = makeMigrationSession({ sessionPath: '/session/a.jsonl' });
+    const neighbor = makeMigrationSession({
+      sessionId: 'sess_migration_b',
+      sessionPath: '/session/b.jsonl',
+    });
+
+    useStore.setState({
+      compactingSessions: [addressed.sessionPath, neighbor.sessionPath],
+      contextBySession: {
+        [neighbor.sessionPath]: { tokens: 12, window: 100_000, percent: 12 },
+      },
+    } as never);
+
+    handleServerMessage({
+      type: 'compaction_end',
+      sessionPath: addressed.sessionPath,
+      reason: 'manual',
+      aborted: false,
+      willRetry: false,
+      tokens: null,
+      contextWindow: 200_000,
+      percent: null,
+    });
+
+    expect(useStore.getState().compactingSessions).toEqual([neighbor.sessionPath]);
+    expect(useStore.getState().contextBySession[addressed.sessionPath]).toEqual({
+      tokens: null,
+      window: 200_000,
+      percent: null,
+    });
+    expect(useStore.getState().contextBySession[neighbor.sessionPath]).toEqual({
+      tokens: 12,
+      window: 100_000,
+      percent: 12,
     });
   });
 });
@@ -1706,6 +1844,175 @@ describe('ws-message-handler turn_end side effects', () => {
     await vi.advanceTimersByTimeAsync(300);
 
     expect(loadSessions).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('ws-message-handler replay hydration', () => {
+  it('hydrates replayed optimistic user attachments when the server adds fileId metadata', () => {
+    useStore.setState({
+      currentSessionPath: '/session/a.jsonl',
+      pendingNewSession: false,
+      chatSessions: {
+        '/session/a.jsonl': {
+          items: [{
+            type: 'message',
+            data: {
+              id: 'client-user-remote-image',
+              role: 'user',
+              text: '',
+              timestamp: 1,
+              attachments: [{
+                path: '/root/.hanako/session-files/hash/pasted.png',
+                name: 'pasted.png',
+                isDir: false,
+              }],
+              sendStatus: 'pending',
+            },
+          }],
+          hasMore: false,
+          loadingMore: false,
+        },
+      },
+    } as never);
+
+    handleServerMessage({
+      type: 'session_user_message',
+      __fromReplay: true,
+      sessionPath: '/session/a.jsonl',
+      clientMessageId: 'client-user-remote-image',
+      message: {
+        text: '',
+        timestamp: 2,
+        attachments: [{
+          fileId: 'sf_remote_pasted',
+          path: '/root/.hanako/session-files/hash/pasted.png',
+          name: 'pasted.png',
+          isDir: false,
+        }],
+      },
+    });
+
+    const items = useStore.getState().chatSessions['/session/a.jsonl']?.items || [];
+    expect(items).toHaveLength(1);
+    const item = items[0];
+    expect(item?.type).toBe('message');
+    if (!item || item.type !== 'message') throw new Error('expected message item');
+    expect(item.data.attachments?.[0]).toMatchObject({
+      fileId: 'sf_remote_pasted',
+      path: '/root/.hanako/session-files/hash/pasted.png',
+    });
+    expect(item.data.sendStatus).toBeUndefined();
+  });
+});
+
+describe('ws-message-handler replay hydration', () => {
+  it('hydrates replayed optimistic user attachments when the server adds fileId metadata', () => {
+    useStore.setState({
+      currentSessionPath: '/session/a.jsonl',
+      pendingNewSession: false,
+      chatSessions: {
+        '/session/a.jsonl': {
+          items: [{
+            type: 'message',
+            data: {
+              id: 'client-user-remote-image',
+              role: 'user',
+              text: '',
+              timestamp: 1,
+              attachments: [{
+                path: '/root/.hanako/session-files/hash/pasted.png',
+                name: 'pasted.png',
+                isDir: false,
+              }],
+              sendStatus: 'pending',
+            },
+          }],
+          hasMore: false,
+          loadingMore: false,
+        },
+      },
+    } as never);
+
+    handleServerMessage({
+      type: 'session_user_message',
+      __fromReplay: true,
+      sessionPath: '/session/a.jsonl',
+      clientMessageId: 'client-user-remote-image',
+      message: {
+        text: '',
+        timestamp: 2,
+        attachments: [{
+          fileId: 'sf_remote_pasted',
+          path: '/root/.hanako/session-files/hash/pasted.png',
+          name: 'pasted.png',
+          isDir: false,
+        }],
+      },
+    });
+
+    const items = useStore.getState().chatSessions['/session/a.jsonl']?.items || [];
+    expect(items).toHaveLength(1);
+    const item = items[0];
+    expect(item?.type).toBe('message');
+    if (!item || item.type !== 'message') throw new Error('expected message item');
+    expect(item.data.attachments?.[0]).toMatchObject({
+      fileId: 'sf_remote_pasted',
+      path: '/root/.hanako/session-files/hash/pasted.png',
+    });
+    expect(item.data.sendStatus).toBeUndefined();
+  });
+
+  it('keeps persisted sourceEntryId for client-user UI ids during replay hydration', () => {
+    const migration = makeMigrationSession({
+      sessionPath: '/session/a.jsonl',
+      sourceEntryId: 'entry_user_1',
+    });
+    const clientMessageId = 'client-user-1';
+
+    useStore.setState({
+      currentSessionPath: migration.sessionPath,
+      pendingNewSession: false,
+      chatSessions: {
+        [migration.sessionPath]: {
+          items: [{
+            type: 'message',
+            data: {
+              id: clientMessageId,
+              sourceEntryId: migration.sourceEntryId,
+              role: 'user',
+              text: 'confirmed prompt',
+              timestamp: 1,
+            },
+          }],
+          hasMore: false,
+          loadingMore: false,
+        },
+      },
+    } as never);
+
+    handleServerMessage({
+      type: 'session_user_message',
+      __fromReplay: true,
+      sessionPath: migration.sessionPath,
+      clientMessageId,
+      message: {
+        id: migration.sourceEntryId,
+        text: 'confirmed prompt',
+        timestamp: 2,
+      },
+    });
+
+    const items = useStore.getState().chatSessions[migration.sessionPath]?.items || [];
+    expect(items).toHaveLength(1);
+    const item = items[0];
+    expect(item?.type).toBe('message');
+    if (!item || item.type !== 'message') throw new Error('expected message item');
+    expect(item.data).toMatchObject({
+      id: clientMessageId,
+      sourceEntryId: migration.sourceEntryId,
+      role: 'user',
+      text: 'confirmed prompt',
+    });
   });
 });
 

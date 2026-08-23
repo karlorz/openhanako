@@ -1,5 +1,8 @@
 import { validateStudioConnectionTrust } from './studio-access';
 import { SERVER_PROTOCOL_VERSION } from '../../../../shared/contract-versions.ts';
+import { HanaHttpError } from './hana-http-error';
+import { assertRemoteBoundaryContract } from './remote-boundary-contract';
+import type { RemoteServerAssessment } from '../../../../shared/remote-server-assessment';
 
 export type StudioConnectionKind = 'local' | 'lan' | 'custom_remote' | 'relay' | 'cloud';
 export type ServerTrustState = 'local' | 'lan' | 'tunnel' | 'cloud';
@@ -77,6 +80,22 @@ export interface ServerIdentity {
    *  Optional so an older server that predates this field is read-time
    *  compatible: absence means "don't know", not "mismatch". */
   serverProtocol?: number;
+  runtimeBuild?: {
+    schemaVersion?: number;
+    runtimeVersion?: string;
+    releaseTag?: string | null;
+    gitSha?: string | null;
+    sourceRepository?: string | null;
+  };
+  featureContracts?: {
+    schemaVersion?: number;
+    complete?: boolean;
+    entries?: Record<string, number>;
+  };
+  runtimeFacts?: {
+    platform?: string;
+    arch?: string;
+  };
 }
 
 export interface ServerConnectionSource {
@@ -167,7 +186,11 @@ function appendQueryParam(url: string, key: string, value: string): string {
 }
 
 export function canUseQueryToken(connection: ServerConnection): boolean {
-  return connection.kind === 'local' && connection.credentialKind === 'loopback_token';
+  // Server accepts query tokens only for local and lan connections, not custom_remote.
+  // See core/server-auth.ts parseCredential.
+  if (connection.kind === 'custom_remote') return false;
+  return connection.credentialKind === 'loopback_token'
+      || connection.credentialKind === 'device_credential';
 }
 
 function headersToRecord(headers: HeadersInit | undefined): Record<string, string> {
@@ -319,6 +342,29 @@ export async function connectDeviceServerConnection({
   const token = normalizeToken(credential);
   if (!token) throw new Error('server access key required');
 
+  // Prefer main-process probe when available: bypasses renderer CSP for the
+  // initial connect (CSP <meta> is built from the active connection, so a fetch
+  // to a NEW remote URL is blocked before the connection can become active).
+  const hana = typeof window !== 'undefined' ? (window as any).hana : undefined;
+  if (hana && typeof hana.probeConnection === 'function') {
+    const probe = await hana.probeConnection({ baseUrl: normalizedBaseUrl, credential: token });
+    if (!probe || !probe.ok) {
+      throw new Error(`connect probe failed: ${(probe && probe.error) || 'unknown'}`);
+    }
+    const identity = probe.identity as ServerIdentity;
+    const connection = createDeviceServerConnection({
+      baseUrl: normalizedBaseUrl,
+      credential: token,
+      identity,
+    });
+    assertRemoteBoundaryContract(connection, identity);
+    // Persist as active so the next page load's CSP includes the origin.
+    persistServerConnectionSelection(connection);
+    if (typeof location !== 'undefined') location.reload();
+    return connection;
+  }
+
+  // Fallback: direct fetch (dev:web mode, tests, or builds without preload).
   await requestJson(fetchImpl, `${normalizedBaseUrl}/api/web-auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -331,12 +377,15 @@ export async function connectDeviceServerConnection({
     credentials: 'include',
   }) as ServerIdentity;
 
-  return createDeviceServerConnection({
+  const connection = createDeviceServerConnection({
     baseUrl: normalizedBaseUrl,
     credential: token,
     identity,
   });
+  assertRemoteBoundaryContract(connection, identity);
+  return connection;
 }
+
 
 export function refreshLocalServerConnection({
   existingConnection,
@@ -521,7 +570,18 @@ export function hasServerConnection(source: ServerConnectionSource): boolean {
 }
 
 export function isLocalOwnerConnection(connection: ServerConnection | null | undefined): boolean {
-  return connection?.kind === 'local' && connection.credentialKind === 'loopback_token';
+  return connection?.kind === 'local'
+    && connection.credentialKind === 'loopback_token'
+    && isLoopbackConnectionUrl(connection.baseUrl);
+}
+
+export function isLoopbackConnectionUrl(value: string | null | undefined): boolean {
+  if (!value) return false;
+  try {
+    return isLoopbackHost(new URL(value).hostname);
+  } catch {
+    return false;
+  }
 }
 
 export function upsertServerConnection(
@@ -677,15 +737,100 @@ export function buildConnectionWsUrl(
   assertRoutePath(path);
   const url = `${trimTrailingSlash(connection.wsUrl)}${path}`;
   if (opts.wsTicket) return appendQueryParam(url, 'wsTicket', opts.wsTicket);
+  if (connection.kind !== 'local' && connection.kind !== 'lan') return url;
   if (!connection.token || !canUseQueryToken(connection)) return url;
   return appendQueryParam(url, 'token', connection.token);
+}
+
+export type ConnectionWsAuth =
+  | { mode: 'local-query-token'; ticket: null; warningCode: null }
+  | { mode: 'ticket'; ticket: string; warningCode: null }
+  | {
+      mode: 'legacy-query-token';
+      ticket: null;
+      warningCode: 'legacy_websocket_query_token' | 'websocket_ticket_contract_missing' | 'ticket_request_failed_legacy_fallback';
+    }
+  | { mode: 'unsupported'; ticket: null; warningCode: 'websocket_ticket_required' };
+
+function assessmentForConnection(
+  connection: ServerConnection,
+  assessment: RemoteServerAssessment | null | undefined,
+): RemoteServerAssessment | null {
+  return assessment?.schemaVersion === 1 && assessment.connectionId === connection.connectionId
+    ? assessment
+    : null;
+}
+
+function lanLegacyQueryToken(
+  warningCode: Extract<ConnectionWsAuth, { mode: 'legacy-query-token' }>['warningCode'],
+): ConnectionWsAuth {
+  return { mode: 'legacy-query-token', ticket: null, warningCode };
+}
+
+/**
+ * Resolve WebSocket auth for a connection.
+ *
+ * State machine (ticket-primary for non-loopback):
+ * 1. local owner → local-query-token
+ * 2. complete assessment missing websocket.ticket → LAN legacy or unsupported
+ * 3. try POST /api/ws-ticket (null assessment, incomplete, or ticket-ready)
+ * 4. ticket ok → ticket
+ * 5. LAN → gated legacy-query-token; else unsupported
+ */
+export async function resolveConnectionWsAuth(
+  connection: ServerConnection,
+  assessment: RemoteServerAssessment | null | undefined,
+  fetchImpl: typeof fetch = fetch,
+): Promise<ConnectionWsAuth> {
+  if (isLocalOwnerConnection(connection)) {
+    return { mode: 'local-query-token', ticket: null, warningCode: null };
+  }
+
+  const currentAssessment = assessmentForConnection(connection, assessment);
+  const transport = currentAssessment?.transport;
+  const contractMissing = !!currentAssessment
+    && transport?.status === 'legacy-query-token'
+    && transport.reasonCodes.includes('websocket_ticket_contract_missing')
+    && transport.reportedTicketContractVersion === null;
+
+  // Only a complete assessment that declares the ticket contract missing skips
+  // probing. Everything else (including assessment === null) is ticket-primary.
+  if (contractMissing) {
+    return connection.kind === 'lan'
+      ? lanLegacyQueryToken('websocket_ticket_contract_missing')
+      : { mode: 'unsupported', ticket: null, warningCode: 'websocket_ticket_required' };
+  }
+
+  try {
+    const ticket = await requestConnectionWsTicket(connection, fetchImpl);
+    if (ticket) return { mode: 'ticket', ticket, warningCode: null };
+  } catch {
+    if (connection.kind === 'lan') {
+      return lanLegacyQueryToken(
+        currentAssessment
+          ? 'ticket_request_failed_legacy_fallback'
+          : 'legacy_websocket_query_token',
+      );
+    }
+    return { mode: 'unsupported', ticket: null, warningCode: 'websocket_ticket_required' };
+  }
+
+  if (connection.kind === 'lan') {
+    return lanLegacyQueryToken(
+      currentAssessment
+        ? 'ticket_request_failed_legacy_fallback'
+        : 'legacy_websocket_query_token',
+    );
+  }
+
+  return { mode: 'unsupported', ticket: null, warningCode: 'websocket_ticket_required' };
 }
 
 export async function requestConnectionWsTicket(
   connection: ServerConnection,
   fetchImpl: typeof fetch = fetch,
 ): Promise<string | null> {
-  if (canUseQueryToken(connection)) return null;
+  if (isLocalOwnerConnection(connection)) return null;
   const res = await fetchImpl(buildConnectionUrl(connection, '/api/ws-ticket'), {
     method: 'POST',
     headers: appendConnectionAuth(connection, { 'Content-Type': 'application/json' }),
@@ -739,7 +884,17 @@ export function appendConnectionAuth(
 async function requestJson(fetchImpl: typeof fetch, url: string, init: RequestInit): Promise<unknown> {
   const res = await fetchImpl(url, init);
   if (!res.ok) {
-    throw new Error(`server connection request failed: ${res.status} ${res.statusText}`);
+    let path: string | null = null;
+    try {
+      path = new URL(url).pathname;
+    } catch {
+      path = null;
+    }
+    throw new HanaHttpError({
+      status: res.status,
+      statusText: res.statusText,
+      path,
+    });
   }
   return res.json();
 }

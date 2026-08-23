@@ -294,6 +294,8 @@ describe("HTTP route security policy", () => {
       ["GET", "/api/plugins/settings"],
       ["GET", "/api/plugins/settings-tabs"],
       ["GET", "/api/plugins/theme.css"],
+      ["GET", "/api/skills/remote-skill/files"],
+      ["GET", "/api/skills/remote-skill/file"],
       ["GET", "/api/plugins/demo/assets/dist/app.js"],
       ["HEAD", "/api/plugins/demo/assets/dist/app.js"],
       ["POST", "/api/plugins/iframe-ticket"],
@@ -443,6 +445,8 @@ describe("HTTP route security policy", () => {
       ["POST", "/api/skills/bundles/story-pack/export"],
       ["GET", "/api/plugins?source=community"],
       ["GET", "/api/plugins/marketplace"],
+      ["GET", "/api/plugins/marketplace/catalog"],
+      ["GET", "/api/plugins/marketplace/installed-skill-packages"],
       ["GET", "/api/plugins/marketplace/media-board/readme"],
       ["GET", "/api/plugins/diagnostics"],
       ["GET", "/api/media/image/providers"],
@@ -466,6 +470,7 @@ describe("HTTP route security policy", () => {
       ["PUT", "/api/plugins/media-board/enabled"],
       ["DELETE", "/api/plugins/media-board"],
       ["POST", "/api/plugins/marketplace/media-board/install"],
+      ["DELETE", "/api/plugins/marketplace/skillwiki/skills"],
       ["GET", "/api/plugins/mcp/state?agentId=hana"],
       ["PUT", "/api/plugins/mcp/enabled"],
       ["POST", "/api/plugins/mcp/servers"],
@@ -491,15 +496,114 @@ describe("HTTP route security policy", () => {
       ["PATCH", "/api/agents/hana/skills/imagegen"],
       ["GET", "/api/plugins?source=community"],
       ["GET", "/api/plugins/marketplace"],
+      ["GET", "/api/plugins/marketplace/installed-skill-packages"],
       ["GET", "/api/plugins/diagnostics"],
       ["GET", "/api/media/image/providers"],
       ["PUT", "/api/media/image/config"],
       ["PUT", "/api/plugins/media-board/config"],
+      ["DELETE", "/api/plugins/marketplace/skillwiki/skills"],
       ["GET", "/api/plugins/mcp/state?agentId=hana"],
       ["PUT", "/api/plugins/mcp/enabled"],
     ]) {
       expect(authorizeHttpRoute({ method, path, principal }), `${method} ${path}`)
         .toMatchObject({ allowed: false, status: 403 });
+    }
+  });
+
+  it("requires Studio owner for native Marketplace plan and execute routes", async () => {
+    const { authorizeHttpRoute, classifyHttpRoute } = await import("../server/http/route-security.ts");
+    const writer = devicePrincipal(["settings.read", "settings.write"]);
+    const owner = devicePrincipal(["settings.read", "settings.write", "studio.owner"]);
+    for (const path of [
+      "/api/plugins/marketplace/hyperframes/native/install/plan",
+      "/api/plugins/marketplace/hyperframes/native/install/execute",
+      "/api/plugins/marketplace/hyperframes/native/uninstall/plan",
+      "/api/plugins/marketplace/hyperframes/native/uninstall/execute",
+    ]) {
+      expect(classifyHttpRoute({ method: "POST", path })).toMatchObject({ kind: "studio_owner" });
+      expect(authorizeHttpRoute({ method: "POST", path, principal: writer }))
+        .toMatchObject({ allowed: false, error: "studio_owner_required", status: 403 });
+      expect(authorizeHttpRoute({ method: "POST", path, principal: owner }))
+        .toMatchObject({ allowed: true });
+    }
+  });
+
+  it("requires Studio owner for the legacy Marketplace install route", async () => {
+    const { authorizeHttpRoute, classifyHttpRoute } = await import("../server/http/route-security.ts");
+    const path = "/api/plugins/marketplace/demo/install";
+    const writer = devicePrincipal(["settings.read", "settings.write"]);
+    const owner = devicePrincipal(["settings.read", "settings.write", "studio.owner"]);
+
+    expect(classifyHttpRoute({ method: "POST", path })).toMatchObject({ kind: "studio_owner" });
+    expect(authorizeHttpRoute({ method: "POST", path, principal: writer }))
+      .toMatchObject({ allowed: false, error: "studio_owner_required", status: 403 });
+    expect(authorizeHttpRoute({ method: "POST", path, principal: owner }))
+      .toMatchObject({ allowed: true });
+  });
+
+  it("requires Studio owner for source-switch plan and execute routes", async () => {
+    const { authorizeHttpRoute, classifyHttpRoute } = await import("../server/http/route-security.ts");
+    const writer = devicePrincipal(["settings.read", "settings.write"]);
+    const owner = devicePrincipal(["settings.read", "settings.write", "studio.owner"]);
+    for (const path of [
+      "/api/plugins/my-plugin/source-switch",
+      "/api/plugins/my-plugin/source-switch/plan",
+    ]) {
+      expect(classifyHttpRoute({ method: "POST", path })).toMatchObject({ kind: "studio_owner" });
+      expect(authorizeHttpRoute({ method: "POST", path, principal: writer }))
+        .toMatchObject({ allowed: false, error: "studio_owner_required", status: 403 });
+      expect(authorizeHttpRoute({ method: "POST", path, principal: owner }))
+        .toMatchObject({ allowed: true });
+    }
+  });
+
+  it("requires Studio owner for Marketplace artifact and source-state deletion", async () => {
+    const { authorizeHttpRoute, classifyHttpRoute } = await import("../server/http/route-security.ts");
+    const writer = devicePrincipal(["settings.read", "settings.write"]);
+    const owner = devicePrincipal(["settings.read", "settings.write", "studio.owner"]);
+    const pluginSurface = {
+      kind: "plugin",
+      credentialKind: "plugin_surface_session",
+      pluginId: "my-plugin",
+      scopes: [],
+    };
+    for (const path of [
+      `/api/plugins/my-plugin/artifacts/team-plugins/${"a".repeat(64)}`,
+      "/api/plugins/my-plugin/state/team-plugins",
+    ]) {
+      expect(classifyHttpRoute({ method: "DELETE", path })).toMatchObject({ kind: "studio_owner" });
+      expect(authorizeHttpRoute({ method: "DELETE", path, principal: writer }))
+        .toMatchObject({ allowed: false, error: "studio_owner_required", status: 403 });
+      expect(authorizeHttpRoute({ method: "DELETE", path, principal: pluginSurface }))
+        .toMatchObject({ allowed: false, error: "studio_owner_required", status: 403 });
+      expect(authorizeHttpRoute({ method: "DELETE", path, principal: owner }))
+        .toMatchObject({ allowed: true });
+    }
+  });
+
+  it("allows settings.read to inventory installed marketplace skill packages", async () => {
+    const { authorizeHttpRoute, classifyHttpRoute } = await import("../server/http/route-security.ts");
+    for (const path of [
+      "/api/plugins/marketplace/capabilities",
+      "/api/plugins/marketplace/installed-skill-packages",
+    ]) {
+      expect(classifyHttpRoute({ method: "GET", path }))
+        .toMatchObject({ kind: "scope", scope: "settings.read" });
+      expect(authorizeHttpRoute({
+        method: "GET",
+        path,
+        principal: devicePrincipal(["settings.read"]),
+      })).toMatchObject({ allowed: true });
+      expect(authorizeHttpRoute({
+        method: "GET",
+        path,
+        principal: devicePrincipal(["chat"]),
+      })).toMatchObject({
+        allowed: false,
+        status: 403,
+        error: "insufficient_scope",
+        requiredScope: "settings.read",
+      });
     }
   });
 
@@ -745,6 +849,37 @@ describe("HTTP route security policy", () => {
       status: 403,
       error: "studio_owner_required",
     });
+  });
+
+
+  it("classifies POST /api/ws-ticket as chat-scoped for authenticated devices", async () => {
+    const { authorizeHttpRoute, classifyHttpRoute } = await import("../server/http/route-security.ts");
+
+    expect(classifyHttpRoute({ method: "POST", path: "/api/ws-ticket" }))
+      .toMatchObject({ kind: "scope", scope: "chat" });
+    expect(classifyHttpRoute({ method: "GET", path: "/api/ws-ticket" }))
+      .toMatchObject({ kind: "local_only" });
+
+    expect(authorizeHttpRoute({
+      method: "POST",
+      path: "/api/ws-ticket",
+      principal: devicePrincipal(["chat"]),
+    })).toMatchObject({ allowed: true });
+
+    expect(authorizeHttpRoute({
+      method: "POST",
+      path: "/api/ws-ticket",
+      principal: devicePrincipal(["resources.read"]),
+    })).toMatchObject({
+      allowed: false,
+      status: 403,
+    });
+
+    expect(authorizeHttpRoute({
+      method: "POST",
+      path: "/api/ws-ticket",
+      principal: localPrincipal,
+    })).toMatchObject({ allowed: true });
   });
 
   describe("plugin route proxy policy", () => {

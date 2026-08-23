@@ -2,6 +2,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 import type { SkillInfo } from '../../store';
 import { t } from '../../helpers';
 import { SkillRow } from './SkillRow';
+import { effectiveSkillEnabled, skillToggleDisabled } from './skill-state';
 import styles from '../../Settings.module.css';
 
 export interface SkillBundleInfo {
@@ -71,12 +72,16 @@ function bundleFromDrop(event: React.DragEvent) {
 
 function bundleEnabledState(bundle: SkillBundleInfo, skillByName: Map<string, SkillInfo>) {
   const skillNames = bundle.skillNames.filter(name => skillByName.has(name));
-  if (skillNames.length === 0) return { all: false, partial: false, next: true };
-  const enabled = skillNames.filter(name => skillByName.get(name)?.enabled).length;
+  if (skillNames.length === 0) return { all: false, partial: false, next: true, disabled: false };
+  const enabled = skillNames.filter(name => {
+    const skill = skillByName.get(name);
+    return skill ? effectiveSkillEnabled(skill) : false;
+  }).length;
   return {
     all: enabled === skillNames.length,
     partial: enabled > 0 && enabled < skillNames.length,
     next: enabled !== skillNames.length,
+    disabled: skillNames.some(name => skillToggleDisabled(skillByName.get(name)!)),
   };
 }
 
@@ -92,7 +97,7 @@ function skillDeletable(skill: SkillInfo) {
   if (skill.deletable === false) return false;
   if (skill.readonly) return false;
   if (skill.source === 'workspace') return false;
-  if (skill.managedBy === 'workspace' || skill.managedBy === 'plugin') return false;
+  if (skill.managedBy === 'workspace' || skill.managedBy === 'plugin' || skill.managedBy === 'marketplace-skill-package') return false;
   return true;
 }
 
@@ -251,9 +256,12 @@ export function SkillBundleTree({
                   {mode === 'agent' && onToggleBundle ? (
                     <button
                       data-testid={`skill-bundle-toggle-${bundle.id}`}
-                      className={`hana-toggle mini${state.all ? ' on' : ''}${state.partial ? ' bundle-mixed' : ''}`}
+                      className={`hana-toggle mini${state.all ? ' on' : ''}${state.partial ? ' bundle-mixed' : ''}${state.disabled ? ' disabled' : ''}`}
                       type="button"
-                      title={state.next ? t('settings.skills.enableBundleTitle') : t('settings.skills.disableBundleTitle')}
+                      disabled={state.disabled}
+                      title={state.disabled
+                        ? t('settings.skills.marketplaceInactivePackage')
+                        : state.next ? t('settings.skills.enableBundleTitle') : t('settings.skills.disableBundleTitle')}
                       aria-label={state.next ? t('settings.skills.enableBundleAriaLabel', { name: bundle.name }) : t('settings.skills.disableBundleAriaLabel', { name: bundle.name })}
                       onClick={() => onToggleBundle(bundle, state.next)}
                     />

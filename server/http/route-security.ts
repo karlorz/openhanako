@@ -137,6 +137,10 @@ export function classifyHttpRoute({ method = "GET", path = "" } = {}) {
   if (isImageGenerationWriteRoute(verb, routePath)) return scoped("settings.write");
   if (isImageGenerationProviderManagementRoute(verb, routePath)) return scoped("providers.manage");
   if (isPluginSettingsReadRoute(verb, routePath)) return scoped("settings.read");
+  if (isNativeMarketplaceLifecycleRoute(verb, routePath)) return STUDIO_OWNER;
+  if (isLegacyMarketplaceInstallRoute(verb, routePath)) return STUDIO_OWNER;
+  if (isSourceSwitchRoute(verb, routePath)) return STUDIO_OWNER;
+  if (isMarketplaceRetentionDeleteRoute(verb, routePath)) return STUDIO_OWNER;
   if (isPluginSettingsWriteRoute(verb, routePath)) return scoped("settings.write");
   if (isProviderManagementRoute(verb, routePath)) return scoped("providers.manage");
   if (isBridgeManagementRoute(verb, routePath)) return scoped("bridge.manage");
@@ -463,7 +467,8 @@ function isSettingsWriteRoute(verb, routePath) {
 function isSkillSettingsReadRoute(verb, routePath) {
   if (verb !== "GET") return false;
   return routePath === "/api/skills"
-    || routePath === "/api/skills/bundles";
+    || routePath === "/api/skills/bundles"
+    || /^\/api\/skills\/[^/]+\/(?:files|file)$/.test(routePath);
 }
 
 function isSkillSettingsWriteRoute(verb, routePath) {
@@ -596,6 +601,10 @@ function isPluginSettingsReadRoute(verb, routePath) {
     || routePath === "/api/plugins/event-bus/capabilities"
     || routePath === "/api/plugins/diagnostics"
     || routePath === "/api/plugins/marketplace"
+    || routePath === "/api/plugins/marketplace/capabilities"
+    || routePath === "/api/plugins/marketplace/sources"
+    || routePath === "/api/plugins/marketplace/catalog"
+    || routePath === "/api/plugins/marketplace/installed-skill-packages"
     || /^\/api\/plugins\/marketplace\/[^/]+\/readme$/.test(routePath)
     || /^\/api\/plugins\/[^/]+\/config-schema$/.test(routePath)
     || /^\/api\/plugins\/[^/]+\/config$/.test(routePath);
@@ -607,8 +616,37 @@ function isPluginSettingsWriteRoute(verb, routePath) {
     || /^\/api\/plugins\/[^/]+\/config$/.test(routePath)
     || /^\/api\/plugins\/[^/]+\/enabled$/.test(routePath)
   ))
-    || (verb === "POST" && /^\/api\/plugins\/marketplace\/[^/]+\/install$/.test(routePath))
-    || (verb === "DELETE" && /^\/api\/plugins\/[^/]+$/.test(routePath));
+    || (verb === "POST" && (
+      routePath === "/api/plugins/marketplace/sources"
+      || /^\/api\/plugins\/marketplace\/sources\/[^/]+\/refresh$/.test(routePath)
+    ))
+    || (verb === "DELETE" && (
+      /^\/api\/plugins\/marketplace\/sources\/[^/]+$/.test(routePath)
+      || /^\/api\/plugins\/marketplace\/[^/]+\/skills$/.test(routePath)
+      || /^\/api\/plugins\/[^/]+$/.test(routePath)
+    ));
+}
+
+function isNativeMarketplaceLifecycleRoute(verb, routePath) {
+  return verb === "POST"
+    && /^\/api\/plugins\/marketplace\/[^/]+\/native\/(?:install|uninstall)\/(?:plan|execute)$/.test(routePath);
+}
+
+function isLegacyMarketplaceInstallRoute(verb, routePath) {
+  return verb === "POST"
+    && /^\/api\/plugins\/marketplace\/[^/]+\/install$/.test(routePath);
+}
+
+function isSourceSwitchRoute(verb, routePath) {
+  return verb === "POST"
+    && (/^\/api\/plugins\/[^/]+\/source-switch$/.test(routePath)
+      || /^\/api\/plugins\/[^/]+\/source-switch\/plan$/.test(routePath));
+}
+
+function isMarketplaceRetentionDeleteRoute(verb, routePath) {
+  return verb === "DELETE"
+    && (/^\/api\/plugins\/[^/]+\/artifacts\/[^/]+\/[^/]+$/.test(routePath)
+      || /^\/api\/plugins\/[^/]+\/state\/[^/]+$/.test(routePath));
 }
 
 function isPluginUiReadRoute(verb, routePath) {

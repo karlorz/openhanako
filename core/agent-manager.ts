@@ -781,14 +781,17 @@ export class AgentManager {
     const nextEnabled = hasEnabledOverride
       ? enabledSkills
       : this._d.getSkills().computeDefaultEnabledForNewAgent();
-    if (hasEnabledOverride || nextEnabled.length > 0) {
-      try {
+    try {
+      if (hasEnabledOverride || nextEnabled.length > 0) {
         ag.updateConfig({ skills: { enabled: nextEnabled } });
-        this._d.getSkills().syncAgentSkills(ag);
-      } catch (err) {
-        await this._rollbackAgentCreation(agentDir, agentId);
-        throw err;
       }
+      // Always resolve the fresh agent after creation. Marketplace skill
+      // packages intentionally stay out of skills.enabled, so a package-only
+      // default set still needs to reach the runtime when nextEnabled is [].
+      this._d.getSkills().syncAgentSkills(ag);
+    } catch (err) {
+      await this._rollbackAgentCreation(agentDir, agentId);
+      throw err;
     }
     this._registerAgent(agentId, ag);
 

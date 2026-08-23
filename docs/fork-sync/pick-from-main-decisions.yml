@@ -1,0 +1,121 @@
+# Machine-readable pick-from-main decisions for the permanent conflict dashboard.
+# Source for humans: pick-from-main-decisions.md (keep in sync).
+# Loaded by scripts/sync-upstream.mjs — do not force-checkout wait-stable /
+# preserve-fork paths from mirrored main for dashboard cosmetics.
+
+schemaVersion: 1
+baseline:
+  recordedAt: "2026-08-10"
+  # Post attended stable rebase onto v0.446.6 (package 0.446.6).
+  # Local dev already contains this tag. origin/dev remains unpublished, but
+  # stableSyncAvailable records local rebase state rather than publication.
+  packageVersion: "0.446.6"
+  latestStableTag: "v0.446.6"
+  lastSyncedTag: "v0.446.6"
+  lastSyncedChannel: stable
+  stableSyncAvailable: false
+  preRebaseBackup: "backup/dev-before-stable-v0.446.6-20260810"
+  preRebaseHead: "95b23b0829176c2858030e6dd8d9f2b712daa62f"
+
+# Decisions for planned conflict paths (and paired lockfile).
+# decision: adopt-now | wait-stable | preserve-fork
+paths:
+  - path: .github/workflows/build.yml
+    plannerStrategy: preserve-both
+    decision: preserve-fork
+    reason: Dual signed/legacy-raw release profile is permanent fork ops
+  - path: build/cli-runtime-closure.json
+    plannerStrategy: take-main
+    decision: wait-stable
+    reason: Generated census tracks open-composition/main tip graph; force-adopt breaks tripwires without full train
+  - path: build/installer.nsh
+    plannerStrategy: take-main
+    decision: wait-stable
+    reason: Main is seed-only verify; fork still needs legacy-raw surface checks for dual-profile installs
+  - path: build/persistence-schema-fingerprint.json
+    plannerStrategy: take-main
+    decision: wait-stable
+    reason: Fingerprint of main-era schema; adopt breaks tripwire without whole-tree migration
+  - path: build/persistence-store-inventory.json
+    plannerStrategy: take-main
+    decision: wait-stable
+    reason: Census of main tip stores; same as fingerprint
+  - path: core/engine.ts
+    plannerStrategy: preserve-both
+    decision: preserve-fork
+    reason: Remote feature-contract advertisement / fork server compatibility
+  - path: core/session-turn-actions.ts
+    plannerStrategy: take-main
+    decision: wait-stable
+    reason: Single-file pick from main fails (missing main-only modules); needs full train package
+  - path: desktop/main.cjs
+    plannerStrategy: human-review
+    decision: preserve-fork
+    reason: Probe + dual-profile boot orchestration; helpers already isolated
+  - path: desktop/src/shared/launch-integrity.cjs
+    plannerStrategy: take-main
+    decision: wait-stable
+    reason: Main is seed-only; fork retains legacy-raw install surface validation
+  - path: package.json
+    plannerStrategy: defer-to-stable-production-sync
+    decision: wait-stable
+    reason: Upstream-owned package 0.446.6 after the completed stable rebase; do not dashboard-write or pre-bump toward a later main tip
+  - path: package-lock.json
+    plannerStrategy: defer-to-stable-production-sync
+    decision: wait-stable
+    reason: Paired with package.json
+  - path: release-digest.v1.json
+    plannerStrategy: take-main
+    decision: wait-stable
+    reason: Keep the attended stable digest aligned to v0.446.6; do not copy a later unreleased main digest into dev
+  - path: release-digest.v2.json
+    plannerStrategy: take-main
+    decision: wait-stable
+    reason: Same stable digest family; keep v2 aligned with v0.446.6
+  - path: scripts/build-server.mjs
+    plannerStrategy: preserve-both
+    decision: preserve-fork
+    reason: Compatibility-manifest / build-info packaging
+  - path: scripts/fix-modules.cjs
+    plannerStrategy: take-main
+    decision: wait-stable
+    reason: Fork carries explicit legacy-raw validation path required by dual-profile
+  - path: server/index.ts
+    plannerStrategy: preserve-both
+    decision: preserve-fork
+    reason: Feature contracts / build-info advertisement
+  - path: tests/build-server-artifact.test.ts
+    plannerStrategy: take-main
+    decision: wait-stable
+    reason: Trial adopt failed against fork build-server-artifact API
+
+adoptNow: []
+
+# Structural reclaim guards: product shapes that must not be re-introduced by
+# an upstream-oriented refresh or duplicate "apply fork fix" pass.
+reclaimGuards:
+  - id: ticket-primary-ws
+    description: LAN non-loopback WebSocket auth must attempt tickets before long-lived query-token
+    surfaces:
+      - desktop/src/react/services/server-connection.ts
+      - desktop/src/react/services/websocket.ts
+    antiPatterns:
+      - "legacy-query-token as first-connect short-circuit without resolveConnectionWsAuth"
+  - id: connect-probe-isolation
+    description: connect:probe policy lives in connect-probe.cjs; main only registers
+    surfaces:
+      - desktop/src/shared/connect-probe.cjs
+      - desktop/main.cjs
+      - desktop/preload.cjs
+  - id: resource-url-owner-only-native
+    description: Native file URLs only via canUseNativeResourcePath / isLocalOwnerConnection
+    surfaces:
+      - desktop/src/react/services/resource-url.ts
+      - docs/fork-sync/rules.yml
+    antiPatterns:
+      - "isLocalTransport is `!connection || connection.kind === 'local'`"
+  - id: packaged-artifact-boot-planning
+    description: Dual-profile boot plan/result builders live outside inline main packaging blobs
+    surfaces:
+      - desktop/src/shared/packaged-artifact-boot.cjs
+      - desktop/main.cjs

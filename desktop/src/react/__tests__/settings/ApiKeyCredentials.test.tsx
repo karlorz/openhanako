@@ -327,7 +327,86 @@ describe('ApiKeyCredentials', () => {
     });
   });
 
+  it('persists provider API type after save and settings-store reload (upstream #2103)', async () => {
+    let persistedApi = 'openai-completions';
+    let currentSummary = providerSummary({
+      display_name: 'Custom Local',
+      base_url: 'https://local.example/v1',
+      api: persistedApi,
+      api_key: 'sk-local',
+      has_credentials: true,
+      can_delete: true,
+    });
+
+    mocks.hanaFetch.mockImplementation(async (path: string, opts?: RequestInit) => {
+      if (path === '/api/config' && opts?.method === 'PUT') {
+        const body = JSON.parse(String(opts.body));
+        const nextApi = body?.providers?.['custom-local']?.api;
+        if (typeof nextApi === 'string') persistedApi = nextApi;
+        return jsonResponse({ ok: true });
+      }
+      if (path === '/api/providers/summary') {
+        return jsonResponse({
+          providers: {
+            'custom-local': {
+              ...currentSummary,
+              api: persistedApi,
+            },
+          },
+        });
+      }
+      return jsonResponse({ ok: true });
+    });
+
+    let rerender!: (ui: React.ReactElement) => void;
+    const onRefresh = vi.fn(async () => {
+      // Mirror ProvidersTab onRefresh → loadSummary: re-fetch summary and feed it back as props.
+      const res = await mocks.hanaFetch('/api/providers/summary');
+      const data = await res.json();
+      currentSummary = data.providers['custom-local'];
+      rerender(
+        <ApiKeyCredentials
+          providerId="custom-local"
+          summary={currentSummary}
+          onRefresh={onRefresh}
+        />,
+      );
+    });
+
+    ({ rerender } = render(
+      <ApiKeyCredentials
+        providerId="custom-local"
+        summary={currentSummary}
+        onRefresh={onRefresh}
+      />,
+    ));
+
+    expect(screen.getByRole('button', { name: 'OpenAI Compatible' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'OpenAI Compatible' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Anthropic Messages' }));
+
+    await waitFor(() => expect(mocks.hanaFetch).toHaveBeenCalledWith(
+      '/api/config',
+      expect.objectContaining({ method: 'PUT' }),
+    ));
+    const configCall = mocks.hanaFetch.mock.calls.find(([path]) => path === '/api/config');
+    expect(JSON.parse(String((configCall?.[1] as RequestInit).body))).toEqual({
+      providers: { 'custom-local': { api: 'anthropic-messages' } },
+    });
+    expect(onRefresh).toHaveBeenCalled();
+
+    await waitFor(() => {
+      expect(mocks.hanaFetch).toHaveBeenCalledWith('/api/providers/summary');
+    });
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Anthropic Messages' })).toBeInTheDocument();
+    });
+    expect(currentSummary.api).toBe('anthropic-messages');
+    expect(persistedApi).toBe('anthropic-messages');
+  });
+
   it('saves discovered Gemini models during preset setup instead of static defaults', async () => {
+
     const onRefresh = vi.fn(async () => {});
     mocks.hanaFetch
       .mockResolvedValueOnce(jsonResponse({ ok: true }))

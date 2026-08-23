@@ -10,6 +10,7 @@ import fsp from "fs/promises";
 import path from "path";
 import { createAgentSession, SessionManager, estimateTokens, refreshSessionModelFromRegistry } from "../lib/pi-sdk/index.ts";
 import { isSessionJsonlFilename } from "../lib/session-jsonl.ts";
+import type { HostOwnerPrincipal } from "../lib/permission/approval-review-context.ts";
 import { createDefaultSettings } from "./session-defaults.ts";
 import { isDefaultWorkspacePath, restoreDefaultWorkspaceIfMissing } from "../shared/default-workspace.ts";
 import {
@@ -1035,6 +1036,7 @@ export class SessionCoordinator {
   declare _envChangeLedger: any;
   declare _ensureSessionLoadedInFlight: Map<string, Promise<any>>;
   declare _metaQuarantines: Map<string, { metaPath: string; backupPath: string; quarantinedAt: string }>;
+  declare _sessionOwnerPrincipals: Map<string, HostOwnerPrincipal>;
 
   /**
    * @param {object} deps
@@ -1089,6 +1091,22 @@ export class SessionCoordinator {
     // 文件由 listSkippedMetaSources（账本）与 _sessionManifestStoreRecovery
     // 两条独立信号覆盖，不需要这里补历史。
     this._metaQuarantines = new Map();
+    // 会话级 host owner principal（B1-T1）：key 是精确 sessionPath。
+    this._sessionOwnerPrincipals = new Map();
+  }
+
+  setSessionOwnerPrincipal(sessionPath: string, principal: HostOwnerPrincipal): void {
+    if (typeof sessionPath !== "string" || !sessionPath) return;
+    if (!principal || typeof principal !== "object") return;
+    this._sessionOwnerPrincipals.set(sessionPath, {
+      isStudioOwner: principal.isStudioOwner === true,
+      isLocalOwner: principal.isLocalOwner === true,
+    });
+  }
+
+  getSessionOwnerPrincipal(sessionPath: string): HostOwnerPrincipal | null {
+    if (typeof sessionPath !== "string" || !sessionPath) return null;
+    return this._sessionOwnerPrincipals.get(sessionPath) || null;
   }
 
   static _TITLES_TTL = 60_000; // 60 秒
@@ -4574,7 +4592,16 @@ export class SessionCoordinator {
     if (liveSnapshot && typeof liveSnapshot === "object" && !Array.isArray(liveSnapshot)) {
       return liveSnapshot;
     }
-    const metaSnapshot = this._readSessionMetaEntrySync(sessionPath)?.memoryReflectionSnapshot;
+    const metaEntry = this._readSessionMetaEntrySync(sessionPath);
+    let metaSnapshot = metaEntry?.memoryReflectionSnapshot;
+    if (this._isSessionMetaPayloadRef(metaSnapshot, "memoryReflectionSnapshot")) {
+      metaSnapshot = this._readSessionMetaPayloadSync(
+        this._sessionMetaPathFor(sessionPath),
+        path.basename(sessionPath),
+        metaSnapshot,
+        "memoryReflectionSnapshot",
+      );
+    }
     return metaSnapshot && typeof metaSnapshot === "object" && !Array.isArray(metaSnapshot)
       ? metaSnapshot
       : null;
@@ -7232,7 +7259,24 @@ export class SessionCoordinator {
   }
 
   _sessionMetaPayloadAbsolutePath(metaPath: any, refPath: any) {
-    return path.join(path.dirname(metaPath), refPath);
+    const payloadDir = path.resolve(path.dirname(metaPath), SESSION_META_PAYLOAD_DIR);
+    const absPath = path.resolve(path.dirname(metaPath), refPath);
+    const relative = path.relative(payloadDir, absPath);
+    if (relative.startsWith("..") || path.isAbsolute(relative)) {
+      throw new Error("session-meta payload path escapes payload directory");
+    }
+    return absPath;
+  }
+
+  _readSessionMetaPayloadSync(metaPath: any, sessKey: any, ref: any, field: any) {
+    if (!this._isSessionMetaPayloadRef(ref, field)) return undefined;
+    try {
+      const raw = fs.readFileSync(this._sessionMetaPayloadAbsolutePath(metaPath, ref.path), "utf-8");
+      return JSON.parse(raw);
+    } catch (err) {
+      log.warn(`session-meta payload read failed for ${sessKey}/${field}: ${err.message}`);
+      return undefined;
+    }
   }
 
   async _readSessionMetaIndexForWrite(metaPath: any) {
@@ -7295,7 +7339,9 @@ export class SessionCoordinator {
     }
     const compacted: any = {};
     for (const [sessKey, entry] of Object.entries(data)) {
-      compacted[sessKey] = await this._externalizeSessionMetaPayloads(metaPath, sessKey, entry);
+      compacted[sessKey] = await this._externalizeSessionMetaPayloads(metaPath, sessKey, entry, {
+        forcePayloadExternalization: true,
+      });
     }
     const budgeted = await this._externalizeSessionMetaForIndexBudget(metaPath, compacted);
     await fsp.writeFile(metaPath, JSON.stringify(budgeted, null, 2));
@@ -7351,13 +7397,14 @@ export class SessionCoordinator {
 
   async _externalizeSessionMetaPayloads(metaPath: any, sessKey: any, entry: any, options: any = {}) {
     if (!entry || typeof entry !== "object" || Array.isArray(entry)) return entry;
+    const forcePayloadExternalization = options?.forcePayloadExternalization === true;
     const forceFields = options?.forceFields instanceof Set
       ? options.forceFields
       : new Set(Array.isArray(options?.forceFields) ? options.forceFields : []);
     const next = { ...entry };
     for (const field of SESSION_META_PAYLOAD_FIELDS) {
       const value = next[field];
-      if (value === undefined || this._isSessionMetaPayloadRef(value, field)) continue;
+      if (value === undefined || value === null || this._isSessionMetaPayloadRef(value, field)) continue;
       let encoded = "";
       try {
         encoded = JSON.stringify(value);
@@ -7365,7 +7412,8 @@ export class SessionCoordinator {
         continue;
       }
       if (
-        !forceFields.has(field)
+        !forcePayloadExternalization
+        && !forceFields.has(field)
         && Buffer.byteLength(encoded, "utf-8") <= SESSION_META_PAYLOAD_INLINE_LIMIT_BYTES
       ) continue;
       const relPath = this._sessionMetaPayloadRelativePath(sessKey, field);

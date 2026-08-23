@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "repository": "karlorz/openhanako",
+  "releaseEligibility": "stable-and-prerelease",
+  "expectedPublicationPrerelease": true,
+  "forkTagPattern": "^v(\\d+)\\.(\\d+)\\.(\\d+)-karlorz\\.(\\d+)$",
+  "serverAssetPattern": "^hanaagent-server-(v\\d+\\.\\d+\\.\\d+-karlorz\\.\\d+)-(linux|mac|win)-(arm64|x64)\\.tar\\.gz$",
+  "compatibilityManifestPattern": "^hanaagent-server-compatibility-(v\\d+\\.\\d+\\.\\d+-karlorz\\.\\d+)\\.json$",
+  "github": {
+    "perPage": 100,
+    "maxPages": 5,
+    "requestTimeoutMs": 10000,
+    "maxReleasesBodyBytes": 2097152,
+    "maxManifestBodyBytes": 131072,
+    "cacheTtlMs": 600000,
+    "forceRefreshMinIntervalMs": 30000
+  }
+}

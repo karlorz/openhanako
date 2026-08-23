@@ -33,10 +33,15 @@ function normalizeBrowserViewerOpenTarget(target) {
 contextBridge.exposeInMainWorld("hana", {
   getServerPort: () => ipcRenderer.invoke("get-server-port"),
   getServerToken: () => ipcRenderer.invoke("get-server-token"),
+  // LAN connect probe — runs in main process via net.fetch, bypasses renderer CSP.
+  // See desktop/main.cjs "connect:probe" handler.
+  probeConnection: (payload) => ipcRenderer.invoke("connect:probe", payload),
   runEditCommand: (command) => ipcRenderer.invoke("run-edit-command", command),
   getAppVersion: () => ipcRenderer.invoke("get-app-version"),
   getPendingAnnouncement: () => ipcRenderer.invoke("get-pending-announcement"),
   ackAnnouncement: () => ipcRenderer.invoke("ack-announcement"),
+  getBuildInfo: () => ipcRenderer.invoke("get-build-info"),
+  checkUpdate: () => ipcRenderer.invoke("check-update"),
   // Auto-update (Windows)
   autoUpdateCheck: () => ipcRenderer.invoke("auto-update-check"),
   autoUpdateDownload: () => ipcRenderer.invoke("auto-update-download"),
@@ -70,6 +75,10 @@ contextBridge.exposeInMainWorld("hana", {
     return () => ipcRenderer.removeListener("train-update-progress", handler);
   },
   getUpdateDigestHistory: () => ipcRenderer.invoke("get-update-digest-history"),
+  checkRemoteServerRelease: (options) => ipcRenderer.invoke(
+    "remote-server-release:check",
+    { force: options && options.force === true },
+  ),
   getAutoLaunchStatus: () => ipcRenderer.invoke("get-auto-launch-status"),
   setAutoLaunchEnabled: (enabled) => ipcRenderer.invoke("set-auto-launch-enabled", enabled),
   getKeepAwakeStatus: () => ipcRenderer.invoke("get-keep-awake-status"),

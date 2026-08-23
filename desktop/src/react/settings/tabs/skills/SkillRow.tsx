@@ -2,6 +2,7 @@ import React from 'react';
 import type { SkillInfo } from '../../store';
 import { t } from '../../helpers';
 import styles from '../../Settings.module.css';
+import { effectiveSkillEnabled, skillToggleDisabled } from './skill-state';
 
 function truncateDesc(raw: string): string {
   const cnMatch = raw.match(/[\u4e00-\u9fff].*$/s);
@@ -9,6 +10,20 @@ function truncateDesc(raw: string): string {
   desc = desc.replace(/\s*MANDATORY TRIGGERS:.*$/si, '').trim();
   if (desc.length > 80) desc = desc.slice(0, 80) + '\u2026';
   return desc;
+}
+
+function marketplaceInactiveHint(skill: SkillInfo): string | null {
+  if (!skill.marketplacePackage || skill.active !== false) return null;
+  switch (skill.inactiveReason) {
+    case 'agent-skill-disabled':
+      return t('settings.skills.marketplaceInactiveAgent');
+    case 'marketplace-source-blocked':
+      return t('settings.skills.marketplaceInactiveSource');
+    case 'marketplace-package-disabled':
+      return t('settings.skills.marketplaceInactivePackage');
+    default:
+      return skill.inactiveReason || null;
+  }
 }
 
 interface SkillRowProps {
@@ -43,6 +58,10 @@ export function SkillRow({
   onDrop,
 }: SkillRowProps) {
   const displayDesc = truncateDesc(skill.description || '');
+  const marketplaceHint = marketplaceInactiveHint(skill);
+  const marketplacePackage = skill.marketplacePackage;
+  const effectiveEnabled = effectiveSkillEnabled(skill);
+  const packageDisabled = skillToggleDisabled(skill);
 
   return (
     <div
@@ -67,7 +86,49 @@ export function SkillRow({
         <span className={styles['skills-list-name']}>
           {skill.name}
           {nameHint && <span className={styles['skills-list-name-hint']}>{nameHint}</span>}
+          {marketplacePackage && (
+            <span
+              className={styles['skills-source-badge']}
+              title={t('settings.skills.marketplacePackageSource', { identity: marketplacePackage.identity })}
+              data-marketplace-package={marketplacePackage.identity}
+              translate="no"
+            >
+              {t('settings.skills.marketplacePackageBadge')}
+            </span>
+          )}
         </span>
+        {marketplacePackage && (
+          <span className={styles['skills-list-desc']} translate="no">
+            {t('settings.skills.marketplacePackageSource', { identity: marketplacePackage.identity })}
+          </span>
+        )}
+        {marketplacePackage && (
+          <>
+            <span className={styles['skills-list-desc']}>
+              {t('settings.plugins.skillPackageLayerPackage')}: {' '}
+              {marketplacePackage.packageEnabled === false
+                ? t('settings.plugins.marketPackageGateDisabled')
+                : t('settings.plugins.marketPackageGateEnabled')}
+            </span>
+            <span className={styles['skills-list-desc']}>
+              {t('settings.plugins.skillPackageLayerAgentPreference')}: {' '}
+              {skill.enabled
+                ? t('settings.plugins.marketPackageGateEnabled')
+                : t('settings.plugins.marketPackageGateDisabled')}
+            </span>
+            <span className={styles['skills-list-desc']}>
+              {t('settings.plugins.skillPackageLayerEffectiveAvailability')}: {' '}
+              {effectiveEnabled
+                ? t('settings.plugins.skillPackageLayerAvailable')
+                : t('settings.plugins.skillPackageLayerUnavailable')}
+            </span>
+          </>
+        )}
+        {marketplaceHint && (
+          <span className={styles['skills-list-desc']} data-inactive-reason={skill.inactiveReason || undefined}>
+            {marketplaceHint}
+          </span>
+        )}
         <span className={styles['skills-list-desc']}>{displayDesc}</span>
       </div>
       <div className={styles['skills-list-actions']}>
@@ -87,14 +148,26 @@ export function SkillRow({
         )}
         {onToggle && (
           <button
-            className={`hana-toggle${skill.enabled ? ' on' : ''}`}
+            className={marketplacePackage
+              ? `${styles['pv-add-form-btn']} ${styles['plugin-labeled-action']}`
+              : `hana-toggle${effectiveEnabled ? ' on' : ''}${packageDisabled ? ' disabled' : ''}`}
             type="button"
-            title={skill.enabled ? t('settings.skills.toggleDisable') : t('settings.skills.toggleEnable')}
-            aria-label={skill.enabled
+            disabled={packageDisabled}
+            aria-pressed={effectiveEnabled}
+            title={packageDisabled
+              ? (marketplaceHint || t('settings.skills.marketplaceInactivePackage'))
+              : effectiveEnabled ? t('settings.skills.toggleDisable') : t('settings.skills.toggleEnable')}
+            aria-label={effectiveEnabled
               ? t('settings.skills.toggleDisableNamed', { name: skill.name })
               : t('settings.skills.toggleEnableNamed', { name: skill.name })}
-            onClick={(e) => { e.stopPropagation(); onToggle(skill.name, !skill.enabled); }}
-          />
+            onClick={(e) => { e.stopPropagation(); onToggle(skill.name, !effectiveEnabled); }}
+          >
+            {marketplacePackage
+              ? effectiveEnabled
+                ? t('settings.plugins.skillPackageDisable')
+                : t('settings.plugins.skillPackageEnable')
+              : null}
+          </button>
         )}
       </div>
     </div>

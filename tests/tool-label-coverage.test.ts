@@ -39,6 +39,7 @@ const LABELED_TOOL_NAMES = [
   'session_folders', 'subagent', 'subagent_reply', 'subagent_close', 'workflow',
   'check_pending_tasks', 'loop_control', 'current_status', 'session',
   'hana_card_guide', 'show_card',
+  'plugin_marketplace',
   // Hub 频道
   'channel_read_context', 'channel_reply', 'channel_pass',
   // 内置插件（PluginManager 注册时统一加 `<pluginId>_` 前缀）

@@ -11,13 +11,27 @@ import { toggleJianSidebar } from '../stores/desk-actions';
 import { togglePreviewPanel } from '../stores/preview-actions';
 import { openSettingsModal } from '../stores/settings-modal-actions';
 import { useStore } from '../stores';
+import { abortPendingHanaFetches } from '../hooks/use-hana-fetch';
 import { createNewSession, reconcileCurrentSessionMessages } from '../stores/session-actions';
+import { sessionScopedValue } from '../stores/session-slice';
+import { subscribeHanaHttpErrors } from '../services/hana-http-error';
+import { bindSessionForegroundConvergence } from '../services/session-foreground-convergence';
+import { disconnectWebSocket } from '../services/websocket';
 import {
   initializeMobileRuntime,
   loadMobileSessions,
   readMobileAuthSession,
+  resetMobileRuntimeAfterAuthLoss,
+  switchMobileSession,
   type MobilePrincipal,
 } from './mobile-init';
+import {
+  classifyMobileAuthFailure,
+  createMobileRecoverySnapshot,
+  restoreMobileRecoverySnapshot,
+  type MobileAuthorityInput,
+  type MobileRecoverySnapshot,
+} from './mobile-auth-lifecycle';
 
 type AuthState = 'checking' | 'login' | 'ready';
 type LoginMode = 'device' | 'password';
@@ -56,36 +70,136 @@ export function MobileApp(): React.ReactElement {
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState<string | null>(null);
   const [mobileUpdateAvailable, setMobileUpdateAvailable] = useState(() => window.__hanaMobileUpdateAvailable === true);
+  const authStateRef = useRef<AuthState>('checking');
+  const authorityRef = useRef<MobileAuthorityInput | null>(null);
+  const recoverySnapshotRef = useRef<MobileRecoverySnapshot | null>(null);
+  const authCheckInFlightRef = useRef<Promise<boolean> | null>(null);
+
+  const updateAuthState = useCallback((next: AuthState) => {
+    authStateRef.current = next;
+    setAuthState(next);
+  }, []);
+
+  const clearAuthenticatedRuntime = useCallback(() => {
+    abortPendingHanaFetches();
+    disconnectWebSocket();
+    resetMobileRuntimeAfterAuthLoss();
+    authorityRef.current = null;
+    setPrincipal(null);
+  }, []);
+
+  const transitionToSessionEnded = useCallback(() => {
+    if (authStateRef.current !== 'ready') return;
+    // Set the synchronous guard before any teardown so concurrent HTTP,
+    // focus, online, or visibility signals collapse into this transition.
+    updateAuthState('login');
+    const state = useStore.getState();
+    const selectedSessionPath = state.currentSessionPath;
+    recoverySnapshotRef.current = createMobileRecoverySnapshot({
+      authority: authorityRef.current,
+      selectedSessionPath,
+      draftText: selectedSessionPath
+        ? sessionScopedValue<string>(state, state.drafts, selectedSessionPath) || ''
+        : '',
+      draftDoc: selectedSessionPath
+        ? sessionScopedValue(state, state.draftDocs, selectedSessionPath) || null
+        : null,
+      attachments: selectedSessionPath ? state.attachedFiles : [],
+    });
+
+    clearAuthenticatedRuntime();
+    setLoginSecret('');
+    setLoginPassword('');
+    setLoginError((window.t ?? ((p: string) => p))('mobile.auth.sessionEnded'));
+  }, [clearAuthenticatedRuntime, updateAuthState]);
+
+  const checkMobileAuthSession = useCallback((): Promise<boolean> => {
+    if (authStateRef.current !== 'ready') return Promise.resolve(false);
+    if (authCheckInFlightRef.current) return authCheckInFlightRef.current;
+
+    const check = readMobileAuthSession()
+      .then((session) => {
+        if (!session.authenticated || !session.principal) {
+          transitionToSessionEnded();
+          return false;
+        }
+        return true;
+      })
+      .catch((err) => {
+        console.warn('[mobile] auth validity check failed', err);
+        return false;
+      })
+      .finally(() => {
+        if (authCheckInFlightRef.current === check) authCheckInFlightRef.current = null;
+      });
+    authCheckInFlightRef.current = check;
+    return check;
+  }, [transitionToSessionEnded]);
 
   const bootstrap = useCallback(async () => {
-    await ensureMobileAuthLocale();
-    const session = await readMobileAuthSession();
-    if (!session.authenticated || !session.principal) {
-      setAuthState('login');
-      return;
+    try {
+      await ensureMobileAuthLocale();
+      const session = await readMobileAuthSession();
+      if (!session.authenticated || !session.principal) {
+        if (authStateRef.current === 'ready') transitionToSessionEnded();
+        else updateAuthState('login');
+        return;
+      }
+      if (!principalHasRequiredScopes(session.principal, MOBILE_REQUIRED_SCOPES)) {
+        await apiJson('/api/web-auth/logout', { method: 'POST' }).catch(() => null);
+        setPrincipal(null);
+        authorityRef.current = null;
+        recoverySnapshotRef.current = null;
+        setLoginError((window.t ?? ((p: string) => p))('mobile.auth.scopeError'));
+        updateAuthState('login');
+        return;
+      }
+      const { connection } = await initializeMobileRuntime(session.principal);
+      const nextAuthority: MobileAuthorityInput = connection;
+      const recovery = restoreMobileRecoverySnapshot(recoverySnapshotRef.current, {
+        authority: nextAuthority,
+        availableSessionPaths: useStore.getState().sessions.map(item => item.path),
+      });
+      if (recovery) {
+        const selected = useStore.getState().sessions.find(item => item.path === recovery.selectedSessionPath) || null;
+        await switchMobileSession(recovery.selectedSessionPath, selected);
+        const state = useStore.getState();
+        if (recovery.draftText || recovery.draftDoc) {
+          state.setDraft(recovery.selectedSessionPath, recovery.draftText, recovery.draftDoc);
+        }
+        state.setAttachedFiles(recovery.attachments);
+      }
+      recoverySnapshotRef.current = null;
+      authorityRef.current = nextAuthority;
+      setPrincipal(session.principal);
+      setLoginError(null);
+      updateAuthState('ready');
+    } catch (error) {
+      clearAuthenticatedRuntime();
+      throw error;
     }
-    if (!principalHasRequiredScopes(session.principal, MOBILE_REQUIRED_SCOPES)) {
-      await apiJson('/api/web-auth/logout', { method: 'POST' }).catch(() => null);
-      setPrincipal(null);
-      setLoginError((window.t ?? ((p: string) => p))('mobile.auth.scopeError'));
-      setAuthState('login');
-      return;
-    }
-    await initializeMobileRuntime(session.principal);
-    setPrincipal(session.principal);
-    setAuthState('ready');
-  }, []);
+  }, [clearAuthenticatedRuntime, transitionToSessionEnded, updateAuthState]);
 
   useEffect(() => {
     let cancelled = false;
     bootstrap().catch((err) => {
       console.warn('[mobile] bootstrap failed', err);
-      if (!cancelled) setAuthState('login');
+      if (!cancelled) updateAuthState('login');
     });
     return () => {
       cancelled = true;
     };
-  }, [bootstrap]);
+  }, [bootstrap, updateAuthState]);
+
+  useEffect(() => subscribeHanaHttpErrors((error) => {
+    if (authStateRef.current !== 'ready') return;
+    const decision = classifyMobileAuthFailure(error);
+    if (decision === 'session-lost') {
+      transitionToSessionEnded();
+    } else if (decision === 'confirm-session') {
+      void checkMobileAuthSession();
+    }
+  }), [checkMobileAuthSession, transitionToSessionEnded]);
 
   useEffect(() => {
     const handleUpdateAvailable = () => {
@@ -104,18 +218,27 @@ export function MobileApp(): React.ReactElement {
   const login = async (event: React.FormEvent) => {
     event.preventDefault();
     setLoginError(null);
+    let loginSucceeded = false;
     try {
       const body = loginMode === 'device'
         ? { credential: loginSecret.trim() }
         : { username: loginUsername.trim(), password: loginPassword };
+      // Credentials are one-shot inputs. Copy them into the request body, then
+      // clear controlled form state before any network or bootstrap work can fail.
+      setLoginSecret('');
+      setLoginPassword('');
       await apiJson('/api/web-auth/login', {
         method: 'POST',
         body: JSON.stringify(body),
       });
-      setLoginSecret('');
-      setLoginPassword('');
+      loginSucceeded = true;
       await bootstrap();
     } catch (err) {
+      // A failed post-login bootstrap must not leave an authenticated cookie
+      // behind while the UI presents the credential form again.
+      if (loginSucceeded) {
+        await apiJson('/api/web-auth/logout', { method: 'POST' }).catch(() => null);
+      }
       setLoginError(err instanceof Error ? err.message : (window.t ?? ((p: string) => p))('mobile.auth.loginFailed'));
     }
   };
@@ -147,6 +270,7 @@ export function MobileApp(): React.ReactElement {
         principal={principal}
         mobileUpdateAvailable={mobileUpdateAvailable}
         onApplyMobileUpdate={applyMobileUpdate}
+        validateSession={checkMobileAuthSession}
       />
     </ErrorBoundary>
   );
@@ -156,10 +280,12 @@ function MobileDesktopShell({
   principal,
   mobileUpdateAvailable,
   onApplyMobileUpdate,
+  validateSession,
 }: {
   principal: MobilePrincipal | null;
   mobileUpdateAvailable: boolean;
   onApplyMobileUpdate: () => void;
+  validateSession: () => Promise<boolean>;
 }) {
   const sidebarOpen = useStore(s => s.sidebarOpen);
   const jianOpen = useStore(s => s.jianOpen);
@@ -197,11 +323,11 @@ function MobileDesktopShell({
   }, []);
 
   const refreshMobileSessions = useCallback(() => {
-    void loadMobileSessions()
+    return Promise.resolve(loadMobileSessions())
       .then(() => {
         // 列表已新鲜：校验当前打开会话的修订点，补拉后台窗口
         // （锁屏 / WS 断连期间 Bridge /rc 等）漏掉的消息（issue #1610）。
-        void reconcileCurrentSessionMessages('mobile_foreground_refresh');
+        return reconcileCurrentSessionMessages('mobile_foreground_refresh');
       })
       .catch((err) => {
         console.warn('[mobile] refresh sessions failed', err);
@@ -209,25 +335,24 @@ function MobileDesktopShell({
   }, []);
 
   useEffect(() => {
-    const refreshWhenVisible = () => {
-      if (document.visibilityState === 'hidden') return;
-      refreshMobileSessions();
-    };
-    window.addEventListener('focus', refreshWhenVisible);
-    window.addEventListener('online', refreshWhenVisible);
-    document.addEventListener('visibilitychange', refreshWhenVisible);
-    return () => {
-      window.removeEventListener('focus', refreshWhenVisible);
-      window.removeEventListener('online', refreshWhenVisible);
-      document.removeEventListener('visibilitychange', refreshWhenVisible);
-    };
-  }, [refreshMobileSessions]);
+    // Shared Desktop/Mobile foreground convergence: list refresh then revision
+    // reconcile for the open session (issue #1610).
+    return bindSessionForegroundConvergence({
+      refreshSessions: async () => {
+        if (!await validateSession()) return false;
+        await loadMobileSessions();
+        return true;
+      },
+      reconcile: (reason) => reconcileCurrentSessionMessages(reason),
+      reason: 'mobile_foreground_refresh',
+    });
+  }, [validateSession]);
 
   useEffect(() => {
     const previous = previousWsStateRef.current;
     previousWsStateRef.current = wsState;
     if (wsState === 'connected' && previous && previous !== 'connected') {
-      refreshMobileSessions();
+      void refreshMobileSessions();
     }
   }, [refreshMobileSessions, wsState]);
 

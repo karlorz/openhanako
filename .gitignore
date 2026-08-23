@@ -3,6 +3,8 @@
 # ═══════════════════════════════════════════
 agents/
 user/
+!docs/agents/
+!docs/agents/**
 !skills2set/hana-plugin-creator/agents/
 !skills2set/hana-plugin-creator/agents/**
 !skills2set/office-documents/agents/
@@ -14,6 +16,7 @@ user/
 .docs/
 CLAUDE.md
 AGENTS.md
+!/AGENTS.md
 docs/superpowers/
 .superpowers/
 archived/
@@ -21,6 +24,12 @@ devlog/
 research/
 handoff-*.md
 TODO.md
+
+# UAT keeps Markdown checklists/indexes in git; generated screenshots,
+# recordings, and machine evidence stay local or in the wiki/artifact store.
+docs/uat/assets/**
+!docs/uat/assets/**/
+!docs/uat/assets/**/*.md
 
 # ═══════════════════════════════════════════
 # AI 生图原始素材
@@ -54,12 +63,17 @@ node_modules
 .pi/
 
 # IDE / 工具
-.claude/
+.claude/*
+!.claude/dev-loop.config.md
+!.claude/settings.json
+.claude/dev-loop-debug/
+.claude/dev-loop-work/
 .agents/skills/
 *.code-workspace
 
 # 项目私有文件
 CLAUDE.md
+!/CLAUDE.md
 
 # 临时文件
 tmp/
@@ -73,6 +87,7 @@ desktop/src/react/animation-mockup/
 # 环境变量 / 凭证
 .env
 .env.*
+!.env.example
 *.pem
 *.key
 *.p12
@@ -95,4 +110,6 @@ reviews/
 .superpowers/
 
 # Codex environments
-.codex/
+.codex/*
+!.codex/hooks.json
+.worktrees/

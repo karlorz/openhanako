@@ -3,6 +3,8 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { PluginManager } from "../core/plugin-manager.ts";
+import { PluginTrustStore } from "../lib/plugin-trust-store.ts";
+import { writeMarketplaceActiveMarker } from "../lib/plugin-marketplace-active-marker.ts";
 
 const tmpHome = path.join(os.tmpdir(), "hana-pm-test-" + Date.now());
 const pluginsDir = path.join(tmpHome, "plugins");
@@ -1047,6 +1049,74 @@ describe("configuration", () => {
     expect(pm.getPlugin("secret-cfg").ctx.config.get("apiKey")).toBe("secret-value");
   });
 
+  it("isolates marketplace-qualified data and secrets when the active source changes", async () => {
+    const dir = path.join(pluginsDir, "marketplace-config");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "manifest.json"), JSON.stringify({
+      id: "marketplace-config",
+      name: "Marketplace Config",
+      version: "1.0.0",
+      contributes: { configuration: { properties: {
+        mode: { type: "string" },
+        apiKey: { type: "string", sensitive: true },
+      } } },
+    }));
+    writeMarketplaceActiveMarker(dir, {
+      marketplaceId: "team-plugins",
+      pluginId: "marketplace-config",
+      artifactDigest: "a".repeat(64),
+    });
+    const secretsDir = path.join(tmpHome, "plugin-secrets");
+    const pm = new PluginManager({
+      pluginsDir,
+      dataDir,
+      secretsDir,
+      bus: await makeBus(),
+    } as any);
+    pm.scan();
+    await pm.loadAll();
+
+    pm.setConfig("marketplace-config", { mode: "team", apiKey: "team-secret" });
+
+    const entry = pm.getPlugin("marketplace-config");
+    expect(entry.ctx.dataDir).toBe(path.join(dataDir, "team-plugins", "marketplace-config"));
+    expect(entry.ctx.config.get("apiKey")).toBe("team-secret");
+    expect(fs.readFileSync(
+      path.join(dataDir, "team-plugins", "marketplace-config", "config.json"),
+      "utf-8",
+    )).not.toContain("team-secret");
+    expect(JSON.parse(fs.readFileSync(
+      path.join(secretsDir, "team-plugins", "marketplace-config", "secrets.json"),
+      "utf-8",
+    ))).toMatchObject({ global: { apiKey: "team-secret" } });
+    expect(fs.existsSync(path.join(dataDir, "marketplace-config", "config.json"))).toBe(false);
+
+    writeMarketplaceActiveMarker(dir, {
+      marketplaceId: "backup-plugins",
+      pluginId: "marketplace-config",
+      artifactDigest: "b".repeat(64),
+    });
+    const switchedPm = new PluginManager({
+      pluginsDir,
+      dataDir,
+      secretsDir,
+      bus: await makeBus(),
+    } as any);
+    switchedPm.scan();
+    await switchedPm.loadAll();
+
+    expect(switchedPm.getConfig("marketplace-config")?.values).toEqual({});
+    switchedPm.setConfig("marketplace-config", { mode: "backup", apiKey: "backup-secret" });
+    expect(JSON.parse(fs.readFileSync(
+      path.join(secretsDir, "backup-plugins", "marketplace-config", "secrets.json"),
+      "utf-8",
+    ))).toMatchObject({ global: { apiKey: "backup-secret" } });
+    expect(JSON.parse(fs.readFileSync(
+      path.join(secretsDir, "team-plugins", "marketplace-config", "secrets.json"),
+      "utf-8",
+    ))).toMatchObject({ global: { apiKey: "team-secret" } });
+  });
+
   it("forks per-session config for loaded and disabled plugins without sharing child writes", async () => {
     for (const [id, disabled] of [["loaded-cfg", false], ["disabled-cfg", true]] as const) {
       const dir = path.join(pluginsDir, id);
@@ -2066,6 +2136,45 @@ describe("hot operations", () => {
     expect(pm.getPlugin("fa-hot").status).toBe("loaded");
     expect(pm.getAllTools().some(t => t._pluginId === "fa-hot")).toBe(true);
     expect(mockPrefs.getAllowFullAccessPlugins()).toBe(true);
+  });
+
+  it("does not load a Marketplace full-access artifact without its exact trust grant", async () => {
+    const builtinDir = path.join(tmpHome, "builtin-market-trust");
+    const communityDir = path.join(tmpHome, "community-market-trust");
+    const dir = path.join(communityDir, "market-fa");
+    fs.mkdirSync(path.join(dir, "tools"), { recursive: true });
+    fs.mkdirSync(builtinDir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "manifest.json"), JSON.stringify({
+      id: "market-fa", name: "Marketplace FA", version: "1.0.0", trust: "full-access",
+    }));
+    fs.writeFileSync(path.join(dir, "tools", "t.js"), `
+      export const name = "t";
+      export const description = "test";
+      export const parameters = {};
+      export async function execute() { return "ok"; }
+    `);
+    const digest = "a".repeat(64);
+    writeMarketplaceActiveMarker(dir, { marketplaceId: "official", pluginId: "market-fa", artifactDigest: digest });
+    const trustStore = new PluginTrustStore({ hanakoHome: tmpHome });
+    const mockPrefs = createMockPrefs({ allow_full_access_plugins: false });
+    const pm = new PluginManager({
+      pluginsDirs: [builtinDir, communityDir], dataDir, bus: await makeBus(),
+      preferencesManager: mockPrefs, pluginTrustStore: trustStore,
+    } as any);
+    pm.scan();
+    await pm.loadAll();
+    expect(pm.getPlugin("market-fa").status).toBe("restricted");
+
+    await pm.setFullAccess(true);
+    expect(pm.getPlugin("market-fa").status).toBe("restricted");
+    trustStore.grant({ marketplaceId: "official", pluginId: "market-fa", artifactDigest: digest });
+    await pm.enablePlugin("market-fa");
+    expect(pm.getPlugin("market-fa").status).toBe("loaded");
+
+    trustStore.revoke("official", "market-fa", digest);
+    await pm.setFullAccess(false);
+    await pm.setFullAccess(true);
+    expect(pm.getPlugin("market-fa").status).toBe("restricted");
   });
 
   it("setFullAccess(false) unloads community full-access plugins", async () => {

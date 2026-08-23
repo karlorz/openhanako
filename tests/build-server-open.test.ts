@@ -175,3 +175,27 @@ describe("build-server-open.mjs: never imports build-server-artifact.mjs or read
     ]);
   });
 });
+
+describe("buildCliBundle: externalize shared/*.cjs that ESM-imports the CLI bundle would otherwise inline", () => {
+  // The CLI bundle is ESM (--format=esm). esbuild's CJS->ESM interop shim turns
+  // a bare `require("crypto")` inside an inlined shared/*.cjs into a __require
+  // call that throws "Dynamic require of crypto is not supported" at runtime.
+  // shared/data-epoch.cjs (ESM-imported by cli/data.ts + core/data-epoch-*.ts)
+  // is the file that triggers this. The fix is to --external those .cjs modules
+  // so Node's native CJS loader handles them at runtime; the staged files come
+  // from PACKAGED_CLI_ARTIFACT_CORE_FILES. This test guards the build command
+  // string so a refactor cannot silently drop the externals and reintroduce the
+  // `hana --help` MODULE_NOT_FOUND/dynamic-require regression.
+  it("buildCliBundle externalizes shared/data-epoch.cjs, contract-versions.cjs, and server-info-probe.cjs", () => {
+    const source = fs.readFileSync(path.join(ROOT, "scripts", "build-server-phases.mjs"), "utf-8");
+    const buildCliSlice = source.slice(source.indexOf("export function buildCliBundle"));
+    // The externals are built from an array of relative paths joined into
+    // --external:<rel> flags. Assert the source paths are present so a refactor
+    // cannot silently drop them and reintroduce the `hana --help` dynamic-require
+    // regression.
+    expect(buildCliSlice).toContain('"../shared/data-epoch.cjs"');
+    expect(buildCliSlice).toContain('"../shared/contract-versions.cjs"');
+    expect(buildCliSlice).toContain('"../shared/server-info-probe.cjs"');
+    expect(buildCliSlice).toMatch(/--external:\$\{rel\}/);
+  });
+});

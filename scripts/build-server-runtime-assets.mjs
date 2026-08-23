@@ -27,6 +27,84 @@ export const SERVER_RUNTIME_RENDERER_DIRS = [
   "locales",
 ];
 
+/**
+ * Packaged `bundle/cli.js` keeps createRequire() loads of artifact-core as
+ * relative runtime requires (`../shared/artifact-core/*.cjs`). Those files are
+ * not emitted by Vite or plugin-host dependency copies and must be staged
+ * explicitly next to the packaged CLI entry.
+ */
+export const PACKAGED_CLI_ARTIFACT_CORE_FILES = Object.freeze([
+  "shared/artifact-core/index.cjs",
+  "shared/artifact-core/activation.cjs",
+  "shared/artifact-core/manifest.cjs",
+  "shared/artifact-core/pointer-store.cjs",
+  "shared/artifact-core/pointer-channels.cjs",
+  "shared/artifact-core/ustar.cjs",
+  "shared/artifact-core/ota-core.cjs",
+  "shared/artifact-core/keyset.cjs",
+  "shared/artifact-core/pinned-keyset.json",
+  // Transitive runtime requires from ota-core → contract-versions.{cjs,json}.
+  "shared/contract-versions.cjs",
+  "shared/contract-versions.json",
+  // ESM-imported by cli/data.ts + core/data-epoch-*.ts and externalized from the
+  // esbuild CLI bundle (see buildCliBundle). Its bare require("crypto"/"fs"/"path")
+  // cannot run inside esbuild's ESM CJS-interop shim, so it must load natively
+  // at runtime from shared/.
+  "shared/data-epoch.cjs",
+  // ESM-imported by cli/server-runner.ts + core/data-epoch-restore.ts, likewise
+  // externalized from the CLI bundle.
+  "shared/server-info-probe.cjs",
+]);
+
+/**
+ * Read-only packaging compatibility surface for the installer migration gate.
+ * Reports upstream artifact-core source presence while confirming that the fork
+ * installer retains its current-symlink production activation model.
+ */
+export function buildServerRuntimePackagingCompatibilityReport({
+  rootDir = process.cwd(),
+  fsImpl = fs,
+} = {}) {
+  // Historical installer probe set (kept stable for characterization tests).
+  const legacyProbePaths = [
+    "shared/artifact-core/index.cjs",
+    "shared/artifact-core/activation.cjs",
+    "shared/artifact-core/manifest.cjs",
+    "shared/artifact-core/pointer-store.cjs",
+    "shared/artifact-core/ustar.cjs",
+  ];
+  const present = legacyProbePaths.filter((relative) => (
+    fsImpl.existsSync(path.join(rootDir, relative))
+  ));
+  return {
+    kind: "server-runtime-packaging-compatibility",
+    includesArtifactCore: present.length > 0,
+    artifactCorePathsPresent: present,
+    productionBehaviorChanged: false,
+    activationModel: "current-symlink",
+  };
+}
+
+/**
+ * Copy the artifact-core modules the packaged CLI resolves at runtime.
+ * Merges into an existing `outDir/shared/` tree (plugin host copies may already
+ * have placed a few shared/*.ts files there).
+ *
+ * @returns {string[]} relative paths copied
+ */
+export function copyPackagedCliArtifactCore({ rootDir, outDir, fsImpl = fs }) {
+  const copied = [];
+  for (const relative of PACKAGED_CLI_ARTIFACT_CORE_FILES) {
+    const sourcePath = path.join(rootDir, relative);
+    assertRequiredAssetExists(fsImpl, sourcePath, relative);
+    const targetPath = path.join(outDir, relative);
+    fsImpl.mkdirSync(path.dirname(targetPath), { recursive: true });
+    fsImpl.copyFileSync(sourcePath, targetPath);
+    copied.push(relative);
+  }
+  return copied;
+}
+
 function assertRequiredAssetExists(fsImpl, sourcePath, label) {
   if (!fsImpl.existsSync(sourcePath)) {
     throw new Error(`[build-server] required runtime asset missing: ${label}`);

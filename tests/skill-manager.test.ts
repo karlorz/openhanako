@@ -3,7 +3,8 @@ import path from "path";
 import { SkillManager, __test } from "../core/skill-manager.ts";
 
 function makeAgent(id, enabled = [], workspaceContext = undefined) {
-  return { id, config: { skills: { enabled }, workspace_context: workspaceContext } };
+  const config: any = { skills: { enabled }, workspace_context: workspaceContext };
+  return { id, config };
 }
 
 function makeSkill(name, overrides = {}) {
@@ -241,6 +242,253 @@ describe("SkillManager.getSkillsForAgent", () => {
     const names = result.skills.map(s => s.name);
     expect(names).toContain("global-skill");
     expect(names).toContain("plugin-x");
+  });
+});
+
+describe("SkillManager marketplace skill package gate", () => {
+  let sm;
+  const packageIdentity = "skillwiki@llm-wiki";
+
+  beforeEach(() => {
+    sm = new SkillManager({ skillsDir: "/tmp/hana-test-skills" });
+    sm._allSkills = [
+      makeSkill("wiki-search"),
+      makeSkill("wiki-ingest"),
+      makeSkill("local-helper"),
+    ];
+  });
+
+  it("excludes marketplace package skills when package gate is off even if agent enabled", () => {
+    sm.setMarketplaceSkillPackageGateResolver((skillName) => {
+      if (skillName === "wiki-search" || skillName === "wiki-ingest") {
+        return { enabled: false, reason: "marketplace-package-disabled" };
+      }
+      return { enabled: true, reason: null };
+    });
+
+    const agent = makeAgent("agent-a", ["wiki-search", "wiki-ingest", "local-helper"]);
+    const runtimeNames = sm.getSkillsForAgent(agent).skills.map((s) => s.name);
+    expect(runtimeNames).not.toContain("wiki-search");
+    expect(runtimeNames).not.toContain("wiki-ingest");
+    expect(runtimeNames).toContain("local-helper");
+
+    const infos = sm.getRuntimeSkillInfos(agent);
+    expect(infos.find((s) => s.name === "wiki-search")).toMatchObject({
+      enabled: false,
+      active: false,
+      inactiveReason: "marketplace-package-disabled",
+    });
+    expect(infos.find((s) => s.name === "wiki-ingest")).toMatchObject({
+      inactiveReason: "marketplace-package-disabled",
+    });
+    expect(infos.find((s) => s.name === "local-helper")).toMatchObject({
+      enabled: true,
+      active: true,
+      inactiveReason: null,
+    });
+
+    // Agent preference list is preserved on getAllSkills (enabled stays true).
+    const all = sm.getAllSkills(agent);
+    expect(all.find((s) => s.name === "wiki-search")).toMatchObject({
+      enabled: true,
+      inactiveReason: "marketplace-package-disabled",
+    });
+    expect(agent.config.skills.enabled).toEqual(["wiki-search", "wiki-ingest", "local-helper"]);
+  });
+
+  it("surfaces marketplace-source-blocked inactiveReason", () => {
+    sm.setMarketplaceSkillPackageGateResolver((skillName) => {
+      if (skillName === "wiki-search") {
+        return { enabled: false, reason: "marketplace-source-blocked" };
+      }
+      return { enabled: true, reason: null };
+    });
+
+    const agent = makeAgent("agent-a", ["wiki-search"]);
+    expect(sm.getSkillsForAgent(agent).skills.map((s) => s.name)).not.toContain("wiki-search");
+    expect(sm.getRuntimeSkillInfos(agent).find((s) => s.name === "wiki-search")).toMatchObject({
+      active: false,
+      inactiveReason: "marketplace-source-blocked",
+    });
+  });
+
+  it("does not gate non-marketplace user skills", () => {
+    // Resolver returns enabled for unknown / non-member skills (no membership).
+    sm.setMarketplaceSkillPackageGateResolver(() => ({ enabled: true, reason: null }));
+
+    const agent = makeAgent("agent-a", ["local-helper"]);
+    expect(sm.getSkillsForAgent(agent).skills.map((s) => s.name)).toContain("local-helper");
+    expect(sm.getRuntimeSkillInfos(agent).find((s) => s.name === "local-helper")).toMatchObject({
+      enabled: true,
+      active: true,
+      inactiveReason: null,
+    });
+
+    // Without resolver, agent list alone decides.
+    sm.setMarketplaceSkillPackageGateResolver(null);
+    const agentOff = makeAgent("agent-b", []);
+    expect(sm.getSkillsForAgent(agentOff).skills.map((s) => s.name)).not.toContain("local-helper");
+    const agentOn = makeAgent("agent-c", ["local-helper"]);
+    expect(sm.getSkillsForAgent(agentOn).skills.map((s) => s.name)).toContain("local-helper");
+  });
+
+  it("allows marketplace skills when package gate is on and agent enabled", () => {
+    sm.setMarketplaceSkillPackageGateResolver((skillName) => {
+      if (skillName === "wiki-search") return { enabled: true, reason: null };
+      return { enabled: true, reason: null };
+    });
+
+    const agent = makeAgent("agent-a", ["wiki-search"]);
+    expect(sm.getSkillsForAgent(agent).skills.map((s) => s.name)).toContain("wiki-search");
+    expect(sm.getRuntimeSkillInfos(agent).find((s) => s.name === "wiki-search")).toMatchObject({
+      enabled: true,
+      active: true,
+      inactiveReason: null,
+    });
+  });
+
+  it("defaults an installed package skill on without materializing it in skills.enabled", () => {
+    sm.setMarketplaceSkillPackageGateResolver((skillName) => {
+      if (skillName === "wiki-search") {
+        return {
+          identity: packageIdentity,
+          skillName,
+          enabled: true,
+          state: "enabled",
+          reason: null,
+        };
+      }
+      return { enabled: true, reason: null };
+    });
+
+    const agent = makeAgent("agent-a", []);
+    expect(sm.getSkillsForAgent(agent).skills.map((skill) => skill.name)).toContain("wiki-search");
+    expect(sm.getRuntimeSkillInfos(agent).find((skill) => skill.name === "wiki-search")).toMatchObject({
+      enabled: true,
+      active: true,
+      managedBy: "marketplace-skill-package",
+      marketplacePackage: {
+        identity: packageIdentity,
+        skillName: "wiki-search",
+        explicitlyDisabled: false,
+      },
+      inactiveReason: null,
+    });
+    expect(sm.getAllSkills(agent).find((skill) => skill.name === "wiki-search")).toMatchObject({
+      enabled: true,
+      active: true,
+      managedBy: "marketplace-skill-package",
+    });
+    expect(sm.computeDefaultEnabledForNewAgent()).not.toContain("wiki-search");
+  });
+
+  it("applies a package skill opt-out to one agent only", () => {
+    sm.setMarketplaceSkillPackageGateResolver((skillName) => ({
+      identity: packageIdentity,
+      skillName,
+      enabled: true,
+      state: "enabled",
+      reason: null,
+    }));
+    const optedOut = makeAgent("agent-a", [], undefined);
+    optedOut.config.skills.marketplace_overrides = {
+      [packageIdentity]: { disabled: ["wiki-search"] },
+    };
+    const active = makeAgent("agent-b", []);
+
+    expect(sm.getRuntimeSkillInfos(optedOut).find((skill) => skill.name === "wiki-search")).toMatchObject({
+      enabled: false,
+      active: false,
+      inactiveReason: "agent-skill-disabled",
+      marketplacePackage: { explicitlyDisabled: true },
+    });
+    expect(sm.getSkillsForAgent(active).skills.map((skill) => skill.name)).toContain("wiki-search");
+  });
+
+  it("keeps preference enabled separate from package runtime activity", () => {
+    sm.setMarketplaceSkillPackageGateResolver((skillName) => ({
+      identity: packageIdentity,
+      skillName,
+      enabled: false,
+      state: "disabled",
+      reason: "marketplace-package-disabled",
+    }));
+
+    const defaultAgent = makeAgent("agent-a", []);
+    expect(sm.getRuntimeSkillInfos(defaultAgent).find((skill) => skill.name === "wiki-search")).toMatchObject({
+      enabled: true,
+      active: false,
+      inactiveReason: "marketplace-package-disabled",
+    });
+
+    const optedOut = makeAgent("agent-b", []);
+    optedOut.config.skills.marketplace_overrides = {
+      [packageIdentity]: { disabled: ["wiki-search"] },
+    };
+    expect(sm.getRuntimeSkillInfos(optedOut).find((skill) => skill.name === "wiki-search")).toMatchObject({
+      enabled: false,
+      active: false,
+      inactiveReason: "agent-skill-disabled",
+    });
+  });
+
+  it("exposes the effective package gate separately from the preserved agent preference", () => {
+    sm.setMarketplaceSkillPackageGateResolver((skillName) => ({
+      identity: packageIdentity,
+      skillName,
+      enabled: false,
+      state: "disabled",
+      reason: "marketplace-package-disabled",
+    }));
+
+    const info = sm.getRuntimeSkillInfos(makeAgent("agent-a", []))
+      .find((skill) => skill.name === "wiki-search");
+    expect(info).toMatchObject({
+      enabled: true,
+      active: false,
+      marketplacePackage: {
+        identity: packageIdentity,
+        packageEnabled: false,
+        explicitlyDisabled: false,
+      },
+    });
+  });
+
+  it("reports source blocking even when an agent has opted out", () => {
+    sm.setMarketplaceSkillPackageGateResolver((skillName) => ({
+      identity: packageIdentity,
+      skillName,
+      enabled: false,
+      state: "blocked-by-source",
+      reason: "marketplace-source-blocked",
+    }));
+    const agent = makeAgent("agent-a", []);
+    agent.config.skills.marketplace_overrides = {
+      [packageIdentity]: { disabled: ["wiki-search"] },
+    };
+    expect(sm.getRuntimeSkillInfos(agent).find((skill) => skill.name === "wiki-search")).toMatchObject({
+      enabled: false,
+      active: false,
+      inactiveReason: "marketplace-source-blocked",
+    });
+  });
+
+  it("still excludes gated marketplace skills from syncAgentSkills injection", () => {
+    sm.setMarketplaceSkillPackageGateResolver((skillName) => {
+      if (skillName === "wiki-search") {
+        return { enabled: false, reason: "marketplace-package-disabled" };
+      }
+      return { enabled: true, reason: null };
+    });
+
+    let injected = [];
+    const fakeAgent = {
+      id: "agent-a",
+      config: { skills: { enabled: ["wiki-search", "local-helper"] } },
+      setEnabledSkills(skills) { injected = skills; },
+    };
+    sm.syncAgentSkills(fakeAgent);
+    expect(injected.map((s) => s.name)).toEqual(["local-helper"]);
   });
 });
 

@@ -46,6 +46,7 @@
  *     node_modules/           ← 仅 external deps（~50 packages）
  */
 import fs from "fs";
+import { execSync } from "child_process";
 import path from "path";
 import { fileURLToPath } from "url";
 import {
@@ -65,8 +66,17 @@ import {
   collectBundledPluginPackageDependencies,
   copyBundledPluginRuntimeDependencies,
 } from "./build-server-plugin-runtime-deps.mjs";
-import { copyServerRuntimeAssets } from "./build-server-runtime-assets.mjs";
+import {
+  copyPackagedCliArtifactCore,
+  copyServerRuntimeAssets,
+} from "./build-server-runtime-assets.mjs";
 import { packDualKindSeed } from "./build-server-artifact.mjs";
+import { writeServerBuildInfo } from "./write-server-build-info.mjs";
+import {
+  SERVER_BUILD_RUNTIME_ONLY,
+  SERVER_BUILD_SEED,
+  resolveServerBuildMode,
+} from "../shared/release-profile.cjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
@@ -75,8 +85,9 @@ const arch = process.argv[3] || process.arch;
 // electron-builder 的 ${os} 变量：darwin→"mac"、win32→"win"、linux→"linux"
 const osDirName = platform === "darwin" ? "mac" : platform === "win32" ? "win" : platform;
 const outDir = path.join(ROOT, "dist-server", `${osDirName}-${arch}`);
+const serverBuildMode = resolveServerBuildMode(process.env);
 
-console.log(`[build-server] Building for ${platform}-${arch}...`);
+console.log(`[build-server] Building for ${platform}-${arch} (mode=${serverBuildMode})...`);
 
 // ── 0. 清理 ──
 fs.rmSync(outDir, { recursive: true, force: true });
@@ -156,6 +167,13 @@ for (const copiedDependency of await copyBundledPluginRuntimeDependencies({ root
   console.log(`[build-server]   ${copiedDependency}`);
 }
 
+// Packaged CLI keeps createRequire() loads of artifact-core as relative
+// runtime requires under shared/artifact-core/. Stage them explicitly so
+// `hana --help` / server-runner work from the install-server layout.
+for (const copiedCore of copyPackagedCliArtifactCore({ rootDir: ROOT, outDir })) {
+  console.log(`[build-server]   ${copiedCore}`);
+}
+
 console.log("[build-server] resource files copied");
 
 // ── 4-6. External dependencies 派生 + 安装 + 校验 ──
@@ -197,6 +215,23 @@ finalizeServerPackageJsonVersion({ outDir, version: rootPkg.version });
 
 // ── 10. Wrapper 脚本 ──
 writeServerWrapperScripts({ outDir, isWin });
+// writeServerWrapperScripts already logs "[build-server] wrapper created"; keep an
+// explicit marker in this file so runtime-only source contracts can pin order
+// without importing phases.
+console.log("[build-server] wrapper created");
+
+const buildGitSha = process.env.HANA_SERVER_GIT_SHA
+  || execSync("git rev-parse HEAD", { cwd: ROOT, encoding: "utf8" }).trim();
+writeServerBuildInfo({
+  outputRoot: outDir,
+  rootDir: outDir,
+  releaseTag: process.env.HANA_SERVER_RELEASE_TAG || null,
+  gitSha: buildGitSha,
+  sourceRepository: process.env.HANA_SERVER_SOURCE_REPOSITORY || "karlorz/openhanako",
+  platform,
+  arch,
+});
+console.log("[build-server] server-build-info.json created");
 
 // ── 11. server + renderer 树 → 一份签名 seed 归档（双 artifact 管线）──
 // ⚠️ 顺序铁律：先签名，后装箱。Apple notary
@@ -211,14 +246,19 @@ writeServerWrapperScripts({ outDir, isWin });
 // HANA_SIGN_KEY 未设置时这里硬报错（安装包必须携带签名 seed）；本地验证用
 // artifact-keygen.mjs 生成一次性密钥对，配 HANA_SIGN_KEYSET 指向其 keyset。
 // full 专属：开源产物不装箱、不签名、全程不读 HANA_SIGN_KEY。
-await packDualKindSeed({
-  outDir,
-  rendererDistDir: path.join(ROOT, "desktop", "dist-renderer"),
-  rendererArtifactOutDir: path.join(ROOT, "dist-renderer-artifact"),
-  artifactOutDir: path.join(ROOT, "dist-server-artifact", `${osDirName}-${arch}`),
-  version: rootPkg.version,
-  platform,
-  arch,
-});
+// runtime-only (legacy-raw server bundles) skips signed seed packaging.
+if (serverBuildMode === SERVER_BUILD_SEED) {
+  await packDualKindSeed({
+    outDir,
+    rendererDistDir: path.join(ROOT, "desktop", "dist-renderer"),
+    rendererArtifactOutDir: path.join(ROOT, "dist-renderer-artifact"),
+    artifactOutDir: path.join(ROOT, "dist-server-artifact", `${osDirName}-${arch}`),
+    version: rootPkg.version,
+    platform,
+    arch,
+  });
+} else if (serverBuildMode === SERVER_BUILD_RUNTIME_ONLY) {
+  console.log("[build-server] runtime-only mode: raw server tree kept; signed seed packaging skipped");
+}
 
 console.log("[build-server] Done!");

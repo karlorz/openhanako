@@ -31,6 +31,7 @@ import { createComputerUseTool } from "../lib/tools/computer-use-tool.ts";
 import { createPinnedMemoryTools } from "../lib/tools/pinned-memory.ts";
 import { createExperienceTools } from "../lib/tools/experience.ts";
 import { createInstallSkillTool } from "../lib/tools/install-skill.ts";
+import { createPluginMarketplaceTool } from "../lib/tools/plugin-marketplace-tool.ts";
 import { createNotifyTool } from "../lib/tools/notify-tool.ts";
 import { createUpdateSettingsTool } from "../lib/tools/update-settings-tool.ts";
 import { createSessionFoldersTool } from "../lib/tools/session-folders-tool.ts";
@@ -66,6 +67,7 @@ import {
   type ResolvedAgentAppearanceModelConfig,
   refreshAgentAppearanceProfileResource,
 } from "../lib/agent-appearance-summary.ts";
+import { resolveUtilityModelRefs } from "../shared/utility-model-fallback.ts";
 
 const moduleLog = createModuleLogger("agent");
 
@@ -113,6 +115,7 @@ export class Agent {
   declare _factStore: any;
   declare _getOwnerIds: any;
   declare _installSkillTool: any;
+  declare _pluginMarketplaceTool: any;
   declare _listAgents: any;
   declare _memoryMasterEnabled: any;
   declare _memoryModel: any;
@@ -389,19 +392,21 @@ export class Agent {
 
     log(`  [agent] 4. FactStore + SummaryManager 完成`);
 
-    // utility 模型：用户未配置时 fallback 到聊天模型
+    // utility 模型：large 复用 effective small，small 最终 fallback 到聊天模型。
     const chatModelRef = this._config.models?.chat || null;
     const userSetUtility = sharedModels.utility || this._config.models?.utility || null;
     const userSetUtilityLarge = sharedModels.utility_large || this._config.models?.utility_large || null;
+    const { utilityModelRef, largeModelRef } = resolveUtilityModelRefs(this._config, sharedModels);
 
-    this._utilityModel = userSetUtility || chatModelRef;
-    this._memoryModel = userSetUtilityLarge || chatModelRef;
+    this._utilityModel = utilityModelRef;
+    this._memoryModel = largeModelRef;
 
     if (!userSetUtility && chatModelRef) {
       moduleLog.log(`utility 模型未配置，使用聊天模型作为工具模型`);
     }
-    if (!userSetUtilityLarge && chatModelRef) {
-      moduleLog.log(`utility_large 模型未配置，使用聊天模型作为记忆模型`);
+    if (!userSetUtilityLarge && utilityModelRef) {
+      const fallbackName = userSetUtility ? "utility 模型" : "聊天模型";
+      moduleLog.log(`utility_large 模型未配置，使用${fallbackName}作为记忆模型`);
     }
 
     // 保存解析函数：每次 tick 现场调用，拿到最新凭证。
@@ -414,7 +419,11 @@ export class Agent {
       try {
         this._resolveModel(this._memoryModel, this._config);
       } catch (err) {
-        const src = userSetUtilityLarge ? "utility_large" : "聊天模型 fallback";
+        const src = userSetUtilityLarge
+          ? "utility_large"
+          : userSetUtility
+            ? "utility fallback"
+            : "聊天模型 fallback";
         moduleLog.warn(`记忆系统暂不可用：${src} 解析失败（改完凭证后 tick 会自动恢复） — ${err.message}`);
         this._cb?.emitDevLog?.(`记忆系统暂不可用：${src} 解析失败 — ${err.message}`, "warn");
       }
@@ -646,6 +655,9 @@ export class Agent {
       },
       registerSessionFile: (entry) => this._cb?.registerSessionFile?.(entry),
       resolveSessionFile: resolveActiveSessionFile,
+    });
+    this._pluginMarketplaceTool = createPluginMarketplaceTool({
+      getEngine: () => this._cb?.getEngine?.(),
     });
 
     // 11. subagent 工具
@@ -947,6 +959,7 @@ export class Agent {
       this._browserTool,
       ...computerUseTools,
       ...installSkillTools,
+      this._pluginMarketplaceTool,
       this._notifyTool,
       this._stopTaskTool,
       this._updateSettingsTool,
@@ -1390,6 +1403,17 @@ export class Agent {
     // Skills 注入由 Pi SDK 内部统一处理：SDK 会在 buildSystemPrompt 的 customPrompt
     // 分支末尾追加一份 formatSkillsForPrompt(skills)。这里再追加一次会重复（#399）。
     // 显示路径（GET /system-prompt）会自行拼接 skills 以保持开发者视图一致。
+
+    parts.push(isZh
+      ? "\n## 技能清单真实性\n\n" +
+        "系统提示中的 <available_skills> 是当前 session 可用技能的权威清单。只能把其中列出的技能称为当前可用或已加载。\n" +
+        "find、grep、ls、read 或某个 SKILL.md 路径只能证明文件存在；缓存、保留产物、备份、Marketplace 下载、旧 bundle 或 session 存储中的文件，不证明技能已安装、启用、内置或由插件提供。\n" +
+        "原生插件安装状态必须以 PluginManager/原生插件清单为准；Marketplace Hana 技能包安装状态必须以已安装包清单为准。若没有明确的内置来源信息，请说“当前可用/runtime 技能”，并说明无法仅凭文件路径判断内置来源。"
+      : "\n## Skill Inventory Truth\n\n" +
+        "The <available_skills> block in the system prompt is authoritative for skills available in this session. Only skills listed there may be described as currently available or loaded.\n" +
+        "A find, grep, ls, read result, or SKILL.md path proves only that a file exists. Files in caches, retained artifacts, backups, Marketplace downloads, stale bundles, or session storage do not prove that a skill is installed, enabled, built in, or plugin-provided.\n" +
+        "Use PluginManager/native inventory for native plugin installation claims and installed-package inventory for Marketplace Hana-skill package claims. When explicit built-in provenance is unavailable, say “currently available/runtime skills” and explain that file paths alone cannot establish built-in ownership."
+    );
 
     // 工具使用纪律（轻量优先；并入原「文件与命令工具使用」段的文件工具指引）
     parts.push(isZh

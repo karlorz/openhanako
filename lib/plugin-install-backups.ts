@@ -33,12 +33,23 @@ function cleanupBackups(pluginBackupRoot, maxBackups) {
 export function createPluginInstallBackup({
   hanakoHome,
   pluginId,
+  marketplaceId,
   pluginDir,
   version,
   maxBackups = DEFAULT_MAX_BACKUPS_PER_PLUGIN,
-}: { hanakoHome?: string; pluginId?: string; pluginDir?: string; version?: string; maxBackups?: number } = {}) {
+}: {
+  hanakoHome?: string;
+  pluginId?: string;
+  marketplaceId?: string;
+  pluginDir?: string;
+  version?: string;
+  maxBackups?: number;
+} = {}) {
   if (!hanakoHome || !pluginId || !pluginDir || !fs.existsSync(pluginDir)) return null;
-  const backupRoot = path.join(hanakoHome, "plugin-backups", safeSegment(pluginId));
+  // Source-qualified when marketplaceId is provided; bare pluginId kept for legacy callers.
+  const backupRoot = marketplaceId
+    ? path.join(hanakoHome, "plugin-backups", safeSegment(marketplaceId), safeSegment(pluginId))
+    : path.join(hanakoHome, "plugin-backups", safeSegment(pluginId));
   fs.mkdirSync(backupRoot, { recursive: true });
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const backupDir = path.join(backupRoot, `${stamp}-v${safeSegment(version, "0.0.0")}`);
@@ -47,7 +58,13 @@ export function createPluginInstallBackup({
   fs.cpSync(pluginDir, tmpDir, { recursive: true });
   fs.renameSync(tmpDir, backupDir);
   cleanupBackups(backupRoot, maxBackups);
-  return { pluginId, version: version || null, pluginDir, backupDir };
+  return {
+    pluginId,
+    marketplaceId: marketplaceId || null,
+    version: version || null,
+    pluginDir,
+    backupDir,
+  };
 }
 
 export function restorePluginInstallBackup(backup, targetDir) {

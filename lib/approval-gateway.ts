@@ -62,23 +62,76 @@ const REVIEWER_FAILURE_REASON = "Automatic approval review could not produce a v
 const REVIEWER_UNAVAILABLE_REASON = "Automatic approval reviewer unavailable.";
 const MAX_REVIEWER_REASON_LENGTH = 240;
 
-function deterministicDecision(request: any = {}) {
+const MARKETPLACE_OWNER_REQUIRED_RULE = "marketplace-owner-required";
+
+function isOwnerRequiredMutation(request: any = {}) {
+  return request?.sideEffect?.ownerRequired === true
+    || request?.sideEffect?.kind === "marketplace_install"
+    || request?.sideEffect?.kind === "marketplace_uninstall";
+}
+
+function ownerDenial(request: any) {
+  return {
+    action: "hard_deny",
+    reviewer: "policy",
+    reason: "Marketplace mutation requires studio.owner; the host principal is not an owner.",
+    reasonCode: "marketplace_owner_required",
+    risk: "high",
+    ruleIds: [MARKETPLACE_OWNER_REQUIRED_RULE],
+  };
+}
+
+function deterministicDecision(request: any = {}, context: any = {}) {
+  if (isOwnerRequiredMutation(request) && context?.hostOwner?.isStudioOwner !== true) {
+    return ownerDenial(request);
+  }
   if (isDeferredMutationDraft(request)) {
-    return {
-      action: "allow",
-      reviewer: "policy",
-      reason: request.sideEffect?.summary || "Tool action only creates a draft; persistent writes require explicit confirmation.",
-      risk: "low",
-      ruleIds: [request.sideEffect?.ruleId || "automation-draft-no-write"],
-    };
+    return policyAllow(request, "Tool action only creates a draft; persistent writes require explicit confirmation.", "automation-draft-no-write");
+  }
+  if (isMarketplaceSkillPackageMutation(request)) {
+    return policyAllow(request, "Marketplace skill package mutation with valid plan token and registry preconditions.", "marketplace-skill-package-plan-validated");
   }
   return null;
+}
+
+function policyAllow(request: any, fallbackReason: string, ruleId: string) {
+  return {
+    action: "allow",
+    reviewer: "policy",
+    reason: request.sideEffect?.summary || fallbackReason,
+    risk: "low",
+    ruleIds: [request.sideEffect?.ruleId || ruleId],
+  };
 }
 
 function isDeferredMutationDraft(request: any = {}) {
   const sideEffect = request.sideEffect;
   return sideEffect?.kind === "deferred_mutation_draft"
     && sideEffect?.commit === "requires_user_confirmation";
+}
+
+/**
+ * Marketplace skill-package mutations (install, set_package_enabled, uninstall)
+ * that carry a valid planToken or registry preconditions have already passed
+ * the tool's own plan/staleness validation. They are owner-only and operate on
+ * the local skills directory. The deterministic allow lets them complete under
+ * auto mode without depending on the LLM reviewer to understand the planToken
+ * lifecycle.
+ */
+function isMarketplaceSkillPackageMutation(request: any = {}) {
+  const sideEffect = request.sideEffect;
+  if (!sideEffect || typeof sideEffect !== "object") return false;
+  const capability = request.toolName === "plugin_marketplace"
+    && typeof sideEffect.pluginId === "string"
+    && typeof sideEffect.marketplaceId === "string";
+  if (!capability) return false;
+  // install requires planToken; set_package_enabled/uninstall require
+  // registry preconditions. Either suffices for the deterministic allow.
+  const hasPlanToken = typeof sideEffect.planToken === "string" && sideEffect.planToken.length > 0;
+  const hasPreconditions = typeof sideEffect.expectedRevision === "number"
+    && typeof sideEffect.expectedDigest === "string"
+    && sideEffect.expectedDigest.length > 0;
+  return hasPlanToken || hasPreconditions;
 }
 
 function normalizeRisk(value, fallback = "medium") {
@@ -441,7 +494,7 @@ export function createApprovalGateway({
 } = {}) {
   return {
     async review(request, context = {}) {
-      const policyDecision = deterministicDecision(request);
+      const policyDecision = deterministicDecision(request, context);
       if (policyDecision) return policyDecision;
 
       const reviewerInput = buildReviewerInput(request, context);

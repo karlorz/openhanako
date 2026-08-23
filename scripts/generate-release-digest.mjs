@@ -11,12 +11,64 @@ import {
   appendDigestToHistory,
   assertValidReleaseDigest,
   assertValidReleaseDigestHistory,
+  releaseTagToProductVersion,
 } from "./release-digest-schema.mjs";
 
 const DEFAULT_REPOSITORY = "liliMozi/openhanako";
 const DEFAULT_MODEL = "gpt-5.5";
+const DEFAULT_BASE_URL = "https://api.openai.com/v1";
+const DEFAULT_BACKEND = "responses";
+const BACKENDS = new Set(["responses", "chat-completions"]);
+
+function firstEnv(env, ...names) {
+  const value = names.map(name => env?.[name]).find(item => typeof item === "string" && item.trim());
+  return value ? value.trim() : "";
+}
+
+function normalizeBaseUrl(value) {
+  const raw = String(value || "").trim().replace(/\/+$/, "");
+  let parsed;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    throw new Error("BASE_URL must be an absolute HTTP(S) URL");
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("BASE_URL must use http or https");
+  }
+  if (parsed.username || parsed.password || parsed.search || parsed.hash) {
+    throw new Error("BASE_URL must not contain credentials, query parameters, or fragments");
+  }
+  return raw;
+}
+
+function digestEnvDefaults(env = process.env) {
+  return {
+    model: firstEnv(env, "model", "MODEL", "OPENAI_MODEL") || DEFAULT_MODEL,
+    baseUrl: firstEnv(env, "base_url", "BASE_URL", "OPENAI_API_BASE_URL") || DEFAULT_BASE_URL,
+    backend: firstEnv(env, "api_backend", "API_BACKEND", "OPENAI_BACKEND") || DEFAULT_BACKEND,
+  };
+}
+
+export function resolveDigestConfig({ env = process.env, model, baseUrl, backend } = {}) {
+  const defaults = digestEnvDefaults(env);
+  const apiKey = firstEnv(env, "api_key", "API_KEY", "OPENAI_API_KEY") || undefined;
+  const resolvedModel = String(model || defaults.model).trim();
+  if (!resolvedModel) throw new Error("MODEL is required to generate release digest");
+  const resolvedBackend = String(backend || defaults.backend).trim();
+  if (!BACKENDS.has(resolvedBackend)) {
+    throw new Error(`API_BACKEND must be one of: ${[...BACKENDS].join(", ")}`);
+  }
+  return {
+    apiKey,
+    baseUrl: normalizeBaseUrl(baseUrl || defaults.baseUrl),
+    model: resolvedModel,
+    backend: resolvedBackend,
+  };
+}
 
 export function parseArgs(argv = process.argv.slice(2), env = process.env) {
+  const defaults = digestEnvDefaults(env);
   const args = {
     tag: env.GITHUB_REF_NAME || null,
     previousTag: "auto",
@@ -30,7 +82,9 @@ export function parseArgs(argv = process.argv.slice(2), env = process.env) {
     noLlm: false,
     appendHistory: false,
     historyFile: DIGEST_HISTORY_ASSET_NAME,
-    model: env.OPENAI_MODEL || DEFAULT_MODEL,
+    model: defaults.model,
+    baseUrl: defaults.baseUrl,
+    backend: defaults.backend,
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -45,6 +99,8 @@ export function parseArgs(argv = process.argv.slice(2), env = process.env) {
     else if (arg === "--release-notes-file") args.releaseNotesFile = argv[++i];
     else if (arg === "--release-url") args.releaseUrl = argv[++i];
     else if (arg === "--model") args.model = argv[++i];
+    else if (arg === "--base-url" || arg === "--api-base-url") args.baseUrl = argv[++i];
+    else if (arg === "--backend") args.backend = argv[++i];
     else if (arg === "--no-llm") args.noLlm = true;
     else if (arg === "--append-history") args.appendHistory = true;
     else if (arg === "--history-file") args.historyFile = argv[++i];
@@ -76,8 +132,10 @@ Options:
   --source-out <path>       Write the LLM source packet for audit/debugging
   --release-notes-file <p>   Optional local release notes file
   --release-url <url>        Optional release URL embedded into digest source
-  --model <model>           OpenAI model. Default: ${DEFAULT_MODEL}
-  --no-llm                  Only collect/write the source packet; do not call OpenAI
+  --model <model>           Provider model. Default: ${DEFAULT_MODEL}
+  --base-url <url>          API base URL. Default: ${DEFAULT_BASE_URL}
+  --backend <name>          responses or chat-completions. Default: ${DEFAULT_BACKEND}
+  --no-llm                  Only collect/write the source packet; do not call the provider
   --append-history          Append the digest at --out into the v2 rolling history, then exit
                             (no git, no LLM; the hand-written digest workflow's second step)
   --history-file <path>     v2 rolling history JSON path. Default: ${DIGEST_HISTORY_ASSET_NAME}
@@ -100,8 +158,7 @@ function normalizeTag(tag) {
 }
 
 function tagToVersion(tag) {
-  const normalized = normalizeTag(tag);
-  return normalized.startsWith("v") ? normalized.slice(1) : normalized;
+  return releaseTagToProductVersion(normalizeTag(tag));
 }
 
 export function resolvePreviousTag(ref = "HEAD", explicitPreviousTag = "auto") {
@@ -192,7 +249,12 @@ function buildUserPrompt(source) {
   return JSON.stringify(source, null, 2);
 }
 
-function extractResponseText(payload) {
+function extractResponseText(payload, backend = DEFAULT_BACKEND) {
+  if (backend === "chat-completions") {
+    const content = payload?.choices?.[0]?.message?.content;
+    if (typeof content === "string" && content.trim()) return content;
+    throw new Error("Chat Completions provider response did not include text output");
+  }
   if (typeof payload?.output_text === "string" && payload.output_text.trim()) {
     return payload.output_text;
   }
@@ -203,59 +265,90 @@ function extractResponseText(payload) {
       }
     }
   }
-  throw new Error("OpenAI response did not include text output");
+  throw new Error("Responses provider response did not include text output");
 }
 
-export async function generateDigestWithOpenAI(source, {
+function parseProviderDigestText(text) {
+  const trimmed = text.trim();
+  const fenced = trimmed.match(/^```(?:json)?\s*\n([\s\S]*?)\n```$/i);
+  return JSON.parse(fenced ? fenced[1].trim() : trimmed);
+}
+
+export async function generateDigestWithProvider(source, {
   env = process.env,
   fetchImpl = fetch,
-  model = DEFAULT_MODEL,
+  model,
+  baseUrl,
+  backend,
 } = {}) {
-  if (!env.OPENAI_API_KEY) {
-    throw new Error("OPENAI_API_KEY is required to generate release digest");
+  const config = resolveDigestConfig({ env, model, baseUrl, backend });
+  if (!config.apiKey) {
+    throw new Error("API_KEY (or OPENAI_API_KEY) is required to generate release digest");
   }
 
-  const response = await fetchImpl("https://api.openai.com/v1/responses", {
+  const isChatCompletions = config.backend === "chat-completions";
+  const endpoint = `${config.baseUrl}/${isChatCompletions ? "chat/completions" : "responses"}`;
+  const body = isChatCompletions ? {
+    model: config.model,
+    messages: [
+      { role: "system", content: buildSystemPrompt() },
+      { role: "user", content: buildUserPrompt(source) },
+    ],
+    response_format: {
+      type: "json_schema",
+      json_schema: {
+        name: "hana_release_digest",
+        strict: true,
+        schema: RELEASE_DIGEST_JSON_SCHEMA,
+      },
+    },
+    store: false,
+    max_tokens: 4000,
+  } : {
+    model: config.model,
+    input: [
+      {
+        role: "system",
+        content: [{ type: "input_text", text: buildSystemPrompt() }],
+      },
+      {
+        role: "user",
+        content: [{ type: "input_text", text: buildUserPrompt(source) }],
+      },
+    ],
+    text: {
+      format: {
+        type: "json_schema",
+        name: "hana_release_digest",
+        strict: true,
+        schema: RELEASE_DIGEST_JSON_SCHEMA,
+      },
+    },
+    store: false,
+    max_output_tokens: 4000,
+  };
+  const response = await fetchImpl(endpoint, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${env.OPENAI_API_KEY}`,
+      Authorization: `Bearer ${config.apiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      model,
-      input: [
-        {
-          role: "system",
-          content: [{ type: "input_text", text: buildSystemPrompt() }],
-        },
-        {
-          role: "user",
-          content: [{ type: "input_text", text: buildUserPrompt(source) }],
-        },
-      ],
-      text: {
-        format: {
-          type: "json_schema",
-          name: "hana_release_digest",
-          strict: true,
-          schema: RELEASE_DIGEST_JSON_SCHEMA,
-        },
-      },
-      store: false,
-      max_output_tokens: 4000,
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {
-    throw new Error(`OpenAI release digest generation failed: ${response.status} ${await response.text()}`);
+    throw new Error(`Release digest generation failed: ${response.status}`);
   }
 
   const payload = await response.json();
-  const text = extractResponseText(payload);
-  const digest = JSON.parse(text);
+  const text = extractResponseText(payload, config.backend);
+  const digest = parseProviderDigestText(text);
   assertValidReleaseDigest(digest);
   return digest;
 }
+
+// Backward-compatible export name for callers that used the original OpenAI-only generator.
+export const generateDigestWithOpenAI = generateDigestWithProvider;
 
 async function writeJson(filePath, value) {
   await fs.promises.mkdir(path.dirname(path.resolve(filePath)), { recursive: true });
@@ -315,10 +408,12 @@ export async function run(argv = process.argv.slice(2), { env = process.env, fet
     return;
   }
 
-  const digest = await generateDigestWithOpenAI(source, {
+  const digest = await generateDigestWithProvider(source, {
     env,
     fetchImpl,
     model: args.model,
+    baseUrl: args.baseUrl,
+    backend: args.backend,
   });
   await writeJson(args.out, digest);
   const history = await appendDigestFileToHistoryFile(args.out, args.historyFile);

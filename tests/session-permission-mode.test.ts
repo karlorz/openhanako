@@ -73,6 +73,40 @@ describe("session permission modes", () => {
     expect(classifySessionPermission({ mode: "operate", toolName: "browser", context: browserClick })).toEqual({ action: "allow" });
   });
 
+  it("routes ownerRequired invocations to review in Operate mode instead of allowing directly", () => {
+    const invocation = {
+      action: "configure",
+      kind: "review",
+      capability: "plugin_marketplace.configure",
+      target: { type: "setting", id: "plugin-marketplace:sources" },
+      sideEffect: { ownerRequired: true, summary: "mutate" },
+    };
+    const decision = classifySessionPermission({
+      mode: "operate",
+      toolName: "plugin_marketplace",
+      params: { action: "add_source" },
+      context: { toolInvocation: invocation },
+    });
+    expect(decision.action).toBe("review");
+  });
+
+  it("keeps direct Operate allow for non-owner-required review invocations", () => {
+    const invocation = {
+      action: "configure",
+      kind: "review",
+      capability: "plugin_marketplace.configure",
+      target: { type: "setting", id: "plugin-marketplace:sources" },
+      sideEffect: { summary: "mutate" },
+    };
+    const decision = classifySessionPermission({
+      mode: "operate",
+      toolName: "plugin_marketplace",
+      params: { action: "refresh_source" },
+      context: { toolInvocation: invocation },
+    });
+    expect(decision.action).toBe("allow");
+  });
+
   it("classifies terminal inspection, close, and host PTY actions by their real boundary", () => {
     const terminalRead = {
       toolInvocation: { action: "read", kind: "read", capability: "terminal.read" },
@@ -456,6 +490,54 @@ describe("session permission modes", () => {
           preAuthorizedRoutineCapabilities: ["mcp_acme_search.invoke"],
         },
       })).toMatchObject({ action: "review" });
+    });
+
+    it("keeps owner-required mutations on the approval boundary despite matching grants", () => {
+      const ownerRequiredReviewInvocation = {
+        action: "install",
+        kind: "review",
+        capability: "marketplace.install",
+        sideEffect: { ownerRequired: true },
+      };
+      const ownerRequiredRoutineInvocation = {
+        action: "install",
+        kind: "routine",
+        capability: "marketplace.install",
+        sideEffect: { ownerRequired: true },
+      };
+      const cases = [
+        {
+          invocation: ownerRequiredReviewInvocation,
+          grants: { preAuthorizedInvocationCapabilities: ["marketplace.install"] },
+        },
+        {
+          invocation: ownerRequiredRoutineInvocation,
+          grants: { preAuthorizedRoutineCapabilities: ["marketplace.install"] },
+        },
+      ];
+
+      for (const { invocation, grants } of cases) {
+        expect(classifySessionPermission({
+          mode: "auto",
+          toolName: "marketplace",
+          context: { toolInvocation: invocation, ...grants },
+        })).toMatchObject({ action: "review", kind: "tool_action_approval" });
+        expect(classifySessionPermission({
+          mode: "ask",
+          toolName: "marketplace",
+          context: { toolInvocation: invocation, ...grants },
+        })).toMatchObject({ action: "prompt", kind: "tool_action_approval" });
+        expect(classifySessionPermission({
+          mode: "operate",
+          toolName: "marketplace",
+          context: { toolInvocation: invocation, ...grants },
+        })).toMatchObject({ action: "review", kind: "tool_action_approval" });
+        expect(classifySessionPermission({
+          mode: "read_only",
+          toolName: "marketplace",
+          context: { toolInvocation: invocation, ...grants },
+        })).toMatchObject({ action: "deny", code: "ACTION_BLOCKED_BY_READ_ONLY" });
+      }
     });
   });
 });

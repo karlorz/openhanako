@@ -149,12 +149,18 @@ function resolveCwd(source, sessionPath, ctx, fallback) {
   ) || null;
 }
 
+export interface HostOwnerPrincipal {
+  isStudioOwner: boolean;
+  isLocalOwner: boolean;
+}
+
 export function buildApprovalReviewContext({
   source = {},
   ctx = null,
   sessionPath = null,
   agentId = null,
   fallback = {},
+  hostOwner = null,
 }: any = {}) {
   const visibleTranscript = Array.isArray(ctx?.visibleTranscript)
     ? ctx.visibleTranscript
@@ -188,5 +194,6 @@ export function buildApprovalReviewContext({
       source?.executionContext,
       fallback?.executionContext,
     ),
+    ...(hostOwner ? { hostOwner } : {}),
   };
 }

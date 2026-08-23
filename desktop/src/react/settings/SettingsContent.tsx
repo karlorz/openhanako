@@ -9,6 +9,8 @@ import {
   upsertServerConnection,
   type ServerConnection,
 } from '../services/server-connection';
+import { readRemoteConnectionRecoveryState, remoteRecoveryForActiveConnection } from '../services/remote-connection-recovery';
+import { readRemoteServerAssessment } from '../services/remote-server-assessment-cache';
 import { t } from './helpers';
 import { loadAgents, loadAvatars, loadSettingsSnapshot } from './actions';
 import { ErrorBoundary } from '../components/ErrorBoundary';
@@ -74,10 +76,18 @@ function connectionState(connection: ServerConnection | null) {
     ? serverConnections[persisted.activeServerConnectionId] || null
     : null;
   const activeServerConnection = persistedActive || connection || null;
+  const recovery = readRemoteConnectionRecoveryState();
+  const remoteConnectionRecovery = remoteRecoveryForActiveConnection(recovery, activeServerConnection?.connectionId)
+    ? recovery
+    : null;
   return {
     serverConnections,
     activeServerConnectionId: activeServerConnection?.connectionId ?? null,
     activeServerConnection,
+    remoteConnectionRecovery,
+    remoteServerAssessment: activeServerConnection
+      ? readRemoteServerAssessment(activeServerConnection.connectionId)
+      : null,
   };
 }
 
@@ -323,6 +333,9 @@ async function initSettings() {
       serverToken,
       platformName,
       ...connectionState(createLocalServerConnection({ serverPort, serverToken })),
+    });
+    void useSettingsStore.getState().refreshRemoteServerAssessment?.().catch((err) => {
+      console.warn('[settings] remote server assessment skipped:', err);
     });
 
     // i18n

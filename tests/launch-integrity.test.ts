@@ -137,6 +137,67 @@ describe("desktop launch integrity helper", () => {
     ]);
   });
 
+  it("accepts a complete marked legacy-raw Windows install surface", () => {
+    const helper = loadHelper();
+    if (!helper) return;
+
+    const tmp = makeTempDir();
+    const resourcesPath = path.join(tmp, "resources");
+    writeFile(tmp, "HanaAgent.exe");
+    writeFile(resourcesPath, "app.asar");
+    writeFile(resourcesPath, "app-update.yml");
+    writeFile(resourcesPath, "build-info.json", JSON.stringify({
+      releaseProfile: "legacy-raw",
+      updateEnabled: false,
+      artifactUpdatesEnabled: false,
+    }));
+    writeFile(resourcesPath, "server/hana-server.exe");
+    writeFile(resourcesPath, "server/bootstrap.js");
+    writeFile(resourcesPath, "server/bundle/index.js");
+    writeFile(resourcesPath, "server/server-build-info.json", JSON.stringify({ gitSha: "full-sha" }));
+    writeFile(resourcesPath, "git/cmd/git.exe");
+    writeFile(resourcesPath, "git/usr/bin/sh.exe");
+
+    const result = helper.checkWindowsInstallSurface({
+      execPath: path.join(tmp, "HanaAgent.exe"),
+      resourcesPath,
+    });
+
+    expect(result).toMatchObject({ ok: true, missing: [] });
+    expect(result.profile).toBe("legacy-raw");
+    expect(result.checked.map(item => item.id)).toContain("raw-server-wrapper");
+  });
+
+  it("rejects a mixed seed and legacy-raw install surface", () => {
+    const helper = loadHelper();
+    if (!helper) return;
+
+    const tmp = makeTempDir();
+    const resourcesPath = path.join(tmp, "resources");
+    writeFile(tmp, "HanaAgent.exe");
+    writeFile(resourcesPath, "app.asar");
+    writeFile(resourcesPath, "app-update.yml");
+    writeFile(resourcesPath, "build-info.json", JSON.stringify({ releaseProfile: "legacy-raw" }));
+    writeFile(resourcesPath, "seed/seed-train-win32-x64.json");
+    writeFile(resourcesPath, "seed/seed-train-win32-x64.json.sig");
+    writeFile(resourcesPath, "seed/server-1.2.3.tar.gz");
+    writeFile(resourcesPath, "seed/renderer-1.2.3.tar.gz");
+    writeFile(resourcesPath, "server/hana-server.exe");
+    writeFile(resourcesPath, "server/bootstrap.js");
+    writeFile(resourcesPath, "server/bundle/index.js");
+    writeFile(resourcesPath, "server/server-build-info.json", "{}");
+    writeFile(resourcesPath, "git/cmd/git.exe");
+    writeFile(resourcesPath, "git/usr/bin/sh.exe");
+
+    const result = helper.checkWindowsInstallSurface({
+      execPath: path.join(tmp, "HanaAgent.exe"),
+      resourcesPath,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.missing.map(item => item.id)).toContain("layout-mixed");
+  });
+
   it("flags a missing server archive independently of the renderer archive", () => {
     const helper = loadHelper();
     if (!helper) return;

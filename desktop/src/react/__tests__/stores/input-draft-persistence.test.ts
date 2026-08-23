@@ -2,22 +2,88 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { hanaFetch } from '../../hooks/use-hana-fetch';
 import { useStore } from '../../stores';
 import {
+  clearInputDraftRemoteSession,
   hydrateInputDrafts,
+  inputDraftRemoteMode,
   initInputDraftPersistence,
 } from '../../stores/input-draft-persistence';
 import { registerDraftSyncListener } from '../../stores/input-draft-sync';
+import type { ServerConnection } from '../../services/server-connection';
+import { assessRemoteServer, REMOTE_INPUT_DRAFT_FEATURE_REQUIREMENTS } from '../../../../../shared/remote-server-assessment';
+import type { RemoteServerAssessment } from '../../../../../shared/remote-server-assessment';
 
 vi.mock('../../hooks/use-hana-fetch', () => ({
   hanaFetch: vi.fn(),
 }));
-vi.mock('../../services/server-connection', () => ({
-  hasServerConnection: () => true,
-}));
-
 const mockFetch = vi.mocked(hanaFetch);
+const remoteConnection: ServerConnection = {
+  connectionId: 'lan:server:studio',
+  kind: 'lan' as const,
+  serverId: 'server',
+  studioId: 'studio',
+  label: 'Remote',
+  baseUrl: 'http://192.168.1.20:14500',
+  wsUrl: 'ws://192.168.1.20:14500',
+  token: 'credential',
+  authState: 'paired' as const,
+  trustState: 'lan' as const,
+  credentialKind: 'device_credential' as const,
+  capabilities: ['chat'],
+};
+const localConnection: ServerConnection = {
+  ...remoteConnection,
+  connectionId: 'local',
+  kind: 'local' as const,
+  baseUrl: 'http://127.0.0.1:14500',
+  wsUrl: 'ws://127.0.0.1:14500',
+  trustState: 'local' as const,
+  credentialKind: 'loopback_token' as const,
+};
+const secondRemoteConnection: ServerConnection = {
+  ...remoteConnection,
+  connectionId: 'lan:server:other-studio',
+  studioId: 'other-studio',
+  label: 'Other Remote',
+};
+
+function remoteAssessment(
+  featureContracts: null | { schemaVersion: 1; complete: true; entries: Record<string, number> },
+  connectionId = remoteConnection.connectionId,
+) {
+  return assessRemoteServer({
+    connectionId,
+    boundary: { status: 'assessed', ok: true, reasonCodes: [], warningCodes: [] },
+    server: { connectionKind: 'lan', featureContracts },
+    featureRequirements: REMOTE_INPUT_DRAFT_FEATURE_REQUIREMENTS,
+  });
+}
+
+function useConnection(
+  connection: ServerConnection = localConnection,
+  assessment: RemoteServerAssessment | null = null,
+) {
+  useStore.setState({
+    activeServerConnectionId: connection.connectionId,
+    activeServerConnection: connection,
+    remoteServerAssessment: assessment,
+  });
+}
 
 function jsonResponse(data: unknown) {
   return { ok: true, json: async () => data } as unknown as Response;
+}
+
+function hanaHttpResponse(status: number): Response {
+  return { ok: false, status, json: async () => ({}) } as Response;
+}
+
+function mockHanaFetchHttpFailure(status: number): void {
+  mockFetch.mockImplementation(async (_path, options) => {
+    if (options?.throwOnHttpError !== false) {
+      throw new Error(`hanaFetch: ${status}`);
+    }
+    return hanaHttpResponse(status);
+  });
 }
 
 describe('input draft persistence', () => {
@@ -26,6 +92,8 @@ describe('input draft persistence', () => {
     mockFetch.mockReset();
     // 重置 store drafts（沿用本目录测试重置惯例）
     useStore.setState({ drafts: {}, draftDocs: {}, draftsHydratedAt: 0 });
+    useConnection();
+    clearInputDraftRemoteSession(remoteConnection.connectionId);
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -77,5 +145,215 @@ describe('input draft persistence', () => {
     await vi.advanceTimersByTimeAsync(600);
     const clearBody = JSON.parse((mockFetch.mock.calls[0][1] as RequestInit).body as string);
     expect(clearBody).toMatchObject({ sessionId: 'sess-1', text: '' });
+  });
+
+  it('uses declared support for remote hydrate and push', async () => {
+    useConnection(remoteConnection, remoteAssessment({
+      schemaVersion: 1,
+      complete: true,
+      entries: { 'chat.core': 1, 'input.drafts': 1 },
+    }));
+    mockFetch.mockResolvedValue(jsonResponse({ sessions: {} }));
+
+    expect(inputDraftRemoteMode(useStore.getState()).mode).toBe('remote');
+    await hydrateInputDrafts();
+    initInputDraftPersistence();
+    const { notifyDraftSet } = await import('../../stores/input-draft-sync');
+    notifyDraftSet('sess-1', 'remote text', null);
+    await vi.advanceTimersByTimeAsync(600);
+
+    expect(mockFetch.mock.calls.map(([url]) => url)).toEqual([
+      expect.stringContaining('/api/input-drafts?surface='),
+      '/api/input-drafts',
+    ]);
+  });
+
+  it('uses memory-only without GET or PUT when the complete declaration lacks input drafts', async () => {
+    useConnection(remoteConnection, remoteAssessment({
+      schemaVersion: 1,
+      complete: true,
+      entries: { 'chat.core': 1 },
+    }));
+    expect(inputDraftRemoteMode(useStore.getState())).toMatchObject({ mode: 'fallback', fallback: 'memory-only' });
+
+    await hydrateInputDrafts();
+    initInputDraftPersistence();
+    const { notifyDraftSet } = await import('../../stores/input-draft-sync');
+    notifyDraftSet('sess-1', 'memory text', null);
+    await vi.advanceTimersByTimeAsync(600);
+
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it('probes a legacy server once and enables PUT only after a successful GET', async () => {
+    useConnection(remoteConnection, remoteAssessment(null));
+    mockFetch.mockResolvedValue(jsonResponse({ sessions: {} }));
+
+    expect(inputDraftRemoteMode(useStore.getState()).mode).toBe('probe-once');
+    await hydrateInputDrafts();
+    expect(inputDraftRemoteMode(useStore.getState()).mode).toBe('remote');
+    initInputDraftPersistence();
+    const { notifyDraftSet } = await import('../../stores/input-draft-sync');
+    notifyDraftSet('sess-1', 'after probe', null);
+    await vi.advanceTimersByTimeAsync(600);
+
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    [404, 'feature_route_not_found'],
+    [405, 'feature_method_not_allowed'],
+  ])('treats HTTP %s as unsupported with real hanaFetch semantics', async (status, reasonCode) => {
+    useConnection(remoteConnection, remoteAssessment(null));
+    mockHanaFetchHttpFailure(status);
+    await hydrateInputDrafts();
+    expect(inputDraftRemoteMode(useStore.getState())).toMatchObject({ mode: 'fallback', reasonCode });
+    expect(mockFetch).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ throwOnHttpError: false }));
+    await vi.advanceTimersByTimeAsync(60_000);
+    await hydrateInputDrafts();
+
+    initInputDraftPersistence();
+    const { notifyDraftSet } = await import('../../stores/input-draft-sync');
+    notifyDraftSet('sess-1', 'memory only', null);
+    await vi.advanceTimersByTimeAsync(600);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    [401, 'feature_probe_auth_failure'],
+    [403, 'feature_probe_auth_failure'],
+    [500, 'feature_probe_transient_failure'],
+  ])('records HTTP %s with real hanaFetch semantics', async (status, reasonCode) => {
+    useConnection(remoteConnection, remoteAssessment(null));
+    mockHanaFetchHttpFailure(status);
+    await hydrateInputDrafts();
+    expect(inputDraftRemoteMode(useStore.getState())).toMatchObject({
+      mode: 'fallback',
+      reasonCode,
+    });
+    expect(mockFetch).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ throwOnHttpError: false }));
+    await hydrateInputDrafts();
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('backs off declared support after a failed push and suppresses repeated warnings', async () => {
+    useConnection(remoteConnection, remoteAssessment({
+      schemaVersion: 1,
+      complete: true,
+      entries: { 'chat.core': 1, 'input.drafts': 1 },
+    }));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    mockFetch.mockRejectedValue(new Error('offline'));
+    initInputDraftPersistence();
+    const { notifyDraftSet } = await import('../../stores/input-draft-sync');
+
+    notifyDraftSet('sess-1', 'first failure', null);
+    await vi.advanceTimersByTimeAsync(600);
+    expect(inputDraftRemoteMode(useStore.getState())).toMatchObject({
+      mode: 'fallback',
+      reasonCode: 'feature_probe_transient_failure',
+    });
+
+    notifyDraftSet('sess-1', 'second failure', null);
+    await vi.advanceTimersByTimeAsync(600);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    [],
+    { sessions: [] },
+    { sessions: 'not-a-map' },
+  ])('keeps malformed 2xx hydrate bodies in transient fallback', async (body) => {
+    useConnection(remoteConnection, remoteAssessment(null));
+    mockFetch.mockResolvedValueOnce(jsonResponse(body));
+
+    await hydrateInputDrafts();
+    expect(inputDraftRemoteMode(useStore.getState())).toMatchObject({
+      mode: 'fallback',
+      reasonCode: 'feature_probe_transient_failure',
+    });
+
+    initInputDraftPersistence();
+    const { notifyDraftSet } = await import('../../stores/input-draft-sync');
+    notifyDraftSet('sess-1', 'memory only', null);
+    await vi.advanceTimersByTimeAsync(600);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not enable PUT while a 2xx hydrate body is still being validated', async () => {
+    useConnection(remoteConnection, remoteAssessment(null));
+    let resolveJson: (body: unknown) => void;
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => new Promise((resolve) => { resolveJson = resolve; }),
+    } as Response);
+
+    const hydration = hydrateInputDrafts();
+    await Promise.resolve();
+    await Promise.resolve();
+    initInputDraftPersistence();
+    const { notifyDraftSet } = await import('../../stores/input-draft-sync');
+    notifyDraftSet('sess-1', 'must stay in memory', null);
+    await vi.advanceTimersByTimeAsync(600);
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    resolveJson!([]);
+    await hydration;
+    expect(inputDraftRemoteMode(useStore.getState()).mode).toBe('fallback');
+  });
+
+  it('ignores a hydrate body that arrives after switching to another remote connection', async () => {
+    useConnection(remoteConnection, remoteAssessment(null));
+    initInputDraftPersistence();
+    let resolveJson: (body: unknown) => void;
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => new Promise((resolve) => { resolveJson = resolve; }),
+    } as Response);
+
+    const hydration = hydrateInputDrafts();
+    await Promise.resolve();
+    await Promise.resolve();
+    useConnection(secondRemoteConnection, remoteAssessment(null, secondRemoteConnection.connectionId));
+    resolveJson!({ sessions: { 'sess-from-a': { text: 'stale server A draft' } } });
+    await hydration;
+
+    expect(useStore.getState().drafts['sess-from-a']).toBeUndefined();
+    useConnection(remoteConnection, remoteAssessment(null));
+    expect(inputDraftRemoteMode(useStore.getState()).mode).toBe('probe-once');
+  });
+
+  it('ignores a hydrate body that arrives after reconnect clears its remote session', async () => {
+    useConnection(remoteConnection, remoteAssessment(null));
+    let resolveJson: (body: unknown) => void;
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => new Promise((resolve) => { resolveJson = resolve; }),
+    } as Response);
+
+    const hydration = hydrateInputDrafts();
+    await Promise.resolve();
+    await Promise.resolve();
+    clearInputDraftRemoteSession(remoteConnection.connectionId);
+    resolveJson!({ sessions: { 'sess-from-a': { text: 'stale reconnect draft' } } });
+    await hydration;
+
+    expect(useStore.getState().drafts['sess-from-a']).toBeUndefined();
+    expect(inputDraftRemoteMode(useStore.getState()).mode).toBe('probe-once');
+  });
+
+  it('backs off network failures and reconnect clearing permits a new probe', async () => {
+    useConnection(remoteConnection, remoteAssessment(null));
+    mockFetch.mockRejectedValueOnce(new Error('offline'));
+    await hydrateInputDrafts();
+    await hydrateInputDrafts();
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+
+    clearInputDraftRemoteSession(remoteConnection.connectionId);
+    mockFetch.mockResolvedValueOnce(jsonResponse({ sessions: {} }));
+    await hydrateInputDrafts();
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(inputDraftRemoteMode(useStore.getState()).mode).toBe('remote');
   });
 });

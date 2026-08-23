@@ -1,5 +1,6 @@
 import type { FileRef } from '../types/file-ref';
-import { buildConnectionUrl, isLocalOwnerConnection, type ServerConnection } from './server-connection';
+import { canUseNativeResourcePath } from './resource-access';
+import { buildConnectionUrl, type ServerConnection } from './server-connection';
 
 export type FileRefUrlMode = 'local-file' | 'resource-content' | 'inline-data';
 
@@ -12,6 +13,16 @@ export interface ResourceUrlPlatform {
   getFileUrl?: (path: string) => string;
 }
 
+/**
+ * Resolve a FileRef to a display URL.
+ *
+ * Fork LAN transport invariant (retain): native file:// is only for true local
+ * owner connections (loopback + loopback_token). LAN device-credential and
+ * custom_remote connections use HTTP resource content URLs, including a
+ * synthetic `/api/resources/res_<sf_*>/content` path when older session rows
+ * only carry fileId. Do not switch this to owner-only local transport checks
+ * from upstream — that breaks remote preview after chat switch.
+ */
 export function resolveFileRefUrl(ref: FileRef, {
   connection,
   platform,
@@ -21,10 +32,13 @@ export function resolveFileRefUrl(ref: FileRef, {
   platform?: ResourceUrlPlatform | null;
   preferLocalFile?: boolean;
 }): FileRefUrlResult {
-  const isLocalTransport = !connection || isLocalOwnerConnection(connection);
+  // canUseNativeResourcePath → isLocalOwnerConnection (loopback owner only).
+  // LAN device credentials intentionally fail this check so resource URLs win.
+  const canUseNativePath = canUseNativeResourcePath({ connection });
+  const isRemoteResourceOwner = !!connection && !canUseNativePath && connection.kind !== 'local';
   const getFileUrl = platform?.getFileUrl;
   const canUseLocalFile = preferLocalFile
-    && isLocalTransport
+    && canUseNativePath
     && !!ref.path
     && typeof getFileUrl === 'function';
 
@@ -51,7 +65,20 @@ export function resolveFileRefUrl(ref: FileRef, {
     };
   }
 
-  if (ref.path && isLocalTransport) {
+  const syntheticSessionFileContentPath = isRemoteResourceOwner
+    ? resourceContentPathForSessionFileId(ref.fileId)
+    : null;
+  if (syntheticSessionFileContentPath && connection) {
+    return {
+      mode: 'resource-content',
+      url: appendFileRefVersion(
+        buildConnectionUrl(connection, syntheticSessionFileContentPath, { includeTokenQuery: true }),
+        ref,
+      ),
+    };
+  }
+
+  if (ref.path && canUseNativePath) {
     if (typeof getFileUrl !== 'function') {
       throw new Error('platform.getFileUrl not available and resource content link missing');
     }
@@ -63,6 +90,11 @@ export function resolveFileRefUrl(ref: FileRef, {
   }
 
   throw new Error(`file ref lacks local path, resource content link, and inline data: ${ref.id}`);
+}
+
+function resourceContentPathForSessionFileId(fileId: string | undefined): string | null {
+  if (!fileId || !/^sf_[A-Za-z0-9][A-Za-z0-9_-]*$/.test(fileId)) return null;
+  return `/api/resources/${encodeURIComponent(`res_${fileId}`)}/content`;
 }
 
 export function fileRefVersionToken(ref: Pick<FileRef, 'version'>): string | null {

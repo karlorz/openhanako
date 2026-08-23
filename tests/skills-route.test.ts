@@ -5,6 +5,7 @@ import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import JSZip from "jszip";
 import { extractZip } from "../lib/extract-zip.ts";
+import { deepMerge } from "../lib/memory/config-loader.ts";
 
 function expectAppEvent(emitEvent, type, payload) {
   expect(emitEvent).toHaveBeenCalledWith({
@@ -117,6 +118,302 @@ describe("skills route", () => {
       skills: { enabled: ["writer"] },
     }, { agentId });
     expectAppEvent(engine.emitEvent, "skills-changed", { agentId });
+  });
+
+  it("persists a marketplace skill opt-out in the selected agent config", async () => {
+    const agentId = "hana";
+    const otherAgentId = "other";
+    for (const id of [agentId, otherAgentId]) {
+      const agentDir = path.join(tempRoot, id);
+      fs.mkdirSync(agentDir, { recursive: true });
+      fs.writeFileSync(path.join(agentDir, "config.yaml"), "agent:\n  name: Hana\n", "utf-8");
+    }
+    const selected = {
+      id: agentId,
+      config: {
+        skills: {
+          enabled: ["ordinary"],
+          marketplace_overrides: { "other@source": { disabled: ["other-skill"] } },
+          marketplace_legacy_skill_migrations: {
+            "wiki-query@llm-wiki/skillwiki": true,
+            "other-skill@source/other": true,
+          },
+        },
+      },
+    };
+    const other = {
+      id: otherAgentId,
+      config: { skills: { enabled: [], marketplace_overrides: {} } },
+    };
+
+    const { createSkillsRoute } = await import("../server/routes/skills.ts");
+    const app = new Hono();
+    const engine = {
+      agentsDir: tempRoot,
+      getAgent: vi.fn((id) => id === agentId ? selected : other),
+      getAllSkills: vi.fn(() => [
+        {
+          name: "wiki-query",
+          enabled: true,
+          marketplacePackage: {
+            identity: "skillwiki@llm-wiki",
+            skillName: "wiki-query",
+            explicitlyDisabled: false,
+          },
+        },
+        { name: "ordinary", enabled: true },
+      ]),
+      updateConfig: vi.fn(async (partial, { agentId: targetId }) => {
+        const target = targetId === agentId ? selected : other;
+        target.config.skills = deepMerge(target.config.skills, partial.skills);
+      }),
+      emitEvent: vi.fn(),
+    };
+    app.route("/api", createSkillsRoute(engine));
+
+    const off = await app.request(`/api/agents/${agentId}/skills/wiki-query`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: false }),
+    });
+    expect(off.status).toBe(200);
+    expect(await off.json()).toEqual({ ok: true, enabled: ["ordinary"], changed: ["wiki-query"] });
+    expect(engine.updateConfig).toHaveBeenLastCalledWith({
+      skills: {
+        enabled: ["ordinary"],
+        marketplace_overrides: {
+          "other@source": { disabled: ["other-skill"] },
+          "skillwiki@llm-wiki": { disabled: ["wiki-query"] },
+        },
+      },
+    }, { agentId });
+    expect(other.config.skills.marketplace_overrides).toEqual({});
+
+    const on = await app.request(`/api/agents/${agentId}/skills/wiki-query`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: true }),
+    });
+    expect(on.status).toBe(200);
+    expect(engine.updateConfig).toHaveBeenLastCalledWith({
+      skills: {
+        enabled: ["ordinary"],
+        marketplace_overrides: {
+          "other@source": { disabled: ["other-skill"] },
+          "skillwiki@llm-wiki": null,
+        },
+      },
+    }, { agentId });
+    expect(selected.config.skills.marketplace_overrides).toEqual({ "other@source": { disabled: ["other-skill"] } });
+    expect(selected.config.skills.marketplace_legacy_skill_migrations).toEqual({
+      "wiki-query@llm-wiki/skillwiki": true,
+      "other-skill@source/other": true,
+    });
+  });
+
+  it("keeps package preference enabled separate from a disabled global package gate", async () => {
+    const agentId = "hana";
+    const agentDir = path.join(tempRoot, agentId);
+    fs.mkdirSync(agentDir, { recursive: true });
+    fs.writeFileSync(path.join(agentDir, "config.yaml"), "agent:\n  name: Hana\n", "utf-8");
+    const agent: any = { id: agentId, config: { skills: { enabled: [] } } };
+
+    const { createSkillsRoute } = await import("../server/routes/skills.ts");
+    const app = new Hono();
+    const engine = {
+      agentsDir: tempRoot,
+      getAgent: vi.fn(() => agent),
+      getAllSkills: vi.fn(() => [{
+        name: "wiki-query",
+        enabled: true,
+        active: false,
+        inactiveReason: "marketplace-package-disabled",
+        marketplacePackage: {
+          identity: "skillwiki@llm-wiki",
+          skillName: "wiki-query",
+          explicitlyDisabled: false,
+        },
+      }]),
+      updateConfig: vi.fn(async (partial) => {
+        agent.config.skills = { ...agent.config.skills, ...partial.skills };
+      }),
+      emitEvent: vi.fn(),
+    };
+    app.route("/api", createSkillsRoute(engine));
+
+    const res = await app.request(`/api/agents/${agentId}/skills/wiki-query`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: true }),
+    });
+    expect(res.status).toBe(200);
+    expect(engine.updateConfig).toHaveBeenCalledWith({
+      skills: { enabled: [], marketplace_overrides: {} },
+    }, { agentId });
+    expect(agent.config.skills.marketplace_overrides).toEqual({});
+  });
+
+  it("does not infer marketplace opt-outs from an old full-list payload", async () => {
+    const agentId = "hana";
+    const agentDir = path.join(tempRoot, agentId);
+    fs.mkdirSync(agentDir, { recursive: true });
+    fs.writeFileSync(path.join(agentDir, "config.yaml"), "agent:\n  name: Hana\n", "utf-8");
+    const agent = {
+      id: agentId,
+      config: {
+        skills: {
+          enabled: ["ordinary"],
+          marketplace_overrides: { "skillwiki@llm-wiki": { disabled: ["wiki-query"] } },
+        },
+      },
+    };
+
+    const { createSkillsRoute } = await import("../server/routes/skills.ts");
+    const app = new Hono();
+    const engine = {
+      agentsDir: tempRoot,
+      getAgent: vi.fn(() => agent),
+      getAllSkills: vi.fn(() => [
+        { name: "ordinary", enabled: true },
+        {
+          name: "wiki-query",
+          enabled: false,
+          marketplacePackage: {
+            identity: "skillwiki@llm-wiki",
+            skillName: "wiki-query",
+            explicitlyDisabled: true,
+          },
+        },
+      ]),
+      updateConfig: vi.fn(),
+      emitEvent: vi.fn(),
+    };
+    app.route("/api", createSkillsRoute(engine));
+
+    const res = await app.request(`/api/agents/${agentId}/skills`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: ["ordinary"] }),
+    });
+    expect(res.status).toBe(200);
+    expect(engine.updateConfig).toHaveBeenCalledWith({
+      skills: { enabled: ["ordinary"] },
+    }, { agentId });
+    expect(agent.config.skills.marketplace_overrides).toEqual({ "skillwiki@llm-wiki": { disabled: ["wiki-query"] } });
+  });
+
+  it("clears only explicitly supplied marketplace entries in a full-list update", async () => {
+    const agentId = "hana";
+    const agentDir = path.join(tempRoot, agentId);
+    fs.mkdirSync(agentDir, { recursive: true });
+    fs.writeFileSync(path.join(agentDir, "config.yaml"), "agent:\n  name: Hana\n", "utf-8");
+    const agent = {
+      id: agentId,
+      config: {
+        skills: {
+          enabled: ["ordinary"],
+          marketplace_overrides: {
+            "skillwiki@llm-wiki": { disabled: ["wiki-query"] },
+            "other@source": { disabled: ["other-skill"] },
+          },
+        },
+      },
+    };
+
+    const { createSkillsRoute } = await import("../server/routes/skills.ts");
+    const app = new Hono();
+    const engine = {
+      agentsDir: tempRoot,
+      getAgent: vi.fn(() => agent),
+      getAllSkills: vi.fn(() => [
+        { name: "ordinary", enabled: true },
+        {
+          name: "wiki-query",
+          enabled: false,
+          marketplacePackage: {
+            identity: "skillwiki@llm-wiki",
+            skillName: "wiki-query",
+            explicitlyDisabled: true,
+          },
+        },
+      ]),
+      updateConfig: vi.fn(),
+      emitEvent: vi.fn(),
+    };
+    app.route("/api", createSkillsRoute(engine));
+
+    const res = await app.request(`/api/agents/${agentId}/skills`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: ["ordinary", "wiki-query"] }),
+    });
+    expect(res.status).toBe(200);
+    expect(engine.updateConfig).toHaveBeenCalledWith({
+      skills: {
+        enabled: ["ordinary"],
+        marketplace_overrides: {
+          "other@source": { disabled: ["other-skill"] },
+          "skillwiki@llm-wiki": null,
+        },
+      },
+    }, { agentId });
+  });
+
+  it("strips package-owned skill names from skills.enabled on the full-list PUT and keeps only marketplace_overrides canonical (finding 7)", async () => {
+    const agentId = "hana";
+    const agentDir = path.join(tempRoot, agentId);
+    fs.mkdirSync(agentDir, { recursive: true });
+    fs.writeFileSync(path.join(agentDir, "config.yaml"), "agent:\n  name: Hana\n", "utf-8");
+    // Old config: a package-owned skill name still sits in skills.enabled and
+    // there is no marketplace_overrides record yet. The full-list PUT must
+    // converge this config: the package-owned name is dropped from
+    // skills.enabled, and its enabled state lives only in marketplace
+    // override semantics (absence of an opt-out = enabled by default).
+    const agent: any = {
+      id: agentId,
+      config: {
+        skills: {
+          enabled: ["wiki-query"],
+        },
+      },
+    };
+
+    const { createSkillsRoute } = await import("../server/routes/skills.ts");
+    const app = new Hono();
+    const engine = {
+      agentsDir: tempRoot,
+      getAgent: vi.fn(() => agent),
+      getAllSkills: vi.fn(() => [
+        { name: "ordinary", enabled: true },
+        {
+          name: "wiki-query",
+          enabled: true,
+          marketplacePackage: {
+            identity: "skillwiki@llm-wiki",
+            skillName: "wiki-query",
+            explicitlyDisabled: false,
+          },
+        },
+      ]),
+      updateConfig: vi.fn(async (partial) => {
+        agent.config.skills = { ...agent.config.skills, ...partial.skills };
+      }),
+      emitEvent: vi.fn(),
+    };
+    app.route("/api", createSkillsRoute(engine));
+
+    const res = await app.request(`/api/agents/${agentId}/skills`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: ["ordinary", "wiki-query"] }),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, enabled: ["ordinary"] });
+    expect(agent.config.skills.enabled).toEqual(["ordinary"]);
+    expect(agent.config.skills.enabled).not.toContain("wiki-query");
+    // Enabling a package skill through the full-list PUT leaves no opt-out
+    // record: the override map stays canonical (empty object, no entry).
+    expect(agent.config.skills.marketplace_overrides).toEqual({});
   });
 
   it("does not emit skills-changed when enabled skills validation fails", async () => {
@@ -252,6 +549,76 @@ describe("skills route", () => {
       skills: { enabled: ["existing", "writer", "reader"] },
     }, { agentId });
     expectAppEvent(engine.emitEvent, "skills-changed", { agentId });
+  });
+
+  it("partitions a mixed bundle between ordinary enabled names and package preferences", async () => {
+    const agentId = makeBundleAgent("mixed-agent");
+    fs.writeFileSync(path.join(tempRoot, "skill-bundles.json"), JSON.stringify({
+      schemaVersion: 1,
+      bundles: [{
+        id: "mixed-bundle",
+        name: "Mixed Bundle",
+        skillNames: ["ordinary", "wiki-query"],
+        source: "user",
+        agentId: null,
+        sourcePackage: null,
+        createdAt: "2026-05-21T00:00:00.000Z",
+        updatedAt: "2026-05-21T00:00:00.000Z",
+      }],
+    }), "utf-8");
+    const agent: any = {
+      id: agentId,
+      config: {
+        skills: {
+          enabled: ["existing"],
+          marketplace_overrides: { "other@source": { disabled: ["other-skill"] } },
+        },
+      },
+    };
+
+    const { createSkillsRoute } = await import("../server/routes/skills.ts");
+    const app = new Hono();
+    const engine = {
+      hanakoHome: tempRoot,
+      agentsDir: tempRoot,
+      getAgent: vi.fn(() => agent),
+      getAllSkills: vi.fn(() => [
+        { name: "existing", enabled: true },
+        { name: "ordinary", enabled: false },
+        {
+          name: "wiki-query",
+          enabled: true,
+          marketplacePackage: {
+            identity: "skillwiki@llm-wiki",
+            skillName: "wiki-query",
+            explicitlyDisabled: false,
+          },
+        },
+      ]),
+      updateConfig: vi.fn(async (partial) => {
+        agent.config.skills = { ...agent.config.skills, ...partial.skills };
+      }),
+      emitEvent: vi.fn(),
+    };
+    app.route("/api", createSkillsRoute(engine));
+
+    const res = await app.request(`/api/agents/${agentId}/skill-bundles/mixed-bundle`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: true }),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      ok: true,
+      enabled: ["existing", "ordinary"],
+      changed: ["ordinary", "wiki-query"],
+    });
+    expect(engine.updateConfig).toHaveBeenCalledWith({
+      skills: {
+        enabled: ["existing", "ordinary"],
+        marketplace_overrides: { "other@source": { disabled: ["other-skill"] } },
+      },
+    }, { agentId });
   });
 
   it("emits global skills-changed after reloading skills", async () => {
@@ -743,6 +1110,139 @@ describe("skills route", () => {
         skillName: "uploaded-skill",
       },
     });
+  });
+
+  it("lists and reads files for an installed skill through relative server-owned paths", async () => {
+    const { createSkillsRoute } = await import("../server/routes/skills.ts");
+    const app = new Hono();
+    const agentId = "hana";
+    const agentDir = path.join(tempRoot, agentId);
+    const skillDir = path.join(tempRoot, "server-skills", "remote-skill");
+    fs.mkdirSync(agentDir, { recursive: true });
+    fs.mkdirSync(path.join(skillDir, "references"), { recursive: true });
+    fs.writeFileSync(path.join(agentDir, "config.yaml"), "agent:\n  name: Hana\n", "utf-8");
+    fs.writeFileSync(path.join(skillDir, "SKILL.md"), "---\nname: remote-skill\n---\n# Remote Skill\n", "utf-8");
+    fs.writeFileSync(path.join(skillDir, "references", "guide.md"), "# Guide\n", "utf-8");
+    const engine = {
+      agentsDir: tempRoot,
+      currentAgentId: agentId,
+      getAllSkills: vi.fn(() => [{
+        name: "remote-skill",
+        baseDir: skillDir,
+        filePath: path.join(skillDir, "SKILL.md"),
+        source: "user",
+      }]),
+    };
+
+    app.route("/api", createSkillsRoute(engine));
+
+    const filesRes = await app.request(`/api/skills/remote-skill/files?agentId=${agentId}`);
+    expect(filesRes.status).toBe(200);
+    expect(await filesRes.json()).toMatchObject({
+      files: [
+        { name: "SKILL.md", path: "SKILL.md", isDir: false },
+        {
+          name: "references",
+          path: "references",
+          isDir: true,
+          children: [{ name: "guide.md", path: "references/guide.md", isDir: false }],
+        },
+      ],
+    });
+
+    const fileRes = await app.request(`/api/skills/remote-skill/file?agentId=${agentId}&path=${encodeURIComponent("SKILL.md")}`);
+    expect(fileRes.status).toBe(200);
+    expect(await fileRes.json()).toEqual({
+      path: "SKILL.md",
+      content: "---\nname: remote-skill\n---\n# Remote Skill\n",
+    });
+  });
+
+  it("uses the global skill inventory for previews that omit agentId", async () => {
+    const { createSkillsRoute } = await import("../server/routes/skills.ts");
+    const app = new Hono();
+    const skillDir = path.join(tempRoot, "server-skills", "global-skill");
+    const focusedAgentDir = path.join(tempRoot, "focused-agent");
+    fs.mkdirSync(skillDir, { recursive: true });
+    fs.mkdirSync(focusedAgentDir, { recursive: true });
+    fs.writeFileSync(path.join(skillDir, "SKILL.md"), "---\nname: global-skill\n---\n# Global Skill\n", "utf-8");
+    fs.writeFileSync(path.join(focusedAgentDir, "config.yaml"), "agent:\n  name: Focused\n", "utf-8");
+    const getAllSkills = vi.fn((agentId) => agentId
+      ? [{ name: "focused-only-skill", baseDir: path.join(tempRoot, "focused-only") }]
+      : [{ name: "global-skill", baseDir: skillDir, filePath: path.join(skillDir, "SKILL.md"), source: "user" }]);
+    const engine = {
+      agentsDir: tempRoot,
+      currentAgentId: "focused-agent",
+      getAllSkills,
+    };
+
+    app.route("/api", createSkillsRoute(engine));
+
+    const res = await app.request("/api/skills/global-skill/files");
+
+    expect(res.status).toBe(200);
+    expect(getAllSkills).toHaveBeenCalledWith();
+    expect(getAllSkills).not.toHaveBeenCalledWith("focused-agent");
+  });
+
+  it("rejects skill preview path traversal outside the installed skill root", async () => {
+    const { createSkillsRoute } = await import("../server/routes/skills.ts");
+    const app = new Hono();
+    const agentId = "hana";
+    const agentDir = path.join(tempRoot, agentId);
+    const skillDir = path.join(tempRoot, "server-skills", "remote-skill");
+    fs.mkdirSync(agentDir, { recursive: true });
+    fs.mkdirSync(skillDir, { recursive: true });
+    fs.writeFileSync(path.join(agentDir, "config.yaml"), "agent:\n  name: Hana\n", "utf-8");
+    fs.writeFileSync(path.join(skillDir, "SKILL.md"), "---\nname: remote-skill\n---\n# Remote Skill\n", "utf-8");
+    fs.writeFileSync(path.join(tempRoot, "secret.txt"), "secret", "utf-8");
+    const engine = {
+      agentsDir: tempRoot,
+      currentAgentId: agentId,
+      getAllSkills: vi.fn(() => [{
+        name: "remote-skill",
+        baseDir: skillDir,
+        filePath: path.join(skillDir, "SKILL.md"),
+        source: "user",
+      }]),
+    };
+
+    app.route("/api", createSkillsRoute(engine));
+
+    const res = await app.request(`/api/skills/remote-skill/file?agentId=${agentId}&path=${encodeURIComponent("../secret.txt")}`);
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: "invalid skill file path" });
+  });
+
+  it("rejects oversized skill preview files", async () => {
+    const { createSkillsRoute } = await import("../server/routes/skills.ts");
+    const app = new Hono();
+    const agentId = "hana";
+    const agentDir = path.join(tempRoot, agentId);
+    const skillDir = path.join(tempRoot, "server-skills", "remote-skill");
+    fs.mkdirSync(agentDir, { recursive: true });
+    fs.mkdirSync(skillDir, { recursive: true });
+    fs.writeFileSync(path.join(agentDir, "config.yaml"), "agent:\n  name: Hana\n", "utf-8");
+    fs.writeFileSync(path.join(skillDir, "SKILL.md"), "---\nname: remote-skill\n---\n# Remote Skill\n", "utf-8");
+    fs.writeFileSync(path.join(skillDir, "huge.md"), "x".repeat((2 * 1024 * 1024) + 1), "utf-8");
+    const engine = {
+      agentsDir: tempRoot,
+      currentAgentId: agentId,
+      getAllSkills: vi.fn(() => [{
+        name: "remote-skill",
+        baseDir: skillDir,
+        filePath: path.join(skillDir, "SKILL.md"),
+        source: "user",
+      }]),
+    };
+
+    app.route("/api", createSkillsRoute(engine));
+
+    const res = await app.request(`/api/skills/remote-skill/file?agentId=${agentId}&path=${encodeURIComponent("huge.md")}`);
+
+    expect(res.status).toBe(413);
+    expect(await res.json()).toMatchObject({ error: "skill file is too large" });
   });
 });
 

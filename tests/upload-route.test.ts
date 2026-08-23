@@ -5,6 +5,7 @@ import { Hono } from "hono";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createUploadRoute } from "../server/routes/upload.ts";
 import { SessionFileRegistry } from "../lib/session-files/session-file-registry.ts";
+import { ownershipCase } from "./helpers/migration-resource-ownership.ts";
 
 function mktemp() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "hana-upload-route-"));
@@ -324,6 +325,60 @@ describe("upload route", () => {
     expect(fs.readdirSync(path.dirname(first.uploads[0].dest))).toHaveLength(1);
   });
 
+
+  it("ownership matrix: client-owned remote paste bytes land as session-owned upload-blob", async () => {
+    const clientOwned = ownershipCase("client-owned");
+    tmpDir = mktemp();
+    const hanakoHome = path.join(tmpDir, "hana-home");
+    const sessionPath = "/sessions/ownership.jsonl";
+    const registerSessionFile = vi.fn(({ sessionPath, filePath, label, origin, storageKind }) => ({
+      id: "sf_client_owned",
+      sessionPath,
+      filePath,
+      realPath: filePath,
+      displayName: label,
+      filename: path.basename(filePath),
+      label,
+      ext: "png",
+      mime: clientOwned.mimeType,
+      size: 3,
+      kind: "image",
+      origin,
+      storageKind,
+      createdAt: 1,
+    }));
+    const app = new Hono();
+    app.route("/api", createUploadRoute({ hanakoHome, registerSessionFile }));
+    const png = Buffer.from([1, 2, 3]);
+
+    const res = await app.request("/api/upload-blob", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sessionPath,
+        name: clientOwned.name,
+        base64Data: png.toString("base64"),
+        mimeType: clientOwned.mimeType,
+      }),
+    });
+    const data = await res.json();
+
+    expect(clientOwned.shouldUpload).toBe(true);
+    expect(res.status).toBe(200);
+    expect(data.uploads[0].dest.startsWith(path.join(hanakoHome, "session-files"))).toBe(true);
+    expect(registerSessionFile).toHaveBeenCalledWith(expect.objectContaining({
+      sessionPath,
+      label: clientOwned.name,
+      origin: "user_upload",
+      storageKind: "managed_cache",
+    }));
+    expect(data.uploads[0]).toMatchObject({
+      fileId: "sf_client_owned",
+      sessionPath,
+      storageKind: "managed_cache",
+    });
+  });
+
   it("upload-blob stores session-owned pasted images under session file cache", async () => {
     tmpDir = mktemp();
     const hanakoHome = path.join(tmpDir, "hana-home");
@@ -374,6 +429,70 @@ describe("upload route", () => {
       fileId: "sf_blob",
       sessionPath,
       storageKind: "managed_cache",
+    });
+  });
+
+  it("upload-blob stores session-owned generic attachment blobs under session file cache", async () => {
+    tmpDir = mktemp();
+    const hanakoHome = path.join(tmpDir, "hana-home");
+    const sessionPath = "/sessions/pdf-blob.jsonl";
+    const pdfBytes = Buffer.from("%PDF-1.7\nhello\n");
+    const registerSessionFile = vi.fn(({ sessionPath, filePath, label, origin, storageKind, presentation, listed }) => ({
+      id: "sf_pdf",
+      sessionPath,
+      filePath,
+      realPath: filePath,
+      displayName: label,
+      filename: path.basename(filePath),
+      label,
+      ext: "pdf",
+      mime: "application/pdf",
+      size: pdfBytes.length,
+      kind: "pdf",
+      origin,
+      storageKind,
+      presentation,
+      listed,
+      createdAt: 1,
+    }));
+    const app = new Hono();
+    app.route("/api", createUploadRoute({ hanakoHome, registerSessionFile }));
+
+    const res = await app.request("/api/upload-blob", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sessionPath,
+        name: "report.pdf",
+        base64Data: pdfBytes.toString("base64"),
+        mimeType: "application/pdf",
+      }),
+    });
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data.uploads[0].error).toBeUndefined();
+    expect(data.uploads[0].name).toBe("report.pdf");
+    expect(data.uploads[0].dest.startsWith(path.join(hanakoHome, "session-files"))).toBe(true);
+    expect(fs.readFileSync(data.uploads[0].dest).equals(pdfBytes)).toBe(true);
+    expect(registerSessionFile).toHaveBeenCalledWith({
+      sessionPath,
+      filePath: data.uploads[0].dest,
+      label: "report.pdf",
+      origin: "user_upload",
+      storageKind: "managed_cache",
+      presentation: "attachment",
+      listed: true,
+      sourceKey: expect.stringMatching(/^upload:blob-content:v1:[a-f0-9]{64}$/),
+    });
+    expect(data.uploads[0]).toMatchObject({
+      fileId: "sf_pdf",
+      sessionPath,
+      mime: "application/pdf",
+      kind: "pdf",
+      storageKind: "managed_cache",
+      presentation: "attachment",
+      listed: true,
     });
   });
 

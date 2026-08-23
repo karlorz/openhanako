@@ -78,4 +78,46 @@ describe("HTTP transport context", () => {
       networkMode: "lan",
     })).toEqual({ connectionKind: "local", reason: null });
   });
+
+  it("trusts forwarded HTTPS only from a loopback reverse proxy", async () => {
+    const { inferHttpRequestSecurity } = await import("../server/http/transport-context.ts");
+
+    expect(inferHttpRequestSecurity({
+      requestUrl: "http://hana.example.test/mobile/",
+      forwardedProto: "https",
+      remoteAddress: "127.0.0.1",
+    })).toEqual({ secure: true, reason: "trusted_forwarded_https" });
+
+    expect(inferHttpRequestSecurity({
+      requestUrl: "http://hana.example.test/mobile/",
+      forwardedProto: "HTTPS",
+      remoteAddress: "::ffff:127.0.0.1",
+    })).toEqual({ secure: true, reason: "trusted_forwarded_https" });
+  });
+
+  it("rejects spoofed or ambiguous forwarded HTTPS from direct clients", async () => {
+    const { inferHttpRequestSecurity } = await import("../server/http/transport-context.ts");
+
+    expect(inferHttpRequestSecurity({
+      requestUrl: "http://hana.example.test/mobile/",
+      forwardedProto: "https",
+      remoteAddress: "203.0.113.10",
+    })).toEqual({ secure: false, reason: "untrusted_forwarded_proto" });
+
+    expect(inferHttpRequestSecurity({
+      requestUrl: "http://hana.example.test/mobile/",
+      forwardedProto: "https, http",
+      remoteAddress: "127.0.0.1",
+    })).toEqual({ secure: false, reason: "ambiguous_forwarded_proto" });
+  });
+
+  it("recognizes native HTTPS without consulting proxy headers", async () => {
+    const { inferHttpRequestSecurity } = await import("../server/http/transport-context.ts");
+
+    expect(inferHttpRequestSecurity({
+      requestUrl: "https://hana.example.test/mobile/",
+      forwardedProto: "http",
+      remoteAddress: "203.0.113.10",
+    })).toEqual({ secure: true, reason: "native_https" });
+  });
 });

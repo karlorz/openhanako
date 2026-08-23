@@ -127,18 +127,21 @@ describe("build.yml: seed kit verification precedes every electron-builder invoc
         jobsWithElectronBuilder.push(jobName);
 
         const precedingSteps = steps.slice(0, index);
-        // The verify step must also gate on the same "if" condition as the electron-builder
-        // step it guards — otherwise (e.g. three verify-seed-kit steps for three different
-        // platforms all sitting earlier in the same steps array) an unrelated platform's
-        // verify step could satisfy a naive "any preceding verify-seed-kit step exists"
-        // check while this platform's build runs completely unguarded.
-        const guard = precedingSteps.find(
-          (s) => stepRun(s).includes("verify-seed-kit.mjs") && s.if === step.if,
-        );
+        // The verify step must share the electron-builder platform `if`, or (for
+        // dual-profile Build) that platform `if` AND signed-only — legacy-raw has no
+        // seed kit, so verify-seed-kit must not run there.
+        const signedOnlyIf = step.if
+          ? `${step.if} && env.HANA_RELEASE_PROFILE == 'signed'`
+          : "env.HANA_RELEASE_PROFILE == 'signed'";
+        const guard = precedingSteps.find((s) => {
+          if (!stepRun(s).includes("verify-seed-kit.mjs")) return false;
+          return s.if === step.if || s.if === signedOnlyIf;
+        });
         expect(
           guard,
           `job "${jobName}" step "${step.name}" (if: ${step.if}) calls electron-builder ` +
-            `without a preceding verify-seed-kit.mjs step gated on the same "if" condition`,
+            `without a preceding verify-seed-kit.mjs step gated on the same platform "if" ` +
+            `(or platform + signed-only for dual-profile)`,
         ).toBeDefined();
       });
     }
@@ -184,7 +187,7 @@ describe("build.yml: Windows standalone server stays outside the seed/OTA bounda
     expect(uploadArtifactText).not.toContain("dist-standalone/HanaCore-*-Windows-x64.manifest.json.sig");
 
     const releaseSteps = doc.jobs.release?.steps ?? [];
-    const releaseUpload = releaseSteps.find((step) => step.name === "Upload release assets");
+    const releaseUpload = releaseSteps.find((step) => step.name === "Upload signed artifacts");
     const releaseGate = releaseSteps.find((step) => step.name === "Verify release assets");
     expect(stepRun(releaseUpload ?? {})).toContain("dist-standalone/HanaCore-*-Windows-x64.tar.gz");
     expect(stepRun(releaseUpload ?? {})).toContain("dist-standalone/HanaCore-*-Windows-x64.manifest.json");

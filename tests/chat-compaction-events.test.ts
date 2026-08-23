@@ -4,6 +4,10 @@ import {
   resolveCompactSessionTarget,
   toCompactionLifecycleWsMessage,
 } from "../server/routes/chat.ts";
+import {
+  makeMigrationSession,
+  sessionCompactionResultActive,
+} from "./helpers/migration-session.ts";
 
 describe("chat route compaction lifecycle messages", () => {
   it("normalizes SDK compaction_start into the frontend protocol", () => {
@@ -133,5 +137,86 @@ describe("chat route compaction lifecycle messages", () => {
       code: "session_identity_unresolved",
       sessionId: null,
     });
+  });
+
+  it("characterizes manual compaction terminal lifecycle for the addressed migration session", () => {
+    const addressed = makeMigrationSession({ sessionPath: "/session/a.jsonl" });
+    const neighbor = makeMigrationSession({
+      sessionId: "sess_migration_b",
+      sessionPath: "/session/b.jsonl",
+    });
+
+    const getSessionByPath = vi.fn((sessionPath) => {
+      if (sessionPath === addressed.sessionPath) {
+        return {
+          getContextUsage: () => ({ tokens: 42, contextWindow: 200_000, percent: 1 }),
+        };
+      }
+      if (sessionPath === neighbor.sessionPath) {
+        return {
+          getContextUsage: () => ({ tokens: 99, contextWindow: 100_000, percent: 9 }),
+        };
+      }
+      return null;
+    });
+
+    const message = toCompactionLifecycleWsMessage(
+      { type: "compaction_end", reason: "manual", aborted: false, willRetry: false },
+      addressed.sessionPath,
+      getSessionByPath,
+      () => addressed.sessionId,
+    );
+
+    expect(message).toEqual({
+      type: "compaction_end",
+      sessionId: addressed.sessionId,
+      sessionPath: addressed.sessionPath,
+      reason: "manual",
+      aborted: false,
+      willRetry: false,
+      tokens: 42,
+      contextWindow: 200_000,
+      percent: 1,
+    });
+    expect(message?.sessionPath).not.toBe(neighbor.sessionPath);
+    expect(getSessionByPath).toHaveBeenCalledWith(addressed.sessionPath);
+    expect(getSessionByPath).not.toHaveBeenCalledWith(neighbor.sessionPath);
+  });
+
+  it("uses an inventory probe for candidate session_compaction_result without inventing production handlers", () => {
+    // Current fork terminal lifecycle remains compaction_end. Candidate-only
+    // session_compaction_result stays inventory-only until stable activation.
+    const knownLocalEvents = ["compaction_start", "compaction_end", "turn_end"];
+    expect(sessionCompactionResultActive(knownLocalEvents)).toBe(false);
+    expect(toCompactionLifecycleWsMessage(
+      { type: "session_compaction_result", outcome: "noop" },
+      "/session/a.jsonl",
+      () => null,
+      () => null,
+    )).toBeNull();
+
+    if (!sessionCompactionResultActive(knownLocalEvents)) {
+      expect(sessionCompactionResultActive({ session_compaction_result: true })).toBe(true);
+      return;
+    }
+
+    // Preferred candidate shape after stable activation (inventory-driven; not it.skip).
+    const state = {
+      sessions: {
+        sess_migration_a: { compaction: { status: "running" } },
+        sess_migration_b: { compaction: { status: "idle" } },
+      },
+    };
+    const next = {
+      ...state,
+      sessions: {
+        ...state.sessions,
+        sess_migration_a: { compaction: { status: "noop" } },
+      },
+    };
+    expect(next.sessions.sess_migration_a.compaction.status).toBe("noop");
+    expect(next.sessions.sess_migration_b.compaction).toEqual(
+      state.sessions.sess_migration_b.compaction,
+    );
   });
 });

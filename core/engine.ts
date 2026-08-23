@@ -21,7 +21,7 @@ import { migrateProviderMediaConfig } from "./provider-media-config.ts";
 import { runMigrations } from "./migrations.ts";
 import { migrateAgentPersonaFileNames } from "./agents-md-migration.ts";
 import { healCredentialFileModes } from "./credential-file-healer.ts";
-import { PLUGIN_DATA_DIRNAME } from "./plugin-config.ts";
+import { PLUGIN_DATA_DIRNAME, PLUGIN_SECRETS_DIRNAME } from "./plugin-config.ts";
 import { pruneStaleCredentialBackups } from "./credential-backup-retention.ts";
 import { createServerRuntimeContext } from "./server-runtime-context.ts";
 import { StudioCronService } from "./studio-cron-service.ts";
@@ -40,6 +40,7 @@ import {
   resolveHanaPiSdkResourceLoaderCwd,
 } from "../shared/hana-runtime-paths.ts";
 import { PluginManager } from "./plugin-manager.ts";
+import { PluginTrustStore } from "../lib/plugin-trust-store.ts";
 import { EnvChangeLedger } from "./env-change-ledger.ts";
 import { PluginDevService } from "./plugin-dev-service.ts";
 import { createPluginDevTools } from "./plugin-dev-tools.ts";
@@ -148,6 +149,7 @@ import { hashCacheContractValue } from "../lib/llm/cache-prefix-contract.ts";
 import { resolveReferenceBudgetTokens } from "./session-reminders.ts";
 import { createBridgeTools, registerBridgeCapabilityDelegates } from "./tool-catalog-bridge.ts";
 import { summarizeToolParameters } from "./mcp/manager.ts";
+import type { HostOwnerPrincipal } from "../lib/permission/approval-review-context.ts";
 
 /** Matches the MCP config default; used when no manager config is available. */
 const DEFAULT_TOOL_DEFER_THRESHOLD = 10;
@@ -191,6 +193,8 @@ import {
   wrapWithSessionExecutionCancellation,
 } from "../lib/session-execution-registry.ts";
 import { PluginInstallRecords } from "../lib/plugin-install-records.ts";
+import { PluginArtifactStore } from "../lib/plugin-artifact-store.ts";
+import { PluginSourceSwitchCoordinator } from "../lib/plugin-source-switch.ts";
 import { ComputerHost } from "./computer-use/computer-host.ts";
 import { ComputerProviderRegistry } from "./computer-use/provider-registry.ts";
 import { createMockComputerProvider } from "./computer-use/providers/mock-provider.ts";
@@ -213,6 +217,12 @@ import {
   getSkillNameTranslationCachePath,
   translateSkillNamesWithCache,
 } from "../lib/skills/skill-name-translation-cache.ts";
+import { buildPresentSkillPackageMembership } from "../lib/plugin-marketplace-claude-skills.ts";
+import { computeMarketplaceSkillPackageActivation } from "../lib/plugin-marketplace-activation.ts";
+import { PluginMarketplaceService } from "../lib/plugin-marketplace-service.ts";
+import {
+  migrateLegacyMarketplaceSkillOverrides,
+} from "../lib/marketplace-skill-preferences.ts";
 import { createUsageLedger } from "../lib/llm/usage-ledger.ts";
 import {
   autoProjectIdForCwd,
@@ -315,6 +325,8 @@ export class HanaEngine {
   declare _sessionManifestStoreRecovery: any;
   declare _sessionProjects: any;
   declare _skills: any;
+  declare _marketplaceSkillMembershipMap: Map<string, { identity: string; pluginId: string; marketplaceId: string }> | null;
+  declare pluginMarketplaceService: PluginMarketplaceService | null | undefined;
   declare _slashSystem: any;
   declare _speechRecognition: any;
   declare _studioCronService: any;
@@ -330,10 +342,13 @@ export class HanaEngine {
   declare _win32LegacySandboxCleanupQueue: any;
   declare agentsDir: any;
   declare appVersion: any;
+  declare featureContracts: any;
   declare channelsDir: any;
   declare hanakoHome: any;
   declare _inputDrafts: any;
   declare productDir: any;
+  declare runtimeBuild: any;
+  declare runtimeFacts: any;
   declare userDir: any;
   /**
    * @param {object} dirs
@@ -346,10 +361,13 @@ export class HanaEngine {
    *   root. Absent/empty means an open composition: the media runtime
    *   constructs with zero built-in adapters, never an implicit import.
    */
-  constructor({ hanakoHome, productDir, agentId, appVersion, builtinMediaAdapters }) {
+  constructor({ hanakoHome, productDir, agentId, appVersion, runtimeBuild = null, featureContracts = null, runtimeFacts = null, builtinMediaAdapters = undefined }) {
     this.hanakoHome = hanakoHome;
     this.productDir = productDir;
     this.appVersion = appVersion || "0.0.0";
+    this.runtimeBuild = runtimeBuild;
+    this.featureContracts = featureContracts;
+    this.runtimeFacts = runtimeFacts;
     this._runtimeContext = null;
     this._resources = null;
     this._resourceAccess = null;
@@ -1454,6 +1472,15 @@ export class HanaEngine {
     };
   }
 
+  markSessionOwnerPrincipal(sessionPath: string, principal: HostOwnerPrincipal): void {
+    this._sessionCoord?.setSessionOwnerPrincipal?.(sessionPath, principal);
+  }
+
+  async _resolveSessionOwnerPrincipal(sessionPath: string | null): Promise<HostOwnerPrincipal> {
+    const principal = this._sessionCoord?.getSessionOwnerPrincipal?.(sessionPath || "");
+    return principal || { isStudioOwner: false, isLocalOwner: false };
+  }
+
   _openSessionManifestStore() {
     const dbPath = path.join(this.hanakoHome, "session-manifest.db");
     try {
@@ -2221,7 +2248,112 @@ export class HanaEngine {
     await this._skills.reload(this._resourceLoader, this._agentMgr.agents);
     this._resourceLoader.getSystemPrompt = () => this.agent.systemPrompt;
     this._resourceLoader.getSkills = () => this._getSkillsForAgent(this.agent);
+    // Membership changes after install/uninstall; rewire gate then re-sync Agents.
+    this._wireMarketplaceSkillPackageGate();
     this._syncAllAgentSkills();
+  }
+
+  /**
+   * Ensure multi-source marketplace service exists (lazy, shared with routes/tools).
+   * Missing registry must not fail-closed as "all packages disabled".
+   */
+  _ensurePluginMarketplaceService() {
+    if (this.pluginMarketplaceService) return this.pluginMarketplaceService;
+    if (!this.hanakoHome) return null;
+    const fetchImpl = (this as any).fetch;
+    this.pluginMarketplaceService = new PluginMarketplaceService({
+      hanakoHome: this.hanakoHome,
+      fetchOptions: fetchImpl ? { fetchImpl } : undefined,
+    });
+    return this.pluginMarketplaceService;
+  }
+
+  _seedOfficialMarketplaceSnapshotAtBoot() {
+    const svc = this._ensurePluginMarketplaceService();
+    if (!svc) return;
+    void svc.ensureOfficialSnapshotSeededAsync().catch((err) => {
+      moduleLog.warn(`[init] official Marketplace snapshot seed failed: ${err?.message || err}`);
+    });
+  }
+
+  /**
+   * Build present skill→package membership and inject SkillManager package gate.
+   * Membership is refreshed on skills reload; activations/sources are read live.
+   */
+  _wireMarketplaceSkillPackageGate() {
+    if (!this._skills) return;
+    const skillsDir = this._skills.skillsDir;
+    const membershipMap = this.hanakoHome && skillsDir
+      ? buildPresentSkillPackageMembership(this.hanakoHome, skillsDir)
+      : new Map();
+    this._marketplaceSkillMembershipMap = membershipMap;
+
+    // Ensure registry is available so package gates enforce after cold start.
+    const svc = this._ensurePluginMarketplaceService();
+    const legacyByAgent = svc?.registry?.getControlPlaneActivations?.()?.agentSkillOverrides;
+    const migrateResult = migrateLegacyMarketplaceSkillOverrides({
+      agents: this._agentMgr?.agents?.values?.() || [],
+      legacyByAgent,
+      membership: membershipMap,
+      onDiagnostic: (diagnostic) => moduleLog.warn(
+        `[marketplace] ${diagnostic.path}: ${diagnostic.message}`,
+      ),
+    });
+    let retiredLegacyRefs: Array<{ agentId: string; legacyRef: string }> = [];
+    if (svc && migrateResult.retirementCandidates.length > 0) {
+      try {
+        retiredLegacyRefs = svc.retireLegacyMarketplaceSkillOverrides(
+          migrateResult.retirementCandidates,
+        ).retiredLegacyRefs;
+      } catch (error) {
+        moduleLog.warn(
+          `[marketplace] could not retire ${migrateResult.retirementCandidates.length} legacy override candidate(s): ${
+            error?.message || error
+          }`,
+        );
+      }
+    }
+    if (migrateResult.configWrites > 0) moduleLog.log(`[marketplace] migrated ${migrateResult.configWrites} agent skill preference record(s)`);
+    if (migrateResult.retirementCandidates.length > 0) {
+      moduleLog.log(
+        `[marketplace] legacy override retirement candidates: ${migrateResult.retirementCandidates.length}; retired: ${retiredLegacyRefs.length}`,
+      );
+    }
+
+    this._skills.setMarketplaceSkillPackageGateResolver((skillName) => {
+      const membership = this._marketplaceSkillMembershipMap?.get(skillName);
+      if (!membership) return { enabled: true, reason: null };
+
+      const activeService = this.pluginMarketplaceService;
+      if (!activeService?.registry) {
+        // Prefer last-known-good / missing registry: do not disable all packages.
+        return {
+          identity: membership.identity,
+          skillName,
+          enabled: true,
+          state: "enabled",
+          reason: null,
+        };
+      }
+
+      const gate = computeMarketplaceSkillPackageActivation({
+        identity: membership.identity,
+        activations: activeService.registry.getControlPlaneActivations(),
+        sources: activeService.registry.listSources(),
+        installedPresent: true,
+      });
+      return {
+        identity: gate.identity,
+        skillName,
+        enabled: gate.enabled,
+        state: gate.state,
+        reason: gate.enabled
+          ? null
+          : gate.state === "blocked-by-source"
+            ? "marketplace-source-blocked"
+            : "marketplace-package-disabled",
+      };
+    });
   }
 
   /** 获取外部技能路径配置（供 API 使用） */
@@ -2440,7 +2572,11 @@ export class HanaEngine {
       pruneStaleCredentialBackups({ hanakoHome: this.hanakoHome, log });
     }, log);
     runBestEffortStartupMigrationStep("credential-custody", () => {
-      const healed = healCredentialFileModes({ hanakoHome: this.hanakoHome, log });
+      const healed = healCredentialFileModes({
+        hanakoHome: this.hanakoHome,
+        marketplaceInstallRecords: this._pluginInstallRecords,
+        log,
+      });
       if (healed.failed.length > 0) {
         log(`[credential-custody] ${healed.failed.length} 个文件未能收紧权限，已记录；应用继续启动`);
       }
@@ -2460,6 +2596,9 @@ export class HanaEngine {
     this._runtimeContext = createServerRuntimeContext({
       hanakoHome: this.hanakoHome,
       appVersion: this.appVersion,
+      runtimeBuild: this.runtimeBuild,
+      featureContracts: this.featureContracts,
+      runtimeFacts: this.runtimeFacts,
     });
     this._resources = new ResourceService({
       agentsDir: this.agentsDir,
@@ -2604,6 +2743,11 @@ export class HanaEngine {
 
     const HIDDEN_SKILLS = new Set(["canvas-design", "skill-creator", "skills-translate-temp"]);
     this._skills.init(this._resourceLoader, this._agentMgr.agents, HIDDEN_SKILLS);
+    // Marketplace package gate: membership + control-plane activations.
+    this._wireMarketplaceSkillPackageGate();
+    // Warm the compiled official source during boot without delaying startup.
+    // Route callers still await the same coalesced promise when they need rows.
+    this._seedOfficialMarketplaceSnapshotAtBoot();
     const extCount = this._skills.allSkills.filter(s => s.source === "external").length;
     log(`[init] 3/5 ResourceLoader 完成 (${Date.now() - t_rl}ms, ${this._skills.allSkills.length} skills${extCount ? `, ${extCount} external` : ""})`);
 
@@ -2646,6 +2790,8 @@ export class HanaEngine {
     this._skills.watch(this._resourceLoader, this._agentMgr.agents, () => {
       this._resourceLoader.getSystemPrompt = () => this.agent.systemPrompt;
       this._resourceLoader.getSkills = () => this._getSkillsForAgent(this.agent);
+      // Disk changes may alter marketplace skill package membership.
+      this._wireMarketplaceSkillPackageGate();
       this._syncAllAgentSkills();
       this._emitAppEvent("skills-changed", { agentId: null });
     });
@@ -2728,6 +2874,34 @@ export class HanaEngine {
   // ════════════════════════════
 
   /**
+   * Boot-time journal recovery for interrupted native source switches (finding 6).
+   * A crash between staging and commit leaves a transaction journal pointing at the
+   * last committed source; restore that projection before any community plugin is
+   * scanned or loaded. Fail-closed: plugins whose rollback cannot complete keep
+   * their journal for a later boot and are reported in `failed`.
+   */
+  async recoverIncompleteSourceSwitches(): Promise<{ recovered: string[]; failed: Array<{ pluginId: string; error: string }> }> {
+    if (!this.hanakoHome) return { recovered: [], failed: [] };
+    const coordinator = new PluginSourceSwitchCoordinator({
+      records: new PluginInstallRecords({ hanakoHome: this.hanakoHome }),
+      artifacts: new PluginArtifactStore({ hanakoHome: this.hanakoHome }),
+      pluginsDir: path.join(this.hanakoHome, "plugins"),
+      runtime: {
+        async unloadActive() {},
+        async activateCandidate() {},
+        async healthCheck() { return true; },
+      },
+    });
+    const outcome = await coordinator.recoverIncompleteTransactions();
+    if (outcome.failed.length > 0) {
+      moduleLog.error(
+        `source-switch recovery failed for ${outcome.failed.map((f) => f.pluginId).join(",")}; journals retained`,
+      );
+    }
+    return outcome;
+  }
+
+  /**
    * Initialize plugin system. Called after Hub construction (EventBus available).
    * @param {import('../hub/event-bus.ts').EventBus} bus
    */
@@ -2740,6 +2914,7 @@ export class HanaEngine {
     const pluginDevRunsDir = path.join(this.hanakoHome, "plugin-dev-runs");
     const pluginDevSourcesDir = path.join(this.hanakoHome, "plugin-dev-sources");
     const pluginDataDir = path.join(this.hanakoHome, PLUGIN_DATA_DIRNAME);
+    const pluginSecretsDir = path.join(this.hanakoHome, PLUGIN_SECRETS_DIRNAME);
     fs.mkdirSync(pluginDevSourcesDir, { recursive: true });
 
     // Read app version for plugin compatibility check
@@ -2756,6 +2931,7 @@ export class HanaEngine {
       pluginsDirs: [builtinPluginsDir, userPluginsDir],
       pluginsDir: undefined,
       dataDir: pluginDataDir,
+      secretsDir: pluginSecretsDir,
       bus,
       preferencesManager: this._prefs,
       appVersion,
@@ -2772,6 +2948,7 @@ export class HanaEngine {
       lifecycleTimeoutMs: undefined,
       logSink: (entry) => this._pluginDevService?.recordLog(entry),
       runtimeContext: this.getRuntimeContext(),
+      pluginTrustStore: new PluginTrustStore({ hanakoHome: this.hanakoHome }),
     });
     const allowedPluginDevSourceRoots = [
       pluginDevSourcesDir,
@@ -2788,6 +2965,9 @@ export class HanaEngine {
     });
     this._pluginDevEventBusCleanup?.();
     this._pluginDevEventBusCleanup = this._pluginDevService.registerEventBusHandlers(bus);
+    // Boot reconciliation: a crash between staging and commit must restore the
+    // last committed source before community plugins load (finding 6).
+    await this.recoverIncompleteSourceSwitches();
     this._pluginManager.scan();
     await this._pluginManager.loadAll();
 
@@ -3037,7 +3217,7 @@ export class HanaEngine {
       if (!tool?.execute) return tool;
       return {
         ...tool,
-        execute: (toolCallId, params, signalOrRuntimeCtx, onUpdate, piCtx) => {
+        execute: (toolCallId, params, signalOrRuntimeCtx, onUpdate, piCtx, ...rest) => {
           const { ctx: runtimeCtx } = normalizeToolRuntimeContext(signalOrRuntimeCtx, piCtx);
           const runtimeSessionPath = runtimeCtx?.sessionPath
             || getToolSessionPath(runtimeCtx)
@@ -3056,7 +3236,7 @@ export class HanaEngine {
             agentId,
             ...executionScope,
           };
-          return tool.execute(toolCallId, params, signalOrRuntimeCtx, onUpdate, mergedCtx);
+          return tool.execute(toolCallId, params, signalOrRuntimeCtx, onUpdate, mergedCtx, ...rest);
         },
       };
     };
@@ -3265,6 +3445,8 @@ export class HanaEngine {
         getConfirmStore: () => this._confirmStore,
         getApprovalGateway: () => this._approvalGateway,
         emitEvent: (event, sessionPath) => this._emitEvent(event, sessionPath),
+        resolveSessionOwnerPrincipal: opts.resolveSessionOwnerPrincipal
+          || ((sp: string | null) => this._resolveSessionOwnerPrincipal(sp)),
       }),
       customTools: wrapWithSessionPermission(result.customTools, {
         getSessionPath,
@@ -3282,6 +3464,8 @@ export class HanaEngine {
         getConfirmStore: () => this._confirmStore,
         getApprovalGateway: () => this._approvalGateway,
         emitEvent: (event, sessionPath) => this._emitEvent(event, sessionPath),
+        resolveSessionOwnerPrincipal: opts.resolveSessionOwnerPrincipal
+          || ((sp: string | null) => this._resolveSessionOwnerPrincipal(sp)),
       }),
     };
 

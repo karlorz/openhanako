@@ -128,12 +128,15 @@ export function buildPluginSurfaceUrl({
   surfaceSession?: string | null;
   theme: string;
 }): string {
+  // Credential planes stay separate: active connection auth requests the ticket,
+  // iframe ticket loads the document, surface session authenticates plugin routes.
+  const includeTokenQuery = isLocalOwnerConnection(connection);
   const cssUrl = buildConnectionUrl(
     connection,
     `/api/plugins/theme.css?theme=${encodeURIComponent(theme)}`,
-    { includeTokenQuery: true },
+    { includeTokenQuery },
   );
-  const fullUrl = buildConnectionUrl(connection, routeUrl, { includeTokenQuery: true });
+  const fullUrl = buildConnectionUrl(connection, routeUrl, { includeTokenQuery });
   const url = new URL(fullUrl);
   if (ticket) url.searchParams.set('pluginIframeTicket', ticket);
   if (surfaceSession) url.searchParams.set('pluginSurfaceSession', surfaceSession);

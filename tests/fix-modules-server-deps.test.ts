@@ -2,10 +2,15 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { createRequire } from "module";
+import { createPackage } from "@electron/asar";
 import { afterEach, describe, expect, it } from "vitest";
 
 const require = createRequire(import.meta.url);
-const { assertSeedResourcesReady, removeNodeModulesBinDirs } = require("../scripts/fix-modules.cjs");
+const {
+  assertRawResourcesReady,
+  assertSeedResourcesReady,
+  removeNodeModulesBinDirs,
+} = require("../scripts/fix-modules.cjs");
 
 const tempDirs: string[] = [];
 
@@ -106,6 +111,65 @@ describe("fix-modules dual-kind seed resources assertion", () => {
     const resourcesDir = makeTempDir();
     writeSeedFixture(resourcesDir, { includeRenderer: false });
     expect(() => assertSeedResourcesReady(resourcesDir)).toThrow(/renderer/i);
+  });
+});
+
+describe("fix-modules legacy raw resources assertion", () => {
+  it("accepts a complete raw Resources/server tree and bundled renderer", () => {
+    const resourcesDir = makeTempDir();
+    writeFile(resourcesDir, "server/hana-server", "#!/bin/sh\n");
+    writeFile(resourcesDir, "server/node", "node\n");
+    writeFile(resourcesDir, "server/bootstrap.js", "// bootstrap\n");
+    writeFile(resourcesDir, "server/bundle/index.js", "// server\n");
+    writeFile(resourcesDir, "server/server-build-info.json", JSON.stringify({ runtimeVersion: "0.407.15" }));
+    writeFile(resourcesDir, "server/desktop/dist-renderer/mobile.html", "<!doctype html>");
+    writeFile(resourcesDir, "app/desktop/dist-renderer/index.html", "<!doctype html>");
+
+    expect(() => assertRawResourcesReady(resourcesDir, { appDir: path.join(resourcesDir, "app"), allowUnpackedApp: true })).not.toThrow();
+  });
+
+  it("rejects a raw package without the renderer marker", () => {
+    const resourcesDir = makeTempDir();
+    writeFile(resourcesDir, "server/hana-server", "#!/bin/sh\n");
+    writeFile(resourcesDir, "server/node", "node\n");
+    writeFile(resourcesDir, "server/bootstrap.js", "// bootstrap\n");
+    writeFile(resourcesDir, "server/bundle/index.js", "// server\n");
+    writeFile(resourcesDir, "server/server-build-info.json", JSON.stringify({ runtimeVersion: "0.407.15" }));
+    writeFile(resourcesDir, "server/desktop/dist-renderer/mobile.html", "<!doctype html>");
+
+    expect(() => assertRawResourcesReady(resourcesDir, { appDir: path.join(resourcesDir, "app"), allowUnpackedApp: true }))
+      .toThrow(/renderer/i);
+  });
+
+  it("rejects an app.asar missing the renderer even when the source renderer exists", async () => {
+    const resourcesDir = makeTempDir();
+    const sourceRendererDir = path.join(resourcesDir, "source-renderer");
+    writeFile(resourcesDir, "server/hana-server", "#!/bin/sh\n");
+    writeFile(resourcesDir, "server/node", "node\n");
+    writeFile(resourcesDir, "server/bootstrap.js", "// bootstrap\n");
+    writeFile(resourcesDir, "server/bundle/index.js", "// server\n");
+    writeFile(resourcesDir, "server/server-build-info.json", JSON.stringify({ runtimeVersion: "0.407.15" }));
+    writeFile(resourcesDir, "server/desktop/dist-renderer/mobile.html", "<!doctype html>");
+    writeFile(sourceRendererDir, "index.html", "<!doctype html>");
+    const asarSource = path.join(resourcesDir, "asar-source");
+    writeFile(asarSource, "desktop/bootstrap.cjs", "module.exports = {};");
+    await createPackage(asarSource, path.join(resourcesDir, "app.asar"));
+
+    expect(() => assertRawResourcesReady(resourcesDir))
+      .toThrow(/app\.asar.*desktop[/\\]dist-renderer[/\\]index\.html/i);
+  });
+
+  it("rejects a raw package when the standalone server renderer copy is missing", () => {
+    const resourcesDir = makeTempDir();
+    writeFile(resourcesDir, "server/hana-server", "#!/bin/sh\n");
+    writeFile(resourcesDir, "server/node", "node\n");
+    writeFile(resourcesDir, "server/bootstrap.js", "// bootstrap\n");
+    writeFile(resourcesDir, "server/bundle/index.js", "// server\n");
+    writeFile(resourcesDir, "server/server-build-info.json", JSON.stringify({ runtimeVersion: "0.407.15" }));
+    writeFile(resourcesDir, "app/desktop/dist-renderer/index.html", "<!doctype html>");
+
+    expect(() => assertRawResourcesReady(resourcesDir, { appDir: path.join(resourcesDir, "app"), allowUnpackedApp: true }))
+      .toThrow(/mobile\.html/i);
   });
 });
 

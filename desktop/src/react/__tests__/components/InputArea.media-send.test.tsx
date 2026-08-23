@@ -5,6 +5,7 @@ import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { InputArea } from '../../components/InputArea';
 import { useStore } from '../../stores';
+import { ownershipCase } from '../../../../../tests/helpers/migration-resource-ownership.ts';
 
 const mocks = vi.hoisted(() => ({
   clearContent: vi.fn(),
@@ -73,6 +74,10 @@ vi.mock('../../hooks/use-hana-fetch', () => ({
 
 vi.mock('../../stores/session-actions', () => ({
   ensureSession: mocks.ensureSession,
+  ensureSessionWithOutcome: async (...args: unknown[]) => {
+    const ref = await mocks.ensureSession(...args);
+    return ref ? { status: 'ok', ref } : { status: 'identity', reason: 'missing session identity' };
+  },
   loadSessions: vi.fn(),
   upsertOptimisticSessionFirstMessage: mocks.upsertOptimisticSessionFirstMessage,
 }));
@@ -311,6 +316,15 @@ describe('InputArea media send', () => {
       mimeType: 'image/png',
       visionAuxiliary: true,
     });
+    expect(payload.displayMessage.attachments[0]).not.toHaveProperty('base64Data');
+    const optimisticItem = useStore.getState().chatSessions.sess_media?.items[0];
+    expect(optimisticItem?.type).toBe('message');
+    if (optimisticItem?.type !== 'message') throw new Error('expected optimistic message');
+    expect(optimisticItem.data.attachments?.[0]).toMatchObject({
+      fileId: 'sf_pasted',
+      mimeType: 'image/png',
+      base64Data: 'IMAGE_BASE64',
+    });
     expect(mocks.hanaFetch).toHaveBeenCalledWith('/api/preferences/models', undefined);
   });
 
@@ -369,6 +383,177 @@ describe('InputArea media send', () => {
     expect(useStore.getState().attachedFiles).toEqual([
       expect.objectContaining({ fileId: 'sf_b', path: '/tmp/b.txt' }),
     ]);
+  });
+
+  it('ownership matrix: optimistic inline bytes stay available on send until server resource identity exists', async () => {
+    const optimistic = ownershipCase('optimistic');
+    useStore.setState({
+      attachedFiles: [{
+        fileId: optimistic.fileId,
+        path: optimistic.path,
+        name: optimistic.name,
+        isDirectory: false,
+        mimeType: optimistic.mimeType,
+        base64Data: optimistic.base64Data,
+      }],
+      attachedFilesBySession: {
+        '/session/media.jsonl': [{
+          fileId: optimistic.fileId,
+          path: optimistic.path,
+          name: optimistic.name,
+          isDirectory: false,
+          mimeType: optimistic.mimeType,
+          base64Data: optimistic.base64Data,
+        }],
+      },
+    } as never);
+
+    render(React.createElement(InputArea));
+    fireEvent.click(screen.getByTestId('send'));
+
+    await waitFor(() => {
+      expect(mocks.wsSend).toHaveBeenCalledTimes(1);
+    });
+    expect(window.platform.readFileBase64).not.toHaveBeenCalled();
+    const payload = JSON.parse(String(mocks.wsSend.mock.calls[0][0]));
+    expect(payload.images).toEqual([{
+      type: 'image',
+      data: optimistic.base64Data,
+      mimeType: optimistic.mimeType,
+    }]);
+    expect(payload.displayMessage.attachments[0]).toMatchObject({
+      fileId: optimistic.fileId,
+      path: optimistic.path,
+      name: optimistic.name,
+      mimeType: optimistic.mimeType,
+      visionAuxiliary: true,
+    });
+    expect(payload.displayMessage.attachments[0]).not.toHaveProperty('base64Data');
+    const optimisticItem = useStore.getState().chatSessions.sess_media?.items[0];
+    expect(optimisticItem?.type).toBe('message');
+    if (optimisticItem?.type !== 'message') throw new Error('expected optimistic message');
+    expect(optimisticItem.data.attachments?.[0]).toMatchObject({
+      fileId: optimistic.fileId,
+      mimeType: optimistic.mimeType,
+      base64Data: optimistic.base64Data,
+    });
+    expect(optimistic.keepInlineUntilServerEcho).toBe(true);
+  });
+
+  it('keeps existing inline media bytes in the optimistic message without persisting them to displayMessage', async () => {
+    useStore.setState({
+      attachedFiles: [{
+        fileId: 'sf_inline',
+        path: '/hana/session-files/inline.png',
+        name: 'inline.png',
+        isDirectory: false,
+        mimeType: 'image/png',
+        base64Data: 'INLINE_BASE64',
+      }],
+      attachedFilesBySession: {
+        '/session/media.jsonl': [{
+          fileId: 'sf_inline',
+          path: '/hana/session-files/inline.png',
+          name: 'inline.png',
+          isDirectory: false,
+          mimeType: 'image/png',
+          base64Data: 'INLINE_BASE64',
+        }],
+      },
+    } as never);
+
+    render(React.createElement(InputArea));
+
+    fireEvent.click(screen.getByTestId('send'));
+
+    await waitFor(() => {
+      expect(mocks.wsSend).toHaveBeenCalledTimes(1);
+    });
+    expect(window.platform.readFileBase64).not.toHaveBeenCalled();
+    const payload = JSON.parse(String(mocks.wsSend.mock.calls[0][0]));
+    expect(payload.images).toEqual([{
+      type: 'image',
+      data: 'INLINE_BASE64',
+      mimeType: 'image/png',
+    }]);
+    expect(payload.displayMessage.attachments[0]).toMatchObject({
+      fileId: 'sf_inline',
+      path: '/hana/session-files/inline.png',
+      name: 'inline.png',
+      mimeType: 'image/png',
+      visionAuxiliary: true,
+    });
+    expect(payload.displayMessage.attachments[0]).not.toHaveProperty('base64Data');
+    const optimisticItem = useStore.getState().chatSessions.sess_media?.items[0];
+    expect(optimisticItem?.type).toBe('message');
+    if (optimisticItem?.type !== 'message') throw new Error('expected optimistic message');
+    expect(optimisticItem.data.attachments?.[0]).toMatchObject({
+      fileId: 'sf_inline',
+      mimeType: 'image/png',
+      base64Data: 'INLINE_BASE64',
+    });
+  });
+
+  it('keeps remote session image attachments file-only instead of reading server paths locally', async () => {
+    const remoteConnection = {
+      connectionId: 'lan:remote:studio',
+      kind: 'lan',
+      serverId: 'remote',
+      studioId: 'studio_remote',
+      label: 'Remote Hana',
+      baseUrl: 'http://100.125.173.118:14500',
+      wsUrl: 'ws://100.125.173.118:14500',
+      token: 'remote-token',
+      authState: 'paired',
+      trustState: 'lan',
+      credentialKind: 'device_credential',
+      platformAccountId: null,
+      officialServiceKind: null,
+      capabilities: ['chat', 'resources'],
+    };
+    useStore.setState({
+      serverConnections: { [remoteConnection.connectionId]: remoteConnection },
+      activeServerConnectionId: remoteConnection.connectionId,
+      activeServerConnection: remoteConnection,
+      models: [{
+        id: 'qwen-vl',
+        provider: 'dashscope',
+        name: 'Qwen VL',
+        input: ['text', 'image'],
+        isCurrent: true,
+      }],
+      attachedFiles: [{
+        fileId: 'sf_remote_pasted',
+        path: '/root/.hanako/session-files/hash/pasted.png',
+        name: 'pasted.png',
+        isDirectory: false,
+      }],
+      attachedFilesBySession: {
+        '/session/media.jsonl': [{
+          fileId: 'sf_remote_pasted',
+          path: '/root/.hanako/session-files/hash/pasted.png',
+          name: 'pasted.png',
+          isDirectory: false,
+        }],
+      },
+    } as never);
+
+    render(React.createElement(InputArea));
+
+    fireEvent.click(screen.getByTestId('send'));
+
+    await waitFor(() => {
+      expect(mocks.wsSend).toHaveBeenCalledTimes(1);
+    });
+    expect(window.platform.readFileBase64).not.toHaveBeenCalled();
+    const payload = JSON.parse(String(mocks.wsSend.mock.calls[0][0]));
+    expect(payload.images).toBeUndefined();
+    expect(payload.displayMessage.attachments[0]).toMatchObject({
+      fileId: 'sf_remote_pasted',
+      path: '/root/.hanako/session-files/hash/pasted.png',
+      name: 'pasted.png',
+      visionAuxiliary: false,
+    });
   });
 
   it('keeps the send alive as file-only when the text model has no auxiliary vision (#1647)', async () => {
@@ -578,6 +763,9 @@ describe('InputArea media send', () => {
           }],
         }), { status: 200 });
       }
+      if (path === '/api/session-thinking-level') {
+        return new Response(JSON.stringify({ thinkingLevel: null }), { status: 200 });
+      }
       throw new Error(`unexpected fetch path ${path}`);
     });
     useStore.setState({
@@ -622,7 +810,8 @@ describe('InputArea media send', () => {
       }));
       expect(mocks.wsSend).toHaveBeenCalledTimes(1);
     });
-    const uploadBody = JSON.parse(String(mocks.hanaFetch.mock.calls[0][1]?.body));
+    const uploadCall = mocks.hanaFetch.mock.calls.find(([path]) => path === '/api/upload-blob');
+    const uploadBody = JSON.parse(String(uploadCall?.[1]?.body));
     expect(uploadBody.waveform).toMatchObject({
       version: 1,
       durationMs: expect.any(Number),

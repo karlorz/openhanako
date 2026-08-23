@@ -113,7 +113,7 @@ function parseCredential({ authorization, queryToken, allowQueryToken, connectio
   const bearer = parseBearerAuthorization(authorization);
   if (bearer) return { token: bearer, source: "authorization" };
   if (!allowQueryToken || !isNonEmptyString(queryToken)) return null;
-  if (connectionKind !== "local") return null;
+  if (connectionKind === "custom_remote") return null;
   return { token: queryToken.trim(), source: "query" };
 }
 

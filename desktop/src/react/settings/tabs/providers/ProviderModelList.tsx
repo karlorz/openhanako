@@ -4,6 +4,7 @@ import { useSettingsStore, type ProviderSummary } from '../../store';
 import { hanaFetch } from '../../api';
 import { invalidateConfigCache } from '../../../hooks/use-config';
 import { t, formatContext, lookupModelMeta } from '../../helpers';
+import { lookupReferenceModelMeta } from '../../../utils/model-metadata';
 import { useAnchoredDropdown } from '../../hooks/useAnchoredDropdown';
 import { ModelEditPanel } from './ModelEditPanel';
 import styles from '../../Settings.module.css';
@@ -85,6 +86,54 @@ function compactDiscoveredModelEntry(model: DiscoveredModel): ProviderModelEntry
   }
 
   return Object.keys(entry).length === 1 ? id : entry as ProviderModelEntry;
+}
+
+/**
+ * One-shot stamp of dictionary/reference defaults into the provider catalog on custom add.
+ * Copies into user-owned fields only; Settings remains authority after that.
+ * Unknown ids with no reference stay bare strings until the user edits them.
+ */
+export function stampCatalogEntryFromReference(modelId: string, providerId: string): ProviderModelEntry {
+  const id = modelId.trim();
+  if (!id) return modelId;
+
+  const ref = lookupReferenceModelMeta(id, providerId);
+  if (!ref) return id;
+
+  const entry: Record<string, unknown> = { id };
+  const name = typeof ref.name === 'string' ? ref.name.trim() : '';
+  if (name && name !== id) entry.name = name;
+
+  const context = numberFromMeta(ref.context) ?? numberFromMeta(ref.contextWindow);
+  if (context !== undefined) entry.context = context;
+
+  const maxOutput = numberFromMeta(ref.maxOutput)
+    ?? numberFromMeta(ref.maxTokens)
+    ?? numberFromMeta(ref.maxOutputTokens);
+  if (maxOutput !== undefined) entry.maxOutput = maxOutput;
+
+  if (ref.image === true || ref.vision === true) entry.image = true;
+  if (ref.video === true) entry.video = true;
+  if (ref.audio === true) entry.audio = true;
+  if (ref.reasoning === true) entry.reasoning = true;
+  if (ref.xhigh === true) entry.xhigh = true;
+
+  return Object.keys(entry).length === 1 ? id : entry as ProviderModelEntry;
+}
+
+/** Catalog-only capability flags (Settings SoT). Dictionary hints must not show as configured. */
+export function catalogCapabilityFlags(entryMeta: Record<string, unknown>): {
+  image: boolean;
+  video: boolean;
+  audio: boolean;
+  reasoning: boolean;
+} {
+  return {
+    image: entryMeta.image === true || (entryMeta.image === undefined && entryMeta.vision === true),
+    video: entryMeta.video === true,
+    audio: entryMeta.audio === true,
+    reasoning: entryMeta.reasoning === true,
+  };
 }
 
 function CapabilityIcon({ kind }: { kind: CapabilityKind }) {
@@ -171,11 +220,8 @@ export function ProviderModelList({ providerId, summary, onRefresh }: {
 
   const removeModelFromProvider = async (mid: string) => {
     try {
-      const next = rawModels.filter((m: ProviderModelEntry) => modelIdOf(m) !== mid);
-      await hanaFetch('/api/config', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ providers: { [providerId]: { models: next } } }),
+      await hanaFetch(`/api/providers/${encodeURIComponent(providerId)}/models/${encodeURIComponent(mid)}`, {
+        method: 'DELETE',
       });
       invalidateConfigCache();
       await onRefresh();
@@ -193,10 +239,12 @@ export function ProviderModelList({ providerId, summary, onRefresh }: {
       return;
     }
     try {
+      // Stamp known reference defaults into the catalog once (user-owned thereafter).
+      const nextEntry = stampCatalogEntryFromReference(id, providerId);
       await hanaFetch('/api/config', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ providers: { [providerId]: { models: [...rawModels, id] } } }),
+        body: JSON.stringify({ providers: { [providerId]: { models: [...rawModels, nextEntry] } } }),
       });
       invalidateConfigCache();
       setCustomInput('');
@@ -274,7 +322,9 @@ export function ProviderModelList({ providerId, summary, onRefresh }: {
               const rawEntry = rawModels.find((m: ProviderModelEntry) => modelIdOf(m) === mid);
               const entryMeta: Record<string, unknown> = rawEntry && typeof rawEntry === 'object' ? rawEntry : {};
               const knownMeta: Record<string, any> = lookupModelMeta(mid, providerId) || {};
+              // Display name/context may use dictionary hints; capability icons are catalog-only (Settings SoT).
               const meta = { ...knownMeta, ...entryMeta };
+              const caps = catalogCapabilityFlags(entryMeta);
               const modelContext = numberFromMeta(entryMeta.context)
                 ?? numberFromMeta(entryMeta.contextWindow)
                 ?? numberFromMeta(knownMeta.context)
@@ -285,10 +335,10 @@ export function ProviderModelList({ providerId, summary, onRefresh }: {
                 <div key={mid} className={styles['pv-fav-item']}>
                   <span className={styles['pv-fav-item-name']} title={String(displayName)}>{displayName}</span>
                   {showModelId && <span className={styles['pv-fav-item-id']} title={mid}>{mid}</span>}
-                  {meta.image === true && <CapabilityIcon kind="image" />}
-                  {meta.video === true && <CapabilityIcon kind="video" />}
-                  {meta.audio === true && <CapabilityIcon kind="audio" />}
-                  {meta.reasoning === true && <CapabilityIcon kind="reasoning" />}
+                  {caps.image && <CapabilityIcon kind="image" />}
+                  {caps.video && <CapabilityIcon kind="video" />}
+                  {caps.audio && <CapabilityIcon kind="audio" />}
+                  {caps.reasoning && <CapabilityIcon kind="reasoning" />}
                   {modelContext !== undefined && <span className={styles['pv-model-ctx']}>{formatContext(modelContext)}</span>}
                   <div className={styles['pv-fav-item-actions']}>
                     <button

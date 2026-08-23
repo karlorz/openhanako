@@ -2,6 +2,12 @@
 
 Hana's plugin SDK is split into small packages so plugin authors can choose only the layer they need.
 
+This document covers **native Hana application plugins** with destination
+`native-plugin`, adapter `plugin-manager`, and runtime ownership by
+`PluginManager`. Claude-compatible Marketplace packages with destination
+`hana-skills` and adapter `skill-manager` are Hana skills: they do not import
+these SDK packages and never become native plugins.
+
 | Package | Runs In | Purpose |
 | --- | --- | --- |
 | `@hana/plugin-protocol` | WebView/iframe / host | Shared protocol constants and message shapes for plugin UI. |
@@ -27,7 +33,7 @@ Plugin server code is installed and loaded by the Studio server. Plugin WebView/
 
 ## Production Install Checklist
 
-A plugin installed under `${HANA_HOME}/plugins`, `${HANA_HOME}/plugins-dev`, or a marketplace release is imported from that plugin directory. Bare package imports in server-side plugin code resolve from the plugin package, not from the Hana repository, the desktop renderer, or the packaged server root. A `package.json` beside the plugin is only metadata unless the dependency files are also present or the code has been bundled.
+A native plugin installed under `${HANA_HOME}/plugins`, `${HANA_HOME}/plugins-dev`, or a legacy native Marketplace compatibility release is imported from that plugin directory. Bare package imports in server-side plugin code resolve from the plugin package, not from the Hana repository, the desktop renderer, or the packaged server root. A `package.json` beside the plugin is only metadata unless the dependency files are also present or the code has been bundled.
 
 Before copying or zipping a plugin outside the monorepo, inspect every server-side entry point:
 
@@ -55,7 +61,7 @@ The production smoke test is: install the exact folder or zip that users will re
 - UI plugins use WebView/iframe routes plus `@hana/plugin-sdk` and, for React UI, `@hana/plugin-components`. They require `trust: "full-access"` and explicit `ui.hostCapabilities` grants for host calls such as `external.open`, `clipboard.writeText`, `resource.open`, `resource.pick`, or `resource.requestAccess`. Native `chat.surface` cards are declarative transcript surfaces for plugin-owned private sessions and use `createChatSurfaceCard()`. Rich native card composition is not part of the public SDK contract yet.
 - Provider contribution plugins use `providers/*.js` declarations. They require `trust: "full-access"` and should declare `capabilities.chat` separately from `capabilities.media.*` so chat selectors stay clean while image, video, or speech tools discover media providers. Provider declarations, `listMediaProviders()`, and `resolveMediaModel()` are the stable discovery entrypoints; media adapter / executor authoring remains a separate API surface. Legacy `media-gen:*` adapter/runtime events remain compatibility-only for older image generation plugins.
 - Pi SDK extension plugins use `extensions/*.js` factories. They require `trust: "full-access"` because they run inside the LLM request pipeline. Hana reloads idle sessions after full-access plugin install/enable/reload so existing chats can pick up new extension handlers without requiring an app restart; busy sessions are not reloaded and will retain old extension handlers until the session is naturally rebuilt.
-- Marketplace metadata lives outside the app repo in `OH-Plugins`, the official community plugin catalog. The app reads the generated catalog URL by default, installs `distribution.kind = "release"` entries by downloading the zip package and verifying `sha256`, and keeps `distribution.kind = "source"` for local file marketplace development only. `versions[]` lets the catalog keep multiple SemVer releases; Hana selects the highest app-compatible version, blocks implicit downgrades, backs up old installs, and records successful installs in `${HANA_HOME}/plugin-installs.json`. `readmePath` is resolved relative to the catalog when the official URL is used.
+- Marketplace metadata lives outside the app repo in `OH-Plugins`. Inspect destination and adapter before choosing a lifecycle. `hana-skills` + `skill-manager` packages install as Hana skills, appear in Manage Plugins with a Hana skills badge, and use a global Marketplace package gate plus separate Agent Skill Toggles. `native-plugin` + `plugin-manager` packages use this SDK and PluginManager; under the current durable multi-source/Agent contract, Studio owners use the signed Settings plan/execute lifecycle for native Marketplace install and uninstall, while Agent-driven native installation remains unsupported (preview-only/deferred). The legacy release-metadata endpoint is Studio-owner-only and rejects native Marketplace packages, so it cannot bypass Settings; release metadata must not be generalized to Hana skill packages.
 
 ## Agent Dev Loop
 

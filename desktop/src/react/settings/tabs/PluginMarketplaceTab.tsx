@@ -3,155 +3,113 @@ import { useSettingsStore } from '../store';
 import { hanaFetch } from '../api';
 import { t } from '../helpers';
 import { SettingsSection } from '../components/SettingsSection';
+import { MarketplaceSourcesPanel } from '../components/MarketplaceSourcesPanel';
+import { RefreshIcon } from '../components/PluginActionIcons';
 import { renderMarkdown } from '../../utils/markdown';
 import styles from '../Settings.module.css';
+import type { MarketplacePlugin } from '../marketplace-types';
+import {
+  marketAdapterLabel,
+  marketConfirmationLabel,
+  marketTargetLabel,
+  marketVersion,
+  rowKey,
+  sourceQualifiedId,
+  warningMessages,
+  useMarketplaceData,
+} from '../hooks/useMarketplaceData';
+import { useMarketplaceActions } from '../hooks/useMarketplaceActions';
+import { MarketplacePluginInspector } from '../components/marketplace/MarketplacePluginInspector';
 
-interface MarketplacePlugin {
-  id: string;
-  name: string;
-  publisher?: string;
-  version?: string;
-  description?: string;
-  trust?: 'restricted' | 'full-access';
-  permissions?: string[];
-  contributions?: string[];
-  repository?: string | null;
-  compatibility?: { minAppVersion?: string; hanaApi?: string };
-  distribution?: { kind?: 'source' | 'release'; path?: string; packageUrl?: string; sha256?: string } | null;
-  installed?: boolean;
-  installedVersion?: string | null;
-  latestVersion?: string | null;
-  selectedVersion?: string | null;
-  updateAvailable?: boolean;
-  downgrade?: boolean;
-  reinstall?: boolean;
-  compatible?: boolean;
-  canInstall?: boolean;
-  installAction?: 'install' | 'update' | 'downgrade' | 'reinstall' | 'incompatible';
-}
-
-interface MarketplaceResponse {
-  source?: { kind?: string; configured?: boolean; path?: string; url?: string };
-  plugins: MarketplacePlugin[];
-  warnings?: string[];
-}
-
-function marketVersion(plugin: MarketplacePlugin): string {
-  return plugin.selectedVersion || plugin.latestVersion || plugin.version || '0.0.0';
-}
-
-function marketInstallLabel(plugin: MarketplacePlugin): string {
-  if (plugin.compatible === false || plugin.installAction === 'incompatible') return t('settings.plugins.marketIncompatible');
-  if (plugin.installAction === 'downgrade') return t('settings.plugins.marketDowngrade');
-  if (plugin.installAction === 'reinstall') return t('settings.plugins.marketReinstall');
-  if (plugin.installAction === 'update' || plugin.updateAvailable) return t('settings.plugins.marketUpdate');
-  return t('settings.plugins.marketInstall');
-}
-
-function marketVersionStatus(plugin: MarketplacePlugin): string | null {
-  if (plugin.compatible === false || plugin.installAction === 'incompatible') return t('settings.plugins.marketIncompatible');
-  if (plugin.installAction === 'downgrade') {
-    return t('settings.plugins.marketDowngradeTo', { version: marketVersion(plugin) });
-  }
-  if (plugin.updateAvailable && plugin.installedVersion) {
-    return t('settings.plugins.marketUpdateFrom', {
-      from: plugin.installedVersion,
-      to: marketVersion(plugin),
-    });
-  }
-  if (plugin.installedVersion) return t('settings.plugins.marketInstalledVersion', { version: plugin.installedVersion });
-  return null;
-}
+const marketplaceBadgeClassName = `${styles['skills-source-badge']} ${styles['plugin-marketplace-badge']}`;
 
 export function PluginMarketplaceTab() {
-  const showToast = useSettingsStore(s => s.showToast);
   const set = useSettingsStore(s => s.set);
-  const [marketplace, setMarketplace] = useState<MarketplaceResponse | null>(null);
-  const [marketplaceLoading, setMarketplaceLoading] = useState(false);
-  const [selectedPlugin, setSelectedPlugin] = useState<MarketplacePlugin | null>(null);
+  const agents = useSettingsStore(s => s.agents) || [];
+  const {
+    marketplace,
+    loading,
+    loadMarketplace,
+    selectedPlugin,
+    selectPlugin,
+    selectedAgentId,
+    setSelectedAgentId,
+    updateMarketplacePlugin,
+    rowCount,
+  } = useMarketplaceData();
+  const actions = useMarketplaceActions({
+    marketplace,
+    reload: loadMarketplace,
+    selectedAgentId,
+    updateMarketplacePlugin,
+  });
   const [readme, setReadme] = useState('');
   const [readmeLoading, setReadmeLoading] = useState(false);
-  const [installingPluginId, setInstallingPluginId] = useState<string | null>(null);
+  const readmeGenRef = React.useRef(0);
+  const readmeKeyRef = React.useRef<string | null>(null);
 
-  const loadReadme = useCallback(async (plugin: MarketplacePlugin) => {
-    setSelectedPlugin(plugin);
-    setReadme('');
+  const loadReadme = useCallback(async (plugin: MarketplacePlugin, opts: { force?: boolean } = {}) => {
+    const key = rowKey(plugin);
+
+    // Same selection: keep current body (description/readme) — no flash on catalog refresh.
+    if (!opts.force && readmeKeyRef.current === key) {
+      return;
+    }
+
+    readmeKeyRef.current = key;
+    const gen = ++readmeGenRef.current;
+    // Keep description visible while README loads; never blank the panel.
+    setReadme((prev) => (prev && readmeKeyRef.current === key ? prev : (plugin.description || '')));
     setReadmeLoading(true);
     try {
-      const res = await hanaFetch(`/api/plugins/marketplace/${encodeURIComponent(plugin.id)}/readme`);
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      setReadme(data.markdown || '');
-    } catch (err: unknown) {
-      showToast(t('settings.plugins.marketReadmeLoadError') + ': ' + (err instanceof Error ? err.message : String(err)), 'error');
-    } finally {
-      setReadmeLoading(false);
-    }
-  }, [showToast]);
-
-  const loadMarketplace = useCallback(async () => {
-    setMarketplaceLoading(true);
-    try {
-      const res = await hanaFetch('/api/plugins/marketplace');
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      const plugins = Array.isArray(data.plugins) ? data.plugins : [];
-      const next = {
-        source: data.source || {},
-        plugins,
-        warnings: Array.isArray(data.warnings) ? data.warnings : [],
-      };
-      setMarketplace(next);
-      if (plugins.length > 0) {
-        await loadReadme(plugins[0]);
-      } else {
-        setSelectedPlugin(null);
-        setReadme('');
+      const qs = plugin.marketplaceId
+        ? `?marketplaceId=${encodeURIComponent(plugin.marketplaceId)}`
+        : '';
+      // Soft-fail: many Claude rows have no README; do not fail the whole tab.
+      let res: Response;
+      try {
+        res = await hanaFetch(`/api/plugins/marketplace/${encodeURIComponent(plugin.id)}/readme${qs}`, {
+          timeout: 15_000,
+        });
+      } catch {
+        if (gen !== readmeGenRef.current) return;
+        setReadme(plugin.description || '');
+        return;
       }
-    } catch (err: unknown) {
-      showToast(t('settings.plugins.marketLoadError') + ': ' + (err instanceof Error ? err.message : String(err)), 'error');
+      const data = await res.json().catch(() => ({}));
+      if (gen !== readmeGenRef.current) return;
+      if (data.error || !data.markdown) {
+        setReadme(plugin.description || '');
+        return;
+      }
+      // Avoid re-render flash when API returns the same description as body
+      const next = String(data.markdown || '').trim();
+      const desc = String(plugin.description || '').trim();
+      setReadme(next || desc);
+    } catch {
+      if (gen !== readmeGenRef.current) return;
+      setReadme(plugin.description || '');
     } finally {
-      setMarketplaceLoading(false);
+      if (gen === readmeGenRef.current) setReadmeLoading(false);
     }
-  }, [loadReadme, showToast]);
+  }, []);
 
+  // Selection changes (list clicks or catalog refresh picks) drive the readme load.
   useEffect(() => {
-    loadMarketplace();
-  }, [loadMarketplace]);
-
-  const installPlugin = async (plugin: MarketplacePlugin) => {
-    const allowDowngrade = plugin.installAction === 'downgrade'
-      ? window.confirm(t('settings.plugins.marketDowngradeConfirm', {
-          from: plugin.installedVersion || '',
-          to: marketVersion(plugin),
-        }))
-      : false;
-    if (plugin.installAction === 'downgrade' && !allowDowngrade) return;
-
-    setInstallingPluginId(plugin.id);
-    try {
-      const res = await hanaFetch(`/api/plugins/marketplace/${encodeURIComponent(plugin.id)}/install`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          version: plugin.selectedVersion || undefined,
-          allowDowngrade,
-        }),
-      });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      showToast(t('settings.plugins.installSuccess', { name: data.name || plugin.name }), 'success');
-      await loadMarketplace();
-    } catch (err: unknown) {
-      showToast(t('settings.plugins.installError') + ': ' + (err instanceof Error ? err.message : String(err)), 'error');
-    } finally {
-      setInstallingPluginId(null);
+    if (!selectedPlugin) {
+      setReadme('');
+      readmeKeyRef.current = null;
+      return;
     }
-  };
+    void loadReadme(selectedPlugin);
+  }, [loadReadme, selectedPlugin]);
 
-  const statusText = marketplace?.source?.configured
-    ? t('settings.plugins.marketplaceCount', { count: String(marketplace.plugins.length) })
+  const sourceCount = marketplace?.sources?.length || 0;
+  const statusText = marketplace?.capabilities?.supported !== false
+    ? t('settings.plugins.marketplaceCount', { count: String(rowCount) })
     : t('settings.plugins.marketplaceNoSource');
+  const configDiagnostics = marketplace?.configDiagnostics?.diagnostics || [];
+  const compatibilityBindings = marketplace?.compatibilityBindings || [];
 
   return (
     <div className={`${styles['settings-tab-content']} ${styles['active']}`} data-tab="plugin-marketplace">
@@ -163,37 +121,76 @@ export function PluginMarketplaceTab() {
           aria-label={t('settings.plugins.marketBack')}
           title={t('settings.plugins.marketBack')}
         >
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+          <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
             <path d="M15 18l-6-6 6-6" />
           </svg>
         </button>
         <span className={styles['skills-list-desc']}>{t('settings.plugins.marketplaceHint')}</span>
         <div className={styles['plugin-marketplace-toolbar-actions']}>
           {marketplace && (
-            <span className={styles['skills-source-badge']} style={{ marginRight: 0 }}>
+            <span className={marketplaceBadgeClassName}>
               {statusText}
             </span>
           )}
           <button
             type="button"
             className={styles['settings-icon-btn']}
-            title={t('settings.plugins.openMarketplace')}
-            onClick={loadMarketplace}
-            disabled={marketplaceLoading}
+            aria-label={t('settings.plugins.reload')}
+            title={t('settings.plugins.reload')}
+            onClick={() => { void loadMarketplace(); }}
+            disabled={loading}
           >
-            <svg
-              width="14" height="14" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
-              className={marketplaceLoading ? styles['spin'] : ''}
-            >
-              <polyline points="23 4 23 10 17 10" />
-              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-            </svg>
+            <RefreshIcon spinning={loading} />
           </button>
         </div>
       </div>
 
       <SettingsSection surface="plain">
+        <section className={styles['plugin-marketplace-summary']} aria-labelledby="marketplace-server-scope">
+          <div className={styles['plugin-marketplace-summary-main']}>
+            <div className={styles['plugin-marketplace-scope-heading']}>
+              <div>
+                <h3 id="marketplace-server-scope">{t('settings.plugins.marketServerRuntimeSources')}</h3>
+                <p>{t('settings.plugins.marketSummaryScope')}</p>
+              </div>
+              <span className={styles['skills-source-badge']}>
+                {marketplace?.capabilities?.supported === false ? 'Unsupported server' : t('settings.plugins.marketSupportedServer')}
+              </span>
+            </div>
+            <div className={styles['plugin-marketplace-scope-facts']}>
+              <span>{sourceCount} source{sourceCount === 1 ? '' : 's'}</span>
+              <span>{rowCount} package{rowCount === 1 ? '' : 's'}</span>
+              <span>revision {marketplace?.registry?.revision ?? '—'}</span>
+              <span>{marketplace?.registry?.degraded ? 'degraded / last-known-good' : 'configuration valid'}</span>
+              <span>{marketplace?.access?.isStudioOwner === false ? 'needs owner for changes' : 'owner actions available'}</span>
+            </div>
+          </div>
+          <div className={styles['plugin-marketplace-summary-agent']} aria-labelledby="marketplace-agent-scope">
+            <label className={styles['plugin-marketplace-agent-select']}>
+              <span id="marketplace-agent-scope">{t('settings.plugins.marketSummaryAgentAccess')}</span>
+              <select
+                value={selectedAgentId || ''}
+                onChange={(event) => setSelectedAgentId(event.target.value || null)}
+                aria-label={t('settings.plugins.marketAgentForNativeAccess')}
+              >
+                {!selectedAgentId && <option value="">{t('settings.plugins.marketSummarySelectAgent')}</option>}
+                {agents.map(agent => <option key={agent.id} value={agent.id}>{agent.name || agent.id}</option>)}
+              </select>
+            </label>
+            <p className={styles['settings-form-hint']}>
+              Routes, providers, extensions, lifecycle/background behavior, and full-access policy remain server-global owner-reviewed state. This is not per-Agent sandboxing.
+            </p>
+          </div>
+        </section>
+
+        <MarketplaceSourcesPanel
+          embedded
+          heading={t('settings.plugins.marketSourcesSection')}
+          // Debounce parent reloads: sources panel already lists sources; only refresh catalog after mutations.
+          onSourcesChanged={() => {
+            window.setTimeout(() => { void loadMarketplace({ silent: true }); }, 100);
+          }}
+        />
         {!marketplace ? (
           <p className={`${styles['settings-muted-note']} ${styles['skills-empty']}`}>
             {t('settings.plugins.marketLoading')}
@@ -212,35 +209,71 @@ export function PluginMarketplaceTab() {
             ) : (
               <div className={styles['plugin-marketplace-grid']}>
                 <div className={styles['skills-list-block']}>
-                  {marketplace.plugins.map(plugin => (
-                    <div
-                      key={plugin.id}
-                      className={styles['skills-list-item']}
-                      onClick={() => loadReadme(plugin)}
-                      style={selectedPlugin?.id === plugin.id ? { background: 'var(--bg-hover)' } : undefined}
-                    >
-                      <div className={styles['skills-list-info']}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                          <span className={styles['skills-list-name']}>{plugin.name}</span>
-                          <span className={styles['skills-list-name-hint']}>v{marketVersion(plugin)}</span>
-                          {plugin.installed && (
-                            <span className={styles['skills-source-badge']} style={{ marginRight: 0 }}>
-                              {t('settings.plugins.marketInstalled')}
-                            </span>
-                          )}
-                          {plugin.updateAvailable && (
-                            <span className={styles['skills-source-badge']} style={{ marginRight: 0 }}>
-                              {t('settings.plugins.marketUpdateAvailable')}
-                            </span>
-                          )}
+                  {marketplace.plugins.map(plugin => {
+                    const warnings = warningMessages(plugin);
+                    return (
+                      <button
+                        type="button"
+                        key={rowKey(plugin)}
+                        className={`${styles['skills-list-item']} ${styles['plugin-marketplace-catalog-item']}`}
+                        onClick={() => selectPlugin(plugin)}
+                        aria-pressed={selectedPlugin ? rowKey(selectedPlugin) === rowKey(plugin) : false}
+                        aria-label={`Inspect ${sourceQualifiedId(plugin)}`}
+                        style={selectedPlugin && rowKey(selectedPlugin) === rowKey(plugin) ? { background: 'var(--bg-hover)' } : undefined}
+                      >
+                        <div className={styles['skills-list-info']}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                            <span className={styles['skills-list-name']}>{plugin.name}</span>
+                            <span className={styles['skills-list-name-hint']}>v{marketVersion(plugin)}</span>
+                            {plugin.marketplaceId && (
+                              <span className={marketplaceBadgeClassName}>
+                                {sourceQualifiedId(plugin)}
+                              </span>
+                            )}
+                            {plugin.installTarget && (
+                              <span className={marketplaceBadgeClassName}>
+                                {marketTargetLabel(plugin.installTarget)}
+                              </span>
+                            )}
+                            {plugin.confirmationLevel && plugin.confirmationLevel !== 'inline' && (
+                              <span className={styles['plugin-marketplace-risk-badge']}>
+                                {marketConfirmationLabel(plugin.confirmationLevel)}
+                              </span>
+                            )}
+                            {warnings.length > 0 && (
+                              <span className={styles['plugin-marketplace-warning-badge']}>
+                                {warnings.length} warning{warnings.length === 1 ? '' : 's'}
+                              </span>
+                            )}
+                            {(plugin.installed || plugin.active) && (
+                              <span className={marketplaceBadgeClassName}>
+                                {plugin.packageInstall?.state === 'partial'
+                                  ? 'partial'
+                                  : plugin.packageInstall?.state === 'stale-record'
+                                    ? 'stale record'
+                                    : t('settings.plugins.marketInstalled')}
+                              </span>
+                            )}
+                            {plugin.retained && !plugin.active && (
+                              <span className={marketplaceBadgeClassName}>
+                                {t('settings.plugins.marketRetainedBadge')}
+                              </span>
+                            )}
+                            {plugin.updateAvailable && (
+                              <span className={marketplaceBadgeClassName}>
+                                {t('settings.plugins.marketUpdateAvailable')}
+                              </span>
+                            )}
+                          </div>
+                          {plugin.description && <span className={styles['skills-list-desc']}>{plugin.description}</span>}
+                          <span className={styles['skills-list-desc']}>
+                            {(plugin.publisher || 'unknown') + ' · ' + (plugin.trust || 'restricted')}
+                            {plugin.installAdapter ? ` · ${marketAdapterLabel(plugin.installAdapter)}` : ''}
+                          </span>
                         </div>
-                        {plugin.description && <span className={styles['skills-list-desc']}>{plugin.description}</span>}
-                        <span className={styles['skills-list-desc']}>
-                          {(plugin.publisher || 'unknown') + ' · ' + (plugin.trust || 'restricted')}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
+                      </button>
+                    );
+                  })}
                 </div>
 
                 <div className={styles['skills-list-block']}>
@@ -248,42 +281,20 @@ export function PluginMarketplaceTab() {
                     <div className={styles['skills-list-info']} style={{ gap: 'var(--space-8)', width: '100%' }}>
                       {selectedPlugin ? (
                         <>
-                          <div className={styles['plugin-marketplace-detail-header']}>
-                            <div style={{ minWidth: 0 }}>
-                              <div className={styles['skills-list-name']}>{selectedPlugin.name}</div>
-                              <div className={styles['skills-list-desc']}>
-                                {(selectedPlugin.publisher || 'unknown') + ' · v' + marketVersion(selectedPlugin)}
-                              </div>
-                              {marketVersionStatus(selectedPlugin) && (
-                                <div className={styles['skills-list-desc']}>
-                                  {marketVersionStatus(selectedPlugin)}
-                                </div>
-                              )}
-                            </div>
-                            <button
-                              className={styles['settings-save-btn-sm']}
-                              disabled={!selectedPlugin.canInstall || installingPluginId === selectedPlugin.id}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                installPlugin(selectedPlugin);
-                              }}
-                            >
-                              {marketInstallLabel(selectedPlugin)}
-                            </button>
-                          </div>
-                          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                            {(selectedPlugin.contributions || []).map(item => (
-                              <span key={item} className={styles['skills-source-badge']} style={{ marginRight: 0 }}>
-                                {item}
-                              </span>
-                            ))}
-                          </div>
+                          <MarketplacePluginInspector
+                            plugin={selectedPlugin}
+                            marketplace={marketplace}
+                            actions={actions}
+                            selectedAgentId={selectedAgentId}
+                          />
                           <div
                             className={`preview-markdown ${styles['plugin-marketplace-readme']}`}
                             dangerouslySetInnerHTML={{
-                              __html: readmeLoading
-                                ? `<p>${t('settings.plugins.marketReadmeLoading')}</p>`
-                                : renderMarkdown(readme || selectedPlugin.description || ''),
+                              // Always keep description/readme body; never swap to a loading placeholder
+                              // (that flash is what made HyperFrames description flicker on refresh).
+                              __html: renderMarkdown(
+                                readme || selectedPlugin.description || (readmeLoading ? '' : ''),
+                              ),
                             }}
                           />
                         </>
@@ -296,6 +307,108 @@ export function PluginMarketplaceTab() {
               </div>
             )}
           </>
+        )}
+
+        {marketplace && marketplace.capabilities?.supported !== false && (
+          <details className={styles['plugin-marketplace-advanced']}>
+            <summary>{t('settings.plugins.marketAdvancedJsonConfig')}</summary>
+            <div className={styles['plugin-marketplace-advanced-body']}>
+              <section aria-labelledby="marketplace-json-config">
+                <h3 id="marketplace-json-config">{t('settings.plugins.marketConfigAsCodeDiagnostics')}</h3>
+                <p className={styles['settings-form-hint']}>
+                  Advanced owner/operator view only. Use normal source and access controls for routine changes; direct JSON edits are revision-checked and keep the last-known-good state when invalid.
+                </p>
+                <div className={styles['plugin-marketplace-inspector']}>
+                  <div className={styles['plugin-marketplace-property-row']}>
+                    <span>{t('settings.plugins.marketConfigStatus')}</span>
+                    <strong>{marketplace.configDiagnostics?.degraded ? 'Invalid edit · last-known-good active' : 'Valid'}</strong>
+                  </div>
+                  <div className={styles['plugin-marketplace-property-row']}>
+                    <span>{t('settings.plugins.marketServerLocalPath')}</span>
+                    <code translate="no">{marketplace.configDiagnostics?.path || marketplace.registry?.path || 'Unavailable'}</code>
+                  </div>
+                  <div className={styles['plugin-marketplace-property-row']}>
+                    <span>{t('settings.plugins.marketLastValidRevision')}</span>
+                    <strong>{marketplace.configDiagnostics?.summary?.revision ?? marketplace.registry?.revision ?? '—'}</strong>
+                  </div>
+                  <div className={styles['plugin-marketplace-property-row']}>
+                    <span>{t('settings.plugins.marketDigest')}</span>
+                    <code translate="no">{marketplace.configDiagnostics?.digest || marketplace.registry?.digest || '—'}</code>
+                  </div>
+                  {configDiagnostics.length > 0 && (
+                    <div className={styles['plugin-marketplace-warnings']} role="status">
+                      <span>{t('settings.plugins.marketDiagnosticsRepairGuidance')}</span>
+                      <ul>
+                        {configDiagnostics.map((diagnostic, index) => (
+                          <li key={`${diagnostic.code || 'diagnostic'}-${index}`}>
+                            {diagnostic.path ? `${diagnostic.path}: ` : ''}{diagnostic.message || diagnostic.code}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              </section>
+
+              <section aria-labelledby="marketplace-claude-bindings">
+                <h3 id="marketplace-claude-bindings">{t('settings.plugins.marketClaudeCompatBindings')}</h3>
+                <p className={styles['settings-form-hint']}>
+                  Live, mirror, and snapshot bindings read only explicitly authorized paths. Secret-bearing settings, hooks, MCP/LSP, commands, binaries, lifecycle scripts, monitors, and permission policy are excluded before state is stored or shown.
+                </p>
+                {compatibilityBindings.length === 0 ? (
+                  <p className={styles['settings-muted-note']}>{t('settings.plugins.marketNoCompatBindings')}</p>
+                ) : (
+                  <div className={styles['plugin-marketplace-binding-list']}>
+                    {compatibilityBindings.map(item => (
+                      <article key={item.binding.id} className={styles['plugin-marketplace-binding-card']}>
+                        <div className={styles['plugin-marketplace-scope-heading']}>
+                          <div>
+                            <h4>{item.binding.id}</h4>
+                            <p>{item.binding.mode} · {item.binding.enabled ? 'enabled' : 'disabled'} · {item.pendingBoundary || 'current snapshot'}</p>
+                          </div>
+                          <span className={styles['skills-source-badge']}>
+                            {item.diagnostic ? (item.lastKnownGood ? 'last-known-good' : 'diagnostic') : 'healthy'}
+                          </span>
+                        </div>
+                        {(item.binding.inputs || []).map((input, index) => (
+                          <div key={`${input.role}-${index}`} className={styles['plugin-marketplace-property-row']}>
+                            <span>{input.role || 'input'}</span>
+                            <code translate="no">{input.path || 'Unavailable'}</code>
+                          </div>
+                        ))}
+                        <div className={styles['plugin-marketplace-property-row']}>
+                          <span>{t('settings.plugins.marketLastValidDigest')}</span>
+                          <code translate="no">{item.state?.digest || '—'}</code>
+                        </div>
+                        {item.diagnostic && (
+                          <div className={styles['plugin-marketplace-warnings']} role="alert">
+                            <span>{item.diagnostic.code || 'Binding diagnostic'}</span>
+                            <ul><li>{item.diagnostic.message || 'Repair the authorized input and refresh the binding.'}</li></ul>
+                          </div>
+                        )}
+                        {(item.state?.warnings || []).length > 0 && (
+                          <div className={styles['plugin-marketplace-warnings']} role="status">
+                            <span>{t('settings.plugins.marketSanitizedExclusions')}</span>
+                            <ul>
+                              {item.state!.warnings!.map((warning, index) => (
+                                <li key={`${warning.code || warning.category}-${index}`}>{warning.message || warning.code}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </article>
+                    ))}
+                  </div>
+                )}
+                <div className={styles['plugin-marketplace-bridge-status']} role="status">
+                  <strong>Desktop bridge transport: unavailable in this build.</strong>
+                  <span>
+                    The server can validate a versioned, device/session-scoped sanitized envelope, but the desktop does not collect or transmit Claude files yet. Use server-local authorized paths, mirror, or snapshot mode; no install, promotion, or activation bypass is provided.
+                  </span>
+                </div>
+              </section>
+            </div>
+          </details>
         )}
       </SettingsSection>
     </div>

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { createChatSlice, type ChatSlice } from '../../stores/chat-slice';
 import type { ChatListItem, SessionModel } from '../../stores/chat-types';
 import { registerStreamBufferInvalidator, registerStreamResumeMetaInvalidator } from '../../stores/stream-invalidator';
+import { ownershipCase } from '../../../../../tests/helpers/migration-resource-ownership.ts';
 
 function makeSlice(initial: Record<string, unknown> = {}): ChatSlice {
   let state: ChatSlice & Record<string, unknown>;
@@ -168,6 +169,136 @@ describe('chat-slice', () => {
       expect(slice.bumpLoadMessagesVersion('/b')).toBe(1);
       expect(slice.bumpLoadMessagesVersion('/a')).toBe(2);
       expect(slice._loadMessagesVersion).toEqual({ '/a': 2, '/b': 1 });
+    });
+  });
+
+  describe('confirmOptimisticUserMessage', () => {
+    it('preserves optimistic attachment inline bytes when the server echo omits them', () => {
+      slice.initSession('/a', [], false);
+      slice.appendOptimisticUserMessage('/a', {
+        id: 'client-1',
+        role: 'user',
+        text: '',
+        attachments: [{
+          fileId: 'sf_image',
+          path: '/cache/pasted.png',
+          name: 'pasted.png',
+          isDir: false,
+          mimeType: 'image/png',
+          base64Data: 'IMAGE_BASE64',
+          resource: {
+            resourceId: 'res_sf_image',
+            studioId: 'studio_remote',
+            links: {
+              self: '/api/resources/res_sf_image',
+              content: '/api/resources/res_sf_image/content',
+            },
+          },
+        }],
+        sendStatus: 'pending',
+      });
+
+      const consumed = slice.confirmOptimisticUserMessage('/a', 'client-1', {
+        id: 'server-1',
+        role: 'user',
+        text: '',
+        sourceEntryId: 'entry-1',
+        attachments: [{
+          fileId: 'sf_image',
+          path: '/cache/pasted.png',
+          name: 'pasted.png',
+          isDir: false,
+          mimeType: 'image/png',
+        }],
+      });
+
+      expect(consumed).toBe(true);
+      const item = slice.chatSessions['/a']?.items[0];
+      expect(item?.type).toBe('message');
+      if (item?.type !== 'message') throw new Error('expected message item');
+      expect(item.data.attachments?.[0]).toMatchObject({
+        fileId: 'sf_image',
+        base64Data: 'IMAGE_BASE64',
+        mimeType: 'image/png',
+        resource: {
+          resourceId: 'res_sf_image',
+          studioId: 'studio_remote',
+          links: {
+            self: '/api/resources/res_sf_image',
+            content: '/api/resources/res_sf_image/content',
+          },
+        },
+      });
+      expect(item.data.sendStatus).toBeUndefined();
+    });
+
+    it('keeps optimistic ownership inline bytes until server echo supplies resource identity', () => {
+      const optimistic = ownershipCase('optimistic');
+      slice.initSession('/a', [], false);
+      slice.appendOptimisticUserMessage('/a', {
+        id: 'client-optimistic',
+        role: 'user',
+        text: '',
+        attachments: [{
+          fileId: optimistic.fileId,
+          path: optimistic.path,
+          name: optimistic.name,
+          isDir: false,
+          mimeType: optimistic.mimeType,
+          base64Data: optimistic.base64Data,
+        }],
+        sendStatus: 'pending',
+      });
+
+      const before = slice.chatSessions['/a']?.items[0];
+      expect(before?.type).toBe('message');
+      if (before?.type !== 'message') throw new Error('expected optimistic message');
+      expect(before.data.attachments?.[0]).toMatchObject({
+        fileId: optimistic.fileId,
+        base64Data: optimistic.base64Data,
+        mimeType: optimistic.mimeType,
+      });
+
+      const consumed = slice.confirmOptimisticUserMessage('/a', 'client-optimistic', {
+        id: 'server-optimistic',
+        role: 'user',
+        text: '',
+        sourceEntryId: 'entry-optimistic',
+        attachments: [{
+          fileId: optimistic.fileId,
+          path: optimistic.path,
+          name: optimistic.name,
+          isDir: false,
+          mimeType: optimistic.mimeType,
+          resource: {
+            resourceId: `res_${optimistic.fileId}`,
+            studioId: 'studio_remote',
+            links: {
+              self: `/api/resources/res_${optimistic.fileId}`,
+              content: `/api/resources/res_${optimistic.fileId}/content`,
+            },
+          },
+        }],
+      });
+
+      expect(consumed).toBe(true);
+      const item = slice.chatSessions['/a']?.items[0];
+      expect(item?.type).toBe('message');
+      if (item?.type !== 'message') throw new Error('expected message item');
+      expect(item.data.attachments?.[0]).toMatchObject({
+        fileId: optimistic.fileId,
+        base64Data: optimistic.base64Data,
+        mimeType: optimistic.mimeType,
+        resource: {
+          resourceId: `res_${optimistic.fileId}`,
+          studioId: 'studio_remote',
+          links: {
+            self: `/api/resources/res_${optimistic.fileId}`,
+            content: `/api/resources/res_${optimistic.fileId}/content`,
+          },
+        },
+      });
+      expect(optimistic.keepInlineUntilServerEcho).toBe(true);
     });
   });
 

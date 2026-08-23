@@ -205,6 +205,22 @@ describe('AccessTab', () => {
       if (url === '/api/devices/credentials/cred_1/revoke' && options?.method === 'POST') {
         return Promise.resolve(jsonResponse({ ok: true }));
       }
+      if (url === '/api/server/identity') {
+        return Promise.resolve(jsonResponse({
+          connectionKind: 'lan',
+          serverId: 'server_lan',
+          serverNodeId: 'node_lan',
+          userId: 'user_lan',
+          studioId: 'studio_lan',
+          label: 'LAN Server',
+          studioLabel: 'LAN Studio',
+          trustState: 'lan',
+          authState: 'paired',
+          credentialKind: 'device_credential',
+          capabilities: ['chat', 'resources', 'files'],
+          version: '0.348.11',
+        }));
+      }
       throw new Error(`unexpected request: ${url}`);
     });
     Object.assign(navigator, {
@@ -227,14 +243,23 @@ describe('AccessTab', () => {
             trustState: 'lan',
             authState: 'paired',
             credentialKind: 'device_credential',
-            capabilities: ['chat', 'resources', 'files'],
+            capabilities: ['chat', 'resources', 'files', 'tools', 'settings'],
+            executionBoundary: {
+              kind: 'remote_process',
+              serverNodeId: 'node_lan',
+              studioId: 'studio_lan',
+              workbench: { kind: 'legacy_agent_workbench', root: null },
+            },
           }),
         } as Response;
       }
       throw new Error(`unexpected fetch URL: ${url}`);
     }));
     Object.assign(window, {
-      hana: { reloadMainWindow: vi.fn(async () => {}) },
+      hana: {
+        reloadMainWindow: vi.fn(async () => {}),
+        debugOpenOnboarding: vi.fn(async () => {}),
+      },
     });
   });
 
@@ -399,7 +424,7 @@ describe('AccessTab', () => {
     }));
   });
 
-  it('connects to an existing LAN server from the client connection section', async () => {
+  it('connects to an existing Remote Server from the client connection section', async () => {
     const { AccessTab } = await import('../../settings/tabs/AccessTab');
 
     render(<AccessTab />);
@@ -428,7 +453,20 @@ describe('AccessTab', () => {
     });
   });
 
-  it('renders remote connections as local-only management and can return to the local server', async () => {
+  it('opens onboarding directly from the Access settings tab', async () => {
+    const { AccessTab } = await import('../../settings/tabs/AccessTab');
+
+    render(<AccessTab />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'settings.access.openOnboarding' }));
+
+    await waitFor(() => {
+      expect(window.hana.debugOpenOnboarding).toHaveBeenCalledTimes(1);
+    });
+    expect(mockState.showToast).toHaveBeenCalledWith('devtools.onboardingOpened', 'success');
+  });
+
+  it('renders remote connections as Remote Server connection management and can switch to local', async () => {
     Object.assign(mockState, {
       serverConnections: {
         local: localConnection,
@@ -436,6 +474,37 @@ describe('AccessTab', () => {
       },
       activeServerConnectionId: remoteConnection.connectionId,
       activeServerConnection: remoteConnection,
+      remoteConnectionRecovery: {
+        status: 'compatibility_failed',
+        connectionId: remoteConnection.connectionId,
+        baseUrl: remoteConnection.baseUrl,
+        reasonCodes: ['missing_core_capability'],
+        warningCodes: ['missing_optional_capability'],
+      },
+    });
+    mockHanaFetch.mockImplementation((url: string) => {
+      if (url === '/api/server/identity') {
+        return Promise.resolve(jsonResponse({
+          connectionKind: 'lan',
+          serverId: 'server_lan',
+          serverNodeId: 'node_lan',
+          userId: 'user_lan',
+          studioId: 'studio_lan',
+          label: 'sg01 Hana',
+          userLabel: 'Karl',
+          studioLabel: 'Personal Studio',
+          trustState: 'lan',
+          authState: 'paired',
+          credentialKind: 'device_credential',
+          capabilities: ['chat', 'resources', 'files', 'settings.read'],
+          version: '0.348.11',
+          executionBoundary: {
+            kind: 'remote_process',
+            workbench: { kind: 'legacy_agent_workbench' },
+          },
+        }));
+      }
+      throw new Error(`unexpected request: ${url}`);
     });
     const { AccessTab } = await import('../../settings/tabs/AccessTab');
 
@@ -443,8 +512,47 @@ describe('AccessTab', () => {
 
     expect(await screen.findByText('settings.access.remoteConnection')).toBeInTheDocument();
     expect(screen.getByText('LAN Studio')).toBeInTheDocument();
+    expect(screen.getByText('settings.access.remoteCoreConnection')).toBeInTheDocument();
+    expect(screen.getAllByText('settings.access.remoteNotAssessed').length).toBeGreaterThan(0);
+    expect(screen.getByText('settings.access.remoteServerUpdate')).toBeInTheDocument();
+    expect(screen.getByText('settings.access.remoteFeatureSupport')).toBeInTheDocument();
+    expect(screen.getByText('settings.access.remoteReason.missing_core_capability')).toBeInTheDocument();
+    expect(screen.getByText('settings.access.remoteWarning.missing_optional_capability')).toBeInTheDocument();
+    expect(await screen.findByText('settings.access.remoteConnectedRuntime')).toBeInTheDocument();
+    expect(screen.getByText('0.348.11')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'settings.access.remoteCheckAgain' })).toBeEnabled();
+    expect(screen.getByText('settings.access.remoteConnectionKindRemote')).toBeInTheDocument();
+    expect(screen.getByText('settings.access.remoteTrustState')).toBeInTheDocument();
+    expect(screen.getByText('settings.access.remoteTrustLan')).toBeInTheDocument();
+    expect(screen.getByText('settings.access.remoteAuthState')).toBeInTheDocument();
+    expect(screen.getByText('settings.access.remoteAuthPaired')).toBeInTheDocument();
+    expect(screen.getByText('settings.access.remoteCredentialKind')).toBeInTheDocument();
+    expect(screen.getByText('settings.access.remoteCredentialDevice')).toBeInTheDocument();
+    expect(screen.getByText('settings.access.remoteCapabilities')).toBeInTheDocument();
+    expect(screen.getByText([
+      'settings.access.remoteCapabilityChat',
+      'settings.access.remoteCapabilityFiles',
+      'settings.access.remoteCapabilityResources',
+      'settings.access.remoteCapabilitySettings',
+    ].join(', '))).toBeInTheDocument();
+    expect(screen.getByText('settings.access.remoteStudioLabel')).toBeInTheDocument();
+    expect(screen.getByText('Personal Studio')).toBeInTheDocument();
+    expect(screen.getByText('settings.access.remoteRuntime')).toBeInTheDocument();
+    expect(screen.getByText('settings.access.remoteRuntimeServer')).toBeInTheDocument();
+    expect(screen.queryByText('device_credential')).not.toBeInTheDocument();
+    expect(screen.queryByText('remote_process / legacy_agent_workbench')).not.toBeInTheDocument();
+    expect(screen.queryByText('sg01 Hana')).not.toBeInTheDocument();
     expect(screen.queryByText('settings.access.localAccount')).not.toBeInTheDocument();
+    expect(screen.queryByText('settings.access.pairedDevices')).not.toBeInTheDocument();
+    expect(screen.queryByText('settings.access.mobileAccess')).not.toBeInTheDocument();
     expect(mockHanaFetch).not.toHaveBeenCalledWith('/api/access/summary');
+
+    const remoteKeyInput = screen.getByLabelText('settings.access.remoteServerKey');
+    expect(remoteKeyInput).toHaveAttribute('type', 'password');
+    fireEvent.click(screen.getByRole('button', { name: 'settings.api.showKey' }));
+    expect(remoteKeyInput).toHaveAttribute('type', 'text');
+    expect(screen.getByRole('button', { name: 'settings.access.retryRemote' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'settings.access.connectAnotherRemote' })).toBeEnabled();
 
     fireEvent.click(screen.getByRole('button', { name: 'settings.access.returnToLocal' }));
 

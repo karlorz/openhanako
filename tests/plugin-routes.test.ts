@@ -19,6 +19,8 @@ import {
 import { PLUGIN_SURFACE_SESSION_HEADER } from "../server/http/plugin-surface-session.ts";
 import { resolveHttpRequestPrincipal } from "../server/http/request-principal.ts";
 import { createServerAuthService } from "../core/server-auth.ts";
+import { PluginInstallRecords } from "../lib/plugin-install-records.ts";
+import { PluginArtifactStore } from "../lib/plugin-artifact-store.ts";
 
 describe("plugin route proxy", () => {
   it("dispatches to registered plugin route", async () => {
@@ -104,6 +106,33 @@ function mockEngine( overrides: any = {}) {
 
 function createApp(engine) {
   const app = new Hono();
+  app.route("/api", createPluginsRoute(engine));
+  return app;
+}
+
+function createAppWithOwnerPrincipal(engine) {
+  // Desktop loopback tokens resolve to kind=local_user +
+  // credentialKind=loopback_token, which counts as studio.owner for
+  // marketplace mutations (see principalFlags in server/routes/plugins.ts).
+  const app = new Hono();
+  app.use("*", async (c, next) => {
+    (c as any).set("authPrincipal", {
+      kind: "local_user",
+      connectionKind: "local",
+      credentialKind: "loopback_token",
+    });
+    await next();
+  });
+  app.route("/api", createPluginsRoute(engine));
+  return app;
+}
+
+function createAppWithTransportSecurity(engine, secureRequest: boolean) {
+  const app = new Hono();
+  app.use("*", async (c, next) => {
+    (c as any).set("transportSecureRequest", secureRequest);
+    await next();
+  });
   app.route("/api", createPluginsRoute(engine));
   return app;
 }
@@ -988,6 +1017,49 @@ describe("plugin management API", () => {
       expect(await readmeRes.json()).toEqual({ pluginId: "demo", markdown: "# Demo" });
     });
 
+    it("does not fetch remote readmes for private or mapped IPv6 hosts (findings 2-3)", async () => {
+      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "hana-readme-policy-"));
+      try {
+        const fetchImpl = vi.fn(async () => new Response("leak", { status: 200 }));
+        const engine = mockEngine({
+          hanakoHome: tmp,
+          fetch: fetchImpl,
+          plugins: [],
+        });
+        // Multi-source row whose readmeUrl is a hex IPv4-mapped private literal (10.0.0.1).
+        (engine as any).pluginMarketplaceService = {
+          getRemovedMarketplaceSkillsPackage: vi.fn(() => null),
+          resolveInstall: vi.fn((pluginId: string, marketplaceId?: string | null) => ({
+            ok: true,
+            row: { marketplaceId: marketplaceId || "oh-plugins-official", pluginId },
+          })),
+          getCatalogPlugin: vi.fn(() => ({
+            pluginId: "skillwiki",
+            marketplaceId: "oh-plugins-official",
+            readmeUrl: "https://[::ffff:0a00:0001]/readme.md",
+          })),
+        };
+        // No legacy single-source marketplace is configured in this harness; the route
+        // must never fall through to one after the policy rejects the row's readmeUrl.
+        (engine as any).pluginMarketplace = {
+          getReadme: vi.fn(async () => {
+            throw new Error("legacy marketplace not configured");
+          }),
+        };
+        const app = createApp(engine);
+
+        const res = await app.request(
+          "/api/plugins/marketplace/skillwiki/readme?marketplaceId=oh-plugins-official",
+        );
+
+        expect(res.status).toBe(500); // sanitized error, never a fetched body
+        expect(await res.json()).toMatchObject({ error: expect.any(String) });
+        expect(fetchImpl).not.toHaveBeenCalled();
+      } finally {
+        fs.rmSync(tmp, { recursive: true, force: true });
+      }
+    });
+
     it("does not mark marketplace plugins installed when only a same-id dev plugin is loaded", async () => {
       const plugin = {
         id: "demo",
@@ -1138,7 +1210,7 @@ describe("plugin management API", () => {
       }
     });
 
-    it("installs release marketplace plugins after downloading and verifying sha256", async () => {
+    it("blocks the legacy release install bypass in favor of the owner plan/execute lifecycle", async () => {
       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "hana-release-plugin-"));
       try {
         const zip = makeStoredZip({
@@ -1200,12 +1272,12 @@ describe("plugin management API", () => {
           body: JSON.stringify({}),
         });
 
-        expect(installRes.status).toBe(200);
+        expect(installRes.status).toBe(409);
         expect(await installRes.json()).toMatchObject({
-          id: "demo",
-          installedManifestExists: true,
+          code: "PLUGIN_MARKETPLACE_NATIVE_INSTALL_PREVIEW_ONLY",
+          error: expect.stringContaining("plan/execute lifecycle"),
         });
-        expect(installPlugin).toHaveBeenCalled();
+        expect(installPlugin).not.toHaveBeenCalled();
       } finally {
         fs.rmSync(tmp, { recursive: true, force: true });
       }
@@ -1377,7 +1449,56 @@ describe("plugin management API", () => {
       }
     });
 
-    it("rejects release marketplace plugins when sha256 does not match", async () => {
+    it("installs a retained artifact whose plugin is nested beside artifact metadata", async () => {
+      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "hana-plugin-retained-wrapper-"));
+      try {
+        const sourcePath = path.join(tmp, "artifact");
+        const pluginSource = path.join(sourcePath, "demo");
+        const userPluginsDir = path.join(tmp, "plugins");
+        fs.mkdirSync(pluginSource, { recursive: true });
+        fs.writeFileSync(path.join(sourcePath, ".hana-artifact.json"), JSON.stringify({ schemaVersion: 1 }), "utf8");
+        fs.writeFileSync(path.join(pluginSource, "manifest.json"), JSON.stringify({
+          id: "demo",
+          name: "Demo",
+          version: "1.0.0",
+          trust: "restricted",
+        }), "utf8");
+        const installPlugin = vi.fn(async (dir) => ({
+          id: "demo",
+          name: "Demo",
+          version: "1.0.0",
+          status: "loaded",
+          pluginDir: dir,
+        }));
+        const engine = mockEngine({
+          hanakoHome: tmp,
+          pm: {
+            getUserPluginsDir: () => userPluginsDir,
+            listPlugins: () => [],
+            installPlugin,
+            isValidPluginDir: (dir) => fs.existsSync(path.join(dir, "manifest.json")),
+          },
+        });
+        const app = createApp(engine);
+
+        const res = await app.request("/api/plugins/install", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path: sourcePath }),
+        });
+
+        expect(res.status).toBe(200);
+        expect(await res.json()).toMatchObject({ id: "demo", status: "loaded" });
+        const installedDir = path.join(userPluginsDir, "demo");
+        expect(installPlugin).toHaveBeenCalledWith(installedDir, { source: "community" });
+        expect(fs.existsSync(path.join(installedDir, "manifest.json"))).toBe(true);
+        expect(fs.existsSync(path.join(installedDir, "demo", "manifest.json"))).toBe(false);
+      } finally {
+        fs.rmSync(tmp, { recursive: true, force: true });
+      }
+    });
+
+    it("does not acquire legacy native releases before the owner plan/execute lifecycle", async () => {
       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "hana-release-plugin-bad-sha-"));
       try {
         const zip = makeStoredZip({
@@ -1428,9 +1549,605 @@ describe("plugin management API", () => {
           body: JSON.stringify({}),
         });
 
-        expect(installRes.status).toBe(502);
-        expect(await installRes.json()).toEqual({ error: "Plugin release sha256 mismatch" });
+        expect(installRes.status).toBe(409);
+        expect(await installRes.json()).toMatchObject({
+          code: "PLUGIN_MARKETPLACE_NATIVE_INSTALL_PREVIEW_ONLY",
+        });
+        expect(engine.fetch).not.toHaveBeenCalled();
         expect(installPlugin).not.toHaveBeenCalled();
+      } finally {
+        fs.rmSync(tmp, { recursive: true, force: true });
+      }
+    });
+
+    it("rejects a stale legacy Claude install with a conflict and no mutation (finding 9)", async () => {
+      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "hana-marketplace-stale-claude-"));
+      try {
+        const registry = { revision: 7, digest: "b".repeat(64) };
+        const currentSnapshot = {
+          state: "ok",
+          current: {
+            catalogSha256: "c".repeat(64),
+            sourceFingerprint: "d".repeat(64),
+            requestedRef: "main",
+            resolvedRevision: "rev-1",
+          },
+        };
+        // Mirror the real service's _assertClaudeSkillsInstallPlan gate: a
+        // changed source snapshot rejects with PLUGIN_MARKETPLACE_PLAN_STALE
+        // before any skills mutation.
+        const getStatus = vi.fn((_marketplaceId: string) => ({ ...currentSnapshot }));
+        const installClaudePluginSkills = vi.fn(async (pluginId: string, marketplaceId: string, options: any) => {
+          const status: any = getStatus(marketplaceId);
+          const current = status.current || {};
+          const expected = options.expectedSourceSnapshot;
+          if (expected && (
+            status.state !== expected.state
+            || (current.sourceFingerprint || null) !== (expected.sourceFingerprint || null)
+            || (current.catalogSha256 || null) !== (expected.catalogSha256 || null)
+            || (current.requestedRef || null) !== (expected.requestedRef || null)
+            || (current.resolvedRevision || null) !== (expected.resolvedRevision || null)
+          )) {
+            const err: any = new Error("Marketplace source snapshot changed; create a fresh install plan");
+            err.status = 409;
+            err.code = "PLUGIN_MARKETPLACE_PLAN_STALE";
+            throw err;
+          }
+          return {
+            marketplaceId,
+            pluginId,
+            skills: ["wiki-query"],
+            skipped: [],
+            warnings: [],
+            resolvedRevision: current.resolvedRevision || null,
+          };
+        });
+        const service = {
+          assertRegistryWritePrecondition: vi.fn(({ expectedRevision, expectedDigest }) => {
+            if (expectedRevision !== registry.revision || expectedDigest !== registry.digest) {
+              const err: any = new Error("stale registry");
+              err.status = 409;
+              err.code = "PLUGIN_MARKETPLACE_REGISTRY_STALE";
+              throw err;
+            }
+          }),
+          assertRegistryUsableForAcquisition: vi.fn(),
+          resolveInstall: vi.fn((pluginId: string, marketplaceId?: string | null) => ({
+            ok: true,
+            mode: "qualified",
+            row: { marketplaceId: marketplaceId || "llm-wiki", pluginId },
+          })),
+          getCatalogPlugin: vi.fn((pluginId: string, marketplaceId: string) => ({
+            id: pluginId,
+            name: "SkillWiki",
+            version: "1.0.0",
+            marketplaceId,
+            compatibility: {},
+            distribution: null,
+            install: {
+              catalogFormat: "claude",
+              installTarget: "hana-skills",
+              sourceKind: "relative",
+              source: "packages/skillwiki",
+              canInstall: true,
+            },
+          })),
+          getRegistryStatus: vi.fn(() => ({ ...registry, degraded: false })),
+          snapshots: {
+            getStatus,
+          },
+          installClaudePluginSkills,
+        };
+        const engine = mockEngine({ hanakoHome: tmp, plugins: [] });
+        (engine as any).pluginMarketplaceService = service;
+        (engine as any).userSkillsDir = path.join(tmp, "skills");
+        const app = createAppWithOwnerPrincipal(engine);
+
+        const body = {
+          marketplaceId: "llm-wiki",
+          expectedRevision: registry.revision,
+          expectedDigest: registry.digest,
+          expectedSourceSnapshot: {
+            state: "ok",
+            sourceFingerprint: "d".repeat(64),
+            catalogSha256: "c".repeat(64),
+            requestedRef: "main",
+            resolvedRevision: "rev-1",
+          },
+        };
+
+        // 1) Registry-stale facts are rejected by the early precondition check
+        //    before the Claude branch runs: 409 and no install call.
+        const registryStaleRes = await app.request("/api/plugins/marketplace/skillwiki/install", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...body, expectedRevision: 999999 }),
+        });
+        expect(registryStaleRes.status).toBe(409);
+        expect(await registryStaleRes.json()).toMatchObject({
+          code: "PLUGIN_MARKETPLACE_REGISTRY_STALE",
+        });
+        expect(installClaudePluginSkills).not.toHaveBeenCalled();
+
+        // 2) The server-side snapshot moves on → stale source-snapshot facts
+        //    must surface as PLUGIN_MARKETPLACE_PLAN_STALE before any mutation.
+        getStatus.mockReturnValue({
+          state: "ok",
+          current: {
+            catalogSha256: "e".repeat(64),
+            sourceFingerprint: "f".repeat(64),
+            requestedRef: "main",
+            resolvedRevision: "rev-2",
+          },
+        });
+        const snapshotStaleRes = await app.request("/api/plugins/marketplace/skillwiki/install", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        expect(snapshotStaleRes.status).toBe(409);
+        expect(await snapshotStaleRes.json()).toMatchObject({
+          code: "PLUGIN_MARKETPLACE_PLAN_STALE",
+        });
+
+        // 3) Fresh facts are forwarded into installClaudePluginSkills unchanged.
+        getStatus.mockReturnValue(currentSnapshot);
+        const okRes = await app.request("/api/plugins/marketplace/skillwiki/install", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        expect(okRes.status).toBe(200);
+        expect(await okRes.json()).toMatchObject({
+          ok: true,
+          installTarget: "hana-skills",
+          catalogFormat: "claude",
+          marketplaceId: "llm-wiki",
+          pluginId: "skillwiki",
+          skills: ["wiki-query"],
+        });
+        expect(installClaudePluginSkills).toHaveBeenLastCalledWith(
+          "skillwiki",
+          "llm-wiki",
+          expect.objectContaining({
+            userSkillsDir: path.join(tmp, "skills"),
+            isStudioOwner: true,
+            expectedRevision: registry.revision,
+            expectedDigest: registry.digest,
+            expectedSourceSnapshot: body.expectedSourceSnapshot,
+          }),
+        );
+      } finally {
+        fs.rmSync(tmp, { recursive: true, force: true });
+      }
+    });
+  });
+
+  // ── Source switch: owner plan/execute with real PluginManager hooks (finding 4) ──
+
+  function seedSourceSwitchState(tmp) {
+    const records = new PluginInstallRecords({ hanakoHome: tmp });
+    const artifacts = new PluginArtifactStore({ hanakoHome: tmp });
+    const digestA = "a".repeat(64);
+    const digestB = "b".repeat(64);
+    const makeArtifactDir = (marketplaceId: string, digest: string) => {
+      const dir = artifacts.artifactPath(marketplaceId, "my-plugin", digest);
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, "manifest.json"), JSON.stringify({
+        id: "my-plugin",
+        name: "My Plugin",
+        version: "1.0.0",
+        trust: "restricted",
+      }), "utf8");
+      fs.writeFileSync(path.join(dir, ".hana-marketplace.json"), JSON.stringify({
+        schemaVersion: 1,
+        marketplaceId,
+        pluginId: "my-plugin",
+        artifactDigest: digest,
+      }), "utf8");
+      artifacts.retain({
+        marketplaceId,
+        pluginId: "my-plugin",
+        artifactDigest: digest,
+        version: "1.0.0",
+        sourceFingerprint: "0".repeat(64),
+        catalogSha256: "c".repeat(64),
+        packageSha256: digest,
+        packageDir: dir,
+      });
+      return dir;
+    };
+    const dirA = makeArtifactDir("marketplace-a", digestA);
+    const dirB = makeArtifactDir("marketplace-b", digestB);
+    const fingerprint = "0".repeat(64);
+    const catalogSha256 = "c".repeat(64);
+    // Install from marketplace-b, then switch active to marketplace-a so the
+    // marketplace-b artifact stays retained as the switch candidate.
+    records.retainAndActivate({
+      pluginId: "my-plugin",
+      marketplaceId: "marketplace-b",
+      artifactDigest: digestB,
+      version: "1.0.0",
+      sourceFingerprint: fingerprint,
+      catalogSha256,
+      packageSha256: digestB,
+      artifactPath: dirB,
+      action: "install",
+      result: "ok",
+    });
+    records.retainAndActivate({
+      pluginId: "my-plugin",
+      marketplaceId: "marketplace-a",
+      artifactDigest: digestA,
+      version: "1.0.0",
+      sourceFingerprint: fingerprint,
+      catalogSha256,
+      packageSha256: digestA,
+      artifactPath: dirA,
+      action: "source-switch",
+      result: "ok",
+    });
+    return { records, artifacts, digestA, digestB };
+  }
+
+  function makeNativeMarketplaceService(tmp) {
+    const registry = { revision: 7, digest: "b".repeat(64) };
+    const plugin = {
+      id: "my-plugin",
+      name: "My Plugin",
+      version: "1.2.3",
+      trust: "restricted",
+      permissions: [],
+      contributions: ["tools"],
+      distribution: {
+        kind: "release",
+        packageUrl: "https://example.com/my-plugin-b.zip",
+        sha256: "b".repeat(64),
+      },
+      readme: "# My Plugin",
+    };
+    const { records, artifacts, digestA, digestB } = seedSourceSwitchState(tmp);
+    return {
+      records,
+      artifacts,
+      digestA,
+      digestB,
+      registry,
+      plugin,
+      assertRegistryWritePrecondition: vi.fn(({ expectedRevision, expectedDigest }) => {
+        if (expectedRevision !== registry.revision || expectedDigest !== registry.digest) {
+          const err: any = new Error("stale registry");
+          err.status = 409;
+          err.code = "PLUGIN_MARKETPLACE_PRECONDITION_STALE";
+          throw err;
+        }
+      }),
+      assertRegistryUsableForAcquisition: vi.fn(),
+      getCatalogPlugin: vi.fn((pluginId: string, marketplaceId: string) => ({ ...plugin, id: pluginId, marketplaceId })),
+      getRegistryStatus: vi.fn(() => ({ ...registry, degraded: false })),
+      snapshots: {
+        getStatus: vi.fn(() => ({
+          state: "ok",
+          current: {
+            catalogSha256: "c".repeat(64),
+            sourceFingerprint: "d".repeat(64),
+            resolvedRevision: "rev-1",
+          },
+        })),
+      },
+    };
+  }
+
+  describe("POST /plugins/:pluginId/source-switch (owner plan/execute)", () => {
+    it("executes a source switch through the signed plan and real PluginManager hooks (finding 4)", async () => {
+      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "hana-source-switch-ok-"));
+      try {
+        const service = makeNativeMarketplaceService(tmp);
+        let entry: any = {
+          id: "my-plugin",
+          status: "loaded",
+          hasLifecycle: true,
+          activationState: "activated",
+          pluginDir: path.join(tmp, "plugins", "my-plugin"),
+        };
+        const installPlugin = vi.fn(async (dir) => {
+          entry = {
+            id: "my-plugin",
+            status: "loaded",
+            hasLifecycle: true,
+            activationState: "activated",
+            pluginDir: dir,
+          };
+          return entry;
+        });
+        const engine = mockEngine({
+          hanakoHome: tmp,
+          pm: {
+            getUserPluginsDir: () => path.join(tmp, "plugins"),
+            installPlugin,
+            findPluginEntry: ({ id, source }: any) => (source === "community" ? entry : null),
+            listPlugins: () => (entry ? [entry] : []),
+          },
+        });
+        (engine as any).pluginMarketplaceService = service;
+        const app = createAppWithOwnerPrincipal(engine);
+
+        const planRes = await app.request("/api/plugins/my-plugin/source-switch/plan", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            marketplaceId: "marketplace-b",
+            expectedRevision: service.registry.revision,
+            expectedDigest: service.registry.digest,
+          }),
+        });
+        expect(planRes.status).toBe(200);
+        const plan = await planRes.json();
+        expect(plan).toMatchObject({
+          schemaVersion: 1,
+          action: "source-switch",
+          identity: "my-plugin@marketplace-b",
+          confirmationText: "my-plugin@marketplace-b source switch",
+          expiresAt: expect.any(String),
+          planToken: expect.stringContaining("."),
+        });
+        expect(plan.facts.artifactDigest).toBe(service.digestB);
+
+        const execRes = await app.request("/api/plugins/my-plugin/source-switch", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            marketplaceId: "marketplace-b",
+            planToken: plan.planToken,
+            confirmation: plan.confirmationText,
+          }),
+        });
+        expect(execRes.status).toBe(200);
+        const exec = await execRes.json();
+        expect(exec).toMatchObject({
+          ok: true,
+          identity: "my-plugin@marketplace-b",
+          pluginId: "my-plugin",
+          activeMarketplaceId: "marketplace-b",
+          activeArtifactDigest: service.digestB,
+        });
+        expect(installPlugin).toHaveBeenCalledWith(
+          expect.stringContaining(path.join("plugins", "my-plugin")),
+          expect.objectContaining({
+            source: "community",
+            marketplaceInstall: {
+              marketplaceId: "marketplace-b",
+              pluginId: "my-plugin",
+              artifactDigest: service.digestB,
+            },
+          }),
+        );
+      } finally {
+        fs.rmSync(tmp, { recursive: true, force: true });
+      }
+    });
+
+    it("propagates PluginManager failure as a failed switch with rollback (finding 4)", async () => {
+      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "hana-source-switch-fail-"));
+      try {
+        const service = makeNativeMarketplaceService(tmp);
+        const installPlugin = vi.fn()
+          .mockRejectedValueOnce(new Error("candidate load exploded"))
+          .mockImplementation(async (dir) => ({
+            id: "my-plugin",
+            status: "loaded",
+            hasLifecycle: true,
+            activationState: "activated",
+            pluginDir: dir,
+          }));
+        const engine = mockEngine({
+          hanakoHome: tmp,
+          pm: {
+            getUserPluginsDir: () => path.join(tmp, "plugins"),
+            installPlugin,
+            findPluginEntry: () => null,
+            listPlugins: () => [],
+          },
+        });
+        (engine as any).pluginMarketplaceService = service;
+        const app = createAppWithOwnerPrincipal(engine);
+
+        const planRes = await app.request("/api/plugins/my-plugin/source-switch/plan", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            marketplaceId: "marketplace-b",
+            expectedRevision: service.registry.revision,
+            expectedDigest: service.registry.digest,
+          }),
+        });
+        expect(planRes.status).toBe(200);
+        const plan = await planRes.json();
+
+        const execRes = await app.request("/api/plugins/my-plugin/source-switch", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            marketplaceId: "marketplace-b",
+            planToken: plan.planToken,
+            confirmation: plan.confirmationText,
+          }),
+        });
+        expect(execRes.status).toBe(409);
+        expect(await execRes.json()).toMatchObject({
+          code: "PLUGIN_SOURCE_SWITCH_HEALTH_FAILED",
+          error: expect.stringContaining("candidate load exploded"),
+        });
+        expect(installPlugin).toHaveBeenCalledTimes(2);
+        expect(installPlugin).toHaveBeenNthCalledWith(1,
+          expect.stringContaining(path.join("plugins", "my-plugin")),
+          expect.objectContaining({
+            marketplaceInstall: {
+              marketplaceId: "marketplace-b",
+              pluginId: "my-plugin",
+              artifactDigest: service.digestB,
+            },
+          }),
+        );
+        // Rollback re-staged the previous marketplace-a artifact and reloaded it
+        // through PluginManager with the previous source descriptor.
+        expect(installPlugin).toHaveBeenNthCalledWith(2,
+          expect.stringContaining(path.join("plugins", "my-plugin")),
+          expect.objectContaining({
+            source: "community",
+            marketplaceInstall: {
+              marketplaceId: "marketplace-a",
+              pluginId: "my-plugin",
+              artifactDigest: service.digestA,
+            },
+          }),
+        );
+        const restagedMarker = JSON.parse(
+          fs.readFileSync(path.join(tmp, "plugins", "my-plugin", ".hana-marketplace.json"), "utf8"),
+        );
+        expect(restagedMarker).toMatchObject({ marketplaceId: "marketplace-a", artifactDigest: service.digestA });
+      } finally {
+        fs.rmSync(tmp, { recursive: true, force: true });
+      }
+    });
+
+    it("fails with 409 when the loaded candidate lacks a matching marketplace marker, and restores the previous source (finding 4)", async () => {
+      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "hana-source-switch-health-"));
+      try {
+        const service = makeNativeMarketplaceService(tmp);
+        // Installation itself succeeds and returns a loaded, activated entry,
+        // but the loaded entry's pluginDir carries no .hana-marketplace.json
+        // marker — the route's real healthCheck must reject the candidate and
+        // the coordinator must roll back to the previous marketplace-a source.
+        const pmLoadDir = path.join(tmp, "pm-load", "my-plugin");
+        const loadedEntry = () => ({
+          id: "my-plugin",
+          status: "loaded",
+          hasLifecycle: true,
+          activationState: "activated",
+          pluginDir: pmLoadDir,
+        });
+        const installPlugin = vi.fn(async () => loadedEntry());
+        const engine = mockEngine({
+          hanakoHome: tmp,
+          pm: {
+            getUserPluginsDir: () => path.join(tmp, "plugins"),
+            installPlugin,
+            findPluginEntry: ({ id, source }: any) => (source === "community" ? loadedEntry() : null),
+            listPlugins: () => [],
+          },
+        });
+        (engine as any).pluginMarketplaceService = service;
+        const app = createAppWithOwnerPrincipal(engine);
+
+        const planRes = await app.request("/api/plugins/my-plugin/source-switch/plan", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            marketplaceId: "marketplace-b",
+            expectedRevision: service.registry.revision,
+            expectedDigest: service.registry.digest,
+          }),
+        });
+        expect(planRes.status).toBe(200);
+        const plan = await planRes.json();
+
+        const execRes = await app.request("/api/plugins/my-plugin/source-switch", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            marketplaceId: "marketplace-b",
+            planToken: plan.planToken,
+            confirmation: plan.confirmationText,
+          }),
+        });
+        expect(execRes.status).toBe(409);
+        expect(await execRes.json()).toMatchObject({
+          code: "PLUGIN_SOURCE_SWITCH_HEALTH_FAILED",
+          error: "Candidate health check failed",
+        });
+        // Candidate install succeeded (call 1); rollback then re-staged the
+        // previous marketplace-a source through PluginManager (call 2).
+        expect(installPlugin).toHaveBeenCalledTimes(2);
+        expect(installPlugin).toHaveBeenNthCalledWith(1,
+          expect.stringContaining(path.join("plugins", "my-plugin")),
+          expect.objectContaining({
+            source: "community",
+            marketplaceInstall: {
+              marketplaceId: "marketplace-b",
+              pluginId: "my-plugin",
+              artifactDigest: service.digestB,
+            },
+          }),
+        );
+        expect(installPlugin).toHaveBeenNthCalledWith(2,
+          expect.stringContaining(path.join("plugins", "my-plugin")),
+          expect.objectContaining({
+            source: "community",
+            marketplaceInstall: {
+              marketplaceId: "marketplace-a",
+              pluginId: "my-plugin",
+              artifactDigest: service.digestA,
+            },
+          }),
+        );
+        // Rollback leaves the prior marker/projection in place: the active
+        // projection on disk still carries the marketplace-a marker and the
+        // install records still point at marketplace-a as active.
+        const restagedMarker = JSON.parse(
+          fs.readFileSync(path.join(tmp, "plugins", "my-plugin", ".hana-marketplace.json"), "utf8"),
+        );
+        expect(restagedMarker).toMatchObject({ marketplaceId: "marketplace-a", artifactDigest: service.digestA });
+        expect(service.records.get("my-plugin")).toMatchObject({
+          activeMarketplaceId: "marketplace-a",
+          activeArtifactDigest: service.digestA,
+        });
+      } finally {
+        fs.rmSync(tmp, { recursive: true, force: true });
+      }
+    });
+
+    it("refuses source-switch plan/execute without a studio owner principal", async () => {
+      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "hana-source-switch-owner-"));
+      try {
+        const service = makeNativeMarketplaceService(tmp);
+        const engine = mockEngine({
+          hanakoHome: tmp,
+          pm: {
+            getUserPluginsDir: () => path.join(tmp, "plugins"),
+            installPlugin: vi.fn(),
+          },
+        });
+        (engine as any).pluginMarketplaceService = service;
+        const app = createApp(engine);
+
+        const planRes = await app.request("/api/plugins/my-plugin/source-switch/plan", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            marketplaceId: "marketplace-b",
+            expectedRevision: service.registry.revision,
+            expectedDigest: service.registry.digest,
+          }),
+        });
+        expect(planRes.status).toBe(403);
+        expect(await planRes.json()).toMatchObject({
+          code: "PLUGIN_MARKETPLACE_NATIVE_OWNER_REQUIRED",
+        });
+
+        const execRes = await app.request("/api/plugins/my-plugin/source-switch", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            marketplaceId: "marketplace-b",
+            planToken: "not-a-token",
+            confirmation: "nope",
+          }),
+        });
+        expect(execRes.status).toBe(403);
+        expect(await execRes.json()).toMatchObject({
+          code: "PLUGIN_MARKETPLACE_NATIVE_OWNER_REQUIRED",
+        });
       } finally {
         fs.rmSync(tmp, { recursive: true, force: true });
       }
@@ -2232,6 +2949,43 @@ describe("plugin route request-level principal and capability context", () => {
           expiresAt: expect.any(String),
         },
       });
+    } finally {
+      fs.rmSync(tmpHome, { recursive: true, force: true });
+    }
+  });
+
+  it("marks plugin asset-session cookies Secure only for trusted secure transport", async () => {
+    const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "hana-plugin-secure-cookie-"));
+    try {
+      const engine = mockEngine({ hanakoHome: tmpHome });
+      const pluginApp = new Hono();
+      pluginApp.get("/page", (c) => c.html("<!doctype html>"));
+      engine.pluginManager.routeRegistry.set("media-board", pluginApp);
+
+      const insecureApp = createAppWithTransportSecurity(engine, false);
+      const insecureTicketRes = await insecureApp.request("/api/plugins/iframe-ticket", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ routeUrl: "/api/plugins/media-board/page" }),
+      });
+      const { ticket: insecureTicket } = await insecureTicketRes.json();
+      const spoofed = await insecureApp.request(
+        `/api/plugins/media-board/page?pluginIframeTicket=${encodeURIComponent(insecureTicket)}`,
+        { headers: { "X-Forwarded-Proto": "https" } },
+      );
+      expect(spoofed.headers.get("set-cookie")).not.toContain("; Secure");
+
+      const secureApp = createAppWithTransportSecurity(engine, true);
+      const secureTicketRes = await secureApp.request("/api/plugins/iframe-ticket", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ routeUrl: "/api/plugins/media-board/page" }),
+      });
+      const { ticket: secureTicket } = await secureTicketRes.json();
+      const trusted = await secureApp.request(
+        `/api/plugins/media-board/page?pluginIframeTicket=${encodeURIComponent(secureTicket)}`,
+      );
+      expect(trusted.headers.get("set-cookie")).toContain("; Secure");
     } finally {
       fs.rmSync(tmpHome, { recursive: true, force: true });
     }

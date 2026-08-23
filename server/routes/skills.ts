@@ -13,7 +13,7 @@ import fs from "fs";
 import { Hono } from "hono";
 import { emitAppEvent } from "../app-events.ts";
 import { safeJson } from "../hono-helpers.ts";
-import { saveConfig } from "../../lib/memory/config-loader.ts";
+import { loadConfig, saveConfig } from "../../lib/memory/config-loader.ts";
 import {
   installSkillPackageFromPath,
   sanitizeSkillName,
@@ -32,8 +32,22 @@ import {
 import { exportSkillBundlePackage } from "../../lib/skill-bundles/package-service.ts";
 import { createModuleLogger } from "../../lib/debug-log.ts";
 import { materializeUploadedSkillPackage } from "../utils/uploaded-skill-package.ts";
+import { removeAgentSkillReferences } from "../../lib/skills/remove-skill-references.ts";
+import { setMarketplaceSkillPreference } from "../../lib/marketplace-skill-preferences.ts";
 
 const log = createModuleLogger("skills");
+const MAX_SKILL_PREVIEW_BYTES = 2 * 1024 * 1024;
+const SKILL_PREVIEW_IGNORED_DIRS = new Set([
+  "node_modules",
+  "target",
+  "build",
+  "dist",
+  "out",
+  "__pycache__",
+  "coverage",
+  "venv",
+  ".venv",
+]);
 
 /** 递归删除目录 */
 function rmDirSync(dir) {
@@ -145,8 +159,183 @@ export function createSkillsRoute(engine) {
     return null;
   }
 
-  async function persistEnabledSkills(agentId, enabled) {
-    const partial = { skills: { enabled } };
+  function resolveSkillPreviewTarget(c) {
+    const name = sanitizeSkillName(c.req.param("name"));
+    if (!name) {
+      const err: any = new Error("invalid skill name");
+      err.status = 400;
+      throw err;
+    }
+    // A preview without agentId is a global installed-skill lookup. Falling
+    // back to the server's UI focus would let one client preview another
+    // client's per-agent skill view.
+    const agentId = c.req.query("agentId") || "";
+    if (agentId && (!validateId(agentId) || !agentExists(engine, agentId))) {
+      const err: any = new Error("agent not found");
+      err.status = 404;
+      throw err;
+    }
+    const skills = agentId ? engine.getAllSkills(agentId) : (engine.getAllSkills?.() || []);
+    const skill = skills.find(item => item?.name === name);
+    const baseDir = skill?.sourceIdentity?.baseDir || skill?.baseDir;
+    if (!skill || !baseDir || !path.isAbsolute(baseDir)) {
+      const err: any = new Error("skill not found");
+      err.status = 404;
+      throw err;
+    }
+    let rootStat;
+    try {
+      rootStat = fs.statSync(baseDir);
+    } catch {
+      const err: any = new Error("skill not found");
+      err.status = 404;
+      throw err;
+    }
+    if (!rootStat.isDirectory()) {
+      const err: any = new Error("skill not found");
+      err.status = 404;
+      throw err;
+    }
+    return { skill, baseDir: path.resolve(baseDir), agentId };
+  }
+
+  function normalizeSkillPreviewPath(rawPath) {
+    const text = String(rawPath || "SKILL.md");
+    if (!text || text.includes("\0") || path.isAbsolute(text) || /^[a-zA-Z]:[\\/]/.test(text)) {
+      const err: any = new Error("invalid skill file path");
+      err.status = 400;
+      throw err;
+    }
+    const parts = text.replace(/\\/g, "/").split("/").filter(Boolean);
+    if (parts.length === 0 || parts.some(part => part === "." || part === "..")) {
+      const err: any = new Error("invalid skill file path");
+      err.status = 400;
+      throw err;
+    }
+    return parts.join("/");
+  }
+
+  function isPathInside(childPath, rootPath) {
+    const rel = path.relative(rootPath, childPath);
+    return rel === "" || (!!rel && !rel.startsWith("..") && !path.isAbsolute(rel));
+  }
+
+  function resolveSkillPreviewFile(baseDir, rawPath) {
+    const relativePath = normalizeSkillPreviewPath(rawPath);
+    const resolvedRoot = path.resolve(baseDir);
+    const candidate = path.resolve(resolvedRoot, relativePath);
+    if (!isPathInside(candidate, resolvedRoot)) {
+      const err: any = new Error("invalid skill file path");
+      err.status = 400;
+      throw err;
+    }
+    let realRoot;
+    let realFile;
+    try {
+      realRoot = fs.realpathSync(resolvedRoot);
+      realFile = fs.realpathSync(candidate);
+    } catch {
+      const err: any = new Error("skill file not found");
+      err.status = 404;
+      throw err;
+    }
+    if (!isPathInside(realFile, realRoot)) {
+      const err: any = new Error("invalid skill file path");
+      err.status = 400;
+      throw err;
+    }
+    return { relativePath, filePath: realFile };
+  }
+
+  function scanSkillPreviewDir(dir, rootDir) {
+    const entries = fs.readdirSync(dir, { withFileTypes: true })
+      .filter(entry => !entry.name.startsWith("."))
+      .filter(entry => !entry.isDirectory() || !SKILL_PREVIEW_IGNORED_DIRS.has(entry.name))
+      .sort((a, b) => {
+        if (a.name === "SKILL.md") return -1;
+        if (b.name === "SKILL.md") return 1;
+        if (a.isDirectory() && !b.isDirectory()) return -1;
+        if (!a.isDirectory() && b.isDirectory()) return 1;
+        return a.name.localeCompare(b.name);
+      });
+    return entries.map((entry) => {
+      const fullPath = path.join(dir, entry.name);
+      const relativePath = path.relative(rootDir, fullPath).replace(/\\/g, "/");
+      if (entry.isDirectory()) {
+        return {
+          name: entry.name,
+          path: relativePath,
+          isDir: true,
+          children: scanSkillPreviewDir(fullPath, rootDir),
+        };
+      }
+      return { name: entry.name, path: relativePath, isDir: false };
+    });
+  }
+
+  function readSkillPreviewText(filePath) {
+    const stat = fs.statSync(filePath);
+    if (!stat.isFile()) {
+      const err: any = new Error("skill file not found");
+      err.status = 404;
+      throw err;
+    }
+    if (stat.size > MAX_SKILL_PREVIEW_BYTES) {
+      const err: any = new Error("skill file is too large");
+      err.status = 413;
+      throw err;
+    }
+    const buffer = fs.readFileSync(filePath);
+    if (buffer.includes(0)) {
+      const err: any = new Error("skill file is not text");
+      err.status = 415;
+      throw err;
+    }
+    return buffer.toString("utf-8");
+  }
+
+  function readAgentConfig(agentId) {
+    const agent = engine.getAgent?.(agentId);
+    if (agent?.config) return agent.config;
+    const configPath = path.join(engine.agentsDir, agentId, "config.yaml");
+    try {
+      return loadConfig(configPath);
+    } catch {
+      return {};
+    }
+  }
+
+  function marketplaceOverridesPatch(current, next) {
+    const currentRecord = current && typeof current === "object" && !Array.isArray(current)
+      ? current
+      : {};
+    const nextRecord = next && typeof next === "object" && !Array.isArray(next)
+      ? next
+      : {};
+    const patch = { ...nextRecord };
+
+    // Config persistence is a deep merge: an empty object does not remove
+    // existing child keys. Add explicit null tombstones for package entries
+    // that disappeared so enabling the last disabled skill actually clears
+    // that package's preference while preserving sibling packages.
+    for (const key of Object.keys(currentRecord)) {
+      if (!Object.prototype.hasOwnProperty.call(nextRecord, key)) patch[key] = null;
+    }
+    return patch;
+  }
+
+  async function persistSkillPreferences(agentId, enabled, marketplaceOverrides) {
+    const currentMarketplaceOverrides = marketplaceOverrides === undefined
+      ? undefined
+      : readAgentConfig(agentId)?.skills?.marketplace_overrides;
+    const partial = {
+      skills: {
+        enabled,
+        ...(marketplaceOverrides === undefined
+          ? {}
+          : { marketplace_overrides: marketplaceOverridesPatch(currentMarketplaceOverrides, marketplaceOverrides) }),
+      },
+    };
 
     // 走 engine.updateConfig (ConfigCoordinator)，它会在 partial.skills 存在时
     // 调用 syncAgentSkills 把新 enabled 列表同步到 agent 的内存态和 system prompt。
@@ -166,24 +355,56 @@ export function createSkillsRoute(engine) {
     return {
       skills,
       visibleSet: new Set(skills.map(skill => skill.name)),
+      skillByName: new Map<string, any>(skills.map(skill => [skill.name, skill] as [string, any])),
     };
   }
 
   async function writeSkillDelta(agentId, skillNames, enable) {
-    const requested = [...new Set(skillNames.filter(name => typeof name === "string" && name.trim()))];
+    const requested: string[] = [...new Set<string>(
+      skillNames.filter((name): name is string => typeof name === "string" && Boolean(name.trim())),
+    )];
     return withAgentSkillWriteLock(agentId, async () => {
-      const { skills, visibleSet } = visibleSkillsForAgent(agentId);
+      const { skills, visibleSet, skillByName } = visibleSkillsForAgent(agentId);
       const changed = requested.filter(name => visibleSet.has(name));
-      const currentEnabled = new Set(skills.filter(skill => skill.enabled).map(skill => skill.name));
-      if (enable) {
-        for (const name of changed) currentEnabled.add(name);
-      } else {
-        for (const name of changed) currentEnabled.delete(name);
+      const config = readAgentConfig(agentId);
+      const rawEnabled = Array.isArray(config?.skills?.enabled) ? config.skills.enabled : null;
+      const currentEnabled = new Set(rawEnabled || skills
+        .filter(skill => !skill.marketplacePackage && skill.enabled)
+        .map(skill => skill.name));
+      let marketplaceOverrides = config?.skills?.marketplace_overrides;
+      for (const name of changed) {
+        const skill = skillByName.get(name);
+        if (skill?.marketplacePackage?.identity) {
+          marketplaceOverrides = setMarketplaceSkillPreference(
+            marketplaceOverrides,
+            skill.marketplacePackage.identity,
+            skill.marketplacePackage.skillName || name,
+            enable,
+          );
+        } else if (enable) {
+          currentEnabled.add(name);
+        } else {
+          currentEnabled.delete(name);
+        }
       }
-      const enabled = skills
-        .map(skill => skill.name)
-        .filter(name => currentEnabled.has(name));
-      await persistEnabledSkills(agentId, enabled);
+      const enabledNames = rawEnabled
+        ? [...new Set(rawEnabled.filter(name => typeof name === "string"))]
+        : [];
+      const enabled = rawEnabled
+        ? enabledNames.filter(name => currentEnabled.has(name))
+        : skills.filter(skill => !skill.marketplacePackage && currentEnabled.has(skill.name)).map(skill => skill.name);
+      // Append newly enabled ordinary skills in the same order as the request;
+      // preserve the historical list shape while keeping package defaults out
+      // of skills.enabled.
+      for (const name of changed) {
+        const skill = skillByName.get(name);
+        if (!skill?.marketplacePackage && enable && !enabled.includes(name)) enabled.push(name);
+      }
+      await persistSkillPreferences(
+        agentId,
+        enabled,
+        changed.some(name => skillByName.get(name)?.marketplacePackage) ? marketplaceOverrides : undefined,
+      );
       emitAppEvent(engine, "skills-changed", { agentId });
       return { enabled, changed };
     });
@@ -290,6 +511,25 @@ export function createSkillsRoute(engine) {
     }
   });
 
+  route.get("/skills/:name/files", async (c) => {
+    try {
+      const { baseDir } = resolveSkillPreviewTarget(c);
+      return c.json({ files: scanSkillPreviewDir(baseDir, baseDir) });
+    } catch (err) {
+      return c.json({ error: err.message }, err.status || 500);
+    }
+  });
+
+  route.get("/skills/:name/file", async (c) => {
+    try {
+      const { baseDir } = resolveSkillPreviewTarget(c);
+      const { relativePath, filePath } = resolveSkillPreviewFile(baseDir, c.req.query("path") || "SKILL.md");
+      return c.json({ path: relativePath, content: readSkillPreviewText(filePath) });
+    } catch (err) {
+      return c.json({ error: err.message }, err.status || 500);
+    }
+  });
+
   route.put("/agents/:id/skills", async (c) => {
     const id = c.req.param("id");
     const invalidAgent = validateAgentIdOrResponse(c, id);
@@ -303,14 +543,31 @@ export function createSkillsRoute(engine) {
 
       // 防御性过滤：把请求体里的 enabled 与该 agent 实际可见的 skill 集合做交集，
       // 防止前端因 store 错位（例如 agent 切换 race）把别的 agent 的列表写进来 (#397)
-      const visible = engine.getAllSkills(id).map(s => s.name);
-      const visibleSet = new Set(visible);
-      const filtered = enabled.filter(name => visibleSet.has(name));
-
       const persisted = await withAgentSkillWriteLock(id, async () => {
-        await persistEnabledSkills(id, filtered);
+        const { skills, skillByName } = visibleSkillsForAgent(id);
+        const visibleSet = new Set(skills.map(s => s.name));
+        const filtered = enabled.filter(name => visibleSet.has(name));
+        const config = readAgentConfig(id);
+        const ordinaryEnabled = filtered.filter(name => !skillByName.get(name)?.marketplacePackage);
+        const nextEnabled = [...new Set(ordinaryEnabled)];
+        let marketplaceOverrides;
+        for (const name of filtered) {
+          const skill = skillByName.get(name);
+          if (!skill?.marketplacePackage?.identity) continue;
+          marketplaceOverrides = setMarketplaceSkillPreference(
+            marketplaceOverrides === undefined ? config?.skills?.marketplace_overrides : marketplaceOverrides,
+            skill.marketplacePackage.identity,
+            skill.marketplacePackage.skillName || name,
+            true,
+          );
+        }
+        await persistSkillPreferences(
+          id,
+          nextEnabled,
+          marketplaceOverrides === undefined ? undefined : marketplaceOverrides,
+        );
         emitAppEvent(engine, "skills-changed", { agentId: id });
-        return filtered;
+        return nextEnabled;
       });
       return c.json({ ok: true, enabled: persisted });
     } catch (err) {
@@ -514,21 +771,9 @@ export function createSkillsRoute(engine) {
       rmDirSync(userSkillPath);
 
       // 从所有 agent 的 enabled 列表中移除
-      const agentsDir = engine.agentsDir;
-      for (const agentName of fs.readdirSync(agentsDir)) {
-        const configPath = path.join(agentsDir, agentName, "config.yaml");
-        if (!fs.existsSync(configPath)) continue;
-        try {
-          const { loadConfig } = await import("../../lib/memory/config-loader.ts");
-          const cfg = loadConfig(configPath);
-          const enabled = cfg?.skills?.enabled;
-          if (Array.isArray(enabled) && enabled.includes(name)) {
-            const filtered = enabled.filter(n => n !== name);
-            saveConfig(configPath, { skills: { enabled: filtered } });
-          }
-        } catch (e) {
-          log.error(`清理 agent ${agentName} 的 skill 引用失败: ${e.message}`);
-        }
+      const referenceCleanup = removeAgentSkillReferences(engine.agentsDir, [name]);
+      for (const failure of referenceCleanup.failedAgents) {
+        log.error(`清理 agent ${failure.agentId} 的 skill 引用失败: ${failure.error}`);
       }
 
       // 重新加载 skills

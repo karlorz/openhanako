@@ -38,6 +38,15 @@ describe("validate-release-digest", () => {
     expect(validateDigestForTag(digest(), "v0.425.4").version).toBe("0.425.4");
   });
 
+  it("accepts a fork release tag whose digest uses the installed product version", () => {
+    const forkDigest = digest({
+      tag: "v0.407.15-karlorz.1",
+      version: "0.407.15",
+    });
+
+    expect(validateDigestForTag(forkDigest, "v0.407.15-karlorz.1").version).toBe("0.407.15");
+  });
+
   it("rejects a digest generated for a different tag", () => {
     expect(() => validateDigestForTag(digest({ tag: "v0.425.3" }), "v0.425.4"))
       .toThrow(/digest\.tag must be v0\.425\.4/);

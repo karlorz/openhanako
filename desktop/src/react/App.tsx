@@ -33,6 +33,8 @@ import { openSettingsModal } from './stores/settings-modal-actions';
 import { AppTitlebar } from './components/app/AppTitlebar';
 import { ChatSidebar } from './components/app/ChatSidebar';
 import { AppPages } from './components/app/AppPages';
+import { RemoteConnectionRecovery } from './components/app/RemoteConnectionRecovery';
+import { remoteRecoveryForActiveConnection } from './services/remote-connection-recovery';
 
 declare function t(key: string, vars?: Record<string, string | number>): string;
 
@@ -68,7 +70,13 @@ function App() {
   const sidebarOpen = useStore(s => s.sidebarOpen);
   const jianOpen = useStore(s => s.jianOpen);
   const currentTab = useStore(s => s.currentTab);
+  const activeServerConnectionId = useStore(s => s.activeServerConnectionId);
+  const remoteConnectionRecovery = useStore(s => s.remoteConnectionRecovery);
   const isPluginTab = typeof currentTab === 'string' && currentTab.startsWith('plugin:');
+  const hasActiveRemoteRecovery = remoteRecoveryForActiveConnection(
+    remoteConnectionRecovery,
+    activeServerConnectionId,
+  );
   const { side: floatSide, show: showFloat, scheduleHide: scheduleFloatHide, cancelHide: cancelFloatHide, hide: hideFloat } = useFloatSidebar();
 
   useEffect(() => {
@@ -107,16 +115,21 @@ function App() {
 
         {/* ── App body ── */}
         <div className="app">
-          <ChatSidebar
-            open={sidebarOpen && !isPluginTab}
-            onNewSession={createNewSession}
-            onCollapse={() => toggleSidebar()}
-            onOpenSettings={() => openSettingsModal()}
-            onTogglePanel={togglePanel}
-          />
-
           <RegionalErrorBoundary region="app-pages" resetKeys={[currentTab]}>
-            <AppPages />
+            {hasActiveRemoteRecovery ? (
+              <RemoteConnectionRecovery />
+            ) : (
+              <>
+                <ChatSidebar
+                  open={sidebarOpen && !isPluginTab}
+                  onNewSession={createNewSession}
+                  onCollapse={() => toggleSidebar()}
+                  onOpenSettings={() => openSettingsModal()}
+                  onTogglePanel={togglePanel}
+                />
+                <AppPages />
+              </>
+            )}
           </RegionalErrorBoundary>
         </div>
       </div>

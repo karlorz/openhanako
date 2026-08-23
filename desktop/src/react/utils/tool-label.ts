@@ -55,6 +55,7 @@ export const BUILTIN_TOOL_NAMES: ReadonlySet<string> = new Set([
   'session_folders', 'subagent', 'subagent_reply', 'subagent_close', 'workflow',
   'check_pending_tasks', 'loop_control', 'current_status', 'session',
   'hana_card_guide', 'show_card',
+  'plugin_marketplace',
   'channel_read_context', 'channel_reply', 'channel_pass',
   'create_artifact', 'dm',
 ]);

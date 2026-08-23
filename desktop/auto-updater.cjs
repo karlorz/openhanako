@@ -11,6 +11,7 @@ const { autoUpdater } = require("electron-updater");
 const path = require("path");
 const fs = require("fs");
 const crypto = require("crypto");
+const { readBuildInfo } = require("./src/shared/build-info.cjs");
 
 const CHECK_INTERVAL = 4 * 60 * 60 * 1000; // 4 小时
 const DIGEST_ASSET_NAME = "release-digest.v1.json";
@@ -232,7 +233,7 @@ function isAutoCheckEnabled() {
 
 function createIdleState() {
   return {
-    status: "idle",       // idle | checking | available | downloading | downloaded | installing | error | latest
+    status: "idle",       // idle | disabled | checking | available | downloading | downloaded | installing | error | latest
     version: null,
     releaseNotes: null,
     releaseUrl: null,
@@ -402,6 +403,26 @@ function requestReleaseDigest(version) {
       logUpdate(`release digest unavailable: ${message}`);
       setState({ digest: null, digestUrl, digestError: message });
     });
+}
+
+function isUpdateEnabledForBuild() {
+  return readBuildInfo().updateEnabled !== false;
+}
+
+function setDisabledState() {
+  setState({
+    status: "disabled",
+    version: null,
+    releaseNotes: null,
+    releaseUrl: null,
+    downloadUrl: null,
+    progress: null,
+    error: null,
+    digest: null,
+    digestUrl: null,
+    digestError: null,
+    updateSource: _updateFeedConfig.source,
+  });
 }
 
 function getQuitAndInstallOptions() {
@@ -800,6 +821,10 @@ function registerIpcHandlers() {
   if (_ipcHandlersRegistered) return;
   _ipcHandlersRegistered = true;
   ipcMain.handle("auto-update-check", async () => {
+    if (!isUpdateEnabledForBuild()) {
+      setDisabledState();
+      return getState();
+    }
     if (_updateState.status === "installing") return getState();
     resetState();
     try {
@@ -814,7 +839,7 @@ function registerIpcHandlers() {
   });
 
   // 保留 channel 向后兼容，改为空操作（下载由 update-available 自动触发）
-  ipcMain.handle("auto-update-download", async () => true);
+  ipcMain.handle("auto-update-download", async () => isUpdateEnabledForBuild());
 
   ipcMain.handle("auto-update-install", async () => {
     return installDownloadedUpdate("manual");
@@ -823,6 +848,7 @@ function registerIpcHandlers() {
   ipcMain.handle("auto-update-state", () => getState());
 
   ipcMain.handle("auto-update-set-channel", (_event, channel) => {
+    if (!isUpdateEnabledForBuild()) return;
     autoUpdater.allowPrerelease = (channel === "beta");
   });
 
@@ -858,6 +884,11 @@ function initAutoUpdater(mainWindow, {
 
   registerIpcHandlers(); // IPC handlers 是进程级单例，重复 init 时直接复用
 
+  if (!isUpdateEnabledForBuild()) {
+    setDisabledState();
+    return;
+  }
+
   // 开发环境不初始化 auto-updater
   if (!app.isPackaged) return;
 
@@ -879,6 +910,7 @@ function initAutoUpdater(mainWindow, {
 }
 
 async function checkForUpdatesAuto() {
+  if (!isUpdateEnabledForBuild()) return;
   if (!app.isPackaged || isRunningFromDmg()) return;
   // 用户关了自动检查开关：启动时也不自动 check
   if (!isAutoCheckEnabled()) return;
@@ -888,6 +920,7 @@ async function checkForUpdatesAuto() {
 }
 
 function setUpdateChannel(channel) {
+  if (!isUpdateEnabledForBuild()) return;
   autoUpdater.allowPrerelease = (channel === "beta");
 }
 
