@@ -364,6 +364,54 @@ remote-resource-ownership).
 - sg01 remains on immutable fork release `v0.416.43-karlorz.1` and was not deployed or modified. No fork tag or GitHub release was created. PR #1 remains the permanent open draft dashboard and must not be merged, auto-merged, or closed.
 - The first post-push stable-default status check exposed a channel-ordering bookkeeping bug: after a stable-then-prerelease sequence, the newest sync-log token is `train-beta-17`, so tag-name comparison alone incorrectly offered the already-ancestral stable `v0.416.44` as new. The helper now treats a target tag already ancestral to the fork head as synchronized in check, mutate, and dashboard availability paths, with regression coverage preventing a backward stable rebase recommendation.
 
+## Attended prerelease sync closeout (2026-08-13, `train-beta-26` already an ancestor)
+
+- 2026-08-13: `dev` is at `f481ea35c` and aligned with `origin/dev`. The
+  upstream prerelease `train-beta-26` is co-tagged with stable `v0.446.6`
+  and points to upstream SHA `5f08a4f30203abb61dafac7dbb7ab92d11c23efa`.
+  The prior `v0.446.6` rebase already consumed that upstream commit, so
+  `train-beta-26` is now an ancestor of `dev`. The active fork release tag
+  remains `v0.446.6-karlorz.1` (Build `31376086862`, 20 legacy-raw assets,
+  non-draft prerelease, immutable).
+- `node scripts/sync-upstream.mjs --include-prerelease --check` (output
+  captured at `{SCRATCH}/prerelease-check.txt`) reports verbatim:
+  `Release channel: stable + prerelease`, `Latest upstream tag:
+  train-beta-26`, `Last synced tag: v0.446.6-karlorz.1`, and `ok Already
+  up to date - no new release to sync. train-beta-26 is already an ancestor
+  of HEAD; the newer sync-log row v0.446.6-karlorz.1 remains
+  authoritative.`
+- `node scripts/sync-upstream.mjs --check` (output captured at
+  `{SCRATCH}/sync-check.txt`) reports the stable-channel view: `Release
+  channel: stable only`, `Latest upstream tag: v0.446.6`, `Last synced
+  tag: v0.446.6-karlorz.1`, and `ok Already up to date - no new release
+  to sync. v0.446.6 is already an ancestor of HEAD; the newer sync-log
+  row v0.446.6-karlorz.1 remains authoritative.`
+- `node scripts/sync-upstream.mjs --conflict-plan --local-only` (output
+  captured at `{SCRATCH}/conflict-plan.txt`) reports `upstream/main:
+  5f08a4f3`, `origin/main: 5f08a4f3`, `origin/dev: f481ea35`, `PR #1:
+  MERGEABLE`, `migration contracts: 10`, `stable activation allowed:
+  false`, and `ok No merge-tree conflicts detected.` The `--local-only`
+  flag was used so PR #1 and `origin/main` were not mutated.
+- `npx vitest run tests/sync-upstream.test.mjs` passes after the docs
+  change (output captured at `{SCRATCH}/sync-upstream-tests.txt`); the
+  docs change is corroboration only and does not affect the sync test
+  surface.
+- `/dev-loop` cycle miss (Tier classification) for the prerelease
+  channel: the documented Tier 0 (fork-only file presence), Tier 1
+  (focused LAN/auth/CSP/remote-preview), and Tier 2 (main/preload builds
+  and marker greps) gates are green on `dev` per the
+  `--include-prerelease --check` and `--conflict-plan --local-only`
+  evidence above and the prior correction closeout. **Tier 3A (local
+  install + codesign + build-info match at `0.446.6`) and Tier 3B (sg01
+  helper + UI smoke) are not re-evidenced for the post-correction head
+  `f481ea35c`** — the most recent Tier 3A/3B evidence is recorded
+  against the correction head `12f7a6b4c`, not against the later
+  CI-keep-green commit `14a3d3625` or the docs closeout `f481ea35c`. This
+  is a documentation refresh, not an attended Tier 3 rerun; an attended
+  Tier 3 rerun would close that gap. No new fork release, tag, push,
+  sg01 deployment, or PR #1 mutation was performed by this closeout. PR
+  #1 remains a permanent draft dashboard and is never a merge vehicle.
+
 ## Attended stable sync closeout (2026-07-28, `v0.421.24`)
 
 - The stable-default helper resolved upstream release `v0.421.24` at `e87769a070d12803247e5cc619dacf5814fe1f52` (also co-tagged `train-beta-18`). The upstream range `v0.416.51...v0.421.24` contains 48 commits across 146 files, centered on explicit-agent request ownership, session compaction/concurrency, identity and migration behavior, workspace routing, persistence receipts, and release metadata.
@@ -669,6 +717,44 @@ No release, tag, push, or sg01 deployment is implied by this checklist until
 each corresponding command and artifact has fresh evidence. PR #1 remains a
 permanent draft dashboard and is never a merge vehicle.
 
+## Post-correction closeout (2026-08-13, `v0.446.6-karlorz.1` at `f481ea35c`)
+
+- 2026-08-13: `dev` is at `f481ea35c` and aligned with `origin/dev`. The
+  CI-green correction chain (`12f7a6b4c` … `14a3d3625` … `f481ea35c`) is
+  intact, package metadata reports `0.446.6`, and the active fork release tag
+  remains `v0.446.6-karlorz.1` (Build `31376086862`, 20 legacy-raw assets,
+  non-draft prerelease, immutable). `git log --oneline -10` shows the
+  correction commits at the top of `dev`.
+- `node scripts/sync-upstream.mjs --check` reports `Release channel: stable
+  only`, `Latest upstream tag: v0.446.6`, `Last synced tag:
+  v0.446.6-karlorz.1`, and `ok Already up to date - no new release to sync.
+  v0.446.6 is already an ancestor of HEAD; the newer sync-log row
+  v0.446.6-karlorz.1 remains authoritative.` (output captured at
+  `{SCRATCH}/sync-check.txt`).
+- `node scripts/sync-upstream.mjs --conflict-plan --local-only` reports
+  `upstream/main: 5f08a4f3`, `origin/main: 5f08a4f3`, `origin/dev:
+  f481ea35`, `PR #1: MERGEABLE`, `migration contracts: 10`, `stable
+  activation allowed: false`, and `ok No merge-tree conflicts detected.`
+  (output captured at `{SCRATCH}/conflict-plan.txt`). The `--local-only` flag
+  was used so PR #1 and `origin/main` were not mutated.
+- `npx vitest run tests/sync-upstream.test.mjs` passes after the docs change
+  (output captured at `{SCRATCH}/sync-upstream-tests.txt`); the docs change
+  is corroboration only and does not affect the sync test surface.
+- `/dev-loop` cycle miss (Tier classification): the documented Tier 0
+  (fork-only file presence), Tier 1 (focused LAN/auth/CSP/remote-preview),
+  and Tier 2 (main/preload builds and marker greps) gates are green on `dev`
+  per the `--check`/`--conflict-plan` evidence above and the prior correction
+  closeout. **Tier 3A (local install + codesign + build-info match at
+  `0.446.6`) and Tier 3B (sg01 helper + UI smoke) are not re-evidenced for
+  the post-correction head `f481ea35c`** — the most recent Tier 3A/3B
+  evidence is recorded against the correction head `12f7a6b4c`, not against
+  the later CI-keep-green commit `14a3d3625` or the docs closeout
+  `f481ea35c`. This is a documentation refresh, not an attended Tier 3
+  rerun; an attended Tier 3 rerun would close that gap. No new fork release,
+  tag, push, sg01 deployment, or PR #1 mutation was performed by this
+  closeout. PR #1 remains a permanent draft dashboard and is never a merge
+  vehicle.
+
 ## Latest fork patch closeout
 
 - 2026-06-30: patch target `v0.346.18-karlorz.5` remains on upstream package version `0.346.18` and carries the replay/link-context fixes reviewed from `4c82293b` and `b9d8a730`.
@@ -710,3 +796,5 @@ permanent draft dashboard and is never a merge vehicle.
 | 2026-08-10 | `v0.446.6` | Rebase replay conflicted in the final Marketplace hardening batch, including engine tool assembly, source-qualified plugin config custody, and persistence registry ownership. | Kept deferred MCP/plugin/bridge tool assembly and owner-context forwarding; retained source-qualified public/secrets configuration with `writeSecretFileSync`; preserved exact Marketplace state ownership and regenerated receipts from the effective tree. | Focused Marketplace/persistence/security baseline passed: 11 files / 209 tests, plus persistence-tripwire (18), store-registry (14), and upstream-issue-tracker coverage. Full post-rebase, typecheck/lint/build, package, and local-app gates remain pending. | Not run for this branch: installed app is still local `0.421.24`; no sg01 contact or remote smoke. | Backup `backup/dev-before-stable-v0.446.6-20260810` @ `95b23b082`; `v0.446.6` is ancestral to local `dev`. No push, dashboard refresh, tag, release, deployment, or GitHub mutation. Release remains blocked by the legacy opt-out re-migration and source-qualified credential-healer regressions. |
 | 2026-08-10 | `v0.446.6` correction and fork sync | Legacy opt-out re-migration could re-disable a user-enabled skill after reload; credential healer used unsafe directory-depth discovery. | Implemented config-owned completion ledger (`marketplace_legacy_skill_migrations`) with one locked batch retirement; replaced depth-based healer with install-record-qualified identities + `O_NOFOLLOW` descriptor guards. Lockfile root reconciled (`@electron/asar` stale entry removed; `diff` dependency materialized). | Combined correction suite 18 files / 342 tests + offline GitHub-mutation guard; receipts regenerated deterministically (fingerprint `sha256:968b647f…`, compatible, `DATA_EPOCH` unchanged); `--post-rebase` Tier 0–2 passed; full-suite baseline unchanged (12 pre-existing failures reproduced on clean pre-correction HEAD); Tier 3A local install/codesign/build-identity/Marketplace smoke passed at `0.446.6` / `12f7a6b4c`. | Installed `/Applications/HanaAgent.app` rebuilt as local signed `0.446.6` at exact commit `12f7a6b4c`, `dirty: false`, updates disabled; CDP Marketplace/Settings smoke clean (zero renderer errors); sg01 untouched. | Correction committed as `12f7a6b4c`; rewritten `dev` force-pushed to `origin/dev` with `--force-with-lease` (replaced stale `875c26d3`); PR #1 dashboard refreshed via `sync-upstream.mjs --conflict-plan`; no tag, release, digest alignment, or deployment. |
 | 2026-08-10 | `v0.446.6-karlorz.1` | CI-keep-green pass: 12 pre-existing failures (typecheck, test mocks, receipts) reproduced on clean pre-correction HEAD and fixed; one Windows-only `model-manager-auth-storage` failure was initially misdiagnosed as a `writeSecretFileSync` rename-EPERM and "fixed" with a direct-write fallback, which broke the documented throw-and-preserve contract (`secret-fs` + `migrations` Windows tests). | Root cause of the Windows failure: `migrateLegacyApiKeyAuthToProviders` writes the provider catalog through the store directly without invalidating the registry's mtime-keyed added-models cache, so on coarse-timestamp filesystems the next `reload()` served the stale pre-recovery config and the rescued API key never reached the models.json projection. Fixed by invalidating `_addedModelsCache`/`_addedModelsMtime` after the direct store save (same pattern as `core/migrations.ts`) and reverting the fallback; receipts regenerated to the pre-fallback state. | Final commit `14a3d3625`; push CI run `31386628984` and PR #1 dashboard CI run `31386631862` both GREEN — all four jobs (macOS tests, Windows tests, open-boundary lint, open composition build smoke) passed; local focused reruns (tripwire 18, store-registry 14, secret-fs, migrations 133, model-manager-auth-storage 29), typecheck, and diff-check passed. | Not re-run: release artifact surface unchanged by CI-only fixes; Tier 3A/3B evidence from the correction pass remains valid. | Fork-qualified `v0.446.6-karlorz.1` tag/release published earlier at `e84a6c825` (Build `31376086862`, 20 legacy-raw assets, non-draft prerelease) stays immutable; `dev` at `14a3d3625`; PR #1 remains permanent draft never-merge. |
+| 2026-08-13 | `v0.446.6-karlorz.1` (post-correction docs closeout) | No new conflicts; this row records the post-correction observation on `dev` at `f481ea35c` after the CI-green chain `12f7a6b4c` … `14a3d3625` … `f481ea35c` was completed. | Documentation-only closeout. No rebase, no conflict resolution, no source-of-truth change. `dev` advanced to `f481ea35c` purely via a docs commit recording the prior CI-green closeout. | `npx vitest run tests/sync-upstream.test.mjs` passed after the docs change (output captured at `{SCRATCH}/sync-upstream-tests.txt`); the docs change is corroboration only. | Not re-run: this is a documentation refresh, not an attended Tier 3 rerun. The most recent Tier 3A/3B evidence is recorded against correction head `12f7a6b4c`, not against `14a3d3625` or `f481ea35c`; that gap is the current `/dev-loop` cycle miss. | `dev` at `f481ea35c` is aligned with `origin/dev`; `git status --short` clean after the docs edit; `node scripts/sync-upstream.mjs --check` reports `Already up to date - no new release to sync. v0.446.6 is already an ancestor of HEAD; the newer sync-log row v0.446.6-karlorz.1 remains authoritative.`; `node scripts/sync-upstream.mjs --conflict-plan --local-only` reports `origin/dev: f481ea35`, `PR #1: MERGEABLE`, `migration contracts: 10`, `stable activation allowed: false`, `ok No merge-tree conflicts detected.` Active fork release tag remains `v0.446.6-karlorz.1` (immutable). Tier 3A/3B not re-evidenced for `f481ea35c`; an attended Tier 3 rerun would close that `/dev-loop` cycle miss. PR #1 remains permanent draft never-merge. |
+| 2026-08-13 | `train-beta-26` (prerelease docs closeout) | No new conflicts; this row records the prerelease-channel observation on `dev` at `f481ea35c`. The upstream prerelease `train-beta-26` is co-tagged with stable `v0.446.6` at upstream SHA `5f08a4f30203abb61dafac7dbb7ab92d11c23efa`, and that commit is already an ancestor of `dev` because the prior `v0.446.6` rebase consumed it. | Documentation-only closeout. No new `--include-prerelease --i-accept-prerelease-sync` mutation, no conflict resolution, no source-of-truth change. The `dev` head `f481ea35c` is unchanged; the prerelease lineage is recorded as already-consumed. | `node scripts/sync-upstream.mjs --include-prerelease --check` reports `Release channel: stable + prerelease`, `Latest upstream tag: train-beta-26`, `Last synced tag: v0.446.6-karlorz.1`, and `ok Already up to date - no new release to sync. train-beta-26 is already an ancestor of HEAD; the newer sync-log row v0.446.6-karlorz.1 remains authoritative.`; `node scripts/sync-upstream.mjs --check` reports `Release channel: stable only`, `Latest upstream tag: v0.446.6`, and `Already up to date - no new release to sync. v0.446.6 is already an ancestor of HEAD; the newer sync-log row v0.446.6-karlorz.1 remains authoritative.`; `npx vitest run tests/sync-upstream.test.mjs` passed (output captured at `{SCRATCH}/sync-upstream-tests.txt`); the docs change is corroboration only. | Not re-run: this is a documentation refresh, not an attended Tier 3 rerun. The most recent Tier 3A/3B evidence is recorded against correction head `12f7a6b4c`, not against `f481ea35c`; an attended Tier 3 rerun would close that `/dev-loop` cycle miss. | `dev` at `f481ea35c` is aligned with `origin/dev`; `git status --short` clean after the docs edit; `node scripts/sync-upstream.mjs --conflict-plan --local-only` reports `upstream/main: 5f08a4f3`, `origin/main: 5f08a4f3`, `origin/dev: f481ea35`, `PR #1: MERGEABLE`, `migration contracts: 10`, `stable activation allowed: false`, `ok No merge-tree conflicts detected.` Active fork release tag remains `v0.446.6-karlorz.1` (immutable); the prerelease `train-beta-26` is part of `dev`'s ancestry via the prior `v0.446.6` rebase. Tier 3A/3B not re-evidenced for `f481ea35c`; an attended Tier 3 rerun would close that `/dev-loop` cycle miss. PR #1 remains permanent draft never-merge. |
