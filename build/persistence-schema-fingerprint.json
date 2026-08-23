@@ -679,7 +679,7 @@
     ],
     "version": 3
   },
-  "payloadFingerprint": "sha256:968b647f79b77e002972676d465174df4ce625ccbb836e5b7ae41a34dbc6a9e4",
+  "payloadFingerprint": "sha256:fc1e4cac0bf518f471f6fe0e93cb6e28d96fe231879dbaf54b6d0cf4aa17c750",
   "registry": [
     {
       "affectedByEpochMigration": true,
@@ -866,7 +866,8 @@
       "id": "agent-profile",
       "identityContract": "agentId owns the profile; each filename has a fixed semantic role.",
       "migrationEntry": [
-        "lib/compat/checks/config-yaml.ts"
+        "lib/compat/checks/config-yaml.ts",
+        "core/agents-md-migration.ts"
       ],
       "openEntry": [
         "AgentManager.loadAgents",
@@ -879,8 +880,8 @@
       "pathPatterns": [
         "agents/{agentId}/config.yaml",
         "agents/{agentId}/identity.md",
-        "agents/{agentId}/ishiki.md",
-        "agents/{agentId}/public-ishiki.md",
+        "agents/{agentId}/AGENTS.md",
+        "agents/{agentId}/AGENTS.public.md",
         "agents/{agentId}/appearance-summary.json",
         "agents/{agentId}/avatars/{fileName}",
         "agents/{agentId}/pinned.md",
@@ -3143,8 +3144,8 @@
   ],
   "review": {
     "classification": "compatible",
-    "compatibilityReason": "Regenerated after reverting the writeSecretFileSync fallback experiment; persistence schema and write-site inventory return to the pre-fallback state.",
-    "payloadFingerprint": "sha256:968b647f79b77e002972676d465174df4ce625ccbb836e5b7ae41a34dbc6a9e4"
+    "compatibilityReason": "Upstream v0.449.0 adds automation store failure recovery and cron-store recovery write points — compatible additions to the persistence schema with no DATA_EPOCH change.",
+    "payloadFingerprint": "sha256:fc1e4cac0bf518f471f6fe0e93cb6e28d96fe231879dbaf54b6d0cf4aa17c750"
   },
   "schemas": [
     {
@@ -3226,7 +3227,7 @@
       "contract": "agent config and authored Markdown/image profile protocol",
       "kind": "directory-contract",
       "module": "core/agent-manager.ts",
-      "sourceHash": "sha256:6fa7c7ee70acd3b822a3323cabd1f9820c9d891fa544f25a5828bfd2c0e2f081",
+      "sourceHash": "sha256:64d8f9627e4e3ef79b79816a87c0d16e1265fa8e8a34cc52668d15927fdc4d2d",
       "storeId": "agent-profile"
     },
     {
@@ -3240,14 +3241,14 @@
       "contract": "token-scoped import plan/package and export package protocol",
       "kind": "directory-contract",
       "module": "lib/character-cards/service.ts",
-      "sourceHash": "sha256:04d85be0fcff0b7a8d6187e648ced184d79ee1cfbbddba91fec4b40886a26dd0",
+      "sourceHash": "sha256:407c0265bf71fb054c6e4df2bd10320114e24b03e9a1b7e6e837db70165e66c6",
       "storeId": "character-card-staging"
     },
     {
       "contract": "CronStore job registry and run receipt protocol",
       "kind": "directory-contract",
       "module": "lib/desk/cron-store.ts",
-      "sourceHash": "sha256:cf6c580927341b5004cbbf00d809b5be4fe549e0949c03c7f15f103c4708e219",
+      "sourceHash": "sha256:bb1664a1ce588406d4fafebd71b5726938ff4a8a619b380c0936ceadb217f37c",
       "storeId": "cron-automation"
     },
     {
@@ -3306,7 +3307,7 @@
       "contract": "bounded base64 cover upload temporary-directory lifecycle",
       "kind": "directory-contract",
       "module": "server/routes/desk.ts",
-      "sourceHash": "sha256:dea9b2e28eaf8310c7edab9f8ad5cf477c04ad89b92d592adbd9af873a7a217b",
+      "sourceHash": "sha256:7d2cf25f7dbcdf256dc4188fb0256ddf413fa726fbf1ea934abb8e9514a45fc6",
       "storeId": "desk-cover-upload-staging"
     },
     {
@@ -3327,7 +3328,7 @@
       "contract": "update channel record version, device identifier, activation flag, update feed address, activation time, and held invite codes",
       "kind": "runtime-contract",
       "module": "desktop/auto-updater.cjs",
-      "sourceHash": "sha256:76a9c7b76bb599e933890137bc421008885abf3ec0dbd05b5cbe4c1c3c91d320",
+      "sourceHash": "sha256:7bf8793c216633978a8a42d77ce1657267b28339ac5a6e0d568c2d2acb3448d2",
       "storeId": "desktop-update-channel"
     },
     {
@@ -3341,7 +3342,7 @@
       "contract": "desktop window bounds, release announcement bookmark, and update cache version marker readers",
       "kind": "directory-contract",
       "module": "desktop/main.cjs",
-      "sourceHash": "sha256:0ffba01275f5bf597593f684f7c51949104b3e6017092171b1e625ddfb4884be",
+      "sourceHash": "sha256:3d47d25412c52446bcd4714784c952a756e98055bdb62d38004a940b90083048",
       "storeId": "desktop-window-version-state"
     },
     {
@@ -3565,7 +3566,7 @@
         {
           "contract": "core/session-coordinator.ts Hana metadata extensions",
           "module": "core/session-coordinator.ts",
-          "sourceHash": "sha256:291a514e737ea1d628aa554a7f58bad4962c4abc71996d575b4f7789c1473343"
+          "sourceHash": "sha256:8bb635114f9f26e3489dd89ed2c4fb3be25697f6154c173d737e88fee19eb836"
         },
         {
           "contract": "core/session-jsonl-file.ts repair contract",
@@ -3663,7 +3664,7 @@
       "contract": "bridge index, legacy session metadata, title, and vision sidecar readers",
       "kind": "runtime-contract",
       "module": "core/bridge-session-manager.ts",
-      "sourceHash": "sha256:c50224c29af58ed7d9753f549c7c2a483844388b0982487365f33ce4b4be06c0",
+      "sourceHash": "sha256:7ed05febd0506adb3cdc38c86a652f1c47a4e1a499f9308a7e940faaae1297ef",
       "storeId": "session-sidecars"
     },
     {
@@ -3903,6 +3904,22 @@
       "reason": "Creates the memory directory and records legacy memories.db import state.",
       "sourceFile": "core/agent.ts",
       "storeId": "agent-memory"
+    },
+    {
+      "exemptionId": null,
+      "kind": "rename",
+      "ordinal": 0,
+      "reason": "Renames agent persona files onto their current names.",
+      "sourceFile": "core/agents-md-migration.ts",
+      "storeId": "agent-profile"
+    },
+    {
+      "exemptionId": null,
+      "kind": "rename",
+      "ordinal": 0,
+      "reason": "Renames agent persona files onto their current names.",
+      "sourceFile": "core/agents-md-migration.ts",
+      "storeId": "agent-profile"
     },
     {
       "exemptionId": null,
@@ -7154,6 +7171,14 @@
     },
     {
       "exemptionId": null,
+      "kind": "copy-file",
+      "ordinal": 0,
+      "reason": "Writes cron jobs or execution receipts.",
+      "sourceFile": "lib/desk/cron-store.ts",
+      "storeId": "cron-automation"
+    },
+    {
+      "exemptionId": null,
       "kind": "mkdir",
       "ordinal": 0,
       "reason": "Writes cron jobs or execution receipts.",
@@ -7163,6 +7188,22 @@
     {
       "exemptionId": null,
       "kind": "mkdir",
+      "ordinal": 0,
+      "reason": "Writes cron jobs or execution receipts.",
+      "sourceFile": "lib/desk/cron-store.ts",
+      "storeId": "cron-automation"
+    },
+    {
+      "exemptionId": null,
+      "kind": "rename",
+      "ordinal": 0,
+      "reason": "Writes cron jobs or execution receipts.",
+      "sourceFile": "lib/desk/cron-store.ts",
+      "storeId": "cron-automation"
+    },
+    {
+      "exemptionId": null,
+      "kind": "write-file",
       "ordinal": 0,
       "reason": "Writes cron jobs or execution receipts.",
       "sourceFile": "lib/desk/cron-store.ts",
